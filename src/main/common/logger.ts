@@ -26,25 +26,9 @@ Logger.transports.file.maxSize = Env.main.logMaxSize
   : 10 * 1024 * 1024
 Logger.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}] [{level}] {text}'
 
-// 配置控制台传输，捕获 EPIPE 错误
+// 配置控制台传输
 Logger.transports.console.level = logLevel
 Logger.transports.console.format = '[{y}-{m}-{d} {h}:{i}:{s}] [{level}] {text}'
-
-// 捕获控制台写入错误（防止 EPIPE）
-const originalConsoleWrite = Logger.transports.console.writeFn
-if (originalConsoleWrite) {
-  Logger.transports.console.writeFn = function (data) {
-    try {
-      originalConsoleWrite.call(this, data)
-    } catch (error) {
-      // 忽略 EPIPE 和其他管道错误
-      if ((error as NodeJS.ErrnoException).code !== 'EPIPE') {
-        // 其他错误才需要处理
-        console.error('Logger console write error:', error)
-      }
-    }
-  }
-}
 
 export const setLogPath = (logPath: string): void => {
   currentLogPath = logPath

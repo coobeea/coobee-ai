@@ -1,14 +1,11 @@
-import appManager from './common/app'
+import AppManager from './common/app'
 
 /**
  * 捕获未处理的异常
  */
 process.on('uncaughtException', (error: Error) => {
-  // 忽略 EPIPE 错误（管道错误，通常发生在快速重启时）
-  if ((error as NodeJS.ErrnoException).code === 'EPIPE') {
-    return
-  }
   console.error('未捕获的异常:', error)
+  process.exit(1)
 })
 
 /**
@@ -16,6 +13,7 @@ process.on('uncaughtException', (error: Error) => {
  */
 process.on('unhandledRejection', (reason: unknown) => {
   console.error('未处理的 Promise 拒绝:', reason)
+  process.exit(1)
 })
 
 /**
@@ -24,6 +22,10 @@ process.on('unhandledRejection', (reason: unknown) => {
  */
 async function main(): Promise<void> {
   try {
+    // 在这里创建 AppManager 实例，避免在模块加载时创建
+    // 这样可以确保在合适的时机初始化，避免 EPIPE 错误
+    const appManager = new AppManager()
+
     // 初始化应用
     await appManager.initialize()
   } catch (error) {

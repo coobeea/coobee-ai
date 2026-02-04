@@ -96,5 +96,6 @@ export class AppManager {
   }
 }
 
-export const appManager = new AppManager()
-export default appManager
+// 不要在模块加载时创建实例，避免在 app ready 前写日志
+// export const appManager = new AppManager()
+export default AppManager
