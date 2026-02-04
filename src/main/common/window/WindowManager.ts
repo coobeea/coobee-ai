@@ -25,7 +25,7 @@ import type {
   TabViewInfo,
   IWindowManager
 } from './types'
-import { WINDOW_PRESETS, CHROME_HEIGHT } from './types'
+import { getWindowPresets, CHROME_HEIGHT } from './types'
 import { log } from '@main/common/logger'
 import { Env } from '@main/common/env'
 
@@ -558,7 +558,13 @@ export class WindowManager implements IWindowManager {
         log.info(`[WindowManager] 设置主窗口: windowId=${window.id}`)
       }
 
-      // 6. 绑定窗口事件
+      // 6. 加载窗口内容
+      this.loadWindowContent(window, config.type)
+
+      // 7. 设置 DevTools（开发环境）
+      this.setupDevTools(window)
+
+      // 8. 绑定窗口事件
       this.setupWindowEvents(window.id)
 
       log.info(
@@ -902,7 +908,8 @@ export class WindowManager implements IWindowManager {
    * @returns 预设配置
    */
   private getWindowPreset(type: WindowType): Partial<BrowserWindowConstructorOptions> {
-    return WINDOW_PRESETS[type]
+    const presets = getWindowPresets(Env.isDev)
+    return presets[type]
   }
 
   /**
@@ -984,64 +991,85 @@ export class WindowManager implements IWindowManager {
   /**
    * 加载窗口内容
    * @param window BrowserWindow 实例
-   * @param url 要加载的 URL（开发环境为路由，生产环境为完整 URL）
+   * @param type 窗口类型
    */
-  private async loadWindowContent(window: BrowserWindow, url: string): Promise<void> {
+  private loadWindowContent(window: BrowserWindow, type: WindowType): void {
     try {
       if (Env.isDev) {
         // 开发环境：使用 Vite 开发服务器
-        const devServerUrl = process.env.VITE_DEV_SERVER_URL
+        const devServerUrl = process.env.ELECTRON_RENDERER_URL || process.env.VITE_DEV_SERVER_URL
         if (!devServerUrl) {
-          throw new Error('VITE_DEV_SERVER_URL 未定义')
+          throw new Error('ELECTRON_RENDERER_URL 或 VITE_DEV_SERVER_URL 未定义')
         }
 
-        // 如果 url 是完整的 URL（以 http:// 或 https:// 开头），直接加载
-        if (url.startsWith('http://') || url.startsWith('https://')) {
-          await window.webContents.loadURL(url)
-          log.debug(`[WindowManager] 加载外部 URL: ${url}`)
-        } else {
-          // 否则认为是路由，拼接开发服务器地址
-          const fullUrl = `${devServerUrl}${url.startsWith('/') ? url : '/' + url}`
-          await window.webContents.loadURL(fullUrl)
-          log.debug(`[WindowManager] 加载开发服务器页面: ${fullUrl}`)
+        // 根据窗口类型加载不同的 HTML
+        let htmlPath = ''
+        switch (type) {
+          case 'agent':
+            htmlPath = '/shell.html'
+            break
+          case 'browser':
+            htmlPath = '/browser.html'
+            break
+          default:
+            htmlPath = '/index.html'
         }
+
+        const fullUrl = `${devServerUrl}${htmlPath}`
+        window.loadURL(fullUrl)
+        log.info(`[WindowManager] 加载开发服务器页面: ${fullUrl}`)
       } else {
         // 生产环境：加载打包后的文件
-        if (url.startsWith('http://') || url.startsWith('https://')) {
-          // 外部 URL，直接加载
-          await window.webContents.loadURL(url)
-          log.debug(`[WindowManager] 加载外部 URL: ${url}`)
-        } else {
-          // 本地文件，加载打包后的 index.html
-          // 注意：路由由前端路由处理，这里只加载主 HTML 文件
-          const indexPath = join(__dirname, '../renderer/index.html')
-          await window.webContents.loadFile(indexPath)
-          log.debug(`[WindowManager] 加载本地文件: ${indexPath}`)
-
-          // 如果有路由参数，等待加载完成后再导航
-          if (url && url !== '/' && url !== '') {
-            window.webContents.once('did-finish-load', () => {
-              // 通过 hash 或其他方式处理路由
-              window.webContents
-                .executeJavaScript(
-                  `
-                if (window.__ROUTER__) {
-                  window.__ROUTER__.push('${url}')
-                }
-              `
-                )
-                .catch((err) => {
-                  log.warn(`[WindowManager] 路由导航失败: ${err}`)
-                })
-            })
-          }
+        let htmlFile = ''
+        switch (type) {
+          case 'agent':
+            htmlFile = 'shell.html'
+            break
+          case 'browser':
+            htmlFile = 'browser.html'
+            break
+          default:
+            htmlFile = 'index.html'
         }
-      }
 
-      log.info(`[WindowManager] 窗口内容加载成功: windowId=${window.id}`)
+        const htmlPath = join(__dirname, '../renderer', htmlFile)
+        window.loadFile(htmlPath)
+        log.info(`[WindowManager] 加载本地文件: ${htmlPath}`)
+      }
     } catch (error) {
-      log.error(`[WindowManager] 加载窗口内容失败: url=${url}`, error)
+      log.error(`[WindowManager] 加载窗口内容失败: windowId=${window.id}, type=${type}`, error)
       throw error
+    }
+  }
+
+  /**
+   * 设置 DevTools（开发环境）
+   * @param window BrowserWindow 实例
+   */
+  private setupDevTools(window: BrowserWindow): void {
+    if (!Env.isDev) {
+      return
+    }
+
+    const openDevTools = Env.main.openDevTools
+    if (!openDevTools) {
+      return
+    }
+
+    try {
+      type DevToolsMode = 'right' | 'bottom' | 'undocked' | 'detach'
+
+      if (openDevTools === 'true') {
+        // 默认在右侧打开
+        window.webContents.openDevTools({ mode: 'right' })
+        log.info(`[WindowManager] DevTools 已打开: windowId=${window.id}, mode=right`)
+      } else if (['bottom', 'right', 'undocked', 'detach'].includes(openDevTools)) {
+        // 使用指定的模式
+        window.webContents.openDevTools({ mode: openDevTools as DevToolsMode })
+        log.info(`[WindowManager] DevTools 已打开: windowId=${window.id}, mode=${openDevTools}`)
+      }
+    } catch (error) {
+      log.warn(`[WindowManager] 打开 DevTools 失败: windowId=${window.id}`, error)
     }
   }
 
