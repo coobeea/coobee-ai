@@ -1182,14 +1182,37 @@ export class WindowManager implements IWindowManager {
   /**
    * 加载 Tab 内容
    * @param view WebContentsView 实例
-   * @param url URL
+   * @param url URL（支持 local:// 协议和外部 URL）
    */
   private async loadTabContent(view: WebContentsView, url: string): Promise<void> {
     try {
-      await view.webContents.loadURL(url)
-      log.debug(`[WindowManager] Tab 内容加载完成: url=${url}`)
+      let finalUrl = url
+
+      // 处理 local:// 协议（应用内路由）
+      if (url.startsWith('local://')) {
+        const route = url.replace('local://', '')
+
+        if (Env.isDev) {
+          // 开发环境：使用 Vite 开发服务器
+          const devServerUrl = process.env.ELECTRON_RENDERER_URL || process.env.VITE_DEV_SERVER_URL
+          if (!devServerUrl) {
+            throw new Error('ELECTRON_RENDERER_URL 或 VITE_DEV_SERVER_URL 未定义')
+          }
+          finalUrl = `${devServerUrl}#/${route}`
+          log.debug(`[WindowManager] 开发环境加载本地路由: ${finalUrl}`)
+        } else {
+          // 生产环境：加载打包后的文件
+          const htmlPath = join(__dirname, '../renderer/index.html')
+          finalUrl = `file://${htmlPath}#/${route}`
+          log.debug(`[WindowManager] 生产环境加载本地路由: ${finalUrl}`)
+        }
+      }
+
+      await view.webContents.loadURL(finalUrl)
+      log.info(`[WindowManager] Tab 内容加载完成: ${url} -> ${finalUrl}`)
     } catch (error) {
       log.error(`[WindowManager] 加载 Tab 内容失败: url=${url}`, error)
+      throw error
     }
   }
 
