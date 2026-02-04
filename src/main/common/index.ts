@@ -48,3 +48,5 @@ export { LifecycleManager } from './lifecycle'
 
 // 应用管理
 export { AppManager } from './app'
+export { ElectronAppEvents } from './app/types'
+export type { IAppManager } from './app/types'

@@ -1,18 +1,20 @@
 import { app } from 'electron'
 import { electronApp } from '@electron-toolkit/utils'
 
-import { log } from './logger'
-import { LifecycleManager } from './lifecycle'
-import { LifecyclePhase } from './types'
+import { log } from '../logger'
+import { LifecycleManager } from '../lifecycle'
+import { LifecyclePhase } from '../types'
+import type { IAppManager } from './types'
+import { ElectronAppEvents } from './types'
 
 // 导入 eventBus 以触发自动初始化（构造函数会自动执行）
-import './eventbus'
+import '../eventbus'
 
 /**
  * 应用管理器
  * 管理整个应用的生命周期和核心功能
  */
-export class AppManager {
+export class AppManager implements IAppManager {
   private lifecycleManager: LifecycleManager
 
   constructor() {
@@ -25,7 +27,7 @@ export class AppManager {
    */
   private setupAppEventHandlers(): void {
     // 所有窗口关闭
-    app.on('window-all-closed', () => {
+    app.on(ElectronAppEvents.WINDOW_ALL_CLOSED, () => {
       log.info('[App] 所有窗口已关闭')
       // 在 macOS 上，除非用户明确退出（Cmd + Q），否则应用会保持活动状态
       if (process.platform !== 'darwin') {
@@ -34,14 +36,14 @@ export class AppManager {
     })
 
     // macOS 激活应用
-    app.on('activate', () => {
+    app.on(ElectronAppEvents.ACTIVATE, () => {
       log.info('[App] 应用被激活')
       // 通常在 macOS 上，点击 dock 图标时会触发此事件
       // 窗口创建逻辑由其他模块通过生命周期 Hook 处理
     })
 
     // 应用退出前清理
-    app.on('before-quit', async () => {
+    app.on(ElectronAppEvents.BEFORE_QUIT, async () => {
       log.info('[App] 应用准备退出，开始清理资源...')
       await this.cleanup()
     })
