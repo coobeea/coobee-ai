@@ -91,9 +91,9 @@ export default defineConfig({
       cssCodeSplit: false,
       rollupOptions: {
         input: {
-          index: resolve('src/renderer/index.html')
-          // 如果有多个窗口，可以添加更多入口：
-          // settings: resolve('src/renderer/settings/index.html')
+          index: resolve('src/renderer/index.html'),
+          shell: resolve('src/renderer/shell.html'),
+          browser: resolve('src/renderer/browser.html')
         }
       }
     }

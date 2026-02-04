@@ -234,8 +234,8 @@ const ipcHandle = (): void => window.electron.ipcRenderer.send('ping')
           查看文档
         </a>
         <button
-          @click="ipcHandle"
           class="flex items-center gap-2 rounded-lg bg-purple-600 px-6 py-3 font-semibold text-white transition hover:bg-purple-700"
+          @click="ipcHandle"
         >
           <IconMdiSend class="text-xl" />
           发送 IPC 消息
