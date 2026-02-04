@@ -17,7 +17,7 @@ const messages = ref<Message[]>([
 
 const input = ref('')
 
-const sendMessage = () => {
+const sendMessage = (): void => {
   if (!input.value.trim()) return
 
   const userMessage: Message = {
@@ -76,7 +76,7 @@ const sendMessage = () => {
 
     <!-- Input Area -->
     <footer class="border-t border-gray-200 bg-white p-4">
-      <form @submit.prevent="sendMessage" class="mx-auto flex max-w-3xl gap-2">
+      <form class="mx-auto flex max-w-3xl gap-2" @submit.prevent="sendMessage">
         <input
           v-model="input"
           type="text"
