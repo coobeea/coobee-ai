@@ -1,2 +1,2 @@
 export { MigrationManager } from './MigrationManager'
-export * from './types'
+export { Migration, MigrationHistory, DatabaseStatus, MigrationResult } from '../types'

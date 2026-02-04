@@ -1,8 +1,14 @@
 import cron from 'node-cron'
 
 import { log } from '../logger'
+import {
+  CronJobConfig,
+  JobExecutionContext,
+  JobExecutionResult,
+  JobRuntimeInfo,
+  JobStatus
+} from '../types'
 import { BaseJob } from './BaseJob'
-import { CronJobConfig, JobExecutionContext, JobExecutionResult, JobRuntimeInfo, JobStatus } from './types'
 
 export interface CronJobManagerConfig {
   enabled?: boolean

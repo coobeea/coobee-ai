@@ -1,6 +1,4 @@
-interface State {
-  maintenanceMode: boolean
-}
+import { State } from './types'
 
 export class StateManager {
   private state: State = {

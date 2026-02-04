@@ -1,6 +1,6 @@
 import { DatabaseService } from '../database/DatabaseService'
 import { log } from '../logger'
-import { DatabaseStatus, Migration, MigrationHistory, MigrationResult } from './types'
+import { DatabaseStatus, Migration, MigrationHistory, MigrationResult } from '../types'
 
 export class MigrationManager {
   private migrations: Migration[] = []

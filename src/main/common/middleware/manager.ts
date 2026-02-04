@@ -1,5 +1,5 @@
 import { log } from '../logger'
-import { Middleware, MiddlewareContext, MiddlewareResult } from './types'
+import { Middleware, MiddlewareContext, MiddlewareResult } from '../types'
 
 export class MiddlewareManager {
   private middlewares: Middleware[] = []

@@ -1,11 +1,10 @@
 import { nativeTheme } from 'electron'
 
 import { log } from './logger'
+import { ThemeMode } from './types'
 
-type ThemeMode = 'light' | 'dark' | 'auto'
-
-class ThemeManager {
-  setTheme(theme: ThemeMode) {
+export class ThemeManager {
+  public setTheme(theme: ThemeMode): void {
     try {
       log.info('Setting theme to', theme)
 
@@ -24,7 +23,7 @@ class ThemeManager {
     }
   }
 
-  getTheme(): ThemeMode {
+  public getTheme(): ThemeMode {
     log.info('Getting theme')
     return nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
   }
@@ -32,4 +31,3 @@ class ThemeManager {
 
 const themeManager = new ThemeManager()
 export default themeManager
-export { ThemeManager, type ThemeMode }

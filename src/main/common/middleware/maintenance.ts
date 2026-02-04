@@ -1,6 +1,6 @@
 import { log } from '../logger'
 import { stateManager } from '../state'
-import { Middleware } from './types'
+import { Middleware } from '../types'
 
 export const maintenanceMiddleware: Middleware = {
   name: 'maintenance',

@@ -4,8 +4,8 @@ import path from 'path'
 
 import { log } from '../logger'
 import stateManager from '../state'
-import { ensureFileIsReleased } from '../utils'
-import { IConnection, SqlError } from './types'
+import { IConnection, SqlError } from '../types'
+import { ensureFileIsReleased } from '@/main/utils'
 
 interface DatabaseConnection {
   dbPath: string

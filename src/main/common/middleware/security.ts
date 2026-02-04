@@ -1,5 +1,5 @@
 import { log } from '../logger'
-import { Middleware } from './types'
+import { Middleware } from '../types'
 
 export const securityMiddleware: Middleware = {
   name: 'security',

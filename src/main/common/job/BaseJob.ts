@@ -1,4 +1,4 @@
-import { CronJobConfig, JobExecutionContext } from './types'
+import { CronJobConfig, JobExecutionContext } from '../types'
 
 export abstract class BaseJob {
   abstract readonly id: string

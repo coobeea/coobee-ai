@@ -1,6 +1,29 @@
 /**
- * 生命周期类型定义
+ * Common 模块统一类型定义
+ * 
+ * 此文件包含所有 common 模块的类型定义，按功能模块分组
  */
+
+// ==================== 通用类型 ====================
+
+/**
+ * 通用结果类型
+ */
+export interface Result<T = unknown> {
+  success: boolean
+  data?: T
+  error?: string
+  message?: string
+  code?: string
+  timestamp?: number
+}
+
+/**
+ * 主题模式
+ */
+export type ThemeMode = 'light' | 'dark' | 'auto'
+
+// ==================== 生命周期 ====================
 
 /**
  * 生命周期阶段
@@ -18,11 +41,8 @@ export enum LifecyclePhase {
  * 生命周期上下文
  */
 export interface LifecycleContext {
-  /** 当前阶段 */
   phase: LifecyclePhase
-  /** 生命周期管理器 */
   manager: ILifecycleManager
-  /** 自定义数据 */
   data?: Record<string, unknown>
 }
 
@@ -30,15 +50,10 @@ export interface LifecycleContext {
  * 生命周期 Hook
  */
 export interface LifecycleHook {
-  /** Hook 名称 */
   name: string
-  /** 所属阶段 */
   phase: LifecyclePhase
-  /** 优先级 (数字越小越先执行) */
   priority: number
-  /** 是否关键 (关键 Hook 失败会中断流程) */
   critical: boolean
-  /** 执行函数 */
   execute: (context: LifecycleContext) => Promise<void | boolean>
 }
 
@@ -46,12 +61,11 @@ export interface LifecycleHook {
  * 生命周期管理器接口
  */
 export interface ILifecycleManager {
-  /** 启动生命周期管理 */
   start(): Promise<void>
-  /** 注册 Hook */
   registerHook(hook: LifecycleHook): string
-  /** 请求关闭应用 */
   requestShutdown(): Promise<boolean>
+  getContextData<T>(key: string): T | undefined
+  setContextData(key: string, value: unknown): void
 }
 
 /**
@@ -63,4 +77,203 @@ export interface LifecycleHookExecutionResult {
   success: boolean
   error?: Error
   result?: void | boolean
+}
+
+// ==================== 数据库 ====================
+
+/**
+ * SQL 错误
+ */
+export class SqlError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SqlError'
+  }
+}
+
+/**
+ * 数据库连接接口
+ */
+export interface IConnection {
+  execute(sql: string, params?: unknown[]): Promise<number>
+  insert(sql: string, params?: unknown[]): Promise<number>
+  update(sql: string, params?: unknown[]): Promise<number>
+  delete(sql: string, params?: unknown[]): Promise<number>
+  query(sql: string, params?: unknown[]): Promise<unknown[]>
+  transaction<T>(fn: (tx: IConnection) => Promise<T>): Promise<T>
+  getDbPath(): string
+}
+
+// ==================== 任务调度 ====================
+
+/**
+ * 定时任务配置
+ */
+export interface CronJobConfig {
+  id: string
+  name: string
+  description?: string
+  cron: string
+  enabled: boolean
+  data?: unknown
+  options?: CronJobOptions
+}
+
+/**
+ * 定时任务选项
+ */
+export interface CronJobOptions {
+  timezone?: string
+  maxRetries?: number
+  retryDelay?: number
+  timeout?: number
+  runOnInit?: boolean
+}
+
+/**
+ * 任务执行结果
+ */
+export interface JobExecutionResult {
+  jobId: string
+  startTime: number
+  endTime: number
+  duration: number
+  success: boolean
+  data?: unknown
+  error?: string
+  retryCount?: number
+}
+
+/**
+ * 任务状态
+ */
+export enum JobStatus {
+  IDLE = 'idle',
+  RUNNING = 'running',
+  SUCCESS = 'success',
+  FAILED = 'failed',
+  DISABLED = 'disabled'
+}
+
+/**
+ * 任务运行时信息
+ */
+export interface JobRuntimeInfo {
+  config: CronJobConfig
+  status: JobStatus
+  nextRun?: Date
+  lastRun?: Date
+  lastResult?: JobExecutionResult
+  totalRuns: number
+  successRuns: number
+  failedRuns: number
+}
+
+/**
+ * 任务执行上下文
+ */
+export interface JobExecutionContext {
+  jobId: string
+  jobName: string
+  startTime: number
+  data?: unknown
+  cancelled: boolean
+  retryCount: number
+}
+
+/**
+ * 任务结果
+ */
+export interface TaskResult {
+  taskId: string
+  success: boolean
+  data?: unknown
+  error?: string
+  duration: number
+  completedAt: number
+}
+
+// ==================== 中间件 ====================
+
+/**
+ * 中间件上下文
+ */
+export interface MiddlewareContext {
+  method: string
+  args: unknown[]
+  metadata?: Record<string, unknown>
+}
+
+/**
+ * 中间件结果
+ */
+export interface MiddlewareResult {
+  success: boolean
+  data?: unknown
+  error?: Error
+}
+
+/**
+ * 中间件接口
+ */
+export interface Middleware {
+  name: string
+  priority: number
+  execute: (
+    context: MiddlewareContext,
+    next: () => Promise<MiddlewareResult>
+  ) => Promise<MiddlewareResult>
+}
+
+// ==================== 数据库迁移 ====================
+
+/**
+ * 数据库迁移接口
+ */
+export interface Migration {
+  version: number
+  description: string
+  up: (dbService: unknown) => Promise<void>
+  down: (dbService: unknown) => Promise<void>
+  dependencies?: number[]
+  isBreaking?: boolean
+}
+
+/**
+ * 迁移历史记录
+ */
+export interface MigrationHistory {
+  version: number
+  description: string
+  appliedAt: string
+}
+
+/**
+ * 数据库状态
+ */
+export interface DatabaseStatus {
+  currentVersion: number
+  latestVersion: number
+  pendingMigrations: number
+  history: MigrationHistory[]
+}
+
+/**
+ * 迁移执行结果
+ */
+export interface MigrationResult {
+  success: boolean
+  version: number
+  description: string
+  error?: Error
+  executionTime: number
+}
+
+// ==================== 状态管理 ====================
+
+/**
+ * 应用状态接口
+ */
+export interface State {
+  maintenanceMode: boolean
 }
