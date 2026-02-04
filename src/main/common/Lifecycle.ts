@@ -9,6 +9,8 @@
  */
 
 import { app } from 'electron'
+
+import { log } from './logger'
 import {
   LifecyclePhase,
   LifecycleHook,
@@ -48,16 +50,16 @@ export class LifecycleManager {
       throw new Error('LifecycleManager 已经启动过了')
     }
 
-    console.log('[LifecycleManager] 启动生命周期管理')
+    log.info('[LifecycleManager] 启动生命周期管理')
 
     try {
       // 依次执行各个阶段
       await this.executePhase(LifecyclePhase.INIT)
       await this.executePhase(LifecyclePhase.READY)
 
-      console.log('[LifecycleManager] 启动完成')
+      log.info('[LifecycleManager] 启动完成')
     } catch (error) {
-      console.error('[LifecycleManager] 启动失败:', error)
+      log.error('[LifecycleManager] 启动失败:', error)
       throw error
     }
   }
@@ -82,7 +84,7 @@ export class LifecycleManager {
       phaseHooks.splice(insertIndex, 0, { id: hookId, hook })
     }
 
-    console.log(
+    log.info(
       `[LifecycleManager] 注册 Hook: ${hook.name} (阶段: ${hook.phase}, 优先级: ${hook.priority})`
     )
 
@@ -93,21 +95,21 @@ export class LifecycleManager {
    * 请求关闭应用
    */
   async requestShutdown(): Promise<boolean> {
-    console.log('[LifecycleManager] 请求关闭应用')
+    log.info('[LifecycleManager] 请求关闭应用')
 
     try {
       // 执行退出前阶段的 Hook
       const canShutdown = await this.executeShutdownPhase(LifecyclePhase.BEFORE_QUIT)
 
       if (canShutdown) {
-        console.log('[LifecycleManager] 允许关闭应用')
+        log.info('[LifecycleManager] 允许关闭应用')
       } else {
-        console.log('[LifecycleManager] 关闭被阻止')
+        log.info('[LifecycleManager] 关闭被阻止')
       }
 
       return canShutdown
     } catch (error) {
-      console.error('[LifecycleManager] 关闭过程出错:', error)
+      log.error('[LifecycleManager] 关闭过程出错:', error)
       return false
     }
   }
@@ -120,7 +122,7 @@ export class LifecycleManager {
     this.context.phase = phase
 
     const phaseHooks = this.hooks.get(phase) || []
-    console.log(`[LifecycleManager] 执行阶段: ${phase} (${phaseHooks.length} 个 Hook)`)
+    log.info(`[LifecycleManager] 执行阶段: ${phase} (${phaseHooks.length} 个 Hook)`)
 
     // 按优先级分组
     const priorityGroups = this.groupHooksByPriority(phaseHooks)
@@ -128,7 +130,7 @@ export class LifecycleManager {
     // 依次执行每个优先级组
     for (const priority of priorityGroups.keys()) {
       const groupHooks = priorityGroups.get(priority)!
-      console.log(`[LifecycleManager] 执行优先级组: ${priority} (${groupHooks.length} 个 Hook)`)
+      log.info(`[LifecycleManager] 执行优先级组: ${priority} (${groupHooks.length} 个 Hook)`)
 
       // 并行执行同优先级的 Hook
       const results = await Promise.allSettled(
@@ -146,7 +148,7 @@ export class LifecycleManager {
       }
     }
 
-    console.log(`[LifecycleManager] 阶段完成: ${phase}`)
+    log.info(`[LifecycleManager] 阶段完成: ${phase}`)
   }
 
   /**
@@ -157,7 +159,7 @@ export class LifecycleManager {
     this.context.phase = phase
 
     const phaseHooks = this.hooks.get(phase) || []
-    console.log(`[LifecycleManager] 执行关闭阶段: ${phase} (${phaseHooks.length} 个 Hook)`)
+    log.info(`[LifecycleManager] 执行关闭阶段: ${phase} (${phaseHooks.length} 个 Hook)`)
 
     // 按优先级分组
     const priorityGroups = this.groupHooksByPriority(phaseHooks)
@@ -178,13 +180,13 @@ export class LifecycleManager {
 
           // Hook 返回 false 表示阻止关闭
           if (hookResult.success && hookResult.result === false) {
-            console.log(`[LifecycleManager] Hook '${hookResult.hook.name}' 阻止了关闭`)
+            log.info(`[LifecycleManager] Hook '${hookResult.hook.name}' 阻止了关闭`)
             return false
           }
 
           // 关键 Hook 失败时记录错误但继续执行
           if (!hookResult.success && hookResult.hook.critical) {
-            console.error(
+            log.error(
               `[LifecycleManager] 关键 Hook '${hookResult.hook.name}' 失败，但继续关闭:`,
               hookResult.error
             )
@@ -204,14 +206,14 @@ export class LifecycleManager {
     hook: LifecycleHook,
     context: LifecycleContext
   ): Promise<LifecycleHookExecutionResult> {
-    console.log(
+    log.info(
       `[LifecycleManager] 执行 Hook: ${hook.name} (优先级: ${hook.priority}, 关键: ${hook.critical})`
     )
 
     try {
       const result = await hook.execute(context)
 
-      console.log(`[LifecycleManager] Hook 完成: ${hook.name}`)
+      log.info(`[LifecycleManager] Hook 完成: ${hook.name}`)
 
       return {
         hookId,
@@ -221,7 +223,7 @@ export class LifecycleManager {
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
-      console.error(`[LifecycleManager] Hook 失败: ${hook.name}`, err)
+      log.error(`[LifecycleManager] Hook 失败: ${hook.name}`, err)
 
       return {
         hookId,

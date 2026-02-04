@@ -277,3 +277,50 @@ export interface DiscoveredModule {
   module: Record<string, unknown>
   exportName?: string
 }
+
+// ==================== 工作区管理 ====================
+
+/**
+ * 工作区大小进度事件
+ */
+export interface WorkspaceSizeProgressEvent {
+  type: 'progress' | 'complete'
+  processedFiles: number
+  processedDirs: number
+  currentSize: number
+  currentPath: string
+  formattedSize: string
+  totalSize?: number
+}
+
+/**
+ * 工作区复制进度事件
+ */
+export interface WorkspaceCopyProgressEvent {
+  type: 'scanning' | 'copying' | 'complete' | 'error'
+  totalFiles?: number
+  totalDirs?: number
+  copiedFiles: number
+  copiedDirs: number
+  currentFile?: string
+  totalSize?: number
+  copiedSize: number
+  formattedTotalSize?: string
+  formattedCopiedSize?: string
+  speed?: number
+  estimatedTimeRemaining?: number
+  percentage?: number
+  formattedSpeed?: string
+  elapsedTime?: number
+  error?: string
+}
+
+/**
+ * 文件复制信息
+ */
+export interface FileCopyInfo {
+  sourcePath: string
+  targetPath: string
+  size: number
+  isDirectory: boolean
+}

@@ -26,3 +26,6 @@ export * from './middleware'
 
 // 迁移模块
 export * from './migration'
+
+// 工作区管理
+export { WorkspaceManager, workspaceManager } from './workspace'
