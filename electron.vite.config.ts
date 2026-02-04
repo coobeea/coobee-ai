@@ -2,16 +2,81 @@ import { resolve } from 'path'
 import { defineConfig } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
+import monacoEditorPlugin from 'vite-plugin-monaco-editor-esm'
+import path from 'node:path'
 
 export default defineConfig({
-  main: {},
-  preload: {},
-  renderer: {
+  main: {
     resolve: {
       alias: {
-        '@renderer': resolve('src/renderer/src')
+        '@': resolve('src/main/'),
+        '@shared': resolve('src/shared')
       }
     },
-    plugins: [vue(), tailwindcss()]
+    build: {
+      rollupOptions: {
+        // 将原生模块标记为外部依赖
+        external: ['better-sqlite3-multiple-ciphers', 'fs-ext', 'electron'],
+        output: {
+          inlineDynamicImports: true,
+          manualChunks: undefined // 禁用自动代码分割
+        }
+      }
+    }
+  },
+  preload: {
+    resolve: {
+      alias: {
+        '@shared': resolve('src/shared')
+      }
+    }
+  },
+  renderer: {
+    optimizeDeps: {
+      include: ['monaco-editor', 'axios', 'dayjs', 'lodash']
+    },
+    resolve: {
+      alias: {
+        '@': resolve('src/renderer/src'),
+        '@renderer': resolve('src/renderer/src'),
+        '@shared': resolve('src/shared'),
+        vue: 'vue/dist/vue.esm-bundler.js'
+      }
+    },
+    server: {
+      host: '0.0.0.0' // 防止代理干扰，确保 Vite 和 Electron 之间通信正常
+    },
+    plugins: [
+      tailwindcss(),
+      monacoEditorPlugin({
+        languageWorkers: ['editorWorkerService', 'typescript', 'css', 'html', 'json'],
+        customDistPath(_root, buildOutDir) {
+          return path.resolve(buildOutDir, 'monacoeditorwork')
+        }
+      }),
+      vue({
+        template: {
+          compilerOptions: {
+            // 自定义元素配置（如果需要）
+            isCustomElement: (tag) => tag.startsWith('custom-')
+          }
+        }
+      })
+    ],
+    worker: {
+      format: 'es'
+    },
+    build: {
+      minify: 'esbuild',
+      // 确保构建时 CSS 顺序与开发时一致
+      cssCodeSplit: false,
+      rollupOptions: {
+        input: {
+          index: resolve('src/renderer/index.html')
+          // 如果有多个窗口，可以添加更多入口：
+          // settings: resolve('src/renderer/settings/index.html')
+        }
+      }
+    }
   }
 })
