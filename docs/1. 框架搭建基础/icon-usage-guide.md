@@ -12,12 +12,14 @@
 ## 为什么支持多种方式？
 
 ### unplugin-icons 的优势
+
 1. ✅ **组件化**：图标作为 Vue 组件，符合框架思想
 2. ✅ **类型安全**：完整的 TypeScript 支持和 IDE 提示
 3. ✅ **事件绑定**：可以直接绑定 Vue 事件（@click、@hover 等）
 4. ✅ **动画控制**：支持 Vue 动画和过渡
 
 ### @egoist/tailwindcss-icons 的优势
+
 1. ✅ **动态图标**：支持动态拼接图标名称
 2. ✅ **简洁语法**：使用 CSS 类，代码更简洁
 3. ✅ **统一风格**：与 Tailwind CSS 工具类一致
@@ -41,6 +43,7 @@ import IconMdiAccount from '~icons/mdi/account'
 ```
 
 **优点**：
+
 - 明确的依赖关系
 - 更好的代码提示
 - 适合常用图标
@@ -59,6 +62,7 @@ import IconMdiAccount from '~icons/mdi/account'
 ```
 
 **优点**：
+
 - 无需 import 语句
 - 代码更简洁
 - 适合偶尔使用的图标
@@ -73,17 +77,18 @@ import IconMdiAccount from '~icons/mdi/account'
   <span class="i-mdi-home text-2xl text-blue-600"></span>
   <span class="i-carbon-settings text-xl text-gray-600"></span>
   <span class="i-heroicons-star-solid text-xl text-yellow-600"></span>
-  
+
   <!-- 支持动态拼接 -->
   <span :class="`i-mdi-${iconName} text-2xl`"></span>
 </template>
 
 <script setup>
-const iconName = ref('home')  // 可以动态改变
+const iconName = ref('home') // 可以动态改变
 </script>
 ```
 
 **优点**：
+
 - ✅ 支持动态拼接图标名称
 - ✅ 语法简洁，与 Tailwind 风格一致
 - ✅ 适合需要动态切换图标的场景
@@ -91,6 +96,7 @@ const iconName = ref('home')  // 可以动态改变
 - ✅ 颜色自动跟随文本颜色
 
 **注意事项**：
+
 - 图标集和图标名用单个短横线 `-` 连接
 - 图标名中的短横线保持不变，如 `i-mdi-account-box`
 - 颜色通过 `text-*` 类控制
@@ -99,13 +105,13 @@ const iconName = ref('home')  // 可以动态改变
 
 根据不同场景选择合适的方式：
 
-| 场景 | 推荐方式 | 原因 |
-|------|---------|------|
-| 常用图标（如导航栏、工具栏） | 方式 1：手动导入 | 类型安全、IDE 提示好、可绑定事件 |
-| 偶尔使用的图标 | 方式 2：自动导入 | 无需 import，代码简洁 |
-| 需要动态切换的图标 | 方式 3：Tailwind CSS | 支持动态拼接，最灵活 |
-| 大量展示性图标（如图标库） | 方式 3：Tailwind CSS | CSS 渲染，性能好 |
-| 需要复杂交互的图标 | 方式 1：手动导入 | 可绑定事件、使用 Vue 动画 |
+| 场景                         | 推荐方式             | 原因                             |
+| ---------------------------- | -------------------- | -------------------------------- |
+| 常用图标（如导航栏、工具栏） | 方式 1：手动导入     | 类型安全、IDE 提示好、可绑定事件 |
+| 偶尔使用的图标               | 方式 2：自动导入     | 无需 import，代码简洁            |
+| 需要动态切换的图标           | 方式 3：Tailwind CSS | 支持动态拼接，最灵活             |
+| 大量展示性图标（如图标库）   | 方式 3：Tailwind CSS | CSS 渲染，性能好                 |
+| 需要复杂交互的图标           | 方式 1：手动导入     | 可绑定事件、使用 Vue 动画        |
 
 ### 混合使用示例
 
@@ -114,13 +120,13 @@ const iconName = ref('home')  // 可以动态改变
   <div>
     <!-- 常用导航图标：手动导入 -->
     <IconMdiHome @click="goHome" class="cursor-pointer" />
-    
+
     <!-- 偶尔使用的图标：自动导入 -->
     <icon-mdi-settings />
-    
+
     <!-- 动态图标：Tailwind CSS -->
     <span :class="`i-[mdi--${statusIcon}]`"></span>
-    
+
     <!-- 图标列表：Tailwind CSS -->
     <div v-for="icon in iconList" :key="icon">
       <span :class="`i-[mdi--${icon}]`"></span>
@@ -132,6 +138,7 @@ const iconName = ref('home')  // 可以动态改变
 ## 图标命名规则
 
 ### 1. 图标集名称（使用短横线连接）
+
 - `mdi` → Material Design Icons
 - `svg-spinners` → SVG Spinners
 - `carbon` → Carbon Icons
@@ -140,11 +147,13 @@ const iconName = ref('home')  // 可以动态改变
 ### 2. 图标名称转换规则
 
 #### unplugin-icons（组件方式）
+
 - 原始名称中的 `:` 转换为 `/`
 - 组件名使用 PascalCase（大写驼峰）
 - 前缀 `Icon` + 图标集名 + 图标名
 
 #### @egoist/tailwindcss-icons（CSS 类方式）
+
 - 原始名称中的 `:` 转换为 `-`
 - 使用小写加短横线格式
 - 前缀 `i-` + 图标集 + `-` + 图标名
@@ -169,7 +178,7 @@ const iconName = ref('home')  // 可以动态改变
 <template>
   <!-- 使用 Tailwind CSS -->
   <IconMdiHome class="text-blue-600" />
-  
+
   <!-- 使用 CSS -->
   <IconMdiHome style="color: #3b82f6" />
 </template>
@@ -180,10 +189,13 @@ const iconName = ref('home')  // 可以动态改变
 ```vue
 <template>
   <!-- Tailwind CSS -->
-  <IconMdiHome class="text-xl" />    <!-- 1.25rem -->
-  <IconMdiHome class="text-2xl" />   <!-- 1.5rem -->
-  <IconMdiHome class="text-4xl" />   <!-- 2.25rem -->
-  
+  <IconMdiHome class="text-xl" />
+  <!-- 1.25rem -->
+  <IconMdiHome class="text-2xl" />
+  <!-- 1.5rem -->
+  <IconMdiHome class="text-4xl" />
+  <!-- 2.25rem -->
+
   <!-- 自定义尺寸 -->
   <IconMdiHome style="font-size: 32px" />
   <IconMdiHome class="w-8 h-8" />
@@ -196,7 +208,7 @@ const iconName = ref('home')  // 可以动态改变
 <template>
   <!-- Tailwind 动画 -->
   <IconSvgSpinners3DotsFade class="animate-pulse" />
-  
+
   <!-- SVG Spinners 自带动画 -->
   <IconSvgSpinnersPulse />
 </template>
@@ -278,11 +290,12 @@ export default defineConfig({
 ### 2. tailwind.css（@egoist/tailwindcss-icons）
 
 ```css
-@import "tailwindcss";
+@import 'tailwindcss';
 @plugin "@egoist/tailwindcss-icons";
 ```
 
 **说明：**
+
 - 默认前缀为 `i`（类名格式：`i-{collection}-{icon}`）
 - 默认缩放比例为 1（相对于当前字体大小）
 - 自动从已安装的 `@iconify-json/*` 包加载图标

@@ -131,11 +131,7 @@ export class CronJobManager {
     let result: JobExecutionResult
 
     try {
-      const data = await this.executeWithTimeout(
-        job,
-        context,
-        runtimeInfo.config.options?.timeout
-      )
+      const data = await this.executeWithTimeout(job, context, runtimeInfo.config.options?.timeout)
 
       const endTime = Date.now()
       result = {

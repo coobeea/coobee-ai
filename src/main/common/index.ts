@@ -10,7 +10,20 @@ export { stateManager, StateManager } from './state'
 export { dialogManager, DialogManager } from './dialog'
 export { ThemeManager } from './theme'
 export { IconManager, getAppIcon, getTrayIcon, getTrayNativeImage, validateIcons } from './icons'
-export { WindowEvents, BrowserWindowEvents, ElectronAppEvents } from './events'
+export {
+  AppEvents,
+  WindowEvents,
+  LifecycleEvents,
+  DatabaseEvents,
+  WorkspaceEvents,
+  JobEvents,
+  ThemeEvents,
+  ConfigEvents,
+  LogEvents,
+  // 为了向后兼容保留（已废弃）
+  ElectronAppEvents,
+  BrowserWindowEvents
+} from './events'
 
 // 模块扫描
 export { scanProcessors, scanJobs, scanApis, scanLifeCycleHooks, filterModules } from './scan'
@@ -29,3 +42,9 @@ export * from './migration'
 
 // 工作区管理
 export { WorkspaceManager, workspaceManager } from './workspace'
+
+// 生命周期管理
+export { LifecycleManager } from './lifecycle'
+
+// 应用管理
+export { AppManager, appManager } from './app'

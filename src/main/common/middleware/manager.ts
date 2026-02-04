@@ -10,7 +10,10 @@ export class MiddlewareManager {
     log.info(`[Middleware] Registered: ${middleware.name} (priority: ${middleware.priority})`)
   }
 
-  async execute(context: MiddlewareContext, handler: () => Promise<any>): Promise<MiddlewareResult> {
+  async execute(
+    context: MiddlewareContext,
+    handler: () => Promise<any>
+  ): Promise<MiddlewareResult> {
     let index = 0
 
     const next = async (): Promise<MiddlewareResult> => {

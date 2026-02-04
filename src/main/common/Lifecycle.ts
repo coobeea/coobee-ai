@@ -1,14 +1,20 @@
 /**
- * 生命周期管理器 - 简化版
+ * 生命周期管理器
+ *
+ * 提供生命周期 Hook 注册和执行机制，供其他模块在应用的不同阶段插入自己的逻辑
  *
  * 功能：
- * - 管理应用生命周期的三个阶段：初始化、就绪、退出前
+ * - 管理应用生命周期的三个阶段：初始化(INIT)、就绪(READY)、退出前(BEFORE_QUIT)
  * - 支持注册和执行生命周期 Hook
- * - 按优先级顺序执行 Hook
+ * - 按优先级顺序执行 Hook（数字越小优先级越高）
+ * - 同优先级的 Hook 并行执行
  * - 支持关键/非关键 Hook 的错误处理
+ *
+ * 使用场景：
+ * - 数据库模块在 INIT 阶段初始化连接
+ * - 工作区模块在 READY 阶段加载工作区
+ * - 各模块在 BEFORE_QUIT 阶段清理资源
  */
-
-import { app } from 'electron'
 
 import { log } from './logger'
 import {
@@ -22,7 +28,6 @@ export class LifecycleManager {
   private currentPhase: LifecyclePhase | null = null
   private hooks: Map<LifecyclePhase, Array<{ id: string; hook: LifecycleHook }>> = new Map()
   private hookIdCounter = 0
-  private isShuttingDown = false
   private context: LifecycleContext
 
   constructor() {
@@ -36,31 +41,6 @@ export class LifecycleManager {
       phase: LifecyclePhase.INIT,
       manager: this,
       data: {}
-    }
-
-    // 设置退出拦截
-    this.setupShutdownInterception()
-  }
-
-  /**
-   * 启动生命周期管理
-   */
-  async start(): Promise<void> {
-    if (this.currentPhase !== null) {
-      throw new Error('LifecycleManager 已经启动过了')
-    }
-
-    log.info('[LifecycleManager] 启动生命周期管理')
-
-    try {
-      // 依次执行各个阶段
-      await this.executePhase(LifecyclePhase.INIT)
-      await this.executePhase(LifecyclePhase.READY)
-
-      log.info('[LifecycleManager] 启动完成')
-    } catch (error) {
-      log.error('[LifecycleManager] 启动失败:', error)
-      throw error
     }
   }
 
@@ -92,32 +72,10 @@ export class LifecycleManager {
   }
 
   /**
-   * 请求关闭应用
-   */
-  async requestShutdown(): Promise<boolean> {
-    log.info('[LifecycleManager] 请求关闭应用')
-
-    try {
-      // 执行退出前阶段的 Hook
-      const canShutdown = await this.executeShutdownPhase(LifecyclePhase.BEFORE_QUIT)
-
-      if (canShutdown) {
-        log.info('[LifecycleManager] 允许关闭应用')
-      } else {
-        log.info('[LifecycleManager] 关闭被阻止')
-      }
-
-      return canShutdown
-    } catch (error) {
-      log.error('[LifecycleManager] 关闭过程出错:', error)
-      return false
-    }
-  }
-
-  /**
    * 执行生命周期阶段
+   * 供外部（如 AppManager）调用，在应用的不同阶段触发注册的 Hook
    */
-  private async executePhase(phase: LifecyclePhase): Promise<void> {
+  async executePhase(phase: LifecyclePhase): Promise<void> {
     this.currentPhase = phase
     this.context.phase = phase
 
@@ -149,53 +107,6 @@ export class LifecycleManager {
     }
 
     log.info(`[LifecycleManager] 阶段完成: ${phase}`)
-  }
-
-  /**
-   * 执行关闭阶段 (可被拦截)
-   */
-  private async executeShutdownPhase(phase: LifecyclePhase): Promise<boolean> {
-    this.currentPhase = phase
-    this.context.phase = phase
-
-    const phaseHooks = this.hooks.get(phase) || []
-    log.info(`[LifecycleManager] 执行关闭阶段: ${phase} (${phaseHooks.length} 个 Hook)`)
-
-    // 按优先级分组
-    const priorityGroups = this.groupHooksByPriority(phaseHooks)
-
-    // 依次执行每个优先级组
-    for (const priority of priorityGroups.keys()) {
-      const groupHooks = priorityGroups.get(priority)!
-
-      // 并行执行同优先级的 Hook
-      const results = await Promise.allSettled(
-        groupHooks.map(({ id, hook }) => this.executeHook(id, hook, this.context))
-      )
-
-      // 处理执行结果
-      for (const result of results) {
-        if (result.status === 'fulfilled') {
-          const hookResult = result.value
-
-          // Hook 返回 false 表示阻止关闭
-          if (hookResult.success && hookResult.result === false) {
-            log.info(`[LifecycleManager] Hook '${hookResult.hook.name}' 阻止了关闭`)
-            return false
-          }
-
-          // 关键 Hook 失败时记录错误但继续执行
-          if (!hookResult.success && hookResult.hook.critical) {
-            log.error(
-              `[LifecycleManager] 关键 Hook '${hookResult.hook.name}' 失败，但继续关闭:`,
-              hookResult.error
-            )
-          }
-        }
-      }
-    }
-
-    return true
   }
 
   /**
@@ -255,23 +166,10 @@ export class LifecycleManager {
   }
 
   /**
-   * 设置关闭拦截
+   * 获取当前阶段
    */
-  private setupShutdownInterception(): void {
-    app.on('before-quit', async (event) => {
-      if (!this.isShuttingDown) {
-        event.preventDefault()
-        this.isShuttingDown = true
-
-        const canShutdown = await this.requestShutdown()
-
-        if (canShutdown) {
-          app.quit()
-        } else {
-          this.isShuttingDown = false
-        }
-      }
-    })
+  getCurrentPhase(): LifecyclePhase | null {
+    return this.currentPhase
   }
 
   /**

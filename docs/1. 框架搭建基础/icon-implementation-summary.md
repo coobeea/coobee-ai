@@ -9,17 +9,20 @@
 ## 📦 已安装的依赖
 
 ### 图标插件
+
 - ✅ `unplugin-icons@23.0.1` - Vue 组件方式
 - ✅ `unplugin-vue-components@31.0.0` - 自动导入支持
 - ✅ `@egoist/tailwindcss-icons` - Tailwind CSS 类方式（已有）
 
 ### 图标数据包
+
 - ✅ `@iconify-json/mdi` - Material Design Icons (7000+ 图标)
 - ✅ `@iconify-json/svg-spinners` - SVG Spinners (动画图标)
 - ✅ `@iconify-json/carbon` - Carbon Icons (IBM 设计系统)
 - ✅ `@iconify-json/heroicons` - Heroicons (Tailwind 官方)
 
 ### 已移除
+
 - ❌ `@iconify/vue` - 需要在线 API，不适合 Electron
 - ❌ `@iconify/tailwind4` - 版本兼容问题，用 @egoist/tailwindcss-icons 替代
 
@@ -41,6 +44,7 @@ import IconMdiAccount from '~icons/mdi/account'
 ```
 
 **何时使用：**
+
 - ✅ 常用图标（导航栏、工具栏）
 - ✅ 需要绑定事件
 - ✅ 需要类型提示和 IDE 支持
@@ -58,6 +62,7 @@ import IconMdiAccount from '~icons/mdi/account'
 ```
 
 **何时使用：**
+
 - ✅ 偶尔使用的图标
 - ✅ 想让代码更简洁
 
@@ -69,7 +74,7 @@ import IconMdiAccount from '~icons/mdi/account'
 <template>
   <!-- 格式：i-{图标集}-{图标名} -->
   <span class="i-mdi-home text-2xl text-blue-600"></span>
-  
+
   <!-- 动态拼接 -->
   <span :class="`i-mdi-${iconName} text-2xl`"></span>
 </template>
@@ -80,6 +85,7 @@ const iconName = ref('home')
 ```
 
 **何时使用：**
+
 - ✅ 需要动态切换图标
 - ✅ 循环渲染大量图标
 - ✅ 图标名称从数据生成
@@ -120,7 +126,7 @@ export default defineConfig({
 ### 2. tailwind.css
 
 ```css
-@import "tailwindcss";
+@import 'tailwindcss';
 @plugin "@tailwindcss/typography";
 @plugin "@egoist/tailwindcss-icons";
 ```
@@ -140,11 +146,13 @@ export default defineConfig({
 ## 📚 文档结构
 
 ### 完整文档
+
 - [icon-usage-guide.md](./icon-usage-guide.md) - 详细使用指南
 - [icon-quick-reference.md](./icon-quick-reference.md) - 快速参考手册
 - [icon-implementation-summary.md](./icon-implementation-summary.md) - 本文档
 
 ### 在 README.md 中的链接
+
 已更新 README.md，添加了图标使用指南的链接。
 
 ---
@@ -152,26 +160,31 @@ export default defineConfig({
 ## 🎯 实施优势
 
 ### 1. 完全离线
+
 - ✅ 所有图标在构建时打包
 - ✅ 无需网络请求
 - ✅ 完美适配 Electron
 
 ### 2. 按需加载
+
 - ✅ 只打包实际使用的图标
 - ✅ 减少最终包体积
 - ✅ 提升应用性能
 
 ### 3. 类型安全
+
 - ✅ 完整的 TypeScript 支持
 - ✅ IDE 自动补全和提示
 - ✅ 编译时错误检查
 
 ### 4. 灵活性强
+
 - ✅ 三种方式覆盖所有场景
 - ✅ 可以混合使用
 - ✅ 动态和静态图标都支持
 
 ### 5. 开发体验
+
 - ✅ 自动导入，减少 import 语句
 - ✅ 热更新支持
 - ✅ 简洁的语法
@@ -208,13 +221,13 @@ const iconList = ['home', 'heart', 'star', 'fire']
       <IconMdiHome @click="goHome" />
       <IconMdiAccount @click="goProfile" />
     </nav>
-    
+
     <!-- 偶尔使用 - 方式 2 -->
     <icon-mdi-settings class="settings-icon" />
-    
+
     <!-- 动态图标 - 方式 3 -->
     <span :class="`i-mdi-${statusIcon}`"></span>
-    
+
     <!-- 图标列表 - 方式 3 -->
     <div v-for="icon in iconList" :key="icon">
       <span :class="`i-mdi-${icon}`"></span>
@@ -228,7 +241,9 @@ const iconList = ['home', 'heart', 'star', 'fire']
 ## 🔍 图标资源
 
 ### 浏览图标
+
 访问 [Icônes](https://icones.js.org/) 浏览和搜索图标：
+
 1. 搜索你需要的图标
 2. 点击图标
 3. 选择代码格式：
@@ -237,21 +252,23 @@ const iconList = ['home', 'heart', 'star', 'fire']
 
 ### 常用图标集
 
-| 图标集 | 前缀 | 数量 | 特点 |
-|--------|------|------|------|
-| Material Design Icons | `mdi` | 7000+ | 最全面 |
-| Carbon Icons | `carbon` | 2000+ | IBM 设计系统 |
-| Heroicons | `heroicons` | 500+ | Tailwind 官方 |
-| SVG Spinners | `svg-spinners` | 50+ | 动画图标 |
+| 图标集                | 前缀           | 数量  | 特点          |
+| --------------------- | -------------- | ----- | ------------- |
+| Material Design Icons | `mdi`          | 7000+ | 最全面        |
+| Carbon Icons          | `carbon`       | 2000+ | IBM 设计系统  |
+| Heroicons             | `heroicons`    | 500+  | Tailwind 官方 |
+| SVG Spinners          | `svg-spinners` | 50+   | 动画图标      |
 
 ---
 
 ## 🎉 测试结果
 
 ### 开发服务器
+
 ✅ 成功启动：`http://localhost:5178/`
 
 ### 功能测试
+
 - ✅ 方式 1（手动导入）：正常显示
 - ✅ 方式 2（自动导入）：正常显示
 - ✅ 方式 3（Tailwind CSS）：正常显示
@@ -296,11 +313,13 @@ const iconList = ['home', 'heart', 'star', 'fire']
 ## 🎓 学习资源
 
 ### 官方文档
+
 - [unplugin-icons](https://github.com/unplugin/unplugin-icons)
 - [@egoist/tailwindcss-icons](https://github.com/egoist/tailwindcss-icons)
 - [Iconify](https://iconify.design/)
 
 ### 项目文档
+
 - [完整使用指南](./icon-usage-guide.md)
 - [快速参考](./icon-quick-reference.md)
 
@@ -309,6 +328,7 @@ const iconList = ['home', 'heart', 'star', 'fire']
 ## ✨ 总结
 
 项目现在拥有了：
+
 - ✅ **灵活的图标系统** - 三种使用方式
 - ✅ **完全离线** - 适合 Electron
 - ✅ **类型安全** - 完整 TypeScript 支持

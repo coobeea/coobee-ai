@@ -39,10 +39,8 @@ export const Env = {
     downloads: app.getPath('downloads'),
     documents: app.getPath('documents'),
     desktop: app.getPath('desktop'),
-    logPath:
-      !is.dev && app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath(),
-    installDir:
-      !is.dev && app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath(),
+    logPath: !is.dev && app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath(),
+    installDir: !is.dev && app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath(),
     workspace: is.dev
       ? path.join(app.getAppPath(), '.workspace')
       : path.join(app.getPath('home'), '.' + app.getName())

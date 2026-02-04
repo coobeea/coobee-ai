@@ -36,6 +36,7 @@ main: {
 ```
 
 **关键点：**
+
 - ✅ **externalizeDepsPlugin**: 自动外部化 node_modules 依赖，减小打包体积
 - ✅ **alias**: 路径别名，使用 `@` 和 `@shared` 简化导入
 - ✅ **external**: 将原生模块标记为外部依赖（SQLite, fs-ext）
@@ -57,6 +58,7 @@ preload: {
 ```
 
 **关键点：**
+
 - ✅ **externalizeDepsPlugin**: 外部化依赖
 - ✅ **@shared 别名**: 共享代码的别名
 
@@ -112,6 +114,7 @@ renderer: {
 ```
 
 **关键点：**
+
 - ✅ **optimizeDeps**: 预优化大型依赖，提升开发启动速度
 - ✅ **多个别名**: `@`, `@renderer`, `@shared` 方便导入
 - ✅ **vue esm-bundler**: 使用 ESM 版本的 Vue
@@ -155,16 +158,16 @@ src/
 
 ```typescript
 // src/main/index.ts
-import { someUtil } from '@/utils/helper'        // @ = src/main/
-import { SharedType } from '@shared/types'       // @shared = src/shared
+import { someUtil } from '@/utils/helper' // @ = src/main/
+import { SharedType } from '@shared/types' // @shared = src/shared
 ```
 
 ### Renderer 进程
 
 ```typescript
 // src/renderer/src/App.vue
-import { MyComponent } from '@/components/MyComponent.vue'  // @ = src/renderer/src
-import { SharedConst } from '@shared/constants'             // @shared = src/shared
+import { MyComponent } from '@/components/MyComponent.vue' // @ = src/renderer/src
+import { SharedConst } from '@shared/constants' // @shared = src/shared
 ```
 
 ### TypeScript 配置
@@ -190,12 +193,12 @@ import { SharedConst } from '@shared/constants'             // @shared = src/sha
 ```typescript
 monacoEditorPlugin({
   languageWorkers: [
-    'editorWorkerService',  // 核心服务
-    'typescript',           // TypeScript 支持
-    'javascript',           // JavaScript 支持
-    'css',                  // CSS 支持
-    'html',                 // HTML 支持
-    'json'                  // JSON 支持
+    'editorWorkerService', // 核心服务
+    'typescript', // TypeScript 支持
+    'javascript', // JavaScript 支持
+    'css', // CSS 支持
+    'html', // HTML 支持
+    'json' // JSON 支持
   ],
   customDistPath(_root, buildOutDir, _base) {
     return path.resolve(buildOutDir, 'monacoeditorwork')
@@ -204,6 +207,7 @@ monacoEditorPlugin({
 ```
 
 **说明：**
+
 - `languageWorkers`: 指定需要的语言支持
 - `customDistPath`: 自定义 Worker 文件输出路径
 
@@ -216,10 +220,10 @@ monacoEditorPlugin({
 ```typescript
 optimizeDeps: {
   include: [
-    'monaco-editor',  // 大型编辑器库
-    'axios',          // 网络请求库
-    'dayjs',          // 日期库
-    'lodash'          // 工具库
+    'monaco-editor', // 大型编辑器库
+    'axios', // 网络请求库
+    'dayjs', // 日期库
+    'lodash' // 工具库
   ]
 }
 ```
@@ -231,10 +235,7 @@ optimizeDeps: {
 ```typescript
 build: {
   rollupOptions: {
-    external: [
-      'better-sqlite3-multiple-ciphers',
-      'fs-ext'
-    ]
+    external: ['better-sqlite3-multiple-ciphers', 'fs-ext']
   }
 }
 ```
@@ -257,11 +258,12 @@ build: {
 
 ```typescript
 server: {
-  host: '0.0.0.0'  // 监听所有网络接口
+  host: '0.0.0.0' // 监听所有网络接口
 }
 ```
 
 **作用：**
+
 - 防止某些代理或网络配置干扰
 - 确保 Vite 开发服务器和 Electron 之间的通信正常
 - 解决 `ws://localhost:5713` 连接失败问题
@@ -314,6 +316,7 @@ vue({
 **作用：** 告诉 Vue 编译器哪些标签是自定义元素，不要当作 Vue 组件处理。
 
 **示例：**
+
 ```html
 <!-- 这些标签不会被视为 Vue 组件 -->
 <custom-widget></custom-widget>
@@ -343,26 +346,26 @@ optimizeDeps: {
   include: [
     // 编辑器
     'monaco-editor',
-    
+
     // 网络请求
     'axios',
-    
+
     // 工具库
     'dayjs',
     'lodash',
     'nanoid',
-    
+
     // Vue 生态
     'pinia',
     'vue-router',
     '@vueuse/core',
-    
+
     // 图标
     '@iconify/vue',
-    
+
     // UI 组件
     'vue-sonner',
-    
+
     // Tiptap 编辑器
     '@tiptap/core',
     '@tiptap/vue-3',

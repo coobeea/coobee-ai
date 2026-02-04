@@ -17,6 +17,7 @@ import IconMdiAccount from '~icons/mdi/account'
 ```
 
 **何时使用：**
+
 - ✅ 常用图标（导航栏、工具栏）
 - ✅ 需要绑定事件的图标
 - ✅ 需要类型提示的场景
@@ -35,6 +36,7 @@ import IconMdiAccount from '~icons/mdi/account'
 ```
 
 **何时使用：**
+
 - ✅ 偶尔使用的图标
 - ✅ 想让代码更简洁
 - ✅ 不需要频繁引用的图标
@@ -48,13 +50,14 @@ import IconMdiAccount from '~icons/mdi/account'
   <!-- 格式：i-{图标集}-{图标名} -->
   <span class="i-mdi-home text-2xl text-blue-600"></span>
   <span class="i-carbon-settings text-xl text-gray-600"></span>
-  
+
   <!-- 动态拼接 -->
   <span :class="`i-mdi-${iconName} text-2xl`"></span>
 </template>
 ```
 
 **何时使用：**
+
 - ✅ 需要动态切换图标
 - ✅ 循环渲染大量图标
 - ✅ 图标名称从数据生成
@@ -66,23 +69,24 @@ import IconMdiAccount from '~icons/mdi/account'
 
 ### unplugin-icons（组件方式）
 
-| 图标 ID | 导入路径 | 组件名 | 自动导入 |
-|---------|----------|--------|----------|
-| `mdi:home` | `~icons/mdi/home` | `IconMdiHome` | `<icon-mdi-home />` |
-| `mdi:account-box` | `~icons/mdi/account-box` | `IconMdiAccountBox` | `<icon-mdi-account-box />` |
-| `carbon:settings` | `~icons/carbon/settings` | `IconCarbonSettings` | `<icon-carbon-settings />` |
+| 图标 ID                    | 导入路径                          | 组件名                     | 自动导入                            |
+| -------------------------- | --------------------------------- | -------------------------- | ----------------------------------- |
+| `mdi:home`                 | `~icons/mdi/home`                 | `IconMdiHome`              | `<icon-mdi-home />`                 |
+| `mdi:account-box`          | `~icons/mdi/account-box`          | `IconMdiAccountBox`        | `<icon-mdi-account-box />`          |
+| `carbon:settings`          | `~icons/carbon/settings`          | `IconCarbonSettings`       | `<icon-carbon-settings />`          |
 | `svg-spinners:3-dots-fade` | `~icons/svg-spinners/3-dots-fade` | `IconSvgSpinners3DotsFade` | `<icon-svg-spinners-3-dots-fade />` |
 
 ### @egoist/tailwindcss-icons（CSS 类方式）
 
-| 图标 ID | CSS 类名 |
-|---------|---------|
-| `mdi:home` | `i-mdi-home` |
-| `mdi:account-box` | `i-mdi-account-box` |
-| `carbon:settings` | `i-carbon-settings` |
+| 图标 ID              | CSS 类名               |
+| -------------------- | ---------------------- |
+| `mdi:home`           | `i-mdi-home`           |
+| `mdi:account-box`    | `i-mdi-account-box`    |
+| `carbon:settings`    | `i-carbon-settings`    |
 | `svg-spinners:pulse` | `i-svg-spinners-pulse` |
 
 **转换规则：**
+
 - 格式：`i-{图标集}-{图标名}`
 - 图标集和图标名用单个短横线 `-` 连接
 - 短横线保持不变
@@ -110,9 +114,12 @@ import IconMdiAccount from '~icons/mdi/account'
 
 ```vue
 <!-- Tailwind 文本大小类 -->
-<IconMdiHome class="text-xl" />    <!-- 1.25rem -->
-<IconMdiHome class="text-2xl" />   <!-- 1.5rem -->
-<IconMdiHome class="text-4xl" />   <!-- 2.25rem -->
+<IconMdiHome class="text-xl" />
+<!-- 1.25rem -->
+<IconMdiHome class="text-2xl" />
+<!-- 1.5rem -->
+<IconMdiHome class="text-4xl" />
+<!-- 2.25rem -->
 
 <!-- 自定义尺寸 -->
 <IconMdiHome style="font-size: 32px" />
@@ -127,7 +134,8 @@ import IconMdiAccount from '~icons/mdi/account'
 ```vue
 <!-- Tailwind 变换类 -->
 <IconMdiHome class="rotate-45" />
-<IconMdiHome class="scale-x-[-1]" />  <!-- 水平翻转 -->
+<IconMdiHome class="scale-x-[-1]" />
+<!-- 水平翻转 -->
 
 <span class="i-[mdi--home] rotate-90"></span>
 ```
@@ -145,13 +153,10 @@ const isLiked = ref(false)
 
 <template>
   <!-- 方式 1：组件方式 -->
-  <component 
-    :is="isLiked ? IconMdiHeart : IconMdiHeartOutline"
-    @click="isLiked = !isLiked"
-  />
-  
+  <component :is="isLiked ? IconMdiHeart : IconMdiHeartOutline" @click="isLiked = !isLiked" />
+
   <!-- 方式 3：CSS 类方式（更简洁） -->
-  <span 
+  <span
     :class="`i-mdi-heart${isLiked ? '' : '-outline'} cursor-pointer`"
     @click="isLiked = !isLiked"
   ></span>
@@ -182,12 +187,12 @@ const features = [
 
 ## 📦 已安装图标集
 
-| 图标集 | 前缀 | 数量 | 特点 |
-|--------|------|------|------|
-| Material Design Icons | `mdi` | 7000+ | 最全面的图标集 |
-| Carbon Icons | `carbon` | 2000+ | IBM 设计系统 |
-| Heroicons | `heroicons` | 500+ | Tailwind 官方 |
-| SVG Spinners | `svg-spinners` | 50+ | 动画加载图标 |
+| 图标集                | 前缀           | 数量  | 特点           |
+| --------------------- | -------------- | ----- | -------------- |
+| Material Design Icons | `mdi`          | 7000+ | 最全面的图标集 |
+| Carbon Icons          | `carbon`       | 2000+ | IBM 设计系统   |
+| Heroicons             | `heroicons`    | 500+  | Tailwind 官方  |
+| SVG Spinners          | `svg-spinners` | 50+   | 动画加载图标   |
 
 ---
 
@@ -218,6 +223,7 @@ const features = [
 ### Q: 图标不显示？
 
 **解决方案：**
+
 1. 检查图标名称是否正确（访问 [Icônes](https://icones.js.org/) 确认）
 2. 确认图标集已安装：`@iconify-json/{collection}`
 3. 清除缓存：删除 `node_modules/.vite`
@@ -226,12 +232,14 @@ const features = [
 ### Q: CSS 类方式图标颜色不对？
 
 **解决方案：**
+
 - 图标颜色通过 `text-*` 类控制
 - 例如：`<span class="i-mdi-home text-blue-600"></span>`
 
 ### Q: 如何选择使用哪种方式？
 
 **快速决策：**
+
 - 需要绑定事件？→ 方式 1（组件）
 - 需要动态切换？→ 方式 3（CSS 类）
 - 偶尔使用？→ 方式 2（自动导入）

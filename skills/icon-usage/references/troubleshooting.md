@@ -18,6 +18,7 @@ Detailed solutions for common icon-related issues.
 ### Symptom: Blank space where icon should be
 
 **Check 1: Icon name is correct**
+
 ```bash
 # Visit https://icones.js.org/ and search for the icon
 # Verify exact spelling and collection name
@@ -26,6 +27,7 @@ Detailed solutions for common icon-related issues.
 Example: `account-box` not `accountbox`, `check-circle` not `check-cirlce`
 
 **Check 2: Icon collection is installed**
+
 ```bash
 # Check package.json for:
 "@iconify-json/mdi": "^1.2.3"
@@ -38,6 +40,7 @@ pnpm add -D @iconify-json/{collection-name}
 ```
 
 **Check 3: Clear Vite cache**
+
 ```bash
 # Delete cache directory
 rm -rf node_modules/.vite
@@ -47,6 +50,7 @@ pnpm dev
 ```
 
 **Check 4: Restart dev server**
+
 ```bash
 # Stop current server (Ctrl+C)
 # Start again
@@ -74,6 +78,7 @@ Ensure it includes unplugin-icons types:
 **Solution 2: Restart TypeScript server**
 
 In VSCode:
+
 1. Open Command Palette (Cmd/Ctrl + Shift + P)
 2. Search "TypeScript: Restart TS Server"
 3. Select it
@@ -101,6 +106,7 @@ import IconMdiHome from '~icons/mdi/home'
 ```
 
 If types are still not working:
+
 1. Check that `vue-tsc` is installed
 2. Verify `tsconfig.web.json` paths are correct
 3. Restart IDE
@@ -125,7 +131,7 @@ export default defineConfig({
       Components({
         resolvers: [
           IconsResolver({
-            prefix: 'icon'  // This must match!
+            prefix: 'icon' // This must match!
           })
         ]
       }),
@@ -146,9 +152,12 @@ export default defineConfig({
 <icon-carbon-settings />
 
 <!-- ❌ Wrong -->
-<Icon-mdi-home />      <!-- Capital I -->
-<iconMdiHome />        <!-- camelCase -->
-<icon-mdi_home />      <!-- underscore -->
+<Icon-mdi-home />
+<!-- Capital I -->
+<iconMdiHome />
+<!-- camelCase -->
+<icon-mdi_home />
+<!-- underscore -->
 ```
 
 **Check 3: Check components.d.ts**
@@ -158,7 +167,7 @@ Auto-imported components should be declared in `src/renderer/components.d.ts`:
 ```typescript
 declare module 'vue' {
   export interface GlobalComponents {
-    IconMdiHome: typeof import('~icons/mdi/home')['default']
+    IconMdiHome: (typeof import('~icons/mdi/home'))['default']
     // ... other auto-imported components
   }
 }
@@ -167,6 +176,7 @@ declare module 'vue' {
 If this file doesn't exist or is empty, the auto-import isn't working. Restart dev server.
 
 **Check 4: Restart dev server**
+
 ```bash
 # Auto-import generation happens at dev server start
 # Changes to config require restart
@@ -184,7 +194,7 @@ pnpm dev
 In `src/renderer/src/assets/tailwind.css`:
 
 ```css
-@import "tailwindcss";
+@import 'tailwindcss';
 @plugin "@egoist/tailwindcss-icons";
 ```
 
@@ -196,9 +206,12 @@ In `src/renderer/src/assets/tailwind.css`:
 <span class="i-carbon-settings"></span>
 
 <!-- ❌ Wrong -->
-<span class="icon-mdi-home"></span>     <!-- Wrong prefix -->
-<span class="i-mdi--home"></span>       <!-- Double dash -->
-<span class="i-[mdi-home]"></span>      <!-- Square brackets -->
+<span class="icon-mdi-home"></span>
+<!-- Wrong prefix -->
+<span class="i-mdi--home"></span>
+<!-- Double dash -->
+<span class="i-[mdi-home]"></span>
+<!-- Square brackets -->
 ```
 
 **Check 3: Check @egoist/tailwindcss-icons is installed**
@@ -218,8 +231,10 @@ pnpm add -D @egoist/tailwindcss-icons
 <span :class="`i-mdi-${iconName}`"></span>
 
 <!-- ❌ Wrong: Trying to interpolate in string -->
-<span :class="'i-mdi-' + iconName"></span>  <!-- Works but not idiomatic -->
-<span class="i-mdi-{{ iconName }}"></span>   <!-- Won't work -->
+<span :class="'i-mdi-' + iconName"></span>
+<!-- Works but not idiomatic -->
+<span class="i-mdi-{{ iconName }}"></span>
+<!-- Won't work -->
 ```
 
 ### Symptom: Icon color not applying
@@ -271,6 +286,7 @@ pnpm build:mac  # or build:win / build:linux
 **Check 3: Check build output**
 
 Icons should be bundled as:
+
 - Method 1 & 2: As Vue components (in JS bundle)
 - Method 3: As CSS (in stylesheet)
 
@@ -291,6 +307,7 @@ pnpm build:mac
 ```
 
 If bundle size is unexpectedly large:
+
 1. Remove unused icon imports
 2. Ensure dynamic imports aren't preventing tree-shaking
 3. Check for accidental `import * as` statements
@@ -313,8 +330,8 @@ If bundle size is unexpectedly large:
 import IconMdiHome from '~icons/mdi/home'
 
 // ❌ Bad: Don't import in loop
-icons.forEach(icon => {
-  import(`~icons/mdi/${icon}`)  // Won't work anyway
+icons.forEach((icon) => {
+  import(`~icons/mdi/${icon}`) // Won't work anyway
 })
 ```
 
@@ -345,12 +362,12 @@ Each component needs its own imports:
 ```vue
 <!-- Component A -->
 <script setup lang="ts">
-import IconMdiHome from '~icons/mdi/home'  // ✅ Import here
+import IconMdiHome from '~icons/mdi/home' // ✅ Import here
 </script>
 
 <!-- Component B -->
 <script setup lang="ts">
-import IconMdiHome from '~icons/mdi/home'  // ✅ Also import here
+import IconMdiHome from '~icons/mdi/home' // ✅ Also import here
 </script>
 ```
 
@@ -359,6 +376,7 @@ Icons don't "leak" between components.
 ### Symptom: Icons working locally but failing in CI/CD
 
 **Check 1: Ensure icon packages in package.json**
+
 ```json
 {
   "devDependencies": {
@@ -368,12 +386,14 @@ Icons don't "leak" between components.
 ```
 
 **Check 2: Verify pnpm/npm lock file is committed**
+
 ```bash
 # Ensure this is in git:
 pnpm-lock.yaml
 ```
 
 **Check 3: Check Node.js version**
+
 ```bash
 # Ensure CI uses same Node version as development
 # Check .nvmrc or package.json engines field
@@ -389,7 +409,7 @@ If none of these solutions work:
    - `docs/icon-usage-guide.md`
    - `docs/icon-quick-reference.md`
 
-2. **Verify example works**: 
+2. **Verify example works**:
    - See `src/renderer/src/App.vue` for working examples
 
 3. **Check configuration files**:

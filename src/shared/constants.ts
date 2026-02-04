@@ -19,14 +19,14 @@ export const IPC_CHANNELS = {
   // 日志
   LOG_INFO: 'log:info',
   LOG_ERROR: 'log:error',
-  
+
   // 存储
   STORE_GET: 'store:get',
   STORE_SET: 'store:set',
-  
+
   // 更新
   CHECK_FOR_UPDATES: 'check-for-updates',
-  
+
   // 窗口
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',

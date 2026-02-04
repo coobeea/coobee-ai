@@ -3,23 +3,25 @@
 ## 📦 已安装的 Electron 核心库
 
 ### 核心框架
-| 包名 | 版本 | 类型 | 说明 |
-|------|------|------|------|
-| `electron` | `^39.2.6` | 开发 | Electron 主框架 |
-| `electron-builder` | `^26.0.12` | 开发 | Electron 打包工具 |
-| `electron-vite` | `^5.0.0` | 开发 | Electron Vite 构建工具 |
-| `@electron-toolkit/preload` | `^3.0.2` | 生产 | Preload 工具 |
-| `@electron-toolkit/utils` | `^4.0.0` | 生产 | Electron 工具集 |
+
+| 包名                        | 版本       | 类型 | 说明                   |
+| --------------------------- | ---------- | ---- | ---------------------- |
+| `electron`                  | `^39.2.6`  | 开发 | Electron 主框架        |
+| `electron-builder`          | `^26.0.12` | 开发 | Electron 打包工具      |
+| `electron-vite`             | `^5.0.0`   | 开发 | Electron Vite 构建工具 |
+| `@electron-toolkit/preload` | `^3.0.2`   | 生产 | Preload 工具           |
+| `@electron-toolkit/utils`   | `^4.0.0`   | 生产 | Electron 工具集        |
 
 ### Electron 插件
-| 包名 | 版本 | 类型 | 说明 |
-|------|------|------|------|
-| `electron-updater` | `^6.3.9` | 生产 | 自动更新 |
-| `electron-log` | `^5.4.3` | 生产 | 日志系统 |
-| `electron-store` | `^11.0.2` | 生产 | 持久化存储 |
-| `electron-window-state` | `^5.0.3` | 生产 | 窗口状态管理 |
-| `electron-devtools-installer` | `^4.0.0` | 开发 | DevTools 安装器 |
-| `@electron/notarize` | `^3.1.1` | 开发 | macOS 公证 |
+
+| 包名                          | 版本      | 类型 | 说明            |
+| ----------------------------- | --------- | ---- | --------------- |
+| `electron-updater`            | `^6.3.9`  | 生产 | 自动更新        |
+| `electron-log`                | `^5.4.3`  | 生产 | 日志系统        |
+| `electron-store`              | `^11.0.2` | 生产 | 持久化存储      |
+| `electron-window-state`       | `^5.0.3`  | 生产 | 窗口状态管理    |
+| `electron-devtools-installer` | `^4.0.0`  | 开发 | DevTools 安装器 |
+| `@electron/notarize`          | `^3.1.1`  | 开发 | macOS 公证      |
 
 ---
 
@@ -34,7 +36,7 @@ import log from 'electron-log'
 // 配置日志
 log.transports.file.level = 'info'
 log.transports.console.level = 'debug'
-log.transports.file.maxSize = 10 * 1024 * 1024  // 10MB
+log.transports.file.maxSize = 10 * 1024 * 1024 // 10MB
 
 // 记录日志
 log.info('应用启动')
@@ -331,17 +333,19 @@ autoUpdater.on('download-progress', (progress) => {
 // 下载完成
 autoUpdater.on('update-downloaded', (info) => {
   log.info('更新下载完成:', info.version)
-  
-  dialog.showMessageBox({
-    type: 'info',
-    title: '更新已下载',
-    message: '新版本已下载，是否立即重启应用？',
-    buttons: ['立即重启', '稍后']
-  }).then(({ response }) => {
-    if (response === 0) {
-      autoUpdater.quitAndInstall()
-    }
-  })
+
+  dialog
+    .showMessageBox({
+      type: 'info',
+      title: '更新已下载',
+      message: '新版本已下载，是否立即重启应用？',
+      buttons: ['立即重启', '稍后']
+    })
+    .then(({ response }) => {
+      if (response === 0) {
+        autoUpdater.quitAndInstall()
+      }
+    })
 })
 
 // 更新错误
@@ -387,7 +391,7 @@ app.whenReady().then(() => {
       .then((name) => console.log(`已安装: ${name}`))
       .catch((err) => console.log('安装失败:', err))
   }
-  
+
   createWindow()
 })
 ```
@@ -405,10 +409,10 @@ const extensions = [VUEJS_DEVTOOLS, REDUX_DEVTOOLS]
 
 app.whenReady().then(() => {
   if (!app.isPackaged) {
-    extensions.forEach(extension => {
+    extensions.forEach((extension) => {
       installExtension(extension)
-        .then(name => console.log(`已安装: ${name}`))
-        .catch(err => console.log(`安装失败:`, err))
+        .then((name) => console.log(`已安装: ${name}`))
+        .catch((err) => console.log(`安装失败:`, err))
     })
   }
 })
@@ -426,7 +430,7 @@ const { notarize } = require('@electron/notarize')
 
 exports.default = async function notarizing(context) {
   const { electronPlatformName, appOutDir } = context
-  
+
   if (electronPlatformName !== 'darwin') {
     return
   }
@@ -528,8 +532,8 @@ app.whenReady().then(() => {
   // 安装 DevTools（开发环境）
   if (!app.isPackaged) {
     installExtension(VUEJS_DEVTOOLS)
-      .then(name => log.info(`已安装: ${name}`))
-      .catch(err => log.error('安装失败:', err))
+      .then((name) => log.info(`已安装: ${name}`))
+      .catch((err) => log.error('安装失败:', err))
   }
 
   // 优化窗口行为

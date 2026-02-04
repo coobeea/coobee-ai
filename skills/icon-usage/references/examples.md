@@ -27,7 +27,7 @@ defineProps<{
 </script>
 
 <template>
-  <button 
+  <button
     class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
     @click="onClick"
   >
@@ -48,12 +48,12 @@ const showTooltip = ref(false)
 
 <template>
   <div class="relative inline-block">
-    <IconMdiInformation 
+    <IconMdiInformation
       class="text-gray-400 hover:text-gray-600 cursor-help"
       @mouseenter="showTooltip = true"
       @mouseleave="showTooltip = false"
     />
-    <div 
+    <div
       v-if="showTooltip"
       class="absolute z-10 px-3 py-2 text-sm bg-gray-900 text-white rounded shadow-lg -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap"
     >
@@ -88,7 +88,9 @@ const statusConfig = {
 
 <template>
   <div :class="`flex items-center gap-2 p-4 rounded-lg ${statusConfig[status].bg}`">
-    <span :class="`i-mdi-${statusConfig[status].icon} text-xl ${statusConfig[status].color}`"></span>
+    <span
+      :class="`i-mdi-${statusConfig[status].icon} text-xl ${statusConfig[status].color}`"
+    ></span>
     <p :class="statusConfig[status].color">{{ message }}</p>
   </div>
 </template>
@@ -110,7 +112,7 @@ function toggleLike() {
 
 <template>
   <button @click="toggleLike" class="p-2 hover:bg-gray-100 rounded-full transition">
-    <component 
+    <component
       :is="isLiked ? IconMdiHeart : IconMdiHeartOutline"
       :class="isLiked ? 'text-red-600' : 'text-gray-400'"
       class="text-2xl"
@@ -121,7 +123,7 @@ function toggleLike() {
 <!-- Alternative: CSS class method (more concise) -->
 <template>
   <button @click="toggleLike" class="p-2 hover:bg-gray-100 rounded-full transition">
-    <span 
+    <span
       :class="[
         `i-mdi-heart${isLiked ? '' : '-outline'} text-2xl`,
         isLiked ? 'text-red-600' : 'text-gray-400'
@@ -140,17 +142,37 @@ function toggleLike() {
 ```vue
 <script setup lang="ts">
 const features = [
-  { icon: 'rocket', title: 'Fast Development', description: 'Built with Vite and HMR', color: 'text-blue-600' },
-  { icon: 'shield-check', title: 'Type Safe', description: 'Full TypeScript support', color: 'text-green-600' },
-  { icon: 'lightning-bolt', title: 'High Performance', description: 'Optimized build config', color: 'text-yellow-600' },
-  { icon: 'package-variant', title: 'Tree Shaken', description: 'Only bundle what you use', color: 'text-purple-600' }
+  {
+    icon: 'rocket',
+    title: 'Fast Development',
+    description: 'Built with Vite and HMR',
+    color: 'text-blue-600'
+  },
+  {
+    icon: 'shield-check',
+    title: 'Type Safe',
+    description: 'Full TypeScript support',
+    color: 'text-green-600'
+  },
+  {
+    icon: 'lightning-bolt',
+    title: 'High Performance',
+    description: 'Optimized build config',
+    color: 'text-yellow-600'
+  },
+  {
+    icon: 'package-variant',
+    title: 'Tree Shaken',
+    description: 'Only bundle what you use',
+    color: 'text-purple-600'
+  }
 ]
 </script>
 
 <template>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <div 
-      v-for="feature in features" 
+    <div
+      v-for="feature in features"
       :key="feature.icon"
       class="p-6 bg-white rounded-lg shadow-md hover:shadow-lg transition"
     >
@@ -194,17 +216,15 @@ function handleLogout() {
       @click="router.push(item.path)"
       :class="[
         'flex items-center gap-3 px-4 py-3 rounded-lg transition',
-        route.path === item.path 
-          ? 'bg-blue-600 text-white' 
-          : 'text-gray-700 hover:bg-gray-100'
+        route.path === item.path ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'
       ]"
     >
       <component :is="item.icon" class="text-xl" />
       <span>{{ item.label }}</span>
     </button>
-    
+
     <hr class="my-2" />
-    
+
     <button
       @click="handleLogout"
       class="flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition"
@@ -267,9 +287,7 @@ defineProps<{
     :aria-label="ariaLabel"
     :class="[
       'p-2 rounded-lg transition',
-      variant === 'danger' 
-        ? 'text-red-600 hover:bg-red-50' 
-        : 'text-gray-600 hover:bg-gray-100'
+      variant === 'danger' ? 'text-red-600 hover:bg-red-50' : 'text-gray-600 hover:bg-gray-100'
     ]"
   >
     <IconMdiDelete class="text-xl" />
@@ -314,7 +332,7 @@ const statusConfig = {
 
 <template>
   <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
-    <span 
+    <span
       :class="[
         `i-mdi-${statusConfig[connectionStatus].icon}`,
         statusConfig[connectionStatus].color,
@@ -337,7 +355,7 @@ const statusConfig = {
 ```vue
 <template>
   <div class="group cursor-pointer">
-    <icon-mdi-arrow-right 
+    <icon-mdi-arrow-right
       class="text-2xl text-blue-600 transition-transform group-hover:translate-x-2"
     />
   </div>
@@ -361,9 +379,7 @@ async function refresh() {
 
 <template>
   <button @click="refresh" :disabled="isRefreshing">
-    <IconMdiRefresh 
-      :class="['text-2xl', isRefreshing && 'animate-spin']"
-    />
+    <IconMdiRefresh :class="['text-2xl', isRefreshing && 'animate-spin']" />
   </button>
 </template>
 ```

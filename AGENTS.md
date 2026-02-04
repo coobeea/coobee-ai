@@ -9,15 +9,17 @@
 When users ask you to perform tasks, check if any of the available skills below can help complete the task more effectively. Skills provide specialized capabilities and domain knowledge.
 
 How to use skills:
+
 - Skills are located in `.cursor/skills/` directory
 - Each skill contains SKILL.md with detailed instructions
 - Skills may include reference files, scripts, and assets
 
 Usage notes:
+
 - Only use skills listed in <available_skills> below
 - Read the skill's SKILL.md for complete instructions
 - Reference additional files in skill's references/ directory as needed
-</usage>
+  </usage>
 
 <available_skills>
 
@@ -28,6 +30,7 @@ Usage notes:
 </skill>
 
 </available_skills>
+
 <!-- SKILLS_TABLE_END -->
 
 </skills_system>
@@ -39,9 +42,11 @@ Usage notes:
 <project_info>
 
 ### Overview
+
 **coobee-ai** is an Electron application built with Vue 3, TypeScript, and Tailwind CSS 4.
 
 ### Tech Stack
+
 - **Framework**: Electron 39 + Vue 3 + TypeScript
 - **Build Tool**: Electron Vite + Vite 7
 - **Styling**: Tailwind CSS 4 with @tailwindcss/vite
@@ -51,6 +56,7 @@ Usage notes:
 - **Code Editor**: Monaco Editor
 
 ### Project Structure
+
 ```
 coobee-ai/
 ├── src/
@@ -72,17 +78,20 @@ coobee-ai/
 <code_standards>
 
 ### Core Principles
+
 - Use Vue 3 Composition API with `<script setup>` and TypeScript
 - Use Tailwind CSS utility classes (avoid custom CSS)
 - Provide explicit TypeScript types for all props, emits, and reactive state
 - For icons: Consult icon-usage skill for method selection
 
 ### File Naming
+
 - Components: `PascalCase.vue` (e.g., `UserProfile.vue`)
 - Utilities: `camelCase.ts` (e.g., `formatDate.ts`)
 - Variables: `camelCase`, Components/Types: `PascalCase`, Constants: `UPPER_SNAKE_CASE`
 
 ### Import Order
+
 1. Vue core imports
 2. Third-party libraries
 3. Icons (if using manual import)
@@ -140,6 +149,7 @@ pnpm typecheck     # TypeScript
 <best_practices>
 
 ### Do ✅
+
 - Use Composition API with `<script setup>`
 - Provide explicit TypeScript types
 - Use Tailwind utility classes
@@ -148,6 +158,7 @@ pnpm typecheck     # TypeScript
 - Handle errors gracefully
 
 ### Don't ❌
+
 - Use Options API
 - Write custom CSS if Tailwind works
 - Ignore TypeScript errors

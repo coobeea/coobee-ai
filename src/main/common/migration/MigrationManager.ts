@@ -168,7 +168,8 @@ export class MigrationManager {
 
   async getStatus(): Promise<DatabaseStatus> {
     const currentVersion = await this.getCurrentVersion()
-    const latestVersion = this.migrations.length > 0 ? Math.max(...this.migrations.map((m) => m.version)) : 0
+    const latestVersion =
+      this.migrations.length > 0 ? Math.max(...this.migrations.map((m) => m.version)) : 0
     const history = await this.getHistory()
 
     return {

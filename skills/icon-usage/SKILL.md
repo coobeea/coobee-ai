@@ -10,7 +10,7 @@ description: Guide for using icons in coobee-ai project with three methods - man
 Project supports three icon methods, all offline-bundled and tree-shaken:
 
 - **Method 1: Manual Import** - For frequently used icons needing events
-- **Method 2: Auto Import** - For occasionally used icons  
+- **Method 2: Auto Import** - For occasionally used icons
 - **Method 3: Tailwind CSS** - For dynamic icons from data
 
 **Available collections**: mdi (7k+), carbon (2k+), heroicons (500+), svg-spinners (50+ animated)
@@ -38,6 +38,7 @@ Need event binding or Vue features?
 **Use when**: Navigation icons, toolbar icons, event binding needed, type safety important
 
 **Syntax**:
+
 ```vue
 <script setup lang="ts">
 import IconMdiHome from '~icons/mdi/home'
@@ -50,6 +51,7 @@ import IconCarbonSettings from '~icons/carbon/settings'
 ```
 
 **Naming**: `~icons/{collection}/{icon-name}` → `Icon` + PascalCase
+
 - `mdi:account-box` → `~icons/mdi/account-box` → `IconMdiAccountBox`
 
 ---
@@ -59,6 +61,7 @@ import IconCarbonSettings from '~icons/carbon/settings'
 **Use when**: Icon used once or twice, want cleaner code without imports
 
 **Syntax**:
+
 ```vue
 <template>
   <!-- No import needed -->
@@ -68,6 +71,7 @@ import IconCarbonSettings from '~icons/carbon/settings'
 ```
 
 **Naming**: `icon-{collection}-{icon-name}` (all lowercase with hyphens)
+
 - `mdi:account-box` → `<icon-mdi-account-box />`
 
 **Note**: Configured via `unplugin-vue-components` with `IconsResolver` in `electron.vite.config.ts`
@@ -79,14 +83,15 @@ import IconCarbonSettings from '~icons/carbon/settings'
 **Use when**: Icons change dynamically, loop rendering, icon names from data
 
 **Syntax**:
+
 ```vue
 <template>
   <!-- Static -->
   <span class="i-mdi-home text-2xl text-blue-600"></span>
-  
+
   <!-- Dynamic -->
   <span :class="`i-mdi-${iconName} text-2xl`"></span>
-  
+
   <!-- Loop -->
   <div v-for="icon in icons" :key="icon">
     <span :class="`i-carbon-${icon}`"></span>
@@ -100,6 +105,7 @@ const icons = ['settings', 'user', 'logout']
 ```
 
 **Naming**: `i-{collection}-{icon-name}` (all lowercase with single hyphens)
+
 - `mdi:account-box` → `i-mdi-account-box`
 
 **Note**: Configured via `@egoist/tailwindcss-icons` plugin in `tailwind.css`
@@ -108,11 +114,11 @@ const icons = ['settings', 'user', 'logout']
 
 ## Icon Name Conversion
 
-| Icon ID | Method 1 | Method 2 | Method 3 |
-|---------|----------|----------|----------|
-| `mdi:home` | `IconMdiHome` | `<icon-mdi-home />` | `i-mdi-home` |
-| `mdi:account-box` | `IconMdiAccountBox` | `<icon-mdi-account-box />` | `i-mdi-account-box` |
-| `carbon:settings` | `IconCarbonSettings` | `<icon-carbon-settings />` | `i-carbon-settings` |
+| Icon ID              | Method 1               | Method 2                      | Method 3               |
+| -------------------- | ---------------------- | ----------------------------- | ---------------------- |
+| `mdi:home`           | `IconMdiHome`          | `<icon-mdi-home />`           | `i-mdi-home`           |
+| `mdi:account-box`    | `IconMdiAccountBox`    | `<icon-mdi-account-box />`    | `i-mdi-account-box`    |
+| `carbon:settings`    | `IconCarbonSettings`   | `<icon-carbon-settings />`    | `i-carbon-settings`    |
 | `svg-spinners:pulse` | `IconSvgSpinnersPulse` | `<icon-svg-spinners-pulse />` | `i-svg-spinners-pulse` |
 
 ---
@@ -127,14 +133,18 @@ All methods support the same styling:
 <span class="i-mdi-home text-blue-600"></span>
 
 <!-- Size -->
-<IconMdiHome class="text-xl" />    <!-- 1.25rem -->
-<IconMdiHome class="text-2xl" />   <!-- 1.5rem -->
-<IconMdiHome class="text-4xl" />   <!-- 2.25rem -->
+<IconMdiHome class="text-xl" />
+<!-- 1.25rem -->
+<IconMdiHome class="text-2xl" />
+<!-- 1.5rem -->
+<IconMdiHome class="text-4xl" />
+<!-- 2.25rem -->
 <IconMdiHome style="font-size: 32px" />
 
 <!-- Transform -->
 <IconMdiHome class="rotate-45" />
-<IconMdiHome class="scale-x-[-1]" />  <!-- Flip horizontal -->
+<IconMdiHome class="scale-x-[-1]" />
+<!-- Flip horizontal -->
 ```
 
 ---
@@ -142,6 +152,7 @@ All methods support the same styling:
 ## Common Patterns
 
 ### Dynamic Status Icons
+
 ```vue
 <script setup>
 const statusIcons = {
@@ -158,19 +169,20 @@ const statusIcons = {
 ```
 
 ### Mixed Usage in Same Component
+
 ```vue
 <script setup>
-import IconMdiHome from '~icons/mdi/home'  // Method 1
+import IconMdiHome from '~icons/mdi/home' // Method 1
 const dynamicIcon = ref('settings')
 </script>
 
 <template>
   <!-- Method 1: Event binding -->
   <IconMdiHome @click="goHome" />
-  
+
   <!-- Method 2: Occasional -->
   <icon-mdi-fire />
-  
+
   <!-- Method 3: Dynamic -->
   <span :class="`i-mdi-${dynamicIcon}`"></span>
 </template>
@@ -199,6 +211,7 @@ const dynamicIcon = ref('settings')
 ## Troubleshooting
 
 **Icon not showing?**
+
 1. Verify icon name at https://icones.js.org/
 2. Check icon collection is installed: `@iconify-json/{collection}`
 3. Restart dev server
@@ -206,6 +219,7 @@ const dynamicIcon = ref('settings')
 
 **TypeScript errors?**
 Ensure `tsconfig.web.json` includes:
+
 ```json
 {
   "compilerOptions": {
@@ -215,6 +229,7 @@ Ensure `tsconfig.web.json` includes:
 ```
 
 **Auto import not working?**
+
 1. Verify `unplugin-vue-components` configured
 2. Follow format: `icon-{collection}-{name}`
 3. Restart dev server
@@ -224,6 +239,7 @@ Ensure `tsconfig.web.json` includes:
 ## Configuration Reference
 
 ### electron.vite.config.ts
+
 ```typescript
 import Icons from 'unplugin-icons/vite'
 import IconsResolver from 'unplugin-icons/resolver'
@@ -241,8 +257,9 @@ plugins: [
 ```
 
 ### tailwind.css
+
 ```css
-@import "tailwindcss";
+@import 'tailwindcss';
 @plugin "@egoist/tailwindcss-icons";
 ```
 
@@ -251,6 +268,7 @@ plugins: [
 ## Additional Resources
 
 For detailed examples and advanced patterns, see:
+
 - [examples.md](references/examples.md) - Complete code examples
 - [troubleshooting.md](references/troubleshooting.md) - Detailed problem solving
 

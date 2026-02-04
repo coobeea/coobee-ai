@@ -106,6 +106,34 @@ export function scanLifeCycleHooks(): DiscoveredModule[] {
 }
 
 /**
+ * 扫描事件处理器文件
+ * 扫描 @main/events 目录下所有 *Handler.ts 文件
+ */
+export function scanEventHandlers(): DiscoveredModule[] {
+  log.info('[Scan] 开始扫描事件处理器文件...')
+
+  const modules = import.meta.glob('@main/events/**/*Handler.ts', { eager: true })
+  const totalFound = Object.keys(modules).length
+
+  log.info(`[Scan] 发现 ${totalFound} 个潜在的事件处理器文件:`)
+  Object.keys(modules).forEach((path, index) => {
+    log.info(`[Scan]   ${index + 1}. ${path}`)
+  })
+
+  const filteredModules = filterModules(modules, ['BaseHandler'])
+  const filteredCount = filteredModules.length
+
+  log.info(`[Scan] 过滤后剩余 ${filteredCount} 个事件处理器文件:`)
+  filteredModules.forEach((discoveredModule, index) => {
+    log.info(`[Scan]   ${index + 1}. ${discoveredModule.path}`)
+  })
+
+  log.info('[Scan] 事件处理器文件扫描完成')
+
+  return filteredModules
+}
+
+/**
  * 通用过滤函数 - 过滤掉指定的文件
  * @param modules 扫描结果对象 (使用 eager: true 时，值直接是模块内容)
  * @param excludePatterns 要排除的文件名模式数组

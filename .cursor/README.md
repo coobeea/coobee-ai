@@ -21,6 +21,7 @@ The `skills/` directory is a **symbolic link** pointing to the project's main `s
 ```
 
 **Why use a symlink?**
+
 - ✅ Cursor automatically detects skills in `.cursor/skills/`
 - ✅ Keep skills organized in project root `skills/`
 - ✅ No duplication - single source of truth
@@ -69,5 +70,6 @@ To add or update skills:
 ---
 
 For more information, see:
+
 - `../skills/README.md` - Skills directory overview
 - `../AGENTS.md` - Project-level AI assistant guidelines

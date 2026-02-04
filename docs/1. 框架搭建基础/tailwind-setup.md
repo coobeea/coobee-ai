@@ -2,13 +2,13 @@
 
 ## 📦 已安装的包
 
-| 包名 | 版本 | 说明 |
-|------|------|------|
-| `tailwindcss` | `^4.1.18` | Tailwind CSS 4.x 核心 |
-| `@tailwindcss/vite` | `^4.1.18` | Tailwind Vite 插件（用于 Tailwind 4） |
-| `@tailwindcss/typography` | `^0.5.19` | 排版插件（美化文章、文档样式） |
-| `sass` | `^1.97.3` | Sass/SCSS 预处理器 |
-| `autoprefixer` | `^10.4.24` | CSS 自动添加浏览器前缀 |
+| 包名                      | 版本       | 说明                                  |
+| ------------------------- | ---------- | ------------------------------------- |
+| `tailwindcss`             | `^4.1.18`  | Tailwind CSS 4.x 核心                 |
+| `@tailwindcss/vite`       | `^4.1.18`  | Tailwind Vite 插件（用于 Tailwind 4） |
+| `@tailwindcss/typography` | `^0.5.19`  | 排版插件（美化文章、文档样式）        |
+| `sass`                    | `^1.97.3`  | Sass/SCSS 预处理器                    |
+| `autoprefixer`            | `^10.4.24` | CSS 自动添加浏览器前缀                |
 
 ---
 
@@ -45,7 +45,7 @@ electron.vite.config.ts   # Vite 配置 ✅ 已配置
 ### 1. Tailwind CSS 配置 (`src/renderer/src/assets/tailwind.css`)
 
 ```css
-@import "tailwindcss";
+@import 'tailwindcss';
 @plugin "@tailwindcss/typography";
 
 /* 自定义主题配置 */
@@ -53,10 +53,10 @@ electron.vite.config.ts   # Vite 配置 ✅ 已配置
   /* 自定义颜色 */
   --color-primary: #3b82f6;
   --color-secondary: #8b5cf6;
-  
+
   /* 自定义字体 */
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
 }
 
 /* 基础样式 */
@@ -107,7 +107,7 @@ export default defineConfig({
 ### 3. 主入口文件 (`src/renderer/src/main.ts`)
 
 ```typescript
-import './assets/tailwind.css'  // ✅ 已添加
+import './assets/tailwind.css' // ✅ 已添加
 import './assets/main.css'
 // ... 其他导入
 ```
@@ -121,12 +121,8 @@ import './assets/main.css'
 ```vue
 <template>
   <div class="p-4 bg-white dark:bg-gray-900">
-    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">
-      标题
-    </h1>
-    <p class="mt-2 text-gray-600 dark:text-gray-400">
-      描述文字
-    </p>
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">标题</h1>
+    <p class="mt-2 text-gray-600 dark:text-gray-400">描述文字</p>
   </div>
 </template>
 ```
@@ -135,12 +131,8 @@ import './assets/main.css'
 
 ```vue
 <template>
-  <button class="bg-[var(--color-primary)] text-white px-4 py-2 rounded">
-    主要按钮
-  </button>
-  <button class="bg-[var(--color-secondary)] text-white px-4 py-2 rounded">
-    次要按钮
-  </button>
+  <button class="bg-[var(--color-primary)] text-white px-4 py-2 rounded">主要按钮</button>
+  <button class="bg-[var(--color-secondary)] text-white px-4 py-2 rounded">次要按钮</button>
 </template>
 ```
 
@@ -179,9 +171,7 @@ Tailwind CSS 4 内置暗色模式支持，使用 `dark:` 前缀：
 
 ```vue
 <template>
-  <div class="bg-white dark:bg-gray-900 text-black dark:text-white">
-    内容会根据系统主题自动切换
-  </div>
+  <div class="bg-white dark:bg-gray-900 text-black dark:text-white">内容会根据系统主题自动切换</div>
 </template>
 ```
 
@@ -196,9 +186,7 @@ const toggleDark = useToggle(isDark)
 </script>
 
 <template>
-  <button @click="toggleDark()">
-    切换主题
-  </button>
+  <button @click="toggleDark()">切换主题</button>
 </template>
 ```
 
@@ -216,20 +204,20 @@ const toggleDark = useToggle(isDark)
   --color-success: #10b981;
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
-  
+
   /* 自定义间距 */
   --spacing-xs: 0.25rem;
   --spacing-sm: 0.5rem;
   --spacing-md: 1rem;
   --spacing-lg: 1.5rem;
   --spacing-xl: 2rem;
-  
+
   /* 自定义圆角 */
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
   --radius-lg: 1rem;
   --radius-full: 9999px;
-  
+
   /* 自定义字体大小 */
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
@@ -254,7 +242,7 @@ $primary-color: #3b82f6;
 .custom-button {
   @apply px-4 py-2 rounded;
   background-color: $primary-color;
-  
+
   &:hover {
     @apply shadow-lg;
   }
@@ -266,24 +254,29 @@ $primary-color: #3b82f6;
 ## 📚 常用工具类
 
 ### 布局
+
 - `flex`, `grid` - Flexbox / Grid 布局
 - `container` - 居中容器
 - `space-x-4`, `space-y-4` - 子元素间距
 
 ### 间距
+
 - `p-4`, `px-4`, `py-4` - 内边距
 - `m-4`, `mx-4`, `my-4` - 外边距
 
 ### 文字
+
 - `text-sm`, `text-base`, `text-lg` - 字体大小
 - `font-bold`, `font-semibold` - 字体粗细
 - `text-center`, `text-left` - 文字对齐
 
 ### 颜色
+
 - `bg-blue-500`, `text-blue-500` - 背景/文字颜色
 - `border-blue-500` - 边框颜色
 
 ### 交互
+
 - `hover:bg-blue-600` - 鼠标悬停
 - `focus:ring-2` - 焦点状态
 - `active:scale-95` - 点击状态

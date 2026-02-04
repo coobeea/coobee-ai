@@ -38,6 +38,7 @@ main: {
 ```
 
 #### 改进点
+
 - ✅ **自动外部化依赖**: 减小打包体积
 - ✅ **路径别名**: `@` 和 `@shared` 简化导入
 - ✅ **原生模块处理**: SQLite 和 fs-ext 作为外部依赖
@@ -61,6 +62,7 @@ preload: {
 ```
 
 #### 改进点
+
 - ✅ **外部化依赖**: 优化打包
 - ✅ **共享代码别名**: 访问共享类型和常量
 
@@ -118,6 +120,7 @@ renderer: {
 ```
 
 #### 改进点
+
 - ✅ **依赖预优化**: 提升开发启动速度
 - ✅ **多路径别名**: 灵活的导入方式
 - ✅ **Vue ESM 版本**: 更好的 Tree-shaking
@@ -140,12 +143,14 @@ src/shared/
 ```
 
 #### types.ts
+
 - User 类型
 - AppSettings 类型
 - WindowBounds 类型
 - LogLevel 类型
 
 #### constants.ts
+
 - 应用基本信息
 - 窗口默认值
 - 主题常量
@@ -168,13 +173,13 @@ docs/
 ```json
 {
   "include": [
-    "src/shared/**/*"  // ✅ 新增
+    "src/shared/**/*" // ✅ 新增
   ],
   "compilerOptions": {
     "paths": {
-      "@/*": ["src/renderer/src/*"],           // ✅ 新增
+      "@/*": ["src/renderer/src/*"], // ✅ 新增
       "@renderer/*": ["src/renderer/src/*"],
-      "@shared/*": ["src/shared/*"]            // ✅ 新增
+      "@shared/*": ["src/shared/*"] // ✅ 新增
     }
   }
 }
@@ -185,12 +190,12 @@ docs/
 ```json
 {
   "include": [
-    "src/shared/**/*"  // ✅ 新增
+    "src/shared/**/*" // ✅ 新增
   ],
   "compilerOptions": {
-    "baseUrl": ".",    // ✅ 新增
+    "baseUrl": ".", // ✅ 新增
     "paths": {
-      "@/*": ["src/main/*"],        // ✅ 新增
+      "@/*": ["src/main/*"], // ✅ 新增
       "@shared/*": ["src/shared/*"] // ✅ 新增
     }
   }
@@ -313,7 +318,7 @@ src/shared/
 optimizeDeps: {
   include: [
     // 已有的...
-    
+
     // 可以添加的
     '@tiptap/core',
     '@tiptap/vue-3',

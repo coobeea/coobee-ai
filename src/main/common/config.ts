@@ -75,7 +75,7 @@ export class Config {
   }
 
   set<K extends keyof ConfigStore>(key: K, value: ConfigStore[K]): void {
-    (this.store.set as any)(key, value)
+    ;(this.store.set as any)(key, value)
   }
 
   getTheme(): ThemeMode {

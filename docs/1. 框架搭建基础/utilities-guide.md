@@ -7,6 +7,7 @@
 ## 🌐 网络请求
 
 ### axios `^1.13.4`
+
 强大的 HTTP 客户端库
 
 ```typescript
@@ -19,18 +20,18 @@ const response = await axios.get('https://api.example.com/data')
 const api = axios.create({
   baseURL: 'https://api.example.com',
   timeout: 5000,
-  headers: { 'Authorization': 'Bearer token' }
+  headers: { Authorization: 'Bearer token' }
 })
 
 // 拦截器
-api.interceptors.request.use(config => {
+api.interceptors.request.use((config) => {
   console.log('请求发送:', config.url)
   return config
 })
 
 api.interceptors.response.use(
-  response => response.data,
-  error => {
+  (response) => response.data,
+  (error) => {
     console.error('请求失败:', error)
     return Promise.reject(error)
   }
@@ -42,18 +43,19 @@ api.interceptors.response.use(
 ## 🔧 工具函数
 
 ### lodash `^4.17.23`
+
 JavaScript 工具函数库
 
 ```typescript
 import _ from 'lodash'
 
 // 数组操作
-_.chunk([1, 2, 3, 4, 5], 2)  // [[1, 2], [3, 4], [5]]
-_.uniq([1, 2, 1, 3, 2])      // [1, 2, 3]
+_.chunk([1, 2, 3, 4, 5], 2) // [[1, 2], [3, 4], [5]]
+_.uniq([1, 2, 1, 3, 2]) // [1, 2, 3]
 
 // 对象操作
-_.pick({ a: 1, b: 2, c: 3 }, ['a', 'c'])  // { a: 1, c: 3 }
-_.omit({ a: 1, b: 2, c: 3 }, ['b'])       // { a: 1, c: 3 }
+_.pick({ a: 1, b: 2, c: 3 }, ['a', 'c']) // { a: 1, c: 3 }
+_.omit({ a: 1, b: 2, c: 3 }, ['b']) // { a: 1, c: 3 }
 
 // 防抖和节流
 const debouncedFn = _.debounce(() => {
@@ -69,6 +71,7 @@ const cloned = _.cloneDeep(originalObject)
 ```
 
 ### dayjs `^1.11.19`
+
 轻量级日期处理库（Moment.js 的现代替代品）
 
 ```typescript
@@ -80,21 +83,21 @@ dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
 
 // 格式化
-dayjs().format('YYYY-MM-DD HH:mm:ss')  // "2026-02-04 12:30:45"
+dayjs().format('YYYY-MM-DD HH:mm:ss') // "2026-02-04 12:30:45"
 
 // 相对时间
-dayjs().fromNow()                      // "几秒前"
-dayjs().add(7, 'day').fromNow()       // "7天后"
+dayjs().fromNow() // "几秒前"
+dayjs().add(7, 'day').fromNow() // "7天后"
 
 // 日期操作
-dayjs().add(1, 'month')                // 加一个月
-dayjs().subtract(1, 'year')            // 减一年
-dayjs().startOf('month')               // 月初
-dayjs().endOf('month')                 // 月末
+dayjs().add(1, 'month') // 加一个月
+dayjs().subtract(1, 'year') // 减一年
+dayjs().startOf('month') // 月初
+dayjs().endOf('month') // 月末
 
 // 比较
 dayjs('2026-01-01').isBefore(dayjs()) // true
-dayjs('2026-12-31').isAfter(dayjs())  // true
+dayjs('2026-12-31').isAfter(dayjs()) // true
 ```
 
 ---
@@ -102,21 +105,22 @@ dayjs('2026-12-31').isAfter(dayjs())  // true
 ## 🆔 ID 生成
 
 ### nanoid `^5.1.6`
+
 生成唯一的字符串 ID
 
 ```typescript
 import { nanoid } from 'nanoid'
 
 // 默认 21 字符
-const id = nanoid()  // "V1StGXR8_Z5jdHi6B-myT"
+const id = nanoid() // "V1StGXR8_Z5jdHi6B-myT"
 
 // 自定义长度
-const shortId = nanoid(10)  // "IRFa-VaY2b"
+const shortId = nanoid(10) // "IRFa-VaY2b"
 
 // 自定义字母表
 import { customAlphabet } from 'nanoid'
 const nanoid10 = customAlphabet('0123456789', 10)
-const numericId = nanoid10()  // "4968329012"
+const numericId = nanoid10() // "4968329012"
 ```
 
 ---
@@ -124,6 +128,7 @@ const numericId = nanoid10()  // "4968329012"
 ## 📝 文本处理
 
 ### diff `^8.0.3`
+
 文本差异对比
 
 ```typescript
@@ -142,7 +147,7 @@ const wordDiff = Diff.diffWords(oldText, newText)
 const lineDiff = Diff.diffLines(oldCode, newCode)
 
 // 渲染差异
-charDiff.forEach(part => {
+charDiff.forEach((part) => {
   if (part.added) console.log('+', part.value)
   else if (part.removed) console.log('-', part.value)
   else console.log(' ', part.value)
@@ -150,6 +155,7 @@ charDiff.forEach(part => {
 ```
 
 ### gray-matter `^4.0.3`
+
 解析 Front Matter（Markdown 文件头部元数据）
 
 ```typescript
@@ -171,25 +177,26 @@ tags:
 
 const { data, content } = matter(markdown)
 
-console.log(data.title)    // "我的文章"
-console.log(data.author)   // "张三"
-console.log(content)       // "# 文章内容\n\n这是正文..."
+console.log(data.title) // "我的文章"
+console.log(data.author) // "张三"
+console.log(content) // "# 文章内容\n\n这是正文..."
 ```
 
 ### jsonrepair `^3.13.2`
+
 修复损坏的 JSON
 
 ```typescript
 import { jsonrepair } from 'jsonrepair'
 
 // 修复缺少引号
-const fixed1 = jsonrepair('{name: "John"}')  // '{"name":"John"}'
+const fixed1 = jsonrepair('{name: "John"}') // '{"name":"John"}'
 
 // 修复尾随逗号
-const fixed2 = jsonrepair('{"a":1,}')        // '{"a":1}'
+const fixed2 = jsonrepair('{"a":1,}') // '{"a":1}'
 
 // 修复单引号
-const fixed3 = jsonrepair("{'a':1}")         // '{"a":1}'
+const fixed3 = jsonrepair("{'a':1}") // '{"a":1}'
 
 // 解析修复后的 JSON
 const obj = JSON.parse(jsonrepair(brokenJson))
@@ -200,6 +207,7 @@ const obj = JSON.parse(jsonrepair(brokenJson))
 ## ✅ Schema 验证
 
 ### zod `^4.3.6`
+
 TypeScript 优先的 Schema 验证库
 
 ```typescript
@@ -212,7 +220,7 @@ const UserSchema = z.object({
   email: z.string().email(),
   age: z.number().min(18).max(120),
   role: z.enum(['admin', 'user']),
-  tags: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional()
 })
 
 // 推断类型
@@ -246,6 +254,7 @@ if (result.success) {
 ## 🔢 Token 计数
 
 ### tokenx `^1.3.0`
+
 计算文本的 Token 数量（用于 AI API）
 
 ```typescript
@@ -255,15 +264,15 @@ const text = 'Hello, how are you?'
 
 // 编码
 const tokens = encode(text)
-console.log(tokens)  // [15496, 11, 703, 527, 499, 30]
+console.log(tokens) // [15496, 11, 703, 527, 499, 30]
 
 // 解码
 const decoded = decode(tokens)
-console.log(decoded)  // "Hello, how are you?"
+console.log(decoded) // "Hello, how are you?"
 
 // 计算 Token 数量
 const count = countTokens(text)
-console.log(count)  // 6
+console.log(count) // 6
 ```
 
 ---
@@ -271,6 +280,7 @@ console.log(count)  // 6
 ## 📂 文件系统
 
 ### fs-ext `^2.1.1`
+
 文件系统扩展（原生模块）
 
 ```typescript
@@ -278,16 +288,17 @@ import fs from 'fs-ext'
 
 // 文件锁
 const fd = fs.openSync('file.txt', 'r+')
-fs.flockSync(fd, 'ex')  // 排他锁
+fs.flockSync(fd, 'ex') // 排他锁
 // ... 执行操作
-fs.flockSync(fd, 'un')  // 解锁
+fs.flockSync(fd, 'un') // 解锁
 fs.closeSync(fd)
 
 // Seek 操作
-fs.seekSync(fd, 0, 'SEEK_SET')  // 移动到文件开头
+fs.seekSync(fd, 0, 'SEEK_SET') // 移动到文件开头
 ```
 
 ### mkdirp `^3.0.1`
+
 递归创建目录
 
 ```typescript
@@ -301,6 +312,7 @@ mkdirp.sync('path/to/another/directory')
 ```
 
 ### glob `^13.0.1`
+
 文件匹配模式
 
 ```typescript
@@ -322,22 +334,24 @@ const files3 = globSync('**/*.vue')
 ```
 
 ### minimatch `^10.1.2`
+
 最小文件匹配库
 
 ```typescript
 import { minimatch } from 'minimatch'
 
 // 检查文件是否匹配模式
-minimatch('foo.js', '*.js')           // true
-minimatch('foo.ts', '*.js')           // false
+minimatch('foo.js', '*.js') // true
+minimatch('foo.ts', '*.js') // false
 minimatch('src/utils/a.ts', '**/*.ts') // true
 
 // 过滤文件列表
 const files = ['a.js', 'b.ts', 'c.vue']
-const jsFiles = files.filter(f => minimatch(f, '*.js'))
+const jsFiles = files.filter((f) => minimatch(f, '*.js'))
 ```
 
 ### chokidar `^5.0.0`
+
 文件监听库
 
 ```typescript
@@ -345,15 +359,15 @@ import chokidar from 'chokidar'
 
 // 监听文件变化
 const watcher = chokidar.watch('src/**/*.ts', {
-  ignored: /(^|[\/\\])\../,  // 忽略点文件
+  ignored: /(^|[\/\\])\../, // 忽略点文件
   persistent: true
 })
 
 watcher
-  .on('add', path => console.log(`文件添加: ${path}`))
-  .on('change', path => console.log(`文件修改: ${path}`))
-  .on('unlink', path => console.log(`文件删除: ${path}`))
-  .on('error', error => console.error(`监听错误: ${error}`))
+  .on('add', (path) => console.log(`文件添加: ${path}`))
+  .on('change', (path) => console.log(`文件修改: ${path}`))
+  .on('unlink', (path) => console.log(`文件删除: ${path}`))
+  .on('error', (error) => console.error(`监听错误: ${error}`))
 
 // 停止监听
 watcher.close()
@@ -364,6 +378,7 @@ watcher.close()
 ## 🗜️ 压缩/解压
 
 ### fflate `^0.8.2`
+
 快速压缩库
 
 ```typescript
@@ -377,7 +392,7 @@ console.log(`压缩: ${compressed.length} bytes`)
 
 // 解压
 const decompressed = strFromU8(gunzipSync(compressed))
-console.log(decompressed === text)  // true
+console.log(decompressed === text) // true
 
 // Zip 文件
 import { zipSync, unzipSync } from 'fflate'
@@ -395,6 +410,7 @@ const unzipped = unzipSync(zipped)
 ## ⏱️ 定时任务
 
 ### node-cron `^4.2.1`
+
 Cron 定时任务
 
 ```typescript
@@ -416,18 +432,23 @@ cron.schedule('0 9 * * 1', () => {
 })
 
 // 可控制的任务
-const task = cron.schedule('*/10 * * * * *', () => {
-  console.log('每 10 秒执行')
-}, {
-  scheduled: false
-})
+const task = cron.schedule(
+  '*/10 * * * * *',
+  () => {
+    console.log('每 10 秒执行')
+  },
+  {
+    scheduled: false
+  }
+)
 
-task.start()   // 开始
-task.stop()    // 停止
+task.start() // 开始
+task.stop() // 停止
 task.destroy() // 销毁
 ```
 
 **Cron 表达式格式:**
+
 ```
 * * * * * *
 ┬ ┬ ┬ ┬ ┬ ┬
@@ -445,6 +466,7 @@ task.destroy() // 销毁
 ## 📡 事件 & 通信
 
 ### events `^3.3.0`
+
 Node.js 事件模块
 
 ```typescript
@@ -475,6 +497,7 @@ emitter.off('test', handler)
 ```
 
 ### mitt `^3.0.1`
+
 轻量级事件发射器（200 bytes）
 
 ```typescript
@@ -515,6 +538,7 @@ emitter.all.clear()
 ## 🚀 进程管理
 
 ### cross-spawn `^7.0.6`
+
 跨平台进程创建
 
 ```typescript
@@ -613,10 +637,12 @@ const app = new Koa()
 const router = new Router({ prefix: '/api' })
 
 // 全局中间件
-app.use(cors({
-  origin: '*',
-  credentials: true
-}))
+app.use(
+  cors({
+    origin: '*',
+    credentials: true
+  })
+)
 
 app.use(bodyParser())
 
@@ -679,14 +705,14 @@ export default app
 // 为事件定义类型
 type MyEvents = {
   'user:login': { userId: string }
-  'data:update': { id: number, data: any }
+  'data:update': { id: number; data: any }
 }
 
 const emitter = mitt<MyEvents>()
 
 // TypeScript 会检查类型
-emitter.emit('user:login', { userId: '123' })  // ✅
-emitter.emit('user:login', { id: 123 })        // ❌ 类型错误
+emitter.emit('user:login', { userId: '123' }) // ✅
+emitter.emit('user:login', { id: 123 }) // ❌ 类型错误
 ```
 
 ### 3. 错误处理
@@ -705,7 +731,7 @@ try {
 // Zod 错误处理
 const result = schema.safeParse(data)
 if (!result.success) {
-  result.error.errors.forEach(err => {
+  result.error.errors.forEach((err) => {
     console.error(`${err.path}: ${err.message}`)
   })
 }

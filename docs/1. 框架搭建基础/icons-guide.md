@@ -2,12 +2,12 @@
 
 ## 📦 已安装的图标库
 
-| 包名 | 版本 | 说明 |
-|------|------|------|
-| `@iconify/vue` | `^5.0.0` | Iconify Vue 3 组件（生产依赖） |
-| `@egoist/tailwindcss-icons` | `^1.9.2` | Tailwind CSS 图标插件（开发依赖） |
-| `@iconify-json/mdi` | `^1.2.3` | Material Design Icons 图标集 |
-| `@iconify-json/svg-spinners` | `^1.2.4` | SVG 加载动画图标集 |
+| 包名                         | 版本     | 说明                              |
+| ---------------------------- | -------- | --------------------------------- |
+| `@iconify/vue`               | `^5.0.0` | Iconify Vue 3 组件（生产依赖）    |
+| `@egoist/tailwindcss-icons`  | `^1.9.2` | Tailwind CSS 图标插件（开发依赖） |
+| `@iconify-json/mdi`          | `^1.2.3` | Material Design Icons 图标集      |
+| `@iconify-json/svg-spinners` | `^1.2.4` | SVG 加载动画图标集                |
 
 ---
 
@@ -30,7 +30,7 @@ import { Icon } from '@iconify/vue'
     <Icon icon="mdi:home" />
     <Icon icon="mdi:settings" />
     <Icon icon="mdi:account" />
-    
+
     <!-- SVG Spinners -->
     <Icon icon="svg-spinners:ring-resize" />
     <Icon icon="svg-spinners:pulse-3" />
@@ -45,23 +45,20 @@ import { Icon } from '@iconify/vue'
 <template>
   <!-- 自定义大小 -->
   <Icon icon="mdi:home" :width="24" :height="24" />
-  
+
   <!-- 自定义颜色 -->
   <Icon icon="mdi:heart" color="red" />
   <Icon icon="mdi:star" color="#fbbf24" />
-  
+
   <!-- 使用 Tailwind 类名 -->
   <Icon icon="mdi:check" class="text-green-500 w-6 h-6" />
-  
+
   <!-- 旋转和翻转 -->
   <Icon icon="mdi:arrow-right" :rotate="90" />
   <Icon icon="mdi:arrow-right" :flip="horizontal" />
-  
+
   <!-- 内联样式 -->
-  <Icon 
-    icon="mdi:account" 
-    :style="{ color: 'blue', fontSize: '32px' }" 
-  />
+  <Icon icon="mdi:account" :style="{ color: 'blue', fontSize: '32px' }" />
 </template>
 ```
 
@@ -77,7 +74,7 @@ const isLiked = ref(false)
 
 <template>
   <button @click="isLiked = !isLiked" class="p-2">
-    <Icon 
+    <Icon
       :icon="isLiked ? 'mdi:heart' : 'mdi:heart-outline'"
       :class="isLiked ? 'text-red-500' : 'text-gray-400'"
       class="w-6 h-6 transition-colors"
@@ -100,12 +97,12 @@ const isLiked = ref(false)
   <i class="i-mdi-home"></i>
   <i class="i-mdi-settings"></i>
   <i class="i-mdi-account"></i>
-  
+
   <!-- 自定义大小 -->
   <i class="i-mdi-home text-xl"></i>
   <i class="i-mdi-home text-2xl"></i>
   <i class="i-mdi-home w-8 h-8"></i>
-  
+
   <!-- 自定义颜色 -->
   <i class="i-mdi-heart text-red-500"></i>
   <i class="i-mdi-star text-yellow-500"></i>
@@ -120,7 +117,7 @@ const isLiked = ref(false)
     <i class="i-mdi-plus"></i>
     <span>添加</span>
   </button>
-  
+
   <button class="p-2 hover:bg-gray-100 rounded">
     <i class="i-mdi-delete text-red-500"></i>
   </button>
@@ -142,38 +139,38 @@ const isLiked = ref(false)
     <Icon icon="mdi:close" />
     <Icon icon="mdi:arrow-left" />
     <Icon icon="mdi:arrow-right" />
-    
+
     <!-- 操作图标 -->
     <Icon icon="mdi:plus" />
     <Icon icon="mdi:minus" />
     <Icon icon="mdi:delete" />
     <Icon icon="mdi:edit" />
     <Icon icon="mdi:check" />
-    
+
     <!-- 文件图标 -->
     <Icon icon="mdi:file" />
     <Icon icon="mdi:folder" />
     <Icon icon="mdi:download" />
     <Icon icon="mdi:upload" />
     <Icon icon="mdi:cloud" />
-    
+
     <!-- 用户图标 -->
     <Icon icon="mdi:account" />
     <Icon icon="mdi:account-group" />
     <Icon icon="mdi:login" />
     <Icon icon="mdi:logout" />
-    
+
     <!-- 设置图标 -->
     <Icon icon="mdi:settings" />
     <Icon icon="mdi:cog" />
     <Icon icon="mdi:wrench" />
-    
+
     <!-- 社交图标 -->
     <Icon icon="mdi:heart" />
     <Icon icon="mdi:star" />
     <Icon icon="mdi:share" />
     <Icon icon="mdi:comment" />
-    
+
     <!-- 通知图标 -->
     <Icon icon="mdi:bell" />
     <Icon icon="mdi:email" />
@@ -228,23 +225,29 @@ const isLiked = ref(false)
 <template>
   <div class="flex gap-2">
     <!-- 主要按钮 -->
-    <button class="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+    <button
+      class="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+    >
       <Icon icon="mdi:plus" />
       <span>新建</span>
     </button>
-    
+
     <!-- 次要按钮 -->
-    <button class="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded hover:bg-gray-50">
+    <button
+      class="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
+    >
       <Icon icon="mdi:download" />
       <span>下载</span>
     </button>
-    
+
     <!-- 危险按钮 -->
-    <button class="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">
+    <button
+      class="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+    >
       <Icon icon="mdi:delete" />
       <span>删除</span>
     </button>
-    
+
     <!-- 仅图标按钮 -->
     <button class="p-2 hover:bg-gray-100 rounded">
       <Icon icon="mdi:settings" class="w-5 h-5" />
@@ -259,11 +262,7 @@ const isLiked = ref(false)
 <template>
   <div class="relative">
     <Icon icon="mdi:magnify" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-    <input 
-      type="text" 
-      placeholder="搜索..." 
-      class="pl-10 pr-4 py-2 border rounded w-full"
-    />
+    <input type="text" placeholder="搜索..." class="pl-10 pr-4 py-2 border rounded w-full" />
   </div>
 </template>
 ```
@@ -278,19 +277,19 @@ const isLiked = ref(false)
       <Icon icon="mdi:check-circle" />
       <span>成功</span>
     </div>
-    
+
     <!-- 错误 -->
     <div class="flex items-center gap-2 text-red-600">
       <Icon icon="mdi:alert-circle" />
       <span>错误</span>
     </div>
-    
+
     <!-- 警告 -->
     <div class="flex items-center gap-2 text-yellow-600">
       <Icon icon="mdi:alert" />
       <span>警告</span>
     </div>
-    
+
     <!-- 信息 -->
     <div class="flex items-center gap-2 text-blue-600">
       <Icon icon="mdi:information" />
@@ -312,21 +311,18 @@ const isLoading = ref(false)
 async function handleSubmit() {
   isLoading.value = true
   // 模拟异步操作
-  await new Promise(resolve => setTimeout(resolve, 2000))
+  await new Promise((resolve) => setTimeout(resolve, 2000))
   isLoading.value = false
 }
 </script>
 
 <template>
-  <button 
+  <button
     @click="handleSubmit"
     :disabled="isLoading"
     class="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50"
   >
-    <Icon 
-      :icon="isLoading ? 'svg-spinners:ring-resize' : 'mdi:send'" 
-      class="w-5 h-5"
-    />
+    <Icon :icon="isLoading ? 'svg-spinners:ring-resize' : 'mdi:send'" class="w-5 h-5" />
     <span>{{ isLoading ? '发送中...' : '发送' }}</span>
   </button>
 </template>
@@ -342,13 +338,13 @@ async function handleSubmit() {
       <span class="flex-1">文档.docx</span>
       <Icon icon="mdi:download" class="text-gray-400 w-5 h-5" />
     </li>
-    
+
     <li class="flex items-center gap-3 p-3 hover:bg-gray-50 rounded cursor-pointer">
       <Icon icon="mdi:file-image" class="text-green-500 w-5 h-5" />
       <span class="flex-1">图片.png</span>
       <Icon icon="mdi:download" class="text-gray-400 w-5 h-5" />
     </li>
-    
+
     <li class="flex items-center gap-3 p-3 hover:bg-gray-50 rounded cursor-pointer">
       <Icon icon="mdi:file-pdf-box" class="text-red-500 w-5 h-5" />
       <span class="flex-1">报告.pdf</span>
@@ -367,10 +363,7 @@ async function handleSubmit() {
 ```vue
 <template>
   <!-- 使用 Tailwind 响应式类 -->
-  <Icon 
-    icon="mdi:home" 
-    class="w-4 h-4 md:w-6 md:h-6 lg:w-8 lg:h-8" 
-  />
+  <Icon icon="mdi:home" class="w-4 h-4 md:w-6 md:h-6 lg:w-8 lg:h-8" />
 </template>
 ```
 
@@ -380,10 +373,10 @@ async function handleSubmit() {
 <template>
   <!-- 悬停旋转 -->
   <Icon icon="mdi:settings" class="w-6 h-6 transition-transform hover:rotate-90" />
-  
+
   <!-- 悬停缩放 -->
   <Icon icon="mdi:heart" class="w-6 h-6 transition-transform hover:scale-125" />
-  
+
   <!-- 脉冲动画 -->
   <Icon icon="mdi:bell" class="w-6 h-6 animate-pulse" />
 </template>
@@ -393,8 +386,8 @@ async function handleSubmit() {
 
 ```vue
 <template>
-  <Icon 
-    icon="mdi:heart" 
+  <Icon
+    icon="mdi:heart"
     class="w-8 h-8"
     style="background: linear-gradient(to right, #ff6b6b, #ee5a6f); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"
   />
@@ -437,7 +430,7 @@ const ICON_SIZES = {
   <button aria-label="关闭">
     <Icon icon="mdi:close" />
   </button>
-  
+
   <!-- 更好的做法：结合文字说明 -->
   <button class="flex items-center gap-2">
     <Icon icon="mdi:plus" />
