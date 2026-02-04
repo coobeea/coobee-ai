@@ -13,7 +13,7 @@ export { IconManager, getAppIcon, getTrayIcon, getTrayNativeImage, validateIcons
 export { WindowEvents, BrowserWindowEvents, ElectronAppEvents } from './events'
 
 // 模块扫描
-export { scanProcessors, scanJobs, scanApis, scanLifeCycleBeans, filterModules } from './scan'
+export { scanProcessors, scanJobs, scanApis, scanLifeCycleHooks, filterModules } from './scan'
 
 // 数据库模块
 export * from './database'
