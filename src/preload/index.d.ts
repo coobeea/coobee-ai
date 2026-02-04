@@ -5,7 +5,7 @@ declare global {
     electron: ElectronAPI
     api: {
       getPlatform: () => string
-      getWindowId: () => number
+      getWindowId: () => Promise<number>
     }
   }
 }

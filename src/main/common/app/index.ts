@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, ipcMain, BrowserWindow } from 'electron'
 import { electronApp } from '@electron-toolkit/utils'
 
 import { log } from '../logger'
@@ -20,6 +20,16 @@ export class AppManager implements IAppManager {
   constructor() {
     this.lifecycleManager = new LifecycleManager()
     this.setupAppEventHandlers()
+  }
+
+  /**
+   * 注册 IPC 处理器（供渲染进程拉取数据）
+   */
+  private setupIpcHandlers(): void {
+    ipcMain.handle('shell:get-window-id', (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      return win ? win.id : 0
+    })
   }
 
   /**
@@ -68,6 +78,9 @@ export class AppManager implements IAppManager {
 
       // 3. 触发 READY 阶段生命周期（供其他模块使用）
       await this.lifecycleManager.executePhase(LifecyclePhase.READY)
+
+      // 4. 注册 IPC：渲染进程拉取当前窗口 ID
+      this.setupIpcHandlers()
 
       log.info('[App] 应用初始化完成')
     } catch (error) {
