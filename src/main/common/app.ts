@@ -58,11 +58,11 @@ export class AppManager {
       electronApp.setAppUserModelId('com.electron')
       log.info('[App] 应用基础配置完成')
 
-      // 等待应用准备就绪
-      await app.whenReady()
-
       // 2. 触发 INIT 阶段生命周期（供其他模块使用）
       await this.lifecycleManager.executePhase(LifecyclePhase.INIT)
+
+      // 等待应用准备就绪
+      await app.whenReady()
 
       // 3. 触发 READY 阶段生命周期（供其他模块使用）
       await this.lifecycleManager.executePhase(LifecyclePhase.READY)
