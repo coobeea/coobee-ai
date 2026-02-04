@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@plugin "@tailwindcss/typography";
 @plugin "@egoist/tailwindcss-icons";
 
 /* 自定义主题配置 */

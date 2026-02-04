@@ -4,6 +4,9 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import monacoEditorPlugin from 'vite-plugin-monaco-editor-esm'
 import path from 'node:path'
+import Icons from 'unplugin-icons/vite'
+import IconsResolver from 'unplugin-icons/resolver'
+import Components from 'unplugin-vue-components/vite'
 
 export default defineConfig({
   main: {
@@ -53,6 +56,20 @@ export default defineConfig({
         customDistPath(_root, buildOutDir) {
           return path.resolve(buildOutDir, 'monacoeditorwork')
         }
+      }),
+      // 自动导入 Vue 组件
+      Components({
+        resolvers: [
+          // 自动导入图标组件
+          IconsResolver({
+            prefix: 'icon' // 组件前缀，如 <icon-mdi-home />
+          })
+        ]
+      }),
+      // 图标插件
+      Icons({
+        compiler: 'vue3',
+        autoInstall: true // 自动安装需要的图标集
       }),
       vue({
         template: {
