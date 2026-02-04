@@ -50,3 +50,13 @@ export { LifecycleManager } from './lifecycle'
 export { AppManager } from './app'
 export { ElectronAppEvents } from './app/types'
 export type { IAppManager } from './app/types'
+
+// IPC 模块
+export {
+  ShellChannels,
+  WindowChannels,
+  registerIpcHandlers,
+  registerShellHandlers,
+  registerWindowHandlers
+} from './ipc'
+export type { ShellChannel, WindowChannel } from './ipc'

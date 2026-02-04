@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import { ShellChannels } from '@shared/ipcChannels'
 
 // Custom APIs for renderer
 const api = {
@@ -11,7 +12,7 @@ const api = {
   /**
    * 获取当前窗口 ID（向主进程拉取，失败返回 0）
    */
-  getWindowId: (): Promise<number> => ipcRenderer.invoke('shell:get-window-id')
+  getWindowId: (): Promise<number> => ipcRenderer.invoke(ShellChannels.GET_WINDOW_ID)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

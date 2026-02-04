@@ -6,6 +6,7 @@ import IconMdiWindowMaximize from '~icons/mdi/window-maximize'
 import IconMdiWindowRestore from '~icons/mdi/window-restore'
 import IconMdiClose from '~icons/mdi/close'
 
+import { WindowChannels } from '@shared/ipcChannels'
 import TabItem from './TabItem.vue'
 import { useTabStore } from '../stores/tab'
 import { usePlatform } from '../composables/usePlatform'
@@ -17,16 +18,16 @@ const isMaximized = ref(false)
 
 // 窗口控制
 const minimizeWindow = (): void => {
-  window.electron.ipcRenderer.send('window:minimize')
+  window.electron.ipcRenderer.send(WindowChannels.MINIMIZE)
 }
 
 const maximizeWindow = (): void => {
-  window.electron.ipcRenderer.send('window:maximize')
+  window.electron.ipcRenderer.send(WindowChannels.MAXIMIZE)
   isMaximized.value = !isMaximized.value
 }
 
 const closeWindow = (): void => {
-  window.electron.ipcRenderer.send('window:close')
+  window.electron.ipcRenderer.send(WindowChannels.CLOSE)
 }
 
 // 最大化图标
