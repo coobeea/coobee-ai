@@ -13,6 +13,7 @@ export default defineConfig({
     resolve: {
       alias: {
         '@': resolve('src/main/'),
+        '@main': resolve('src/main/'),
         '@shared': resolve('src/shared')
       }
     },
@@ -30,6 +31,7 @@ export default defineConfig({
   preload: {
     resolve: {
       alias: {
+        '@main': resolve('src/main/'),
         '@shared': resolve('src/shared')
       }
     }
