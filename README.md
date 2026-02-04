@@ -7,7 +7,7 @@ An Electron application with Vue and TypeScript
 - **框架**: Electron + Vue 3 + TypeScript
 - **构建工具**: Electron Vite
 - **样式**: Tailwind CSS 4
-- **图标**: unplugin-icons + @iconify/tailwind4
+- **图标**: unplugin-icons + @egoist/tailwindcss-icons
 - **状态管理**: Pinia
 - **路由**: Vue Router
 - **编辑器**: Monaco Editor
@@ -16,6 +16,7 @@ An Electron application with Vue and TypeScript
 
 - ✅ **三种图标使用方式** - 组件、自动导入、CSS 类，覆盖所有使用场景
 - ✅ **离线图标** - 200,000+ 图标，完全离线打包
+- ✅ **生命周期管理** - 简洁的应用生命周期 Hook 系统
 - ✅ **类型安全** - 完整的 TypeScript 支持
 - ✅ **热更新** - 快速开发体验
 - ✅ **现代化 UI** - 基于 Tailwind CSS 4
@@ -24,6 +25,7 @@ An Electron application with Vue and TypeScript
 
 - [图标使用指南](./docs/icon-usage-guide.md) - 详细的图标使用文档
 - [图标快速参考](./docs/icon-quick-reference.md) - 快速查找常用用法
+- [生命周期管理](./src/main/lifecycle/README.md) - 应用生命周期管理文档
 - [依赖清单](./docs/installed-dependencies.md) - 已安装的依赖列表
 
 ## 💻 IDE 推荐
