@@ -45,20 +45,8 @@ export class WindowManager implements IWindowManager {
   private readonly MAX_TABS_PER_WINDOW = 20
 
   constructor() {
-    // 设置事件监听器
-    this.setupEventHandlers()
-  }
-
-  /**
-   * 设置事件监听器
-   */
-  private setupEventHandlers(): void {
-    // TODO: 实现事件监听器
-    // - app ready
-    // - window events
-    // - system events
-    // - window:closed: 窗口关闭时，关闭所有 Tab
-    // - window:resized: 窗口大小变化时，更新所有 Tab 的边界
+    // WindowManager 初始化
+    // 事件处理由 EventBus 自动扫描注册，参见 src/main/common/eventbus.ts
   }
 
   // ==================== Tab 管理方法 ====================
