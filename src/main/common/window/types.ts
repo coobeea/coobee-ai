@@ -62,6 +62,8 @@ export interface WindowInfo {
   state: WindowState
   /** Tab 信息列表 */
   tabs: Map<number, TabInfo>
+  /** TabView 实例列表 */
+  tabViews: Map<number, TabViewInfo>
 }
 
 /**
@@ -154,6 +156,8 @@ export interface TabConfig {
   title?: string
   /** Tab 图标 */
   icon?: string
+  /** 是否激活，默认 false */
+  active?: boolean
   /** 是否可关闭，默认 true */
   closable?: boolean
   /** 其他元数据 */
@@ -206,6 +210,20 @@ export interface TabData {
   position: number
   /** 是否可关闭 */
   closable: boolean
+}
+
+/**
+ * TabView 信息（包含 WebContentsView 实例）
+ */
+export interface TabViewInfo {
+  /** TabView ID */
+  id: number
+  /** 所属窗口 ID */
+  windowId: number
+  /** Tab 信息 ID */
+  tabId: number
+  /** WebContentsView 实例 */
+  view: WebContentsView
 }
 
 /**

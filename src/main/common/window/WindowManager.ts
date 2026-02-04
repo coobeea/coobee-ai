@@ -11,7 +11,9 @@
  * - Tab 事件处理
  */
 
-import type { BrowserWindow, BrowserWindowConstructorOptions, WebContentsView } from 'electron'
+import { BrowserWindow, WebContentsView } from 'electron'
+import type { BrowserWindowConstructorOptions } from 'electron'
+import { join } from 'path'
 import type {
   WindowConfig,
   WindowInfo,
@@ -20,9 +22,12 @@ import type {
   WindowType,
   TabConfig,
   TabInfo,
+  TabViewInfo,
   IWindowManager
 } from './types'
 import { WINDOW_PRESETS, CHROME_HEIGHT } from './types'
+import { log } from '@main/common/logger'
+import { Env } from '@main/common/env'
 
 export class WindowManager implements IWindowManager {
   // ==================== 窗口管理状态 ====================
@@ -58,19 +63,91 @@ export class WindowManager implements IWindowManager {
    * @returns Tab ID，创建失败返回 null
    */
   async createTab(windowId: number, config: TabConfig): Promise<number | null> {
-    // TODO: 实现 Tab 创建逻辑
-    // 1. 检查窗口是否存在
-    // 2. 检查 Tab 数量限制
-    // 3. 创建 WebContentsView
-    // 4. 注册 Tab 信息
-    // 5. 添加到窗口
-    // 6. 更新窗口 Tab 列表
-    // 7. 设置 View 边界
-    // 8. 绑定事件
-    // 9. 加载内容
-    // 10. 发送 Tab 创建事件
-    // 11. 通知窗口更新
-    throw new Error('Not implemented')
+    log.debug(`[WindowManager] 开始创建 Tab: windowId=${windowId}, url=${config.url}`)
+
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) {
+      log.warn(`[WindowManager] 窗口不存在: windowId=${windowId}`)
+      return null
+    }
+
+    // 检查 Tab 数量限制
+    if (windowInfo.tabs.size >= this.MAX_TABS_PER_WINDOW) {
+      log.warn(
+        `[WindowManager] 窗口 Tab 数量已达上限: windowId=${windowId}, count=${windowInfo.tabs.size}`
+      )
+      return null
+    }
+
+    try {
+      // 1. 创建 WebContentsView（使用窗口的预设配置）
+      const preset = this.getWindowPreset(windowInfo.type)
+      const view = new WebContentsView({
+        webPreferences: preset.webPreferences
+      })
+
+      const tabId = view.webContents.id
+      log.debug(`[WindowManager] WebContentsView 已创建: tabId=${tabId}`)
+
+      // 2. 计算 position
+      const position = windowInfo.tabs.size
+
+      // 3. 创建 TabInfo
+      const tabInfo: TabInfo = {
+        id: tabId,
+        windowId,
+        view,
+        url: config.url || '',
+        title: config.title || '新标签页',
+        icon: config.icon,
+        isActive: config.active ?? windowInfo.tabs.size === 0, // 如果是第一个 Tab，自动激活
+        position,
+        closable: config.closable ?? true,
+        createdAt: new Date(),
+        metadata: config.metadata || {}
+      }
+
+      // 4. 创建 TabViewInfo
+      const tabViewInfo: TabViewInfo = {
+        id: tabId,
+        windowId,
+        tabId,
+        view
+      }
+
+      // 5. 注册 Tab
+      windowInfo.tabs.set(tabId, tabInfo)
+      windowInfo.tabViews.set(tabId, tabViewInfo)
+      this.webContentsToTabId.set(view.webContents.id, tabId)
+
+      // 6. 添加到窗口
+      windowInfo.window.contentView.addChildView(view)
+
+      // 7. 设置 View 边界
+      this.updateViewBounds(windowInfo.window, view)
+
+      // 8. 绑定事件
+      this.setupTabEvents(tabId)
+
+      // 9. 加载内容
+      if (config.url) {
+        log.debug(`[WindowManager] 开始加载 Tab 内容: tabId=${tabId}, url=${config.url}`)
+        await this.loadTabContent(view, config.url)
+      }
+
+      // 10. 如果是激活的 Tab，切换到它
+      if (tabInfo.isActive) {
+        await this.switchTab(windowId, tabId)
+      }
+
+      log.info(
+        `[WindowManager] Tab 创建成功: tabId=${tabId}, windowId=${windowId}, title=${tabInfo.title}`
+      )
+      return tabId
+    } catch (error) {
+      log.error('[WindowManager] 创建 Tab 失败:', error)
+      return null
+    }
   }
 
   /**
@@ -80,16 +157,45 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功切换
    */
   async switchTab(windowId: number, tabId: number): Promise<boolean> {
-    // TODO: 实现 Tab 切换逻辑
-    // 1. 获取 Tab 信息
-    // 2. 获取窗口实例
-    // 3. 取消当前窗口所有 Tab 的激活状态
-    // 4. 激活目标 Tab
-    // 5. 将 View 移到最上层
-    // 6. 更新边界
-    // 7. 发送 Tab 切换事件
-    // 8. 通知窗口更新
-    throw new Error('Not implemented')
+    log.debug(`[WindowManager] 切换 Tab: windowId=${windowId}, tabId=${tabId}`)
+
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) {
+      log.warn(`[WindowManager] 窗口不存在: windowId=${windowId}`)
+      return false
+    }
+
+    const tabInfo = windowInfo.tabs.get(tabId)
+    const tabViewInfo = windowInfo.tabViews.get(tabId)
+    if (!tabInfo || !tabViewInfo) {
+      log.warn(`[WindowManager] Tab 不存在: tabId=${tabId}`)
+      return false
+    }
+
+    try {
+      // 1. 取消当前窗口所有 Tab 的激活状态
+      for (const tab of windowInfo.tabs.values()) {
+        tab.isActive = false
+      }
+
+      // 2. 激活目标 Tab
+      tabInfo.isActive = true
+
+      // 3. 将 View 移到最上层（通过重新添加）
+      windowInfo.window.contentView.removeChildView(tabViewInfo.view)
+      windowInfo.window.contentView.addChildView(tabViewInfo.view)
+
+      // 4. 更新边界
+      this.updateViewBounds(windowInfo.window, tabViewInfo.view)
+
+      log.info(
+        `[WindowManager] Tab 切换成功: windowId=${windowId}, tabId=${tabId}, title=${tabInfo.title}`
+      )
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 切换 Tab 失败:', error)
+      return false
+    }
   }
 
   /**
@@ -99,16 +205,67 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功关闭
    */
   async closeTab(windowId: number, tabId: number): Promise<boolean> {
-    // TODO: 实现 Tab 关闭逻辑
-    // 1. 获取 Tab 信息
-    // 2. 从窗口移除 View
-    // 3. 销毁 webContents
-    // 4. 清理映射
-    // 5. 从窗口 Tab 列表移除
-    // 6. 如果是激活的 Tab，切换到其他 Tab
-    // 7. 发送 Tab 关闭事件
-    // 8. 通知窗口更新
-    throw new Error('Not implemented')
+    log.debug(`[WindowManager] 关闭 Tab: windowId=${windowId}, tabId=${tabId}`)
+
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) {
+      log.warn(`[WindowManager] 窗口不存在: windowId=${windowId}`)
+      return false
+    }
+
+    const tabInfo = windowInfo.tabs.get(tabId)
+    const tabViewInfo = windowInfo.tabViews.get(tabId)
+    if (!tabInfo || !tabViewInfo) {
+      log.warn(`[WindowManager] Tab 不存在: tabId=${tabId}`)
+      return false
+    }
+
+    // 检查是否可关闭
+    if (!tabInfo.closable) {
+      log.warn(`[WindowManager] Tab 不可关闭: tabId=${tabId}`)
+      return false
+    }
+
+    try {
+      const wasActive = tabInfo.isActive
+      const tabTitle = tabInfo.title
+
+      // 1. 从窗口移除 View
+      windowInfo.window.contentView.removeChildView(tabViewInfo.view)
+
+      // 2. 销毁 webContents
+      try {
+        tabViewInfo.view.webContents.close()
+      } catch (e) {
+        log.debug('[WindowManager] 关闭 webContents 时出错（可忽略）:', e)
+      }
+
+      // 3. 清理 Tab
+      this.cleanupTab(tabId)
+
+      // 4. 如果是激活的 Tab，切换到其他 Tab
+      if (wasActive && windowInfo.tabs.size > 0) {
+        const firstTab = Array.from(windowInfo.tabs.values())[0]
+        log.debug(`[WindowManager] 激活的 Tab 被关闭，切换到: tabId=${firstTab.id}`)
+        await this.switchTab(windowId, firstTab.id)
+      }
+
+      // 5. 重新计算所有 Tab 的 position
+      let position = 0
+      for (const tab of Array.from(windowInfo.tabs.values()).sort(
+        (a, b) => a.position - b.position
+      )) {
+        tab.position = position++
+      }
+
+      log.info(
+        `[WindowManager] Tab 关闭成功: tabId=${tabId}, title=${tabTitle}, 剩余=${windowInfo.tabs.size}`
+      )
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 关闭 Tab 失败:', error)
+      return false
+    }
   }
 
   /**
@@ -118,8 +275,29 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功重新排序
    */
   async reorderTabs(windowId: number, tabIds: number[]): Promise<boolean> {
-    // TODO: 实现 Tab 重新排序逻辑
-    throw new Error('Not implemented')
+    log.debug(`[WindowManager] 重新排序 Tab: windowId=${windowId}, count=${tabIds.length}`)
+
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) {
+      log.warn(`[WindowManager] 窗口不存在: windowId=${windowId}`)
+      return false
+    }
+
+    try {
+      // 更新每个 Tab 的 position
+      tabIds.forEach((tabId, index) => {
+        const tab = windowInfo.tabs.get(tabId)
+        if (tab) {
+          tab.position = index
+        }
+      })
+
+      log.info(`[WindowManager] Tab 重新排序成功: windowId=${windowId}`)
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 重新排序 Tab 失败:', error)
+      return false
+    }
   }
 
   /**
@@ -130,8 +308,60 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功移动
    */
   async moveTabToWindow(tabId: number, fromWindowId: number, toWindowId: number): Promise<boolean> {
-    // TODO: 实现 Tab 移动到另一个窗口的逻辑
-    throw new Error('Not implemented')
+    log.debug(`[WindowManager] 移动 Tab: tabId=${tabId}, from=${fromWindowId}, to=${toWindowId}`)
+
+    const fromWindow = this.windows.get(fromWindowId)
+    const toWindow = this.windows.get(toWindowId)
+    if (!fromWindow || !toWindow) {
+      log.warn(`[WindowManager] 源窗口或目标窗口不存在`)
+      return false
+    }
+
+    const tabInfo = fromWindow.tabs.get(tabId)
+    const tabViewInfo = fromWindow.tabViews.get(tabId)
+    if (!tabInfo || !tabViewInfo) {
+      log.warn(`[WindowManager] Tab 不存在: tabId=${tabId}`)
+      return false
+    }
+
+    // 检查目标窗口 Tab 数量
+    if (toWindow.tabs.size >= this.MAX_TABS_PER_WINDOW) {
+      log.warn(
+        `[WindowManager] 目标窗口 Tab 数量已达上限: windowId=${toWindowId}, count=${toWindow.tabs.size}`
+      )
+      return false
+    }
+
+    try {
+      const tabTitle = tabInfo.title
+
+      // 1. 从源窗口移除
+      fromWindow.window.contentView.removeChildView(tabViewInfo.view)
+      fromWindow.tabs.delete(tabId)
+      fromWindow.tabViews.delete(tabId)
+
+      // 2. 更新 Tab 信息
+      tabInfo.windowId = toWindowId
+      tabInfo.position = toWindow.tabs.size
+      tabInfo.isActive = false
+      tabViewInfo.windowId = toWindowId
+
+      // 3. 添加到目标窗口
+      toWindow.tabs.set(tabId, tabInfo)
+      toWindow.tabViews.set(tabId, tabViewInfo)
+      toWindow.window.contentView.addChildView(tabViewInfo.view)
+
+      // 4. 更新边界
+      this.updateViewBounds(toWindow.window, tabViewInfo.view)
+
+      log.info(
+        `[WindowManager] Tab 移动成功: tabId=${tabId}, title=${tabTitle}, from=${fromWindowId}, to=${toWindowId}`
+      )
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 移动 Tab 失败:', error)
+      return false
+    }
   }
 
   /**
@@ -141,8 +371,35 @@ export class WindowManager implements IWindowManager {
    * @returns 新 Tab 的 ID，失败返回 null
    */
   async duplicateTab(windowId: number, tabId: number): Promise<number | null> {
-    // TODO: 实现 Tab 复制逻辑
-    throw new Error('Not implemented')
+    log.debug(`[WindowManager] 复制 Tab: windowId=${windowId}, tabId=${tabId}`)
+
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) {
+      log.warn(`[WindowManager] 窗口不存在: windowId=${windowId}`)
+      return null
+    }
+
+    const tabInfo = windowInfo.tabs.get(tabId)
+    if (!tabInfo) {
+      log.warn(`[WindowManager] Tab 不存在: tabId=${tabId}`)
+      return null
+    }
+
+    // 创建新 Tab，复制配置
+    const newTabId = await this.createTab(windowId, {
+      url: tabInfo.url,
+      title: tabInfo.title,
+      icon: tabInfo.icon,
+      closable: tabInfo.closable,
+      active: false,
+      metadata: { ...tabInfo.metadata }
+    })
+
+    if (newTabId) {
+      log.info(`[WindowManager] Tab 复制成功: 原tabId=${tabId}, 新tabId=${newTabId}`)
+    }
+
+    return newTabId
   }
 
   /**
@@ -152,8 +409,28 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功刷新
    */
   reloadTab(windowId: number, tabId: number): boolean {
-    // TODO: 实现 Tab 刷新逻辑
-    throw new Error('Not implemented')
+    log.debug(`[WindowManager] 刷新 Tab: windowId=${windowId}, tabId=${tabId}`)
+
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) {
+      log.warn(`[WindowManager] 窗口不存在: windowId=${windowId}`)
+      return false
+    }
+
+    const tabViewInfo = windowInfo.tabViews.get(tabId)
+    if (!tabViewInfo) {
+      log.warn(`[WindowManager] Tab 不存在: tabId=${tabId}`)
+      return false
+    }
+
+    try {
+      tabViewInfo.view.webContents.reload()
+      log.info(`[WindowManager] Tab 刷新成功: tabId=${tabId}`)
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 刷新 Tab 失败:', error)
+      return false
+    }
   }
 
   /**
@@ -238,27 +515,60 @@ export class WindowManager implements IWindowManager {
    * ```
    */
   createWindow(config: WindowConfig): BrowserWindow | null {
-    // TODO: 实现窗口创建逻辑
-    // 1. 获取窗口预设配置
-    //    const preset = this.getWindowPreset(config.type)
-    // 2. 合并预设配置和用户配置（用户配置优先）
-    //    const options = { ...preset, ...config }
-    // 3. 创建 BrowserWindow 实例
-    //    const window = new BrowserWindow(options)
-    // 4. 注册窗口信息
-    //    this.windows.set(window.id, window)
-    //    this.windowInfo.set(window.id, {...})
-    // 5. 设置主窗口（如果是第一个 agent 窗口）
-    //    if (config.type === 'agent' && !this.mainWindowId) {
-    //      this.mainWindowId = window.id
-    //    }
-    // 6. 绑定窗口事件
-    //    this.setupWindowEvents(window.id)
-    // 7. 加载窗口内容
-    //    await this.loadWindowContent(window, config.initialUrl || '/')
-    // 8. 发送窗口创建事件
-    //    eventBus.emit('window:created', { windowId: window.id, type: config.type })
-    throw new Error('Not implemented')
+    log.debug(`[WindowManager] 开始创建窗口: type=${config.type}`)
+
+    try {
+      // 1. 获取预设配置并合并用户配置
+      const preset = this.getWindowPreset(config.type)
+      const options: BrowserWindowConstructorOptions = {
+        ...preset,
+        ...config,
+        show: false // 先不显示，等待 ready-to-show
+      }
+
+      // 2. 创建 BrowserWindow
+      const window = new BrowserWindow(options)
+      log.debug(`[WindowManager] BrowserWindow 已创建: windowId=${window.id}`)
+
+      // 3. 创建窗口信息
+      const windowInfo: WindowInfo = {
+        id: window.id,
+        type: config.type,
+        window,
+        isMain: config.type === 'agent' && !this.mainWindowId,
+        createdAt: new Date(),
+        metadata: config.metadata || {},
+        state: {
+          isVisible: false,
+          isFocused: false,
+          isMinimized: false,
+          isMaximized: false,
+          isFullScreen: false
+        },
+        tabs: new Map(),
+        tabViews: new Map()
+      }
+
+      // 4. 注册窗口
+      this.windows.set(window.id, windowInfo)
+
+      // 5. 设置主窗口
+      if (windowInfo.isMain) {
+        this.mainWindowId = window.id
+        log.info(`[WindowManager] 设置主窗口: windowId=${window.id}`)
+      }
+
+      // 6. 绑定窗口事件
+      this.setupWindowEvents(window.id)
+
+      log.info(
+        `[WindowManager] 窗口创建成功: windowId=${window.id}, type=${config.type}, isMain=${windowInfo.isMain}`
+      )
+      return window
+    } catch (error) {
+      log.error('[WindowManager] 创建窗口失败:', error)
+      return null
+    }
   }
 
   // ==================== 窗口查询 ====================
@@ -269,8 +579,7 @@ export class WindowManager implements IWindowManager {
    * @returns BrowserWindow 实例
    */
   getWindow(windowId: number): BrowserWindow | undefined {
-    // TODO: 实现获取窗口逻辑
-    throw new Error('Not implemented')
+    return this.windows.get(windowId)?.window
   }
 
   /**
@@ -278,8 +587,7 @@ export class WindowManager implements IWindowManager {
    * @returns 主窗口实例
    */
   getMainWindow(): BrowserWindow | undefined {
-    // TODO: 实现获取主窗口逻辑
-    throw new Error('Not implemented')
+    return this.mainWindowId ? this.windows.get(this.mainWindowId)?.window : undefined
   }
 
   /**
@@ -287,8 +595,7 @@ export class WindowManager implements IWindowManager {
    * @returns 聚焦窗口实例
    */
   getFocusedWindow(): BrowserWindow | undefined {
-    // TODO: 实现获取聚焦窗口逻辑
-    throw new Error('Not implemented')
+    return this.focusedWindowId ? this.windows.get(this.focusedWindowId)?.window : undefined
   }
 
   /**
@@ -296,8 +603,7 @@ export class WindowManager implements IWindowManager {
    * @returns 所有窗口实例数组
    */
   getAllWindows(): BrowserWindow[] {
-    // TODO: 实现获取所有窗口逻辑
-    throw new Error('Not implemented')
+    return Array.from(this.windows.values()).map((info) => info.window)
   }
 
   /**
@@ -306,8 +612,9 @@ export class WindowManager implements IWindowManager {
    * @returns 该类型的所有窗口
    */
   getWindowsByType(type: WindowType): BrowserWindow[] {
-    // TODO: 实现根据类型获取窗口逻辑
-    throw new Error('Not implemented')
+    return Array.from(this.windows.values())
+      .filter((info) => info.type === type)
+      .map((info) => info.window)
   }
 
   /**
@@ -316,8 +623,7 @@ export class WindowManager implements IWindowManager {
    * @returns 窗口信息
    */
   getWindowInfo(windowId: number): WindowInfo | undefined {
-    // TODO: 实现获取窗口信息逻辑
-    throw new Error('Not implemented')
+    return this.windows.get(windowId)
   }
 
   /**
@@ -325,8 +631,7 @@ export class WindowManager implements IWindowManager {
    * @returns 窗口数量
    */
   getWindowCount(): number {
-    // TODO: 实现获取窗口数量逻辑
-    throw new Error('Not implemented')
+    return this.windows.size
   }
 
   // ==================== 窗口操作 ====================
@@ -337,13 +642,23 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功关闭
    */
   async closeWindow(windowId: number): Promise<boolean> {
-    // TODO: 实现关闭窗口逻辑
-    // 1. 检查窗口是否存在
-    // 2. 如果是主窗口，可能需要特殊处理
-    // 3. 关闭窗口
-    // 4. 清理窗口信息
-    // 5. 发送窗口关闭事件
-    throw new Error('Not implemented')
+    log.debug(`[WindowManager] 关闭窗口: windowId=${windowId}`)
+
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) {
+      log.warn(`[WindowManager] 窗口不存在: windowId=${windowId}`)
+      return false
+    }
+
+    try {
+      const tabCount = windowInfo.tabs.size
+      windowInfo.window.close()
+      log.info(`[WindowManager] 窗口关闭成功: windowId=${windowId}, 关闭了 ${tabCount} 个 Tab`)
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 关闭窗口失败:', error)
+      return false
+    }
   }
 
   /**
@@ -352,8 +667,17 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功聚焦
    */
   focusWindow(windowId: number): boolean {
-    // TODO: 实现聚焦窗口逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return false
+
+    try {
+      windowInfo.window.focus()
+      log.debug(`[WindowManager] 窗口聚焦: windowId=${windowId}`)
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 聚焦窗口失败:', error)
+      return false
+    }
   }
 
   /**
@@ -362,8 +686,17 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功最小化
    */
   minimizeWindow(windowId: number): boolean {
-    // TODO: 实现最小化窗口逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return false
+
+    try {
+      windowInfo.window.minimize()
+      log.debug(`[WindowManager] 窗口最小化: windowId=${windowId}`)
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 最小化窗口失败:', error)
+      return false
+    }
   }
 
   /**
@@ -372,8 +705,17 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功最大化
    */
   maximizeWindow(windowId: number): boolean {
-    // TODO: 实现最大化窗口逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return false
+
+    try {
+      windowInfo.window.maximize()
+      log.debug(`[WindowManager] 窗口最大化: windowId=${windowId}`)
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 最大化窗口失败:', error)
+      return false
+    }
   }
 
   /**
@@ -382,8 +724,17 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功取消最大化
    */
   unmaximizeWindow(windowId: number): boolean {
-    // TODO: 实现取消最大化窗口逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return false
+
+    try {
+      windowInfo.window.unmaximize()
+      log.debug(`[WindowManager] 取消最大化: windowId=${windowId}`)
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 取消最大化窗口失败:', error)
+      return false
+    }
   }
 
   /**
@@ -393,8 +744,17 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功设置全屏
    */
   setFullScreen(windowId: number, fullscreen: boolean): boolean {
-    // TODO: 实现全屏窗口逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return false
+
+    try {
+      windowInfo.window.setFullScreen(fullscreen)
+      log.debug(`[WindowManager] 设置全屏: windowId=${windowId}, fullscreen=${fullscreen}`)
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 设置全屏失败:', error)
+      return false
+    }
   }
 
   /**
@@ -403,8 +763,18 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功显示
    */
   showWindow(windowId: number): boolean {
-    // TODO: 实现显示窗口逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return false
+
+    try {
+      windowInfo.window.show()
+      windowInfo.state.isVisible = true
+      log.debug(`[WindowManager] 显示窗口: windowId=${windowId}`)
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 显示窗口失败:', error)
+      return false
+    }
   }
 
   /**
@@ -413,8 +783,18 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功隐藏
    */
   hideWindow(windowId: number): boolean {
-    // TODO: 实现隐藏窗口逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return false
+
+    try {
+      windowInfo.window.hide()
+      windowInfo.state.isVisible = false
+      log.debug(`[WindowManager] 隐藏窗口: windowId=${windowId}`)
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 隐藏窗口失败:', error)
+      return false
+    }
   }
 
   // ==================== 窗口状态 ====================
@@ -425,8 +805,8 @@ export class WindowManager implements IWindowManager {
    * @returns 窗口状态
    */
   getWindowState(windowId: number): WindowState | null {
-    // TODO: 实现获取窗口状态逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    return windowInfo?.state || null
   }
 
   /**
@@ -435,8 +815,15 @@ export class WindowManager implements IWindowManager {
    * @returns 窗口边界
    */
   getWindowBounds(windowId: number): WindowBounds | null {
-    // TODO: 实现获取窗口边界逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return null
+
+    try {
+      return windowInfo.window.getBounds()
+    } catch (error) {
+      log.error('[WindowManager] 获取窗口边界失败:', error)
+      return null
+    }
   }
 
   /**
@@ -446,8 +833,17 @@ export class WindowManager implements IWindowManager {
    * @returns 是否成功设置
    */
   setWindowBounds(windowId: number, bounds: Partial<WindowBounds>): boolean {
-    // TODO: 实现设置窗口边界逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return false
+
+    try {
+      windowInfo.window.setBounds(bounds)
+      log.debug(`[WindowManager] 设置窗口边界: windowId=${windowId}`)
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 设置窗口边界失败:', error)
+      return false
+    }
   }
 
   // ==================== 窗口通信 ====================
@@ -459,8 +855,15 @@ export class WindowManager implements IWindowManager {
    * @param args 参数
    */
   sendToWindow(windowId: number, channel: string, ...args: unknown[]): void {
-    // TODO: 实现向窗口发送消息逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return
+
+    try {
+      windowInfo.window.webContents.send(channel, ...args)
+      log.debug(`[WindowManager] 发送消息: windowId=${windowId}, channel=${channel}`)
+    } catch (error) {
+      log.error('[WindowManager] 发送消息失败:', error)
+    }
   }
 
   /**
@@ -469,8 +872,16 @@ export class WindowManager implements IWindowManager {
    * @param args 参数
    */
   sendToAllWindows(channel: string, ...args: unknown[]): void {
-    // TODO: 实现向所有窗口广播消息逻辑
-    throw new Error('Not implemented')
+    const count = this.windows.size
+    log.debug(`[WindowManager] 广播消息: channel=${channel}, windowCount=${count}`)
+
+    for (const windowInfo of this.windows.values()) {
+      try {
+        windowInfo.window.webContents.send(channel, ...args)
+      } catch (error) {
+        log.error('[WindowManager] 广播消息失败:', error)
+      }
+    }
   }
 
   /**
@@ -479,8 +890,8 @@ export class WindowManager implements IWindowManager {
    * @param args 参数
    */
   sendToFocused(channel: string, ...args: unknown[]): void {
-    // TODO: 实现向聚焦窗口发送消息逻辑
-    throw new Error('Not implemented')
+    if (!this.focusedWindowId) return
+    this.sendToWindow(this.focusedWindowId, channel, ...args)
   }
 
   // ==================== 内部方法 ====================
@@ -499,32 +910,139 @@ export class WindowManager implements IWindowManager {
    * @param windowId 窗口 ID
    */
   private setupWindowEvents(windowId: number): void {
-    // TODO: 实现设置窗口事件监听器逻辑
-    // 监听的事件：
-    // - ready-to-show: 窗口准备显示
-    // - closed: 窗口关闭
-    // - focus: 窗口获得焦点
-    // - blur: 窗口失去焦点
-    // - minimize: 窗口最小化
-    // - maximize: 窗口最大化
-    // - unmaximize: 窗口取消最大化
-    // - enter-full-screen: 进入全屏
-    // - leave-full-screen: 离开全屏
-    // - resize: 窗口大小变化
-    // - move: 窗口位置变化
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return
+
+    const { window } = windowInfo
+    log.debug(`[WindowManager] 绑定窗口事件: windowId=${windowId}`)
+
+    // ready-to-show: 窗口准备显示
+    window.once('ready-to-show', () => {
+      windowInfo.state.isVisible = true
+      window.show()
+      log.info(`[WindowManager] 窗口已显示: windowId=${windowId}`)
+    })
+
+    // closed: 窗口关闭
+    window.on('closed', () => {
+      log.info(`[WindowManager] 窗口已关闭: windowId=${windowId}`)
+      this.cleanupWindow(windowId)
+    })
+
+    // focus: 获得焦点
+    window.on('focus', () => {
+      windowInfo.state.isFocused = true
+      this.focusedWindowId = windowId
+    })
+
+    // blur: 失去焦点
+    window.on('blur', () => {
+      windowInfo.state.isFocused = false
+      if (this.focusedWindowId === windowId) {
+        this.focusedWindowId = null
+      }
+    })
+
+    // minimize: 最小化
+    window.on('minimize', () => {
+      windowInfo.state.isMinimized = true
+    })
+
+    // maximize: 最大化
+    window.on('maximize', () => {
+      windowInfo.state.isMaximized = true
+    })
+
+    // unmaximize: 取消最大化
+    window.on('unmaximize', () => {
+      windowInfo.state.isMaximized = false
+    })
+
+    // restore: 恢复
+    window.on('restore', () => {
+      windowInfo.state.isMinimized = false
+    })
+
+    // enter-full-screen: 进入全屏
+    window.on('enter-full-screen', () => {
+      windowInfo.state.isFullScreen = true
+    })
+
+    // leave-full-screen: 离开全屏
+    window.on('leave-full-screen', () => {
+      windowInfo.state.isFullScreen = false
+    })
+
+    // resize: 窗口大小变化时更新所有 Tab 的边界
+    window.on('resize', () => {
+      for (const tabView of windowInfo.tabViews.values()) {
+        this.updateViewBounds(window, tabView.view)
+      }
+    })
   }
 
   /**
    * 加载窗口内容
    * @param window BrowserWindow 实例
-   * @param url 要加载的 URL
+   * @param url 要加载的 URL（开发环境为路由，生产环境为完整 URL）
    */
   private async loadWindowContent(window: BrowserWindow, url: string): Promise<void> {
-    // TODO: 实现加载窗口内容逻辑
-    // 1. 判断是开发环境还是生产环境
-    // 2. 加载对应的 URL 或文件
-    throw new Error('Not implemented')
+    try {
+      if (Env.isDev) {
+        // 开发环境：使用 Vite 开发服务器
+        const devServerUrl = process.env.VITE_DEV_SERVER_URL
+        if (!devServerUrl) {
+          throw new Error('VITE_DEV_SERVER_URL 未定义')
+        }
+
+        // 如果 url 是完整的 URL（以 http:// 或 https:// 开头），直接加载
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+          await window.webContents.loadURL(url)
+          log.debug(`[WindowManager] 加载外部 URL: ${url}`)
+        } else {
+          // 否则认为是路由，拼接开发服务器地址
+          const fullUrl = `${devServerUrl}${url.startsWith('/') ? url : '/' + url}`
+          await window.webContents.loadURL(fullUrl)
+          log.debug(`[WindowManager] 加载开发服务器页面: ${fullUrl}`)
+        }
+      } else {
+        // 生产环境：加载打包后的文件
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+          // 外部 URL，直接加载
+          await window.webContents.loadURL(url)
+          log.debug(`[WindowManager] 加载外部 URL: ${url}`)
+        } else {
+          // 本地文件，加载打包后的 index.html
+          // 注意：路由由前端路由处理，这里只加载主 HTML 文件
+          const indexPath = join(__dirname, '../renderer/index.html')
+          await window.webContents.loadFile(indexPath)
+          log.debug(`[WindowManager] 加载本地文件: ${indexPath}`)
+
+          // 如果有路由参数，等待加载完成后再导航
+          if (url && url !== '/' && url !== '') {
+            window.webContents.once('did-finish-load', () => {
+              // 通过 hash 或其他方式处理路由
+              window.webContents
+                .executeJavaScript(
+                  `
+                if (window.__ROUTER__) {
+                  window.__ROUTER__.push('${url}')
+                }
+              `
+                )
+                .catch((err) => {
+                  log.warn(`[WindowManager] 路由导航失败: ${err}`)
+                })
+            })
+          }
+        }
+      }
+
+      log.info(`[WindowManager] 窗口内容加载成功: windowId=${window.id}`)
+    } catch (error) {
+      log.error(`[WindowManager] 加载窗口内容失败: url=${url}`, error)
+      throw error
+    }
   }
 
   /**
@@ -532,11 +1050,32 @@ export class WindowManager implements IWindowManager {
    * @param windowId 窗口 ID
    */
   private cleanupWindow(windowId: number): void {
-    // TODO: 实现清理窗口资源逻辑
-    // 1. 从 Map 中移除窗口
-    // 2. 更新主窗口 ID（如果需要）
-    // 3. 更新聚焦窗口 ID（如果需要）
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return
+
+    const tabCount = windowInfo.tabs.size
+    log.debug(`[WindowManager] 清理窗口资源: windowId=${windowId}, tabCount=${tabCount}`)
+
+    // 1. 清理所有 Tab
+    for (const tabId of windowInfo.tabs.keys()) {
+      this.cleanupTab(tabId)
+    }
+
+    // 2. 从 Map 中移除窗口
+    this.windows.delete(windowId)
+
+    // 3. 更新主窗口 ID
+    if (this.mainWindowId === windowId) {
+      this.mainWindowId = null
+      log.info('[WindowManager] 主窗口已清理')
+    }
+
+    // 4. 更新聚焦窗口 ID
+    if (this.focusedWindowId === windowId) {
+      this.focusedWindowId = null
+    }
+
+    log.info(`[WindowManager] 窗口资源清理完成: windowId=${windowId}`)
   }
 
   // ==================== Tab 内部方法 ====================
@@ -547,12 +1086,20 @@ export class WindowManager implements IWindowManager {
    * @param view WebContentsView 实例
    */
   private updateViewBounds(window: BrowserWindow, view: WebContentsView): void {
-    // TODO: 实现更新 View 边界逻辑
-    // 1. 获取窗口边界
-    // 2. 获取 Chrome 高度 (使用 CHROME_HEIGHT 常量)
-    // 3. 计算 View 边界
-    // 4. 设置 View 边界
-    throw new Error('Not implemented')
+    try {
+      const bounds = window.getContentBounds()
+      view.setBounds({
+        x: 0,
+        y: CHROME_HEIGHT,
+        width: bounds.width,
+        height: bounds.height - CHROME_HEIGHT
+      })
+      log.debug(
+        `[WindowManager] 更新 View 边界: width=${bounds.width}, height=${bounds.height - CHROME_HEIGHT}`
+      )
+    } catch (error) {
+      log.error('[WindowManager] 更新 View 边界失败:', error)
+    }
   }
 
   /**
@@ -561,10 +1108,12 @@ export class WindowManager implements IWindowManager {
    * @param url URL
    */
   private async loadTabContent(view: WebContentsView, url: string): Promise<void> {
-    // TODO: 实现加载 Tab 内容逻辑
-    // 1. 判断是本地路由还是外部 URL
-    // 2. 加载对应的内容
-    throw new Error('Not implemented')
+    try {
+      await view.webContents.loadURL(url)
+      log.debug(`[WindowManager] Tab 内容加载完成: url=${url}`)
+    } catch (error) {
+      log.error(`[WindowManager] 加载 Tab 内容失败: url=${url}`, error)
+    }
   }
 
   /**
@@ -572,14 +1121,38 @@ export class WindowManager implements IWindowManager {
    * @param tabId Tab ID
    */
   private setupTabEvents(tabId: number): void {
-    // TODO: 实现设置 Tab 事件逻辑
-    // 监听的事件：
-    // - page-title-updated: 页面标题更新
-    // - did-navigate: 页面导航
-    // - did-start-loading: 开始加载
-    // - did-stop-loading: 停止加载
-    // - render-process-gone: 进程崩溃
-    throw new Error('Not implemented')
+    // 遍历所有窗口查找 Tab
+    for (const windowInfo of this.windows.values()) {
+      const tabInfo = windowInfo.tabs.get(tabId)
+      const tabViewInfo = windowInfo.tabViews.get(tabId)
+
+      if (tabInfo && tabViewInfo) {
+        const { webContents } = tabViewInfo.view
+        log.debug(`[WindowManager] 绑定 Tab 事件: tabId=${tabId}`)
+
+        // page-title-updated: 页面标题更新
+        webContents.on('page-title-updated', (_event, title) => {
+          tabInfo.title = title
+          log.debug(`[WindowManager] Tab 标题更新: tabId=${tabId}, title=${title}`)
+        })
+
+        // did-navigate: 页面导航
+        webContents.on('did-navigate', (_event, url) => {
+          tabInfo.url = url
+          log.debug(`[WindowManager] Tab 导航: tabId=${tabId}, url=${url}`)
+        })
+
+        // page-favicon-updated: 图标更新
+        webContents.on('page-favicon-updated', (_event, favicons) => {
+          if (favicons.length > 0) {
+            tabInfo.icon = favicons[0]
+            log.debug(`[WindowManager] Tab 图标更新: tabId=${tabId}`)
+          }
+        })
+
+        return
+      }
+    }
   }
 
   /**
@@ -587,12 +1160,16 @@ export class WindowManager implements IWindowManager {
    * @param windowId 窗口 ID
    */
   private notifyWindowTabsUpdate(windowId: number): void {
-    // TODO: 实现通知窗口 Tab 列表更新逻辑
-    // 1. 获取窗口实例
-    // 2. 获取窗口的所有 Tab
-    // 3. 转换为 TabData 格式
-    // 4. 发送到窗口的 webContents
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return
+
+    try {
+      const tabs = this.getWindowTabs(windowId)
+      this.sendToWindow(windowId, 'tabs:updated', tabs)
+      log.debug(`[WindowManager] 通知窗口 Tab 更新: windowId=${windowId}, count=${tabs.length}`)
+    } catch (error) {
+      log.error('[WindowManager] 通知窗口 Tab 列表更新失败:', error)
+    }
   }
 
   /**
@@ -600,10 +1177,18 @@ export class WindowManager implements IWindowManager {
    * @param tabId Tab ID
    */
   private cleanupTab(tabId: number): void {
-    // TODO: 实现清理 Tab 资源逻辑
-    // 1. 从 Map 中移除 Tab
-    // 2. 清理映射关系
-    throw new Error('Not implemented')
+    log.debug(`[WindowManager] 清理 Tab 资源: tabId=${tabId}`)
+
+    // 遍历所有窗口查找并清理 Tab
+    for (const windowInfo of this.windows.values()) {
+      if (windowInfo.tabs.has(tabId)) {
+        windowInfo.tabs.delete(tabId)
+        windowInfo.tabViews.delete(tabId)
+      }
+    }
+
+    // 清理 webContents 映射
+    this.webContentsToTabId.delete(tabId)
   }
 
   /**
@@ -613,7 +1198,7 @@ export class WindowManager implements IWindowManager {
    * @returns 是否属于该窗口
    */
   private isTabInWindow(tabId: number, windowId: number): boolean {
-    // TODO: 实现验证 Tab 是否属于窗口逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    return windowInfo?.tabs.has(tabId) ?? false
   }
 }
