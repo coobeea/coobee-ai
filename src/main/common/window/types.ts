@@ -134,49 +134,53 @@ export interface WindowInfo {
 export type WindowPresets = Record<WindowType, Partial<BrowserWindowConstructorOptions>>
 
 /**
- * 获取 webPreferences 配置（根据环境）
- */
-function getWebPreferences(isDev: boolean): Record<string, unknown> {
-  return {
-    preload: join(__dirname, '../preload/index.js'),
-    sandbox: false,
-    contextIsolation: true,
-    nodeIntegration: false,
-    // 开发环境需要禁用 webSecurity 以支持热重载和开发工具
-    webSecurity: !isDev,
-    // 开发环境允许运行不安全内容（用于热重载）
-    allowRunningInsecureContent: isDev,
-    // 实验性功能仅在开发环境启用
-    experimentalFeatures: isDev
-  }
-}
-
-/**
  * 窗口预设配置
  *
  * 注意：需要在运行时获取 isDev 状态来设置 webPreferences
  */
 export function getWindowPresets(isDev: boolean): WindowPresets {
+  // macOS 特殊配置
+  const macOSConfig: Partial<BrowserWindowConstructorOptions> =
+    process.platform === 'darwin'
+      ? {
+          titleBarStyle: 'hiddenInset' as const,
+          trafficLightPosition: { x: 8, y: 10 }
+        }
+      : {}
+
+  // webPreferences 配置
+  const webPreferences = {
+    preload: join(__dirname, '../preload/index.js'),
+    sandbox: false,
+    contextIsolation: true,
+    nodeIntegration: false,
+    webSecurity: !isDev, // 开发环境禁用，支持热重载
+    allowRunningInsecureContent: isDev, // 开发环境允许
+    experimentalFeatures: isDev // 开发环境启用
+  }
+
   return {
     agent: {
       width: 1200,
       height: 800,
       minWidth: 800,
       minHeight: 600,
-      frame: true,
+      frame: false, // 无边框
       transparent: false,
       resizable: true,
-      webPreferences: getWebPreferences(isDev)
+      ...macOSConfig,
+      webPreferences
     },
     browser: {
       width: 1024,
       height: 768,
       minWidth: 800,
       minHeight: 600,
-      frame: true,
+      frame: false, // 无边框
       transparent: false,
       resizable: true,
-      webPreferences: getWebPreferences(isDev)
+      ...macOSConfig,
+      webPreferences
     }
   }
 }

@@ -14,6 +14,8 @@
 import { BrowserWindow, WebContentsView } from 'electron'
 import type { BrowserWindowConstructorOptions } from 'electron'
 import { join } from 'path'
+// @ts-ignore - electron-window-state 没有类型定义
+import windowStateKeeper from 'electron-window-state'
 import type {
   WindowConfig,
   WindowInfo,
@@ -518,19 +520,38 @@ export class WindowManager implements IWindowManager {
     log.debug(`[WindowManager] 开始创建窗口: type=${config.type}`)
 
     try {
-      // 1. 获取预设配置并合并用户配置
+      // 1. 获取预设配置
       const preset = this.getWindowPreset(config.type)
+
+      // 2. 创建窗口状态管理器（为每个窗口类型使用不同的状态文件）
+      const windowState = windowStateKeeper({
+        defaultWidth: config.width || (preset.width as number) || 1024,
+        defaultHeight: config.height || (preset.height as number) || 768,
+        file: `${config.type}-window-state.json`, // 每个窗口类型独立的状态文件
+        maximize: true, // 记住最大化状态
+        fullScreen: true // 记住全屏状态
+      })
+
+      // 3. 合并用户配置
       const options: BrowserWindowConstructorOptions = {
         ...preset,
         ...config,
+        // 使用保存的窗口状态
+        x: windowState.x,
+        y: windowState.y,
+        width: windowState.width,
+        height: windowState.height,
         show: false // 先不显示，等待 ready-to-show
       }
 
-      // 2. 创建 BrowserWindow
+      // 4. 创建 BrowserWindow
       const window = new BrowserWindow(options)
       log.debug(`[WindowManager] BrowserWindow 已创建: windowId=${window.id}`)
 
-      // 3. 创建窗口信息
+      // 5. 让窗口状态管理器管理窗口（自动保存位置、大小等）
+      windowState.manage(window)
+
+      // 6. 创建窗口信息
       const windowInfo: WindowInfo = {
         id: window.id,
         type: config.type,
@@ -549,22 +570,22 @@ export class WindowManager implements IWindowManager {
         tabViews: new Map()
       }
 
-      // 4. 注册窗口
+      // 7. 注册窗口
       this.windows.set(window.id, windowInfo)
 
-      // 5. 设置主窗口
+      // 8. 设置主窗口
       if (windowInfo.isMain) {
         this.mainWindowId = window.id
         log.info(`[WindowManager] 设置主窗口: windowId=${window.id}`)
       }
 
-      // 6. 加载窗口内容
+      // 9. 加载窗口内容
       this.loadWindowContent(window, config.type)
 
-      // 7. 设置 DevTools（开发环境）
+      // 10. 设置 DevTools（开发环境）
       this.setupDevTools(window)
 
-      // 8. 绑定窗口事件
+      // 11. 绑定窗口事件
       this.setupWindowEvents(window.id)
 
       log.info(
