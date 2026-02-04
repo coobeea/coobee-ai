@@ -5,7 +5,6 @@ import IconMdiMinus from '~icons/mdi/minus'
 import IconMdiWindowMaximize from '~icons/mdi/window-maximize'
 import IconMdiWindowRestore from '~icons/mdi/window-restore'
 import IconMdiClose from '~icons/mdi/close'
-import IconMdiRobot from '~icons/mdi/robot'
 
 import TabItem from './TabItem.vue'
 import { useTabStore } from '../stores/tab'
@@ -43,19 +42,14 @@ const addNewTab = (): void => {
 
 <template>
   <header
-    class="window-drag-region flex h-9 shrink-0 items-center border-b border-gray-200"
-    :class="[isMacOS ? 'rounded-t-[10px] bg-white/80 backdrop-blur-sm' : 'bg-gray-100']"
+    class="window-drag-region flex h-9 shrink-0 items-center"
+    :class="[isMacOS ? 'rounded-t-[10px] bg-gray-300/95 backdrop-blur-sm' : 'bg-gray-300']"
   >
     <!-- macOS: 左侧留空给红绿灯按钮 -->
     <div v-if="isMacOS" class="h-full w-20 shrink-0"></div>
 
-    <!-- Logo -->
-    <div class="flex items-center gap-2 px-3">
-      <IconMdiRobot class="text-lg text-blue-600" />
-    </div>
-
     <!-- Tabs Container -->
-    <div class="flex h-full flex-1 items-center overflow-x-auto overflow-y-hidden scrollbar-hide">
+    <div class="flex h-full items-center overflow-x-auto overflow-y-hidden scrollbar-hide">
       <TabItem
         v-for="tab in tabStore.tabs"
         :key="tab.id"
@@ -70,10 +64,10 @@ const addNewTab = (): void => {
 
     <!-- New Tab Button -->
     <button
-      class="window-no-drag-region flex h-full w-10 shrink-0 items-center justify-center border-l border-gray-300 transition-colors hover:bg-gray-200"
+      class="window-no-drag-region flex h-full w-10 shrink-0 items-center justify-center text-gray-700 transition-colors hover:bg-gray-400 active:bg-gray-500"
       @click="addNewTab"
     >
-      <IconMdiPlus class="text-base text-gray-700" />
+      <IconMdiPlus class="text-base" />
     </button>
 
     <div class="flex-1"></div>
@@ -82,23 +76,23 @@ const addNewTab = (): void => {
     <div v-if="isWindows" class="window-no-drag-region flex h-full">
       <!-- 最小化 -->
       <button
-        class="flex h-full w-12 items-center justify-center transition hover:bg-gray-200 active:bg-gray-300"
+        class="flex h-full w-12 items-center justify-center text-gray-700 transition-colors hover:bg-gray-400 active:bg-gray-500"
         @click="minimizeWindow"
       >
-        <IconMdiMinus class="text-base text-gray-700" />
+        <IconMdiMinus class="text-base" />
       </button>
 
       <!-- 最大化/还原 -->
       <button
-        class="flex h-full w-12 items-center justify-center transition hover:bg-gray-200 active:bg-gray-300"
+        class="flex h-full w-12 items-center justify-center text-gray-700 transition-colors hover:bg-gray-400 active:bg-gray-500"
         @click="maximizeWindow"
       >
-        <component :is="MaximizeIcon" class="text-sm text-gray-700" />
+        <component :is="MaximizeIcon" class="text-sm" />
       </button>
 
       <!-- 关闭 -->
       <button
-        class="flex h-full w-12 items-center justify-center transition hover:bg-red-500 hover:text-white active:bg-red-600"
+        class="flex h-full w-12 items-center justify-center text-gray-700 transition-colors hover:bg-red-500 hover:text-white active:bg-red-600"
         @click="closeWindow"
       >
         <IconMdiClose class="text-base" />

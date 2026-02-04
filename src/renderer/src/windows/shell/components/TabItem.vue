@@ -31,8 +31,12 @@ const onClose = (): void => {
 <template>
   <div
     ref="tabItem"
-    class="window-no-drag-region group flex h-full shrink-0 items-center justify-between border-r border-gray-300 px-3 text-xs font-medium transition-colors hover:bg-gray-200"
-    :class="[active ? 'bg-white' : 'bg-gray-100']"
+    class="window-no-drag-region group flex h-full shrink-0 cursor-pointer items-center justify-between px-3 text-xs font-medium transition-colors"
+    :class="[
+      active
+        ? 'bg-gray-600 text-white hover:bg-gray-500 active:bg-gray-500'
+        : 'bg-gray-700 text-gray-200 hover:bg-gray-600 active:bg-gray-500'
+    ]"
     @click="onClick"
   >
     <!-- Tab Content -->
@@ -44,7 +48,7 @@ const onClose = (): void => {
     <button
       v-if="canClose"
       type="button"
-      class="ml-2 rounded p-0.5 text-gray-500 opacity-0 transition-opacity hover:bg-gray-300 hover:text-gray-700 group-hover:opacity-100"
+      class="ml-2 rounded p-0.5 text-gray-300 opacity-0 transition-all hover:bg-gray-400 hover:text-white active:bg-gray-300 group-hover:opacity-100"
       @click.stop="onClose"
     >
       <IconMdiClose class="text-sm" />
