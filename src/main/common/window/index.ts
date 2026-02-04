@@ -26,5 +26,3 @@ export type {
   // 管理器接口（仅导出 IWindowManager）
   IWindowManager
 } from './types'
-
-// 注意：TabManager 和 ITabManager 不对外暴露，仅供内部使用

@@ -491,25 +491,3 @@ export interface IWindowManager {
    */
   getTabIdByWebContentsId(webContentsId: number): number | undefined
 }
-
-// ==================== 内部接口定义（不对外暴露）====================
-
-/**
- * Tab 管理器接口（内部使用）
- *
- * @internal 该接口仅供 WindowManager 内部使用，不对外暴露
- */
-export interface ITabManager {
-  createTab(windowId: number, config: TabConfig): Promise<number | null>
-  switchTab(tabId: number): Promise<boolean>
-  closeTab(tabId: number): Promise<boolean>
-  reorderTabs(windowId: number, tabIds: number[]): Promise<boolean>
-  moveTabToWindow(tabId: number, targetWindowId: number): Promise<boolean>
-  duplicateTab(tabId: number): Promise<number | null>
-  reloadTab(tabId: number): boolean
-  getTabInfo(tabId: number): TabInfo | undefined
-  getWindowTabs(windowId: number): TabInfo[]
-  getActiveTab(windowId: number): TabInfo | undefined
-  getWindowTabCount(windowId: number): number
-  getTabIdByWebContentsId(webContentsId: number): number | undefined
-}
