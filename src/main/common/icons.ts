@@ -1,4 +1,5 @@
 import { app, nativeImage } from 'electron'
+import fs from 'fs'
 import path from 'path'
 
 import { log } from './logger'
@@ -35,7 +36,7 @@ export class IconManager {
         if (this.checkIconExists(retinaPath)) {
           icon.addRepresentation({
             scaleFactor: 2.0,
-            buffer: require('fs').readFileSync(retinaPath)
+            buffer: fs.readFileSync(retinaPath)
           })
         }
 
@@ -55,7 +56,6 @@ export class IconManager {
 
   static checkIconExists(iconPath: string): boolean {
     try {
-      const fs = require('fs')
       return fs.existsSync(iconPath)
     } catch (error) {
       log.error('检查图标文件失败:', error)
@@ -84,7 +84,7 @@ export class IconManager {
   }
 }
 
-export const getAppIcon = () => IconManager.getAppIcon()
-export const getTrayIcon = () => IconManager.getTrayIcon()
-export const getTrayNativeImage = () => IconManager.getTrayNativeImage()
-export const validateIcons = () => IconManager.validateIcons()
+export const getAppIcon = (): string => IconManager.getAppIcon()
+export const getTrayIcon = (): string => IconManager.getTrayIcon()
+export const getTrayNativeImage = (): Electron.NativeImage => IconManager.getTrayNativeImage()
+export const validateIcons = (): { app: boolean; tray: boolean } => IconManager.validateIcons()

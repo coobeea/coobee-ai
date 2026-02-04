@@ -1,6 +1,6 @@
 /**
  * Common 模块统一类型定义
- * 
+ *
  * 此文件包含所有 common 模块的类型定义，按功能模块分组
  */
 
@@ -42,7 +42,7 @@ export enum LifecyclePhase {
  */
 export interface LifecycleContext {
   phase: LifecyclePhase
-  manager: ILifecycleManager
+  manager: any
   data?: Record<string, unknown>
 }
 
@@ -55,17 +55,6 @@ export interface LifecycleHook {
   priority: number
   critical: boolean
   execute: (context: LifecycleContext) => Promise<void | boolean>
-}
-
-/**
- * 生命周期管理器接口
- */
-export interface ILifecycleManager {
-  start(): Promise<void>
-  registerHook(hook: LifecycleHook): string
-  requestShutdown(): Promise<boolean>
-  getContextData<T>(key: string): T | undefined
-  setContextData(key: string, value: unknown): void
 }
 
 /**
@@ -276,4 +265,15 @@ export interface MigrationResult {
  */
 export interface State {
   maintenanceMode: boolean
+}
+
+// ==================== 模块扫描 ====================
+
+/**
+ * 发现的模块
+ */
+export interface DiscoveredModule {
+  path: string
+  module: Record<string, unknown>
+  exportName?: string
 }

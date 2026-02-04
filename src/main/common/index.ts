@@ -8,15 +8,12 @@ export { eventBus } from './eventbus'
 export { config, Config } from './config'
 export { stateManager, StateManager } from './state'
 export { dialogManager, DialogManager } from './dialog'
-export { themeManager, ThemeManager } from './theme'
-export {
-  IconManager,
-  getAppIcon,
-  getTrayIcon,
-  getTrayNativeImage,
-  validateIcons
-} from './icons'
+export { ThemeManager } from './theme'
+export { IconManager, getAppIcon, getTrayIcon, getTrayNativeImage, validateIcons } from './icons'
 export { WindowEvents, BrowserWindowEvents, ElectronAppEvents } from './events'
+
+// 模块扫描
+export { scanProcessors, scanJobs, scanApis, scanLifeCycleBeans, filterModules } from './scan'
 
 // 数据库模块
 export * from './database'

@@ -1,6 +1,6 @@
 /**
  * 生命周期管理器 - 简化版
- * 
+ *
  * 功能：
  * - 管理应用生命周期的三个阶段：初始化、就绪、退出前
  * - 支持注册和执行生命周期 Hook
@@ -13,11 +13,10 @@ import {
   LifecyclePhase,
   LifecycleHook,
   LifecycleContext,
-  ILifecycleManager,
   LifecycleHookExecutionResult
 } from './types'
 
-export class LifecycleManager implements ILifecycleManager {
+export class LifecycleManager {
   private currentPhase: LifecyclePhase | null = null
   private hooks: Map<LifecyclePhase, Array<{ id: string; hook: LifecycleHook }>> = new Map()
   private hookIdCounter = 0
