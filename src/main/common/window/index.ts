@@ -5,6 +5,10 @@
 // 窗口管理器（对外唯一接口）
 export { WindowManager } from './WindowManager'
 
+// 创建并导出 windowManager 单例
+import { WindowManager } from './WindowManager'
+export const windowManager = new WindowManager()
+
 // 常量定义
 export { CHROME_HEIGHT, WINDOW_PRESETS } from './types'
 

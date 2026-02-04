@@ -33,6 +33,15 @@ export default defineConfig(
             lang: 'ts'
           }
         }
+      ],
+      // 允许下划线前缀的未使用变量（用于接口实现中的占位参数）
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_'
+        }
       ]
     }
   },
