@@ -127,7 +127,7 @@ export class WindowManager implements IWindowManager {
       this.updateViewBounds(windowInfo.window, view)
 
       // 8. 绑定事件
-      this.setupTabEvents(tabId)
+      this.setupTabEvents(tabViewInfo.view.webContents, tabInfo)
 
       // 9. 加载内容
       if (config.url) {
@@ -1118,41 +1118,38 @@ export class WindowManager implements IWindowManager {
 
   /**
    * 设置 Tab 事件
-   * @param tabId Tab ID
+   * @param webContents WebContents 实例
+   * @param tabInfo Tab 信息（用于更新状态）
    */
-  private setupTabEvents(tabId: number): void {
-    // 遍历所有窗口查找 Tab
-    for (const windowInfo of this.windows.values()) {
-      const tabInfo = windowInfo.tabs.get(tabId)
-      const tabViewInfo = windowInfo.tabViews.get(tabId)
+  private setupTabEvents(webContents: Electron.WebContents, tabInfo: TabInfo): void {
+    const tabId = tabInfo.id
+    log.debug(`[WindowManager] 绑定 Tab 事件: tabId=${tabId}`)
 
-      if (tabInfo && tabViewInfo) {
-        const { webContents } = tabViewInfo.view
-        log.debug(`[WindowManager] 绑定 Tab 事件: tabId=${tabId}`)
+    // page-title-updated: 页面标题更新
+    webContents.on('page-title-updated', (_event, title) => {
+      tabInfo.title = title
+      log.debug(`[WindowManager] Tab 标题更新: tabId=${tabId}, title=${title}`)
+    })
 
-        // page-title-updated: 页面标题更新
-        webContents.on('page-title-updated', (_event, title) => {
-          tabInfo.title = title
-          log.debug(`[WindowManager] Tab 标题更新: tabId=${tabId}, title=${title}`)
-        })
+    // did-navigate: 页面导航
+    webContents.on('did-navigate', (_event, url) => {
+      tabInfo.url = url
+      log.debug(`[WindowManager] Tab 导航: tabId=${tabId}, url=${url}`)
+    })
 
-        // did-navigate: 页面导航
-        webContents.on('did-navigate', (_event, url) => {
-          tabInfo.url = url
-          log.debug(`[WindowManager] Tab 导航: tabId=${tabId}, url=${url}`)
-        })
-
-        // page-favicon-updated: 图标更新
-        webContents.on('page-favicon-updated', (_event, favicons) => {
-          if (favicons.length > 0) {
-            tabInfo.icon = favicons[0]
-            log.debug(`[WindowManager] Tab 图标更新: tabId=${tabId}`)
-          }
-        })
-
-        return
+    // page-favicon-updated: 图标更新
+    webContents.on('page-favicon-updated', (_event, favicons) => {
+      if (favicons.length > 0) {
+        tabInfo.icon = favicons[0]
+        log.debug(`[WindowManager] Tab 图标更新: tabId=${tabId}`)
       }
-    }
+    })
+
+    // destroyed: webContents 销毁时自动清理
+    webContents.once('destroyed', () => {
+      log.debug(`[WindowManager] WebContents 已销毁: tabId=${tabId}`)
+      // 事件监听器会自动清理
+    })
   }
 
   /**
