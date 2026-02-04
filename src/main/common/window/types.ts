@@ -58,6 +58,10 @@ export interface WindowInfo {
   createdAt: Date
   /** 元数据 */
   metadata?: Record<string, unknown>
+  /** 窗口状态 */
+  state: WindowState
+  /** Tab 信息列表 */
+  tabs: Map<number, TabInfo>
 }
 
 /**

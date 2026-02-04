@@ -20,8 +20,6 @@ import type {
   WindowType,
   TabConfig,
   TabInfo,
-  TabData,
-  TabBounds,
   IWindowManager
 } from './types'
 import { WINDOW_PRESETS, CHROME_HEIGHT } from './types'
@@ -29,11 +27,8 @@ import { WINDOW_PRESETS, CHROME_HEIGHT } from './types'
 export class WindowManager implements IWindowManager {
   // ==================== 窗口管理状态 ====================
 
-  /** 窗口实例存储: windowId -> BrowserWindow */
-  private windows: Map<number, BrowserWindow> = new Map()
-
   /** 窗口信息存储: windowId -> WindowInfo */
-  private windowInfo: Map<number, WindowInfo> = new Map()
+  private windows: Map<number, WindowInfo> = new Map()
 
   /** 主窗口 ID */
   private mainWindowId: number | null = null
@@ -43,19 +38,7 @@ export class WindowManager implements IWindowManager {
 
   // ==================== Tab 管理状态 ====================
 
-  /** 全局 Tab 存储: tabId -> WebContentsView */
-  private tabs: Map<number, WebContentsView> = new Map()
-
-  /** Tab 状态存储: tabId -> TabInfo */
-  private tabState: Map<number, TabInfo> = new Map()
-
-  /** 窗口 → Tab IDs 映射: windowId -> tabIds[] */
-  private windowTabs: Map<number, number[]> = new Map()
-
-  /** Tab ID → 窗口 ID 映射: tabId -> windowId */
-  private tabWindowMap: Map<number, number> = new Map()
-
-  /** WebContents ID → Tab ID 映射: webContentsId -> tabId */
+  /** WebContents ID → Tab ID 映射 (用于快速查找) */
   private webContentsToTabId: Map<number, number> = new Map()
 
   /** 每个窗口最大 Tab 数量限制 */
@@ -191,18 +174,24 @@ export class WindowManager implements IWindowManager {
    * @returns Tab 信息
    */
   getTabInfo(tabId: number): TabInfo | undefined {
-    // TODO: 实现获取 Tab 信息逻辑
-    throw new Error('Not implemented')
+    // 遍历所有窗口查找 Tab
+    for (const windowInfo of this.windows.values()) {
+      const tab = windowInfo.tabs.get(tabId)
+      if (tab) return tab
+    }
+    return undefined
   }
 
   /**
    * 获取窗口的所有 Tab
    * @param windowId 窗口 ID
-   * @returns Tab 信息数组
+   * @returns Tab 信息数组（按 position 排序）
    */
   getWindowTabs(windowId: number): TabInfo[] {
-    // TODO: 实现获取窗口 Tab 逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return []
+
+    return Array.from(windowInfo.tabs.values()).sort((a, b) => a.position - b.position)
   }
 
   /**
@@ -211,8 +200,10 @@ export class WindowManager implements IWindowManager {
    * @returns 激活的 Tab 信息
    */
   getActiveTab(windowId: number): TabInfo | undefined {
-    // TODO: 实现获取激活 Tab 逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) return undefined
+
+    return Array.from(windowInfo.tabs.values()).find((tab) => tab.isActive)
   }
 
   /**
@@ -221,8 +212,8 @@ export class WindowManager implements IWindowManager {
    * @returns Tab 数量
    */
   getWindowTabCount(windowId: number): number {
-    // TODO: 实现获取窗口 Tab 数量逻辑
-    throw new Error('Not implemented')
+    const windowInfo = this.windows.get(windowId)
+    return windowInfo?.tabs.size || 0
   }
 
   /**
@@ -231,8 +222,7 @@ export class WindowManager implements IWindowManager {
    * @returns Tab ID
    */
   getTabIdByWebContentsId(webContentsId: number): number | undefined {
-    // TODO: 实现根据 WebContents ID 获取 Tab ID 逻辑
-    throw new Error('Not implemented')
+    return this.webContentsToTabId.get(webContentsId)
   }
 
   // ==================== 窗口创建 ====================
