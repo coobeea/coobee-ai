@@ -49,7 +49,7 @@ export class WindowManager implements IWindowManager {
   private webContentsToTabId: Map<number, number> = new Map()
 
   /** 每个窗口最大 Tab 数量限制 */
-  private readonly MAX_TABS_PER_WINDOW = 20
+  private readonly MAX_TABS_PER_WINDOW = 100
 
   constructor() {
     // WindowManager 初始化
@@ -492,6 +492,31 @@ export class WindowManager implements IWindowManager {
     return this.webContentsToTabId.get(webContentsId)
   }
 
+  // ==================== 默认 Tab 创建 ====================
+
+  /**
+   * 创建默认 Tab
+   * @param windowId 窗口 ID
+   * @param windowType 窗口类型
+   * @private
+   */
+  private async createDefaultTab(windowId: number, windowType: WindowType): Promise<void> {
+    try {
+      // 根据窗口类型创建默认 Tab
+      const defaultTabConfig: TabConfig = {
+        url: windowType === 'agent' ? 'local://chat' : 'about:blank',
+        title: windowType === 'agent' ? 'Chat' : 'New Tab',
+        active: true,
+        closable: false // 默认 Tab 不可关闭
+      }
+
+      await this.createTab(windowId, defaultTabConfig)
+      log.info(`[WindowManager] 默认 Tab 创建成功: windowId=${windowId}, type=${windowType}`)
+    } catch (error) {
+      log.error('[WindowManager] 创建默认 Tab 失败:', error)
+    }
+  }
+
   // ==================== 窗口创建 ====================
 
   /**
@@ -587,6 +612,9 @@ export class WindowManager implements IWindowManager {
 
       // 11. 绑定窗口事件
       this.setupWindowEvents(window.id)
+
+      // 12. 创建默认 Tab
+      this.createDefaultTab(window.id, config.type)
 
       log.info(
         `[WindowManager] 窗口创建成功: windowId=${window.id}, type=${config.type}, isMain=${windowInfo.isMain}`
