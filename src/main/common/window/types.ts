@@ -216,9 +216,10 @@ export interface WindowBounds {
 /**
  * Tab Bar（Chrome）固定高度
  *
+ * 对应前端 AppBar 的 h-9 (36px)
  * 注意：如果未来需要动态调整高度（紧凑/舒适模式），可以改为变量
  */
-export const CHROME_HEIGHT = 60
+export const CHROME_HEIGHT = 36
 
 /**
  * Tab 配置
