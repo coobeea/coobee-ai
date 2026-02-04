@@ -10,7 +10,7 @@ import { WindowManager } from './WindowManager'
 export const windowManager = new WindowManager()
 
 // 常量定义
-export { CHROME_HEIGHT, getWindowPresets } from './types'
+export { CHROME_HEIGHT, getWindowPresets, BrowserWindowEvents } from './types'
 
 // 所有类型定义
 export type {

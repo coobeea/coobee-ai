@@ -19,11 +19,11 @@ export {
   JobEvents,
   ThemeEvents,
   ConfigEvents,
-  LogEvents,
-  // 为了向后兼容保留（已废弃）
-  ElectronAppEvents,
-  BrowserWindowEvents
+  LogEvents
 } from './events'
+
+// 窗口事件（从 window 模块导出）
+export { BrowserWindowEvents } from './window'
 
 // 模块扫描
 export { scanProcessors, scanJobs, scanApis, scanLifeCycleHooks, filterModules } from './scan'
@@ -47,4 +47,4 @@ export { WorkspaceManager, workspaceManager } from './workspace'
 export { LifecycleManager } from './lifecycle'
 
 // 应用管理
-export { AppManager, appManager } from './app'
+export { AppManager } from './app'

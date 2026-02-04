@@ -5,6 +5,64 @@
 import { join } from 'node:path'
 import type { BrowserWindow, BrowserWindowConstructorOptions, WebContentsView } from 'electron'
 
+// ==================== 窗口事件定义 ====================
+
+/**
+ * BrowserWindow 事件枚举
+ *
+ * 定义所有窗口相关的事件名称，避免硬编码字符串
+ */
+export enum BrowserWindowEvents {
+  // 窗口生命周期事件
+  READY_TO_SHOW = 'ready-to-show', // 窗口准备显示时触发
+  SHOW = 'show', // 窗口显示时触发
+  HIDE = 'hide', // 窗口隐藏时触发
+  CLOSE = 'close', // 窗口关闭时触发（可以阻止）
+  CLOSED = 'closed', // 窗口已关闭时触发
+
+  // 窗口状态变化事件
+  MINIMIZE = 'minimize', // 窗口最小化时触发
+  MAXIMIZE = 'maximize', // 窗口最大化时触发
+  UNMAXIMIZE = 'unmaximize', // 窗口取消最大化时触发
+  RESTORE = 'restore', // 窗口从最小化恢复时触发
+  RESIZE = 'resize', // 窗口大小改变时触发
+  RESIZED = 'resized', // 窗口大小改变完成时触发（macOS）
+  MOVE = 'move', // 窗口位置改变时触发
+  MOVED = 'moved', // 窗口位置改变完成时触发（macOS）
+
+  // 焦点相关事件
+  FOCUS = 'focus', // 窗口获得焦点时触发
+  BLUR = 'blur', // 窗口失去焦点时触发
+
+  // 全屏相关事件
+  ENTER_FULL_SCREEN = 'enter-full-screen', // 进入全屏时触发
+  LEAVE_FULL_SCREEN = 'leave-full-screen', // 退出全屏时触发
+  ENTER_HTML_FULL_SCREEN = 'enter-html-full-screen', // 进入HTML全屏时触发
+  LEAVE_HTML_FULL_SCREEN = 'leave-html-full-screen', // 退出HTML全屏时触发
+
+  // 系统相关事件
+  ALWAYS_ON_TOP_CHANGED = 'always-on-top-changed', // 置顶状态改变时触发
+  APP_COMMAND = 'app-command', // 应用命令时触发（Windows）
+  SWIPE = 'swipe', // 滑动手势时触发（macOS）
+  ROTATE_GESTURE = 'rotate-gesture', // 旋转手势时触发（macOS）
+  SHEET_BEGIN = 'sheet-begin', // 工作表开始时触发（macOS）
+  SHEET_END = 'sheet-end', // 工作表结束时触发（macOS）
+  NEW_WINDOW_FOR_TAB = 'new-window-for-tab', // 新标签页窗口时触发（macOS）
+  SYSTEM_CONTEXT_MENU = 'system-context-menu', // 系统上下文菜单时触发（Windows）
+
+  // 响应性相关事件
+  RESPONSIVE = 'responsive', // 页面变为响应时触发
+  UNRESPONSIVE = 'unresponsive', // 页面变为无响应时触发
+
+  // 会话相关事件
+  SESSION_END = 'session-end', // 会话结束时触发（Windows）
+
+  // 滚动相关事件
+  SCROLL_TOUCH_BEGIN = 'scroll-touch-begin', // 触摸滚动开始时触发
+  SCROLL_TOUCH_END = 'scroll-touch-end', // 触摸滚动结束时触发
+  SCROLL_TOUCH_EDGE = 'scroll-touch-edge' // 触摸滚动到边缘时触发
+}
+
 // ==================== 窗口类型定义 ====================
 
 /**

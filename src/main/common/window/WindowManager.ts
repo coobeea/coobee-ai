@@ -25,7 +25,7 @@ import type {
   TabViewInfo,
   IWindowManager
 } from './types'
-import { getWindowPresets, CHROME_HEIGHT } from './types'
+import { getWindowPresets, CHROME_HEIGHT, BrowserWindowEvents } from './types'
 import { log } from '@main/common/logger'
 import { Env } from '@main/common/env'
 
@@ -924,26 +924,26 @@ export class WindowManager implements IWindowManager {
     log.debug(`[WindowManager] 绑定窗口事件: windowId=${windowId}`)
 
     // ready-to-show: 窗口准备显示
-    window.once('ready-to-show', () => {
+    window.once(BrowserWindowEvents.READY_TO_SHOW, () => {
       windowInfo.state.isVisible = true
       window.show()
       log.info(`[WindowManager] 窗口已显示: windowId=${windowId}`)
     })
 
     // closed: 窗口关闭
-    window.on('closed', () => {
+    window.on(BrowserWindowEvents.CLOSED, () => {
       log.info(`[WindowManager] 窗口已关闭: windowId=${windowId}`)
       this.cleanupWindow(windowId)
     })
 
     // focus: 获得焦点
-    window.on('focus', () => {
+    window.on(BrowserWindowEvents.FOCUS, () => {
       windowInfo.state.isFocused = true
       this.focusedWindowId = windowId
     })
 
     // blur: 失去焦点
-    window.on('blur', () => {
+    window.on(BrowserWindowEvents.BLUR, () => {
       windowInfo.state.isFocused = false
       if (this.focusedWindowId === windowId) {
         this.focusedWindowId = null
@@ -951,37 +951,37 @@ export class WindowManager implements IWindowManager {
     })
 
     // minimize: 最小化
-    window.on('minimize', () => {
+    window.on(BrowserWindowEvents.MINIMIZE, () => {
       windowInfo.state.isMinimized = true
     })
 
     // maximize: 最大化
-    window.on('maximize', () => {
+    window.on(BrowserWindowEvents.MAXIMIZE, () => {
       windowInfo.state.isMaximized = true
     })
 
     // unmaximize: 取消最大化
-    window.on('unmaximize', () => {
+    window.on(BrowserWindowEvents.UNMAXIMIZE, () => {
       windowInfo.state.isMaximized = false
     })
 
     // restore: 恢复
-    window.on('restore', () => {
+    window.on(BrowserWindowEvents.RESTORE, () => {
       windowInfo.state.isMinimized = false
     })
 
     // enter-full-screen: 进入全屏
-    window.on('enter-full-screen', () => {
+    window.on(BrowserWindowEvents.ENTER_FULL_SCREEN, () => {
       windowInfo.state.isFullScreen = true
     })
 
     // leave-full-screen: 离开全屏
-    window.on('leave-full-screen', () => {
+    window.on(BrowserWindowEvents.LEAVE_FULL_SCREEN, () => {
       windowInfo.state.isFullScreen = false
     })
 
     // resize: 窗口大小变化时更新所有 Tab 的边界
-    window.on('resize', () => {
+    window.on(BrowserWindowEvents.RESIZE, () => {
       for (const tabView of windowInfo.tabViews.values()) {
         this.updateViewBounds(window, tabView.view)
       }
