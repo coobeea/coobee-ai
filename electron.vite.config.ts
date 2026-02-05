@@ -7,15 +7,61 @@ import path from 'node:path'
 import Icons from 'unplugin-icons/vite'
 import IconsResolver from 'unplugin-icons/resolver'
 import Components from 'unplugin-vue-components/vite'
+import fs from 'fs'
+import type { Plugin } from 'vite'
+
+// 复制 libs 目录下所有模块的插件
+function copyLibsPlugin(): Plugin {
+  return {
+    name: 'copy-libs',
+    writeBundle() {
+      const sourceDir = path.resolve(__dirname, 'libs')
+      const targetDir = path.resolve(__dirname, 'out/main/libs')
+
+      // 确保源目录存在
+      if (!fs.existsSync(sourceDir)) {
+        console.warn('[copy-libs] Source libs directory does not exist, skipping...')
+        return
+      }
+
+      // 确保目标目录存在
+      fs.mkdirSync(targetDir, { recursive: true })
+
+      // 复制整个 libs 目录
+      fs.cpSync(sourceDir, targetDir, { recursive: true })
+
+      // 列出复制的模块
+      const modules = fs.readdirSync(sourceDir).filter((item) => {
+        return fs.statSync(path.join(sourceDir, item)).isDirectory()
+      })
+
+      console.log(`[copy-libs] Copied ${modules.length} modules from libs/ to output directory:`)
+      modules.forEach((module) => console.log(`  - ${module}`))
+    }
+  }
+}
 
 export default defineConfig({
   main: {
+    plugins: [copyLibsPlugin()],
     resolve: {
       alias: {
         '@': resolve('src/main/'),
         '@main': resolve('src/main/'),
         '@shared': resolve('src/shared')
       }
+    },
+    define: {
+      // 传递所有以 VITE_ 开头的环境变量
+      ...Object.keys(process.env).reduce(
+        (acc, key) => {
+          if (key.startsWith('VITE_')) {
+            acc[`process.env.${key}`] = JSON.stringify(process.env[key])
+          }
+          return acc
+        },
+        {} as Record<string, string>
+      )
     },
     build: {
       rollupOptions: {
