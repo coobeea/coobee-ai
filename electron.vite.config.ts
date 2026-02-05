@@ -10,6 +10,10 @@ import Components from 'unplugin-vue-components/vite'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import fs from 'fs'
 import type { Plugin } from 'vite'
+import dotenv from 'dotenv'
+
+// 手动加载 .env 文件到 process.env
+dotenv.config()
 
 // 复制 libs 目录下所有模块的插件
 function copyLibsPlugin(): Plugin {

@@ -96,6 +96,7 @@
     "@types/node": "^22.19.1",
     "@vitejs/plugin-vue": "^6.0.2",
     "adm-zip": "^0.5.16",
+    "dotenv": "^17.2.3",
     "electron": "^39.2.6",
     "electron-builder": "^26.0.12",
     "electron-devtools-installer": "^4.0.0",
