@@ -20,6 +20,7 @@ import IconSvgSpinnersPulse from '~icons/svg-spinners/pulse'
 import IconMdiWindowMaximize from '~icons/mdi/window-maximize'
 
 import Versions from './components/Versions.vue'
+import LogViewer from './components/LogViewer.vue'
 
 // 使用 Window Store
 const windowStore = useWindowStore()
@@ -279,5 +280,8 @@ onMounted(async () => {
         <Versions />
       </div>
     </div>
+
+    <!-- 日志查看器 -->
+    <LogViewer />
   </div>
 </template>

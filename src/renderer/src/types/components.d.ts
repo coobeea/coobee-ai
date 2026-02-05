@@ -14,6 +14,7 @@ declare module 'vue' {
     IconMdiFire: typeof import('~icons/mdi/fire')['default']
     IconMdiThumbUp: typeof import('~icons/mdi/thumb-up')['default']
     IconMdiWeatherSunny: typeof import('~icons/mdi/weather-sunny')['default']
+    LogViewer: typeof import('./../components/LogViewer.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     Versions: typeof import('./../components/Versions.vue')['default']

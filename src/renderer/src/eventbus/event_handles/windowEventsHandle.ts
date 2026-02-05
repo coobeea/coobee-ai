@@ -6,6 +6,15 @@
 import { EventTypes, type EventPayloads } from '@shared/ipc/events'
 import eventBus from '@/eventbus'
 import { useWindowStore } from '@/stores/window'
+import { useLogStore } from '@/stores/log'
+
+/**
+ * 记录事件日志
+ */
+function logEvent(message: string, data?: unknown): void {
+  const logStore = useLogStore()
+  logStore.info('window', message, data)
+}
 
 /**
  * 刷新窗口信息
@@ -19,7 +28,7 @@ async function refreshWindowInfo(): Promise<void> {
  * 处理窗口创建事件
  */
 async function handleWindowCreated(payload: EventPayloads['window:created']): Promise<void> {
-  console.log('[WindowEvents] 窗口创建:', payload)
+  logEvent('窗口创建', payload)
   await refreshWindowInfo()
 }
 
@@ -27,7 +36,7 @@ async function handleWindowCreated(payload: EventPayloads['window:created']): Pr
  * 处理窗口准备就绪事件
  */
 async function handleWindowReady(payload: EventPayloads['window:ready']): Promise<void> {
-  console.log('[WindowEvents] 窗口准备就绪:', payload)
+  logEvent('窗口准备就绪', payload)
   await refreshWindowInfo()
 }
 
@@ -35,21 +44,21 @@ async function handleWindowReady(payload: EventPayloads['window:ready']): Promis
  * 处理窗口显示事件
  */
 function handleWindowShow(payload: EventPayloads['window:show']): void {
-  console.log('[WindowEvents] 窗口显示:', payload)
+  logEvent('窗口显示', payload)
 }
 
 /**
  * 处理窗口隐藏事件
  */
 function handleWindowHide(payload: EventPayloads['window:hide']): void {
-  console.log('[WindowEvents] 窗口隐藏:', payload)
+  logEvent('窗口隐藏', payload)
 }
 
 /**
  * 处理窗口即将关闭事件
  */
 async function handleWindowClose(payload: EventPayloads['window:close']): Promise<void> {
-  console.log('[WindowEvents] 窗口即将关闭:', payload)
+  logEvent('窗口即将关闭', payload)
   await refreshWindowInfo()
 }
 
@@ -57,7 +66,7 @@ async function handleWindowClose(payload: EventPayloads['window:close']): Promis
  * 处理窗口已关闭事件
  */
 async function handleWindowClosed(payload: EventPayloads['window:closed']): Promise<void> {
-  console.log('[WindowEvents] 窗口已关闭:', payload)
+  logEvent('窗口已关闭', payload)
   await refreshWindowInfo()
 }
 
@@ -65,63 +74,63 @@ async function handleWindowClosed(payload: EventPayloads['window:closed']): Prom
  * 处理窗口聚焦事件
  */
 function handleWindowFocused(payload: EventPayloads['window:focused']): void {
-  console.log('[WindowEvents] 窗口聚焦:', payload)
+  logEvent('窗口聚焦', payload)
 }
 
 /**
  * 处理窗口失焦事件
  */
 function handleWindowBlurred(payload: EventPayloads['window:blurred']): void {
-  console.log('[WindowEvents] 窗口失焦:', payload)
+  logEvent('窗口失焦', payload)
 }
 
 /**
  * 处理窗口最小化事件
  */
 function handleWindowMinimized(payload: EventPayloads['window:minimized']): void {
-  console.log('[WindowEvents] 窗口最小化:', payload)
+  logEvent('窗口最小化', payload)
 }
 
 /**
  * 处理窗口最大化事件
  */
 function handleWindowMaximized(payload: EventPayloads['window:maximized']): void {
-  console.log('[WindowEvents] 窗口最大化:', payload)
+  logEvent('窗口最大化', payload)
 }
 
 /**
  * 处理窗口取消最大化事件
  */
 function handleWindowUnmaximized(payload: EventPayloads['window:unmaximized']): void {
-  console.log('[WindowEvents] 窗口取消最大化:', payload)
+  logEvent('窗口取消最大化', payload)
 }
 
 /**
  * 处理窗口恢复事件
  */
 function handleWindowRestored(payload: EventPayloads['window:restored']): void {
-  console.log('[WindowEvents] 窗口恢复:', payload)
+  logEvent('窗口恢复', payload)
 }
 
 /**
  * 处理窗口进入全屏事件
  */
 function handleWindowEnterFullScreen(payload: EventPayloads['window:enter-full-screen']): void {
-  console.log('[WindowEvents] 窗口进入全屏:', payload)
+  logEvent('窗口进入全屏', payload)
 }
 
 /**
  * 处理窗口离开全屏事件
  */
 function handleWindowLeaveFullScreen(payload: EventPayloads['window:leave-full-screen']): void {
-  console.log('[WindowEvents] 窗口离开全屏:', payload)
+  logEvent('窗口离开全屏', payload)
 }
 
 /**
  * 处理窗口大小变化事件
  */
 function handleWindowResized(payload: EventPayloads['window:resized']): void {
-  console.log('[WindowEvents] 窗口大小变化:', payload)
+  logEvent('窗口大小变化', payload)
 }
 
 /**

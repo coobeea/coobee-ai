@@ -13,3 +13,4 @@ export default pinia
 export { usePreferenceStore, usePreferenceValue } from './preference'
 export { useLoadingStore } from './loading'
 export { useWindowStore } from './window'
+export { useLogStore } from './log'

@@ -6,6 +6,15 @@
 import { EventTypes, type EventPayloads } from '@shared/ipc/events'
 import eventBus from '@/eventbus'
 import { useWindowStore } from '@/stores/window'
+import { useLogStore } from '@/stores/log'
+
+/**
+ * 记录事件日志
+ */
+function logEvent(message: string, data?: unknown): void {
+  const logStore = useLogStore()
+  logStore.info('tab', message, data)
+}
 
 /**
  * 刷新窗口信息
@@ -19,7 +28,7 @@ async function refreshWindowInfo(): Promise<void> {
  * 处理 Tab 创建事件
  */
 async function handleTabCreated(payload: EventPayloads['tab:created']): Promise<void> {
-  console.log('[TabEvents] Tab 创建:', payload)
+  logEvent('Tab 创建', payload)
   await refreshWindowInfo()
 }
 
@@ -27,7 +36,7 @@ async function handleTabCreated(payload: EventPayloads['tab:created']): Promise<
  * 处理 Tab 关闭事件
  */
 async function handleTabClosed(payload: EventPayloads['tab:closed']): Promise<void> {
-  console.log('[TabEvents] Tab 关闭:', payload)
+  logEvent('Tab 关闭', payload)
   await refreshWindowInfo()
 }
 
@@ -35,8 +44,7 @@ async function handleTabClosed(payload: EventPayloads['tab:closed']): Promise<vo
  * 处理 Tab 激活事件
  */
 async function handleTabActivated(payload: EventPayloads['tab:activated']): Promise<void> {
-  console.log('[TabEvents] Tab 激活:', payload)
-  // Tab 激活时刷新窗口信息
+  logEvent('Tab 激活', payload)
   await refreshWindowInfo()
 }
 
@@ -44,7 +52,7 @@ async function handleTabActivated(payload: EventPayloads['tab:activated']): Prom
  * 处理 Tab 更新事件
  */
 async function handleTabUpdated(payload: EventPayloads['tab:updated']): Promise<void> {
-  console.log('[TabEvents] Tab 更新:', payload)
+  logEvent('Tab 更新', payload)
   await refreshWindowInfo()
 }
 
@@ -52,7 +60,7 @@ async function handleTabUpdated(payload: EventPayloads['tab:updated']): Promise<
  * 处理 Tabs 重新排序事件
  */
 async function handleTabsReordered(payload: EventPayloads['tabs:reordered']): Promise<void> {
-  console.log('[TabEvents] Tabs 重新排序:', payload)
+  logEvent('Tabs 重新排序', payload)
   await refreshWindowInfo()
 }
 
@@ -62,7 +70,7 @@ async function handleTabsReordered(payload: EventPayloads['tabs:reordered']): Pr
 async function handleTabMovedToWindow(
   payload: EventPayloads['tab:moved-to-window']
 ): Promise<void> {
-  console.log('[TabEvents] Tab 移动到另一个窗口:', payload)
+  logEvent('Tab 移动到另一个窗口', payload)
   await refreshWindowInfo()
 }
 
@@ -70,7 +78,7 @@ async function handleTabMovedToWindow(
  * 处理 Tab 复制事件
  */
 async function handleTabDuplicated(payload: EventPayloads['tab:duplicated']): Promise<void> {
-  console.log('[TabEvents] Tab 复制:', payload)
+  logEvent('Tab 复制', payload)
   await refreshWindowInfo()
 }
 
@@ -78,7 +86,7 @@ async function handleTabDuplicated(payload: EventPayloads['tab:duplicated']): Pr
  * 处理 Tab 刷新事件
  */
 function handleTabReloaded(payload: EventPayloads['tab:reloaded']): void {
-  console.log('[TabEvents] Tab 刷新:', payload)
+  logEvent('Tab 刷新', payload)
 }
 
 /**
