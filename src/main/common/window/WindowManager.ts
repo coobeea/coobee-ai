@@ -1152,14 +1152,40 @@ export class WindowManager implements IWindowManager {
     })
 
     // close: 窗口即将关闭（可阻止）
-    window.on(BrowserWindowEvents.CLOSE, () => {
+    window.on(BrowserWindowEvents.CLOSE, async (e) => {
       log.debug(`[WindowManager] 窗口即将关闭: windowId=${windowId}`)
 
+      // 检查托盘配置
+      const { config } = await import('@main/common/config')
+      const showTrayIcon = config.getShowTrayIcon()
+      const closeToTray = config.getCloseToTray()
+
+      // 托盘模式：阻止关闭，隐藏窗口
+      if (showTrayIcon && closeToTray) {
+        e.preventDefault()
+        window.hide()
+
+        // macOS: 隐藏 Dock 图标
+        if (process.platform === 'darwin') {
+          const { app } = await import('electron')
+          app.dock?.hide()
+        }
+
+        log.info(
+          `[WindowManager] 托盘模式：窗口已隐藏 windowId=${windowId}${process.platform === 'darwin' ? ', Dock 已隐藏' : ''}`
+        )
+        // 不需要继续处理
+        return
+      }
+
+      // 非托盘模式或应用退出：什么都不做，让窗口正常关闭
+      //    → 触发 'closed' 事件 → cleanupWindow()
+      //    → 如果是最后一个窗口 → 'window-all-closed' → 决定是否退出
+
+      // 发送 window:close 事件
       eventBus.emit(EventTypes.WINDOW_CLOSE, {
         windowId
       })
-      // 注意：这里可以通过 event.preventDefault() 阻止关闭
-      // 如果需要阻止关闭，可以在这里添加逻辑
     })
 
     // closed: 窗口已关闭

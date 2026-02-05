@@ -1,4 +1,4 @@
-import AppManager from './common/app'
+import { getAppManager } from './common/app'
 
 /**
  * 捕获未处理的异常
@@ -22,9 +22,8 @@ process.on('unhandledRejection', (reason: unknown) => {
  */
 async function main(): Promise<void> {
   try {
-    // 在这里创建 AppManager 实例，避免在模块加载时创建
-    // 这样可以确保在合适的时机初始化，避免 EPIPE 错误
-    const appManager = new AppManager()
+    // 获取 AppManager 单例实例
+    const appManager = getAppManager()
 
     // 初始化应用
     await appManager.initialize()

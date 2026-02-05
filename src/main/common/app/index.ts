@@ -48,29 +48,19 @@ export class AppManager implements IAppManager {
    */
   private setupAppEventHandlers(): void {
     // 所有窗口关闭
-    app.on(ElectronAppEvents.WINDOW_ALL_CLOSED, async () => {
+    app.on(ElectronAppEvents.WINDOW_ALL_CLOSED, () => {
       log.info('[App] 所有窗口已关闭')
 
-      // 动态导入 config 避免循环依赖
-      const { config } = await import('@main/common/config')
-      const showTrayIcon = config.getShowTrayIcon()
-      const closeToTray = config.getCloseToTray()
+      // 注意：托盘模式下，窗口只是隐藏（不会触发此事件）
+      // 所以能到这里，说明窗口是真的被关闭和销毁了
 
-      // 1. 如果同时满足：托盘图标开启 && 关闭到托盘开启
-      //    → 所有平台都在托盘运行（不退出）
-      if (showTrayIcon && closeToTray) {
-        log.info('[App] 托盘模式已开启，应用继续在托盘运行')
-        return
-      }
-
-      // 2. 其他情况，遵循平台标准行为
-      if (process.platform === 'darwin') {
-        // macOS: 保持应用运行（标准行为）
-        log.info('[App] macOS 应用保持运行，可通过 Dock 图标重新打开窗口')
-      } else {
-        // Windows/Linux: 退出应用（标准行为）
+      // 在非 macOS 平台上，所有窗口关闭后退出应用
+      if (process.platform !== 'darwin') {
         log.info('[App] Windows/Linux 应用退出')
         app.quit()
+      } else {
+        // macOS: 保持应用运行（标准行为）
+        log.info('[App] macOS 应用保持运行，可通过 Dock 图标重新打开窗口')
       }
     })
 
@@ -213,6 +203,19 @@ export class AppManager implements IAppManager {
   }
 }
 
-// 不要在模块加载时创建实例，避免在 app ready 前写日志
-// export const appManager = new AppManager()
+/**
+ * AppManager 单例实例
+ *
+ * 注意：这里导出实例是为了在其他模块（如 WindowManager）中访问应用状态
+ * 但实际的初始化（appManager.initialize()）仍然在 src/main/index.ts 的 main() 中调用
+ */
+let appManagerInstance: AppManager | null = null
+
+export function getAppManager(): AppManager {
+  if (!appManagerInstance) {
+    appManagerInstance = new AppManager()
+  }
+  return appManagerInstance
+}
+
 export default AppManager
