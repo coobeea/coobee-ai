@@ -1376,16 +1376,22 @@ export class WindowManager implements IWindowManager {
       this.cleanupTab(tabId)
     }
 
-    // 2. 从 Map 中移除窗口
+    // 2. ✅ 关键修复：移除窗口的所有事件监听器，打破循环引用
+    if (!windowInfo.window.isDestroyed()) {
+      windowInfo.window.removeAllListeners()
+      log.debug(`[WindowManager] 已移除窗口的所有事件监听器: windowId=${windowId}`)
+    }
+
+    // 3. 从 Map 中移除窗口
     this.windows.delete(windowId)
 
-    // 3. 更新主窗口 ID
+    // 4. 更新主窗口 ID
     if (this.mainWindowId === windowId) {
       this.mainWindowId = null
       log.info('[WindowManager] 主窗口已清理')
     }
 
-    // 4. 更新聚焦窗口 ID
+    // 5. 更新聚焦窗口 ID
     if (this.focusedWindowId === windowId) {
       this.focusedWindowId = null
     }
@@ -1550,6 +1556,14 @@ export class WindowManager implements IWindowManager {
     // 遍历所有窗口查找并清理 Tab
     for (const windowInfo of this.windows.values()) {
       if (windowInfo.tabs.has(tabId)) {
+        const tabViewInfo = windowInfo.tabViews.get(tabId)
+
+        // ✅ 关键修复：移除所有事件监听器，打破循环引用
+        if (tabViewInfo && !tabViewInfo.view.webContents.isDestroyed()) {
+          tabViewInfo.view.webContents.removeAllListeners()
+          log.debug(`[WindowManager] 已移除 Tab 的所有事件监听器: tabId=${tabId}`)
+        }
+
         windowInfo.tabs.delete(tabId)
         windowInfo.tabViews.delete(tabId)
       }

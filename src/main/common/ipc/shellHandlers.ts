@@ -17,9 +17,12 @@ import type { WindowInfoResponse, TabInfoResponse } from '@shared/ipc'
 export function registerShellHandlers(): void {
   // 拉取当前窗口完整信息
   ipcMain.handle(ShellChannels.GET_WINDOW_INFO, (event): WindowInfoResponse | null => {
+    // 获取调用者的 webContents ID
+    const callerWebContentsId = event.sender.id
+
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) {
-      log.warn('[IPC] shell:get-window-info - 无法获取窗口')
+      log.warn(`[IPC] shell:get-window-info - 无法获取窗口 (webContentsId=${callerWebContentsId})`)
       return null
     }
 
@@ -27,12 +30,13 @@ export function registerShellHandlers(): void {
     const windowInfo = windowManager.getWindowInfo(windowId)
 
     if (!windowInfo) {
-      log.warn(`[IPC] shell:get-window-info - 窗口信息不存在: windowId=${windowId}`)
+      log.warn(
+        `[IPC] shell:get-window-info - 窗口信息不存在: windowId=${windowId}, webContentsId=${callerWebContentsId}`
+      )
       return null
     }
 
     // 获取调用者的 Tab ID（通过 webContents.id 查找）
-    const callerWebContentsId = event.sender.id
     const callerTabId = windowManager.getTabIdByWebContentsId(callerWebContentsId)
 
     const windowTabs = windowManager.getWindowTabs(windowId)
@@ -56,7 +60,7 @@ export function registerShellHandlers(): void {
       callerTabId: callerTabId ?? null
     }
     log.debug(
-      `[IPC] shell:get-window-info -> windowId=${windowId}, tabs=${tabs.length}, currentTabId=${currentTabId}, callerTabId=${callerTabId}`
+      `[IPC] shell:get-window-info -> windowId=${windowId}, tabs=${tabs.length}, currentTabId=${currentTabId}, callerTabId=${callerTabId}, webContentsId=${callerWebContentsId}`
     )
     return response
   })

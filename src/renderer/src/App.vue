@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useWindowStore } from '@/stores/window'
 // 方式 1：手动导入图标（推荐用于常用图标）
 import IconMdiPalette from '~icons/mdi/palette'
@@ -25,6 +25,12 @@ import LogViewer from './components/LogViewer.vue'
 // 使用 Window Store
 const windowStore = useWindowStore()
 
+// 定时器 ID
+let refreshTimer: number | null = null
+
+// 刷新计数器
+const refreshCount = ref(0)
+
 // 计算窗口信息（用于模板）
 const windowInfo = computed(() => {
   if (!windowStore.isReady) return null
@@ -39,6 +45,24 @@ const windowInfo = computed(() => {
 onMounted(async () => {
   // 初始化窗口信息
   await windowStore.refreshWindowInfo()
+
+  // 🔄 启动定时刷新任务（每 5 秒刷新一次）
+  refreshTimer = window.setInterval(async () => {
+    refreshCount.value++
+    console.log(`[App] 定时刷新窗口信息 #${refreshCount.value}`)
+    await windowStore.refreshWindowInfo()
+  }, 5000)
+
+  console.log('[App] 定时刷新任务已启动，每 5 秒刷新一次')
+})
+
+onBeforeUnmount(() => {
+  // ✅ 清理定时器
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+    console.log('[App] 定时刷新任务已停止')
+  }
 })
 </script>
 
@@ -47,15 +71,22 @@ onMounted(async () => {
     <div class="mx-auto max-w-4xl">
       <!-- Window Info Bar -->
       <div v-if="windowInfo" class="mb-4 rounded-lg bg-white p-4 shadow">
-        <div class="flex items-center gap-3 text-sm">
-          <IconMdiWindowMaximize class="text-indigo-600" />
-          <span class="font-semibold text-gray-700">窗口信息:</span>
-          <span class="text-gray-600">Window ID: {{ windowInfo.windowId }}</span>
-          <span class="text-gray-400">|</span>
-          <span class="text-gray-600">
-            当前 Tab ID:
-            <span class="font-semibold text-indigo-600">{{ windowInfo.currentTabId }}</span>
-          </span>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3 text-sm">
+            <IconMdiWindowMaximize class="text-indigo-600" />
+            <span class="font-semibold text-gray-700">窗口信息:</span>
+            <span class="text-gray-600">Window ID: {{ windowInfo.windowId }}</span>
+            <span class="text-gray-400">|</span>
+            <span class="text-gray-600">
+              当前 Tab ID:
+              <span class="font-semibold text-indigo-600">{{ windowInfo.currentTabId }}</span>
+            </span>
+          </div>
+          <!-- 刷新计数器 -->
+          <div class="flex items-center gap-2 text-xs text-gray-500">
+            <IconSvgSpinnersPulse class="text-base text-green-600" />
+            <span>定时刷新: {{ refreshCount }} 次</span>
+          </div>
         </div>
         <div class="flex items-center gap-3 text-sm">
           <span class="text-gray-600">窗口类型: {{ windowInfo.info?.windowType }}</span>
