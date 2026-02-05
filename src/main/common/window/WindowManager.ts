@@ -130,16 +130,19 @@ export class WindowManager implements IWindowManager {
       // 7. 设置 View 边界
       this.updateViewBounds(windowInfo.window, view)
 
-      // 8. 绑定事件
+      // 8. 设置 DevTools（开发环境）- 在内容窗口上
+      this.setupDevTools(view)
+
+      // 9. 绑定事件
       this.setupTabEvents(tabViewInfo.view.webContents, tabInfo)
 
-      // 9. 加载内容
+      // 10. 加载内容
       if (config.url) {
         log.debug(`[WindowManager] 开始加载 Tab 内容: tabId=${tabId}, url=${config.url}`)
         await this.loadTabContent(view, config.url)
       }
 
-      // 10. 如果是激活的 Tab，切换到它
+      // 11. 如果是激活的 Tab，切换到它
       if (tabInfo.isActive) {
         await this.switchTab(windowId, tabId)
       }
@@ -745,13 +748,10 @@ export class WindowManager implements IWindowManager {
       // 9. 加载窗口内容
       this.loadWindowContent(window, config.type)
 
-      // 10. 设置 DevTools（开发环境）
-      this.setupDevTools(window)
-
-      // 11. 绑定窗口事件
+      // 10. 绑定窗口事件
       this.setupWindowEvents(window.id)
 
-      // 12. 创建默认 Tab
+      // 11. 创建默认 Tab
       this.createDefaultTab(window.id, config.type)
 
       log.info(
@@ -1309,13 +1309,20 @@ export class WindowManager implements IWindowManager {
    * 设置 DevTools（开发环境）
    * @param window BrowserWindow 实例
    */
-  private setupDevTools(window: BrowserWindow): void {
+  private setupDevTools(view: WebContentsView): void {
+    const tabId = view.webContents.id
+    log.debug(`[WindowManager] setupDevTools 开始: tabId=${tabId}, isDev=${Env.isDev}`)
+
     if (!Env.isDev) {
+      log.debug(`[WindowManager] 非开发环境，跳过 DevTools 设置`)
       return
     }
 
     const openDevTools = Env.main.openDevTools
+    log.debug(`[WindowManager] openDevTools 值: "${openDevTools}", 类型: ${typeof openDevTools}`)
+
     if (!openDevTools) {
+      log.debug(`[WindowManager] openDevTools 为空，跳过`)
       return
     }
 
@@ -1324,15 +1331,17 @@ export class WindowManager implements IWindowManager {
 
       if (openDevTools === 'true') {
         // 默认在右侧打开
-        window.webContents.openDevTools({ mode: 'right' })
-        log.info(`[WindowManager] DevTools 已打开: windowId=${window.id}, mode=right`)
+        view.webContents.openDevTools({ mode: 'right' })
+        log.info(`[WindowManager] DevTools 已打开: tabId=${tabId}, mode=right`)
       } else if (['bottom', 'right', 'undocked', 'detach'].includes(openDevTools)) {
         // 使用指定的模式
-        window.webContents.openDevTools({ mode: openDevTools as DevToolsMode })
-        log.info(`[WindowManager] DevTools 已打开: windowId=${window.id}, mode=${openDevTools}`)
+        view.webContents.openDevTools({ mode: openDevTools as DevToolsMode })
+        log.info(`[WindowManager] DevTools 已打开: tabId=${tabId}, mode=${openDevTools}`)
+      } else {
+        log.warn(`[WindowManager] 无效的 openDevTools 值: "${openDevTools}"`)
       }
     } catch (error) {
-      log.warn(`[WindowManager] 打开 DevTools 失败: windowId=${window.id}`, error)
+      log.warn(`[WindowManager] 打开 DevTools 失败: tabId=${tabId}`, error)
     }
   }
 
