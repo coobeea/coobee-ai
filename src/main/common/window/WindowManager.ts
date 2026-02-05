@@ -279,33 +279,45 @@ export class WindowManager implements IWindowManager {
       // 3. 清理 Tab
       this.cleanupTab(tabId)
 
-      // 4. 如果是激活的 Tab，切换到其他 Tab
-      if (wasActive && windowInfo.tabs.size > 0) {
-        const firstTab = Array.from(windowInfo.tabs.values())[0]
-        log.debug(`[WindowManager] 激活的 Tab 被关闭，切换到: tabId=${firstTab.id}`)
-        await this.switchTab(windowId, firstTab.id)
-      }
-
-      // 5. 重新计算所有 Tab 的 position
-      let position = 0
-      for (const tab of Array.from(windowInfo.tabs.values()).sort(
-        (a, b) => a.position - b.position
-      )) {
-        tab.position = position++
-      }
-
-      log.info(
-        `[WindowManager] Tab 关闭成功: tabId=${tabId}, title=${tabTitle}, 剩余=${windowInfo.tabs.size}`
-      )
-
-      // 发送 tab:closed 事件
+      // 4. 发送 tab:closed 事件
       eventBus.emit(EventTypes.TAB_CLOSED, {
         windowId,
         tabId
       })
 
-      // 打印状态快照
-      this.printWindowsState(`Tab 关闭 - tabId=${tabId}`)
+      // 5. 检查剩余 Tab 数量
+      const remainingTabsCount = windowInfo.tabs.size
+
+      if (remainingTabsCount === 0) {
+        // 关闭最后一个 Tab 时，关闭整个窗口
+        log.info(
+          `[WindowManager] 最后一个 Tab 已关闭 (tabId=${tabId}, title=${tabTitle})，关闭窗口 windowId=${windowId}`
+        )
+        await this.closeWindow(windowId)
+      } else {
+        // 还有其他 Tab
+        log.info(
+          `[WindowManager] Tab 关闭成功: tabId=${tabId}, title=${tabTitle}, 剩余=${remainingTabsCount}`
+        )
+
+        // 如果关闭的是激活的 Tab，切换到第一个 Tab
+        if (wasActive) {
+          const firstTab = Array.from(windowInfo.tabs.values())[0]
+          log.debug(`[WindowManager] 激活的 Tab 被关闭，切换到: tabId=${firstTab.id}`)
+          await this.switchTab(windowId, firstTab.id)
+        }
+
+        // 重新计算所有 Tab 的 position
+        let position = 0
+        for (const tab of Array.from(windowInfo.tabs.values()).sort(
+          (a, b) => a.position - b.position
+        )) {
+          tab.position = position++
+        }
+
+        // 打印状态快照
+        this.printWindowsState(`Tab 关闭 - tabId=${tabId}`)
+      }
 
       return true
     } catch (error) {

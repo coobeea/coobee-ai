@@ -103,7 +103,7 @@ const addNewTab = async (): Promise<void> => {
         v-for="tab in tabStore.tabs"
         :key="tab.id"
         :active="tab.id === tabStore.currentTabId"
-        :can-close="tabStore.tabs.length > 1"
+        :can-close="true"
         @click="handleTabClick(tab.id)"
         @close="handleTabClose(tab.id)"
       >
