@@ -25,9 +25,13 @@ export const IpcRegistrationHook = {
     try {
       // 动态导入以避免循环依赖
       const { registerIpcHandlers } = await import('@main/common/ipc')
+      const { ipcEventBroadcaster } = await import('@main/common/ipc/eventBroadcaster')
 
       // 注册所有 IPC 处理器
       registerIpcHandlers()
+
+      // 初始化 IPC 事件广播器（监听主进程 EventBus 并转发到前端）
+      ipcEventBroadcaster.init()
 
       log.info('[IpcRegistrationHook] All IPC handlers registered successfully')
     } catch (error) {

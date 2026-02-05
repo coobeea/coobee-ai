@@ -201,7 +201,7 @@ class IpcEventBroadcaster {
       }
     })
 
-    log.debug(`[IpcEventBroadcaster] Broadcast event: ${type} to ${sentCount} windows`, payload)
+    log.info(`[IpcEventBroadcaster] Broadcast event: ${type} to ${sentCount} windows`, payload)
   }
 
   /**
