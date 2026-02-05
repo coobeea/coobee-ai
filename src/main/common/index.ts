@@ -7,20 +7,8 @@ export { log, createLogger, getLogPath, setLogPath } from './logger'
 export { eventBus } from './eventbus'
 export { config, Config } from './config'
 export { stateManager, StateManager } from './state'
-export { dialogManager, DialogManager } from './dialog'
 export { ThemeManager } from './theme'
 export { IconManager, getAppIcon, getTrayIcon, getTrayNativeImage, validateIcons } from './icons'
-export {
-  AppEvents,
-  WindowEvents,
-  LifecycleEvents,
-  DatabaseEvents,
-  WorkspaceEvents,
-  JobEvents,
-  ThemeEvents,
-  ConfigEvents,
-  LogEvents
-} from './events'
 
 // 窗口事件（从 window 模块导出）
 export { BrowserWindowEvents } from './window'

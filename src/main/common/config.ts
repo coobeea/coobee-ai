@@ -71,11 +71,11 @@ export class Config {
   }
 
   get<K extends keyof ConfigStore>(key: K): ConfigStore[K] {
-    return (this.store.get as any)(key)
+    return (this.store.get as unknown as (key: K) => ConfigStore[K])(key)
   }
 
   set<K extends keyof ConfigStore>(key: K, value: ConfigStore[K]): void {
-    ;(this.store.set as any)(key, value)
+    ;(this.store.set as unknown as (key: K, value: ConfigStore[K]) => void)(key, value)
   }
 
   getTheme(): ThemeMode {

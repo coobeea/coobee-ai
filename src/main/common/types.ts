@@ -7,18 +7,6 @@
 // ==================== 通用类型 ====================
 
 /**
- * 通用结果类型
- */
-export interface Result<T = unknown> {
-  success: boolean
-  data?: T
-  error?: string
-  message?: string
-  code?: string
-  timestamp?: number
-}
-
-/**
  * 主题模式
  */
 export type ThemeMode = 'light' | 'dark' | 'auto'
