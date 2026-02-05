@@ -29,6 +29,8 @@ import type {
 } from './types'
 import { getWindowPresets, CHROME_HEIGHT, BrowserWindowEvents } from './types'
 import { log } from '@main/common/logger'
+import { eventBus } from '@main/common/eventbus'
+import { EventTypes } from '@shared/ipc/events'
 import { Env } from '@main/common/env'
 
 export class WindowManager implements IWindowManager {
@@ -145,6 +147,16 @@ export class WindowManager implements IWindowManager {
       log.info(
         `[WindowManager] Tab 创建成功: tabId=${tabId}, windowId=${windowId}, title=${tabInfo.title}`
       )
+
+      // 发送 tab:created 事件
+      eventBus.emit(EventTypes.TAB_CREATED, {
+        windowId,
+        tabId,
+        title: tabInfo.title,
+        url: tabInfo.url,
+        position: tabInfo.position
+      })
+
       return tabId
     } catch (error) {
       log.error('[WindowManager] 创建 Tab 失败:', error)
@@ -175,6 +187,10 @@ export class WindowManager implements IWindowManager {
     }
 
     try {
+      // 记录之前激活的 Tab ID
+      const previousTab = Array.from(windowInfo.tabs.values()).find((t) => t.isActive)
+      const previousTabId = previousTab ? previousTab.id : null
+
       // 1. 取消当前窗口所有 Tab 的激活状态
       for (const tab of windowInfo.tabs.values()) {
         tab.isActive = false
@@ -193,6 +209,14 @@ export class WindowManager implements IWindowManager {
       log.info(
         `[WindowManager] Tab 切换成功: windowId=${windowId}, tabId=${tabId}, title=${tabInfo.title}`
       )
+
+      // 发送 tab:activated 事件
+      eventBus.emit(EventTypes.TAB_ACTIVATED, {
+        windowId,
+        tabId,
+        previousTabId
+      })
+
       return true
     } catch (error) {
       log.error('[WindowManager] 切换 Tab 失败:', error)
@@ -263,9 +287,64 @@ export class WindowManager implements IWindowManager {
       log.info(
         `[WindowManager] Tab 关闭成功: tabId=${tabId}, title=${tabTitle}, 剩余=${windowInfo.tabs.size}`
       )
+
+      // 发送 tab:closed 事件
+      eventBus.emit(EventTypes.TAB_CLOSED, {
+        windowId,
+        tabId
+      })
+
       return true
     } catch (error) {
       log.error('[WindowManager] 关闭 Tab 失败:', error)
+      return false
+    }
+  }
+
+  /**
+   * 更新 Tab 信息
+   * @param windowId 窗口 ID
+   * @param tabId Tab ID
+   * @param updates 要更新的字段
+   * @returns 是否成功更新
+   */
+  updateTab(windowId: number, tabId: number, updates: { title?: string; url?: string }): boolean {
+    log.debug(`[WindowManager] 更新 Tab: windowId=${windowId}, tabId=${tabId}`)
+
+    const windowInfo = this.windows.get(windowId)
+    if (!windowInfo) {
+      log.warn(`[WindowManager] 窗口不存在: windowId=${windowId}`)
+      return false
+    }
+
+    const tab = windowInfo.tabs.get(tabId)
+    if (!tab) {
+      log.warn(`[WindowManager] Tab 不存在: tabId=${tabId}`)
+      return false
+    }
+
+    try {
+      // 更新 Tab 信息
+      if (updates.title !== undefined) {
+        tab.title = updates.title
+      }
+      if (updates.url !== undefined) {
+        tab.url = updates.url
+      }
+
+      log.info(`[WindowManager] Tab 更新成功: tabId=${tabId}`)
+
+      // 发送 tab:updated 事件
+      eventBus.emit(EventTypes.TAB_UPDATED, {
+        windowId,
+        tabId,
+        title: updates.title,
+        url: updates.url
+      })
+
+      return true
+    } catch (error) {
+      log.error('[WindowManager] 更新 Tab 失败:', error)
       return false
     }
   }
@@ -286,15 +365,32 @@ export class WindowManager implements IWindowManager {
     }
 
     try {
+      // 记录所有位置变化
+      const changes: Array<{ tabId: number; fromPosition: number; toPosition: number }> = []
+
       // 更新每个 Tab 的 position
-      tabIds.forEach((tabId, index) => {
+      tabIds.forEach((tabId, toPosition) => {
         const tab = windowInfo.tabs.get(tabId)
         if (tab) {
-          tab.position = index
+          const fromPosition = tab.position
+          if (fromPosition !== toPosition) {
+            changes.push({ tabId, fromPosition, toPosition })
+          }
+          tab.position = toPosition
         }
       })
 
-      log.info(`[WindowManager] Tab 重新排序成功: windowId=${windowId}`)
+      log.info(`[WindowManager] Tab 重新排序成功: windowId=${windowId}, 变化数=${changes.length}`)
+
+      // 发送统一的 tabs:reordered 事件
+      if (changes.length > 0) {
+        eventBus.emit(EventTypes.TABS_REORDERED, {
+          windowId,
+          tabIds,
+          changes
+        })
+      }
+
       return true
     } catch (error) {
       log.error('[WindowManager] 重新排序 Tab 失败:', error)
@@ -359,6 +455,15 @@ export class WindowManager implements IWindowManager {
       log.info(
         `[WindowManager] Tab 移动成功: tabId=${tabId}, title=${tabTitle}, from=${fromWindowId}, to=${toWindowId}`
       )
+
+      // 发送 tab:moved-to-window 事件
+      eventBus.emit(EventTypes.TAB_MOVED_TO_WINDOW, {
+        tabId,
+        fromWindowId,
+        toWindowId,
+        title: tabTitle
+      })
+
       return true
     } catch (error) {
       log.error('[WindowManager] 移动 Tab 失败:', error)
@@ -399,6 +504,14 @@ export class WindowManager implements IWindowManager {
 
     if (newTabId) {
       log.info(`[WindowManager] Tab 复制成功: 原tabId=${tabId}, 新tabId=${newTabId}`)
+
+      // 发送 tab:duplicated 事件
+      eventBus.emit(EventTypes.TAB_DUPLICATED, {
+        windowId,
+        originalTabId: tabId,
+        newTabId,
+        title: tabInfo.title
+      })
     }
 
     return newTabId
@@ -428,6 +541,13 @@ export class WindowManager implements IWindowManager {
     try {
       tabViewInfo.view.webContents.reload()
       log.info(`[WindowManager] Tab 刷新成功: tabId=${tabId}`)
+
+      // 发送 tab:reloaded 事件
+      eventBus.emit(EventTypes.TAB_RELOADED, {
+        windowId,
+        tabId
+      })
+
       return true
     } catch (error) {
       log.error('[WindowManager] 刷新 Tab 失败:', error)
@@ -619,6 +739,13 @@ export class WindowManager implements IWindowManager {
       log.info(
         `[WindowManager] 窗口创建成功: windowId=${window.id}, type=${config.type}, isMain=${windowInfo.isMain}`
       )
+
+      // 发送 window:created 事件到 eventBus
+      eventBus.emit(EventTypes.WINDOW_CREATED, {
+        windowId: window.id,
+        type: config.type
+      })
+
       return window
     } catch (error) {
       log.error('[WindowManager] 创建窗口失败:', error)
@@ -982,6 +1109,12 @@ export class WindowManager implements IWindowManager {
     // closed: 窗口关闭
     window.on(BrowserWindowEvents.CLOSED, () => {
       log.info(`[WindowManager] 窗口已关闭: windowId=${windowId}`)
+
+      // 发送 window:closed 事件到 eventBus
+      eventBus.emit(EventTypes.WINDOW_CLOSED, {
+        windowId
+      })
+
       this.cleanupWindow(windowId)
     })
 
@@ -989,6 +1122,11 @@ export class WindowManager implements IWindowManager {
     window.on(BrowserWindowEvents.FOCUS, () => {
       windowInfo.state.isFocused = true
       this.focusedWindowId = windowId
+
+      // 发送 window:focused 事件到 eventBus
+      eventBus.emit(EventTypes.WINDOW_FOCUSED, {
+        windowId
+      })
     })
 
     // blur: 失去焦点
@@ -997,36 +1135,65 @@ export class WindowManager implements IWindowManager {
       if (this.focusedWindowId === windowId) {
         this.focusedWindowId = null
       }
+
+      // 发送 window:blurred 事件到 eventBus
+      eventBus.emit(EventTypes.WINDOW_BLURRED, {
+        windowId
+      })
     })
 
     // minimize: 最小化
     window.on(BrowserWindowEvents.MINIMIZE, () => {
       windowInfo.state.isMinimized = true
+
+      eventBus.emit(EventTypes.WINDOW_MINIMIZED, {
+        windowId
+      })
     })
 
     // maximize: 最大化
     window.on(BrowserWindowEvents.MAXIMIZE, () => {
       windowInfo.state.isMaximized = true
+
+      eventBus.emit(EventTypes.WINDOW_MAXIMIZED, {
+        windowId
+      })
     })
 
     // unmaximize: 取消最大化
     window.on(BrowserWindowEvents.UNMAXIMIZE, () => {
       windowInfo.state.isMaximized = false
+
+      eventBus.emit(EventTypes.WINDOW_UNMAXIMIZED, {
+        windowId
+      })
     })
 
     // restore: 恢复
     window.on(BrowserWindowEvents.RESTORE, () => {
       windowInfo.state.isMinimized = false
+
+      eventBus.emit(EventTypes.WINDOW_RESTORED, {
+        windowId
+      })
     })
 
     // enter-full-screen: 进入全屏
     window.on(BrowserWindowEvents.ENTER_FULL_SCREEN, () => {
       windowInfo.state.isFullScreen = true
+
+      eventBus.emit(EventTypes.WINDOW_ENTER_FULL_SCREEN, {
+        windowId
+      })
     })
 
     // leave-full-screen: 离开全屏
     window.on(BrowserWindowEvents.LEAVE_FULL_SCREEN, () => {
       windowInfo.state.isFullScreen = false
+
+      eventBus.emit(EventTypes.WINDOW_LEAVE_FULL_SCREEN, {
+        windowId
+      })
     })
 
     // resize: 窗口大小变化时更新所有 Tab 的边界
@@ -1034,6 +1201,12 @@ export class WindowManager implements IWindowManager {
       for (const tabView of windowInfo.tabViews.values()) {
         this.updateViewBounds(window, tabView.view)
       }
+
+      const bounds = window.getBounds()
+      eventBus.emit(EventTypes.WINDOW_RESIZED, {
+        windowId,
+        bounds
+      })
     })
   }
 
@@ -1233,14 +1406,44 @@ export class WindowManager implements IWindowManager {
 
     // page-title-updated: 页面标题更新
     webContents.on('page-title-updated', (_event, title) => {
+      const oldTitle = tabInfo.title
       tabInfo.title = title
       log.debug(`[WindowManager] Tab 标题更新: tabId=${tabId}, title=${title}`)
+
+      // 发送 tab:updated 事件
+      eventBus.emit(EventTypes.TAB_UPDATED, {
+        windowId: tabInfo.windowId,
+        tabId,
+        updates: {
+          title,
+          url: tabInfo.url
+        },
+        previous: {
+          title: oldTitle,
+          url: tabInfo.url
+        }
+      })
     })
 
     // did-navigate: 页面导航
     webContents.on('did-navigate', (_event, url) => {
+      const oldUrl = tabInfo.url
       tabInfo.url = url
       log.debug(`[WindowManager] Tab 导航: tabId=${tabId}, url=${url}`)
+
+      // 发送 tab:updated 事件
+      eventBus.emit(EventTypes.TAB_UPDATED, {
+        windowId: tabInfo.windowId,
+        tabId,
+        updates: {
+          title: tabInfo.title,
+          url
+        },
+        previous: {
+          title: tabInfo.title,
+          url: oldUrl
+        }
+      })
     })
 
     // page-favicon-updated: 图标更新
@@ -1248,6 +1451,20 @@ export class WindowManager implements IWindowManager {
       if (favicons.length > 0) {
         tabInfo.icon = favicons[0]
         log.debug(`[WindowManager] Tab 图标更新: tabId=${tabId}`)
+
+        // 发送 tab:updated 事件（icon 变化不包含在 updates 中，因为前端主要关注 title/url）
+        eventBus.emit(EventTypes.TAB_UPDATED, {
+          windowId: tabInfo.windowId,
+          tabId,
+          updates: {
+            title: tabInfo.title,
+            url: tabInfo.url
+          },
+          previous: {
+            title: tabInfo.title,
+            url: tabInfo.url
+          }
+        })
       }
     })
 

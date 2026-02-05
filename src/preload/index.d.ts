@@ -21,6 +21,8 @@ declare global {
         switch: (req: SwitchTabRequest) => Promise<IpcResult<void>>
         update: (req: UpdateTabRequest) => Promise<IpcResult<void>>
       }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registerEventBus: (bus: any) => void
     }
   }
 }

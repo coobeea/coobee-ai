@@ -157,23 +157,14 @@ export function registerTabHandlers(): void {
       try {
         log.info(`[IPC] tab:update - windowId=${windowId}, tabId=${req.tabId}`)
 
-        // 获取当前 Tab 信息
-        const windowInfo = windowManager.getWindowInfo(windowId)
-        if (!windowInfo) {
-          throw new Error('窗口不存在')
-        }
+        // 调用 WindowManager 更新 Tab
+        const success = windowManager.updateTab(windowId, req.tabId, {
+          title: req.title,
+          url: req.url
+        })
 
-        const tab = windowInfo.tabs.get(req.tabId)
-        if (!tab) {
-          throw new Error('Tab 不存在')
-        }
-
-        // 更新 Tab 信息
-        if (req.title !== undefined) {
-          tab.title = req.title
-        }
-        if (req.url !== undefined) {
-          tab.url = req.url
+        if (!success) {
+          throw new Error('更新 Tab 失败')
         }
 
         log.info(`[IPC] tab:update - 成功更新 Tab: tabId=${req.tabId}`)

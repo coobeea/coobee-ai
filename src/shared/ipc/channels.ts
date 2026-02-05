@@ -5,8 +5,14 @@
  * - shell: Shell 窗口相关（invoke 拉取）
  * - window: 窗口控制（invoke）
  * - tab: Tab 操作（invoke）
- * - on: 事件监听（on 监听，主进程 -> 渲染进程）
+ * - ipc:event: 统一事件通道（主进程 -> 前端，通过 type 区分事件类型）
  */
+
+/**
+ * 统一的事件通道（主进程 -> 前端）
+ * 所有事件都通过这个通道发送，通过 message.type 区分事件类型
+ */
+export const IPC_EVENT_CHANNEL = 'ipc:event' as const
 
 /** Shell 相关通道（invoke 拉取） */
 export const ShellChannels = {
