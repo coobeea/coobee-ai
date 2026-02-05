@@ -1028,54 +1028,6 @@ export class WindowManager implements IWindowManager {
     }
   }
 
-  // ==================== 窗口通信 ====================
-
-  /**
-   * 向指定窗口发送消息
-   * @param windowId 窗口 ID
-   * @param channel 通道名称
-   * @param args 参数
-   */
-  sendToWindow(windowId: number, channel: string, ...args: unknown[]): void {
-    const windowInfo = this.windows.get(windowId)
-    if (!windowInfo) return
-
-    try {
-      windowInfo.window.webContents.send(channel, ...args)
-      log.debug(`[WindowManager] 发送消息: windowId=${windowId}, channel=${channel}`)
-    } catch (error) {
-      log.error('[WindowManager] 发送消息失败:', error)
-    }
-  }
-
-  /**
-   * 向所有窗口广播消息
-   * @param channel 通道名称
-   * @param args 参数
-   */
-  sendToAllWindows(channel: string, ...args: unknown[]): void {
-    const count = this.windows.size
-    log.debug(`[WindowManager] 广播消息: channel=${channel}, windowCount=${count}`)
-
-    for (const windowInfo of this.windows.values()) {
-      try {
-        windowInfo.window.webContents.send(channel, ...args)
-      } catch (error) {
-        log.error('[WindowManager] 广播消息失败:', error)
-      }
-    }
-  }
-
-  /**
-   * 向聚焦窗口发送消息
-   * @param channel 通道名称
-   * @param args 参数
-   */
-  sendToFocused(channel: string, ...args: unknown[]): void {
-    if (!this.focusedWindowId) return
-    this.sendToWindow(this.focusedWindowId, channel, ...args)
-  }
-
   // ==================== 内部方法 ====================
 
   /**

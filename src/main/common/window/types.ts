@@ -514,28 +514,6 @@ export interface IWindowManager {
 
   // ==================== 窗口通信 ====================
 
-  /**
-   * 向指定窗口发送消息
-   * @param windowId 窗口 ID
-   * @param channel 通道名称
-   * @param args 参数
-   */
-  sendToWindow(windowId: number, channel: string, ...args: unknown[]): void
-
-  /**
-   * 向所有窗口广播消息
-   * @param channel 通道名称
-   * @param args 参数
-   */
-  sendToAllWindows(channel: string, ...args: unknown[]): void
-
-  /**
-   * 向聚焦窗口发送消息
-   * @param channel 通道名称
-   * @param args 参数
-   */
-  sendToFocused(channel: string, ...args: unknown[]): void
-
   // ==================== Tab 管理 ====================
 
   /**
