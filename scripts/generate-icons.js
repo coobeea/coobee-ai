@@ -7,7 +7,7 @@ const { execSync } = require('child_process')
 // 配置
 const config = {
   inputSvg: path.join(__dirname, '../resources/logo.svg'),
-  traySvg: path.join(__dirname, '../resources/tray-icon.svg'),
+  traySvg: path.join(__dirname, '../resources/tray-logo.svg'),
   outputDir: path.join(__dirname, '../resources'),
   buildDir: path.join(__dirname, '../build'),
   standardSize: 256,
@@ -33,15 +33,15 @@ async function generateIcons() {
 
   console.log('✅ 图标生成完成!')
   console.log('\n📁 生成的文件:')
-  console.log('\n   Resources 目录:')
-  console.log('   - icon.ico (Windows 应用图标)')
-  console.log('   - icon.png (通用应用图标，256x256)')
-  console.log('   - trayIconTemplate.png (macOS 托盘图标，22x22)')
-  console.log('   - trayIconTemplate@2x.png (macOS Retina 托盘图标，44x44)')
-  console.log('\n   Build 目录 (electron-builder 使用):')
+  console.log('\n   Resources 目录 (运行时使用):')
+  console.log('   - logo.png (应用图标，256x256)')
+  console.log('   - logo.ico (Windows 应用图标)')
+  console.log('   - tray-logo.png (托盘图标，22x22)')
+  console.log('   - tray-logo@2x.png (托盘图标 Retina，44x44)')
+  console.log('\n   Build 目录 (electron-builder 打包使用):')
   console.log('   - icon.icns (macOS 应用图标，多分辨率)')
-  console.log('   - icon.ico (Windows 应用图标)')
   console.log('   - icon.png (通用应用图标)')
+  console.log('   - icon.ico (Windows 应用图标)')
 }
 
 async function generateAppIcon() {
@@ -49,7 +49,8 @@ async function generateAppIcon() {
 
   const svgBuffer = fs.readFileSync(config.inputSvg)
 
-  console.log(`   📱 生成 icon.png (${config.standardSize}x${config.standardSize})...`)
+  // 生成主 PNG 图标
+  console.log(`   📱 生成 logo.png (${config.standardSize}x${config.standardSize})...`)
   const mainPngBuffer = await sharp(svgBuffer)
     .resize(config.standardSize, config.standardSize, {
       kernel: sharp.kernel.lanczos3,
@@ -59,9 +60,10 @@ async function generateAppIcon() {
     .png({ quality: 100 })
     .toBuffer()
 
-  fs.writeFileSync(path.join(config.outputDir, 'icon.png'), mainPngBuffer)
+  fs.writeFileSync(path.join(config.outputDir, 'logo.png'), mainPngBuffer)
 
-  console.log('   🪟 生成 icon.ico...')
+  // 生成 Windows ICO 图标
+  console.log('   🪟 生成 logo.ico...')
   const pngBuffers = []
 
   for (const size of config.icoSizes) {
@@ -78,14 +80,15 @@ async function generateAppIcon() {
   }
 
   const icoBuffer = await ico(pngBuffers)
-  fs.writeFileSync(path.join(config.outputDir, 'icon.ico'), icoBuffer)
+  fs.writeFileSync(path.join(config.outputDir, 'logo.ico'), icoBuffer)
 
-  console.log('   📋 复制图标到 build 目录...')
+  // 复制到 build 目录（electron-builder 需要 icon.* 命名）
+  console.log('   📋 复制到 build 目录...')
   if (!fs.existsSync(config.buildDir)) {
     fs.mkdirSync(config.buildDir, { recursive: true })
   }
-  fs.copyFileSync(path.join(config.outputDir, 'icon.png'), path.join(config.buildDir, 'icon.png'))
-  fs.copyFileSync(path.join(config.outputDir, 'icon.ico'), path.join(config.buildDir, 'icon.ico'))
+  fs.copyFileSync(path.join(config.outputDir, 'logo.png'), path.join(config.buildDir, 'icon.png'))
+  fs.copyFileSync(path.join(config.outputDir, 'logo.ico'), path.join(config.buildDir, 'icon.ico'))
   console.log('   ✅ build/icon.png')
   console.log('   ✅ build/icon.ico')
 }
@@ -100,7 +103,8 @@ async function generateTrayIcon() {
 
   const svgBuffer = fs.readFileSync(config.traySvg)
 
-  console.log('   🍎 生成 trayIconTemplate.png (macOS 标准，22x22)...')
+  // macOS 标准分辨率
+  console.log('   🍎 生成 tray-logo.png (22x22)...')
   const macStandardBuffer = await sharp(svgBuffer)
     .resize(22, 22, {
       kernel: sharp.kernel.lanczos3,
@@ -110,9 +114,10 @@ async function generateTrayIcon() {
     .png({ quality: 100 })
     .toBuffer()
 
-  fs.writeFileSync(path.join(config.outputDir, 'trayIconTemplate.png'), macStandardBuffer)
+  fs.writeFileSync(path.join(config.outputDir, 'tray-logo.png'), macStandardBuffer)
 
-  console.log('   🍎 生成 trayIconTemplate@2x.png (macOS Retina，44x44)...')
+  // macOS Retina 分辨率
+  console.log('   🍎 生成 tray-logo@2x.png (44x44)...')
   const macRetinaBuffer = await sharp(svgBuffer)
     .resize(44, 44, {
       kernel: sharp.kernel.lanczos3,
@@ -122,8 +127,8 @@ async function generateTrayIcon() {
     .png({ quality: 100 })
     .toBuffer()
 
-  fs.writeFileSync(path.join(config.outputDir, 'trayIconTemplate@2x.png'), macRetinaBuffer)
-  console.log('   ✅ macOS 托盘图标已生成（Template 命名，支持明暗模式自适应）')
+  fs.writeFileSync(path.join(config.outputDir, 'tray-logo@2x.png'), macRetinaBuffer)
+  console.log('   ✅ 托盘图标已生成（支持 macOS 明暗主题）')
 }
 
 async function generateMacIcns() {

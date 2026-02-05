@@ -17,27 +17,17 @@ export class IconManager {
   }
 
   /**
-   * 获取托盘图标路径（私有方法）
-   */
-  private static getTrayIconPath(): string {
-    return path.join(
-      this.basePath,
-      process.platform === 'win32' ? 'tray-icon.ico' : 'trayIconTemplate.png'
-    )
-  }
-
-  /**
    * 获取托盘图标的 NativeImage 对象
-   * macOS: 使用 Template 图标（支持明暗主题自适应）
-   * Windows/Linux: 使用普通图标
+   * macOS: 使用 tray-logo.png（Template 模式，支持明暗主题）
+   * Windows: 使用 tray-logo.ico
    *
    * @returns NativeImage 对象，如果图标不存在则返回空图标
    */
   static getTrayIcon(): Electron.NativeImage {
     if (process.platform === 'darwin') {
-      // macOS: 使用 Template 图标（黑白单色，支持明暗主题）
-      const templatePath = path.join(this.basePath, 'trayIconTemplate.png')
-      const retinaPath = path.join(this.basePath, 'trayIconTemplate@2x.png')
+      // macOS: 使用 tray-logo.png（黑白单色，支持明暗主题）
+      const templatePath = path.join(this.basePath, 'tray-logo.png')
+      const retinaPath = path.join(this.basePath, 'tray-logo@2x.png')
 
       if (this.checkIconExists(templatePath)) {
         const icon = nativeImage.createFromPath(templatePath)
@@ -53,18 +43,19 @@ export class IconManager {
         // 设置为 Template 图像（关键：自动适配系统主题）
         icon.setTemplateImage(true)
 
-        log.info('[IconManager] 使用 macOS Template 托盘图标 (22x22, 支持明暗主题)')
+        log.info('[IconManager] 使用托盘图标: tray-logo.png (22x22)')
         return icon
       }
 
-      log.warn('[IconManager] macOS Template 托盘图标不存在，回退到普通图标')
-      const iconPath = this.getTrayIconPath()
-      const icon = nativeImage.createFromPath(iconPath)
-      return icon.resize({ width: 22, height: 22 })
+      log.warn('[IconManager] 托盘图标不存在，使用空图标')
+      return nativeImage.createEmpty()
     }
 
-    // Windows/Linux: 使用普通图标
-    const iconPath = this.getTrayIconPath()
+    // Windows/Linux: 使用 tray-logo.ico 或 tray-logo.png
+    const iconPath = path.join(
+      this.basePath,
+      process.platform === 'win32' ? 'tray-logo.ico' : 'tray-logo.png'
+    )
     const icon = nativeImage.createFromPath(iconPath)
 
     if (icon.isEmpty()) {
