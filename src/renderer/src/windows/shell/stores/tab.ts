@@ -1,5 +1,10 @@
 /**
  * Tab 状态管理
+ *
+ * 现在 Tab 的生命周期由主进程管理，前端 store 只负责：
+ * 1. 存储从主进程同步的 Tab 状态
+ * 2. 提供响应式的 Tab 数据给组件使用
+ * 3. 初始化时从主进程拉取 Tab 列表
  */
 
 import { defineStore } from 'pinia'
@@ -13,59 +18,63 @@ export interface Tab {
 
 export const useTabStore = defineStore('shell-tab', () => {
   // State
-  const tabs = ref<Tab[]>([
-    {
-      id: '1',
-      title: 'Chat',
-      icon: 'mdi:robot'
-    }
-  ])
-
-  const currentTabId = ref<string>('1')
+  const tabs = ref<Tab[]>([])
+  const currentTabId = ref<string | null>(null)
+  const isInitialized = ref(false)
 
   // Getters
   const currentTab = computed(() => tabs.value.find((tab) => tab.id === currentTabId.value))
 
-  // Actions
-  const addTab = (title = 'New Tab'): void => {
-    const newTab: Tab = {
-      id: Date.now().toString(),
-      title
+  /**
+   * 从主进程同步 Tab 状态
+   */
+  const syncFromMain = async (): Promise<void> => {
+    try {
+      const windowInfo = await window.api.getWindowInfo()
+
+      if (!windowInfo) {
+        console.warn('Failed to get window info')
+        return
+      }
+
+      // 同步 Tab 列表
+      tabs.value = windowInfo.tabs.map((tab) => ({
+        id: tab.id.toString(),
+        title: tab.title,
+        icon: undefined // 可以根据需要添加图标逻辑
+      }))
+
+      // 同步当前激活的 Tab
+      currentTabId.value = windowInfo.currentTabId?.toString() || null
+
+      isInitialized.value = true
+    } catch (error) {
+      console.error('Error syncing tabs from main:', error)
     }
-    tabs.value.push(newTab)
-    currentTabId.value = newTab.id
   }
 
-  const removeTab = (id: string): void => {
-    const index = tabs.value.findIndex((tab) => tab.id === id)
-    if (index === -1) return
+  /**
+   * 更新 Tab 列表（由事件监听器调用）
+   */
+  const updateTabs = (
+    newTabs: Array<{ id: number; title: string }>,
+    activeTabId: number | null
+  ): void => {
+    tabs.value = newTabs.map((tab) => ({
+      id: tab.id.toString(),
+      title: tab.title,
+      icon: undefined
+    }))
 
-    // 如果删除的是当前 Tab，切换到前一个或后一个
-    if (currentTabId.value === id) {
-      const nextIndex = index > 0 ? index - 1 : index + 1
-      currentTabId.value = tabs.value[nextIndex]?.id || ''
-    }
-
-    tabs.value.splice(index, 1)
-
-    // 如果删除后没有 Tab 了，创建一个新的
-    if (tabs.value.length === 0) {
-      addTab('Chat')
-    }
-  }
-
-  const setCurrentTab = (id: string): void => {
-    if (tabs.value.some((tab) => tab.id === id)) {
-      currentTabId.value = id
-    }
+    currentTabId.value = activeTabId?.toString() || null
   }
 
   return {
     tabs,
     currentTabId,
     currentTab,
-    addTab,
-    removeTab,
-    setCurrentTab
+    isInitialized,
+    syncFromMain,
+    updateTabs
   }
 })

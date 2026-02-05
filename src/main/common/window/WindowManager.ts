@@ -1188,6 +1188,12 @@ export class WindowManager implements IWindowManager {
     try {
       let finalUrl = url
 
+      // 处理相对路径，自动添加 local:// 前缀
+      if (url.startsWith('/')) {
+        url = `local://${url.substring(1) || 'chat'}`
+        log.debug(`[WindowManager] 相对路径转换为 local:// 协议: ${url}`)
+      }
+
       // 处理 local:// 协议（应用内路由）
       if (url.startsWith('local://')) {
         const route = url.replace('local://', '')

@@ -35,9 +35,57 @@ const MaximizeIcon = computed(() =>
   isMaximized.value ? IconMdiWindowRestore : IconMdiWindowMaximize
 )
 
-// 新建 Tab
-const addNewTab = (): void => {
-  tabStore.addTab('New Chat')
+// Tab 操作：通过 IPC 与主进程通信
+const handleTabClick = async (tabId: string): Promise<void> => {
+  try {
+    const result = await window.api.tab.switch({
+      tabId: Number(tabId)
+    })
+
+    if (result.success) {
+      // 操作成功后重新同步状态
+      await tabStore.syncFromMain()
+    } else {
+      console.error('Failed to switch tab:', result.error)
+    }
+  } catch (error) {
+    console.error('Error switching tab:', error)
+  }
+}
+
+const handleTabClose = async (tabId: string): Promise<void> => {
+  try {
+    const result = await window.api.tab.close({
+      tabId: Number(tabId)
+    })
+
+    if (result.success) {
+      // 操作成功后重新同步状态
+      await tabStore.syncFromMain()
+    } else {
+      console.error('Failed to close tab:', result.error)
+    }
+  } catch (error) {
+    console.error('Error closing tab:', error)
+  }
+}
+
+const addNewTab = async (): Promise<void> => {
+  try {
+    const result = await window.api.tab.create({
+      title: 'New Chat',
+      url: 'local://chat' // 使用 local:// 协议
+    })
+
+    if (result.success) {
+      // 操作成功后重新同步状态
+      await tabStore.syncFromMain()
+    } else {
+      console.error('Failed to create tab:', result.error)
+    }
+  } catch (error) {
+    console.error('Error creating tab:', error)
+  }
 }
 </script>
 
@@ -56,8 +104,8 @@ const addNewTab = (): void => {
         :key="tab.id"
         :active="tab.id === tabStore.currentTabId"
         :can-close="tabStore.tabs.length > 1"
-        @click="tabStore.setCurrentTab(tab.id)"
-        @close="tabStore.removeTab(tab.id)"
+        @click="handleTabClick(tab.id)"
+        @close="handleTabClose(tab.id)"
       >
         <span class="truncate">{{ tab.title }}</span>
       </TabItem>

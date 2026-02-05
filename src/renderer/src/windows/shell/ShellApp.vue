@@ -1,5 +1,14 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import AppBar from './components/AppBar.vue'
+import { useTabStore } from './stores/tab'
+
+const tabStore = useTabStore()
+
+// 初始化：从主进程同步 Tab 状态
+onMounted(async () => {
+  await tabStore.syncFromMain()
+})
 </script>
 
 <template>

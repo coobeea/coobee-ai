@@ -16,6 +16,6 @@ declare module 'vue' {
     IconMdiWeatherSunny: typeof import('~icons/mdi/weather-sunny')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
-    Versions: typeof import('./src/components/Versions.vue')['default']
+    Versions: typeof import('./../components/Versions.vue')['default']
   }
 }
