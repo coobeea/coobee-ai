@@ -1,7 +1,7 @@
 /**
  * Shell 相关 IPC 处理器
  *
- * - shell:get-window-info：渲染进程拉取当前窗口完整信息（windowId、tabs、currentTabId 等）
+ * - shell:get-window-info：渲染进程拉取当前窗口完整信息（windowId、tabs、currentTabId、callerTabId 等）
  */
 
 import { ipcMain, BrowserWindow } from 'electron'
@@ -31,7 +31,10 @@ export function registerShellHandlers(): void {
       return null
     }
 
-    // 获取所有 Tab 信息（使用公共方法）
+    // 获取调用者的 Tab ID（通过 webContents.id 查找）
+    const callerWebContentsId = event.sender.id
+    const callerTabId = windowManager.getTabIdByWebContentsId(callerWebContentsId)
+
     const windowTabs = windowManager.getWindowTabs(windowId)
     const tabs: TabInfoResponse[] = windowTabs.map((tab) => ({
       id: tab.id,
@@ -42,7 +45,6 @@ export function registerShellHandlers(): void {
       position: tab.position
     }))
 
-    // 获取当前激活的 Tab
     const activeTab = windowManager.getActiveTab(windowId)
     const currentTabId = activeTab ? activeTab.id : null
 
@@ -50,11 +52,11 @@ export function registerShellHandlers(): void {
       windowId,
       windowType: windowInfo.type,
       tabs,
-      currentTabId
+      currentTabId,
+      callerTabId: callerTabId ?? null
     }
-
     log.debug(
-      `[IPC] shell:get-window-info -> windowId=${windowId}, tabs=${tabs.length}, currentTabId=${currentTabId}`
+      `[IPC] shell:get-window-info -> windowId=${windowId}, tabs=${tabs.length}, currentTabId=${currentTabId}, callerTabId=${callerTabId}`
     )
     return response
   })

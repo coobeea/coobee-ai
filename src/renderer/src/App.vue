@@ -29,6 +29,7 @@ const windowInfo = ref<{
   windowType: string
   tabsCount: number
   currentTabId: number | null
+  callerTabId: number | null
   tabs: Array<{ id: number; title: string; isActive: boolean }>
 } | null>(null)
 
@@ -41,6 +42,7 @@ onMounted(async () => {
         windowType: info.windowType,
         tabsCount: info.tabs.length,
         currentTabId: info.currentTabId,
+        callerTabId: info.callerTabId,
         tabs: info.tabs.map((tab) => ({
           id: tab.id,
           title: tab.title,
@@ -72,8 +74,22 @@ onMounted(async () => {
           <span class="text-gray-600">Tabs: {{ windowInfo.tabsCount }}</span>
           <span class="text-gray-400">|</span>
           <span class="text-gray-600">
-            当前 Tab ID:
-            <span class="font-bold text-green-600">{{ windowInfo.currentTabId || 'None' }}</span>
+            <span class="font-bold text-blue-600">本 Tab ID: {{ windowInfo.callerTabId }}</span>
+          </span>
+          <span class="text-gray-400">|</span>
+          <span class="text-gray-600">
+            窗口激活:
+            <span
+              class="font-bold"
+              :class="
+                windowInfo.callerTabId === windowInfo.currentTabId
+                  ? 'text-green-600'
+                  : 'text-gray-400'
+              "
+            >
+              {{ windowInfo.currentTabId }}
+              {{ windowInfo.callerTabId === windowInfo.currentTabId ? '(我)' : '' }}
+            </span>
           </span>
         </div>
 

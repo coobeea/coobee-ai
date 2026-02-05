@@ -42,8 +42,10 @@ export interface WindowInfoResponse {
   windowType: WindowType
   /** Tab 列表 */
   tabs: TabInfoResponse[]
-  /** 当前激活的 Tab ID */
+  /** 当前激活的 Tab ID（窗口级别） */
   currentTabId: number | null
+  /** 调用者的 Tab ID（当前 WebContentsView 对应的 Tab）*/
+  callerTabId: number | null
 }
 
 /**
