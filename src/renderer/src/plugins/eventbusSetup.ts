@@ -2,9 +2,9 @@
  * 事件处理器统一注册
  */
 
-import { setup as setupTabEvents } from './tabEventsHandle'
-import { setup as setupWindowEvents } from './windowEventsHandle'
-import { setup as setupAppEvents } from './appEventsHandle'
+import { setup as setupTabEvents } from '../eventbus/event_handles/tabEventsHandle'
+import { setup as setupWindowEvents } from '../eventbus/event_handles/windowEventsHandle'
+import { setup as setupAppEvents } from '../eventbus/event_handles/appEventsHandle'
 
 /**
  * 设置所有事件处理器
