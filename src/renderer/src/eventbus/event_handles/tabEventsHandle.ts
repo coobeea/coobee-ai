@@ -1,65 +1,77 @@
 /**
  * Tab 事件处理器
  *
- * 职责：监听 Tab 事件，更新 Store 中的 currentTabId
+ * 职责：监听 Tab 事件，刷新窗口信息
  */
 import { EventTypes, type EventPayloads } from '@shared/ipc/events'
 import eventBus from '@/eventbus'
 import { useWindowStore } from '@/stores/window'
 
 /**
+ * 刷新窗口信息
+ */
+async function refreshWindowInfo(): Promise<void> {
+  const windowStore = useWindowStore()
+  await windowStore.refreshWindowInfo()
+}
+
+/**
  * 处理 Tab 创建事件
  */
-function handleTabCreated(payload: EventPayloads['tab:created']): void {
+async function handleTabCreated(payload: EventPayloads['tab:created']): Promise<void> {
   console.log('[TabEvents] Tab 创建:', payload)
+  await refreshWindowInfo()
 }
 
 /**
  * 处理 Tab 关闭事件
  */
-function handleTabClosed(payload: EventPayloads['tab:closed']): void {
+async function handleTabClosed(payload: EventPayloads['tab:closed']): Promise<void> {
   console.log('[TabEvents] Tab 关闭:', payload)
+  await refreshWindowInfo()
 }
 
 /**
  * 处理 Tab 激活事件
  */
-function handleTabActivated(payload: EventPayloads['tab:activated']): void {
+async function handleTabActivated(payload: EventPayloads['tab:activated']): Promise<void> {
   console.log('[TabEvents] Tab 激活:', payload)
-  const windowStore = useWindowStore()
-
-  // 只更新当前窗口的激活 Tab
-  if (payload.windowId === windowStore.windowId) {
-    windowStore.setCurrentTab(payload.tabId)
-  }
+  // Tab 激活时刷新窗口信息
+  await refreshWindowInfo()
 }
 
 /**
  * 处理 Tab 更新事件
  */
-function handleTabUpdated(payload: EventPayloads['tab:updated']): void {
+async function handleTabUpdated(payload: EventPayloads['tab:updated']): Promise<void> {
   console.log('[TabEvents] Tab 更新:', payload)
+  await refreshWindowInfo()
 }
 
 /**
  * 处理 Tabs 重新排序事件
  */
-function handleTabsReordered(payload: EventPayloads['tabs:reordered']): void {
+async function handleTabsReordered(payload: EventPayloads['tabs:reordered']): Promise<void> {
   console.log('[TabEvents] Tabs 重新排序:', payload)
+  await refreshWindowInfo()
 }
 
 /**
  * 处理 Tab 移动到另一个窗口事件
  */
-function handleTabMovedToWindow(payload: EventPayloads['tab:moved-to-window']): void {
+async function handleTabMovedToWindow(
+  payload: EventPayloads['tab:moved-to-window']
+): Promise<void> {
   console.log('[TabEvents] Tab 移动到另一个窗口:', payload)
+  await refreshWindowInfo()
 }
 
 /**
  * 处理 Tab 复制事件
  */
-function handleTabDuplicated(payload: EventPayloads['tab:duplicated']): void {
+async function handleTabDuplicated(payload: EventPayloads['tab:duplicated']): Promise<void> {
   console.log('[TabEvents] Tab 复制:', payload)
+  await refreshWindowInfo()
 }
 
 /**

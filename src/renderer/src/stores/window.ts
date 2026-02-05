@@ -26,7 +26,7 @@ export const useWindowStore = defineStore('window', () => {
   /**
    * 初始化窗口信息
    */
-  async function initialize(): Promise<void> {
+  async function refreshWindowInfo(): Promise<void> {
     try {
       const ipc = useIpc()
       const info = await ipc.getWindowInfo()
@@ -40,13 +40,6 @@ export const useWindowStore = defineStore('window', () => {
     }
   }
 
-  /**
-   * 设置当前激活的 Tab
-   */
-  function setCurrentTab(tabId: number): void {
-    currentTabId.value = tabId
-  }
-
   return {
     // State
     windowInfo,
@@ -57,7 +50,6 @@ export const useWindowStore = defineStore('window', () => {
     isReady,
 
     // Actions
-    initialize,
-    setCurrentTab
+    refreshWindowInfo
   }
 })

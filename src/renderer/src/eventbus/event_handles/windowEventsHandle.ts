@@ -5,19 +5,30 @@
  */
 import { EventTypes, type EventPayloads } from '@shared/ipc/events'
 import eventBus from '@/eventbus'
+import { useWindowStore } from '@/stores/window'
+
+/**
+ * 刷新窗口信息
+ */
+async function refreshWindowInfo(): Promise<void> {
+  const windowStore = useWindowStore()
+  await windowStore.refreshWindowInfo()
+}
 
 /**
  * 处理窗口创建事件
  */
-function handleWindowCreated(payload: EventPayloads['window:created']): void {
+async function handleWindowCreated(payload: EventPayloads['window:created']): Promise<void> {
   console.log('[WindowEvents] 窗口创建:', payload)
+  await refreshWindowInfo()
 }
 
 /**
  * 处理窗口准备就绪事件
  */
-function handleWindowReady(payload: EventPayloads['window:ready']): void {
+async function handleWindowReady(payload: EventPayloads['window:ready']): Promise<void> {
   console.log('[WindowEvents] 窗口准备就绪:', payload)
+  await refreshWindowInfo()
 }
 
 /**
@@ -37,15 +48,17 @@ function handleWindowHide(payload: EventPayloads['window:hide']): void {
 /**
  * 处理窗口即将关闭事件
  */
-function handleWindowClose(payload: EventPayloads['window:close']): void {
+async function handleWindowClose(payload: EventPayloads['window:close']): Promise<void> {
   console.log('[WindowEvents] 窗口即将关闭:', payload)
+  await refreshWindowInfo()
 }
 
 /**
  * 处理窗口已关闭事件
  */
-function handleWindowClosed(payload: EventPayloads['window:closed']): void {
+async function handleWindowClosed(payload: EventPayloads['window:closed']): Promise<void> {
   console.log('[WindowEvents] 窗口已关闭:', payload)
+  await refreshWindowInfo()
 }
 
 /**

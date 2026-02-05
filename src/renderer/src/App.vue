@@ -37,7 +37,7 @@ const windowInfo = computed(() => {
 
 onMounted(async () => {
   // 初始化窗口信息
-  await windowStore.initialize()
+  await windowStore.refreshWindowInfo()
 })
 </script>
 
