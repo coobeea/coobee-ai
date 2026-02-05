@@ -157,6 +157,9 @@ export class WindowManager implements IWindowManager {
         position: tabInfo.position
       })
 
+      // 打印状态快照
+      this.printWindowsState(`Tab 创建 - tabId=${tabId}`)
+
       return tabId
     } catch (error) {
       log.error('[WindowManager] 创建 Tab 失败:', error)
@@ -216,6 +219,9 @@ export class WindowManager implements IWindowManager {
         tabId,
         previousTabId
       })
+
+      // 打印状态快照
+      this.printWindowsState(`Tab 切换 - tabId=${tabId}`)
 
       return true
     } catch (error) {
@@ -293,6 +299,9 @@ export class WindowManager implements IWindowManager {
         windowId,
         tabId
       })
+
+      // 打印状态快照
+      this.printWindowsState(`Tab 关闭 - tabId=${tabId}`)
 
       return true
     } catch (error) {
@@ -389,6 +398,9 @@ export class WindowManager implements IWindowManager {
           tabIds,
           changes
         })
+
+        // 打印状态快照
+        this.printWindowsState(`Tab 重新排序 - windowId=${windowId}`)
       }
 
       return true
@@ -464,6 +476,9 @@ export class WindowManager implements IWindowManager {
         title: tabTitle
       })
 
+      // 打印状态快照
+      this.printWindowsState(`Tab 移动 - tabId=${tabId}, from=${fromWindowId}, to=${toWindowId}`)
+
       return true
     } catch (error) {
       log.error('[WindowManager] 移动 Tab 失败:', error)
@@ -512,6 +527,9 @@ export class WindowManager implements IWindowManager {
         newTabId,
         title: tabInfo.title
       })
+
+      // 打印状态快照
+      this.printWindowsState(`Tab 复制 - 原tabId=${tabId}, 新tabId=${newTabId}`)
     }
 
     return newTabId
@@ -814,6 +832,43 @@ export class WindowManager implements IWindowManager {
    */
   getWindowCount(): number {
     return this.windows.size
+  }
+
+  /**
+   * 打印当前所有窗口和 Tab 的状态（调试用）
+   */
+  private printWindowsState(action: string): void {
+    log.info(`\n${'='.repeat(80)}`)
+    log.info(`[WindowManager] 状态快照 - ${action}`)
+    log.info(`${'='.repeat(80)}`)
+    log.info(`窗口总数: ${this.windows.size}`)
+
+    this.windows.forEach((windowInfo, windowId) => {
+      const tabs = this.getWindowTabs(windowId)
+      const activeTab = this.getActiveTab(windowId)
+
+      log.info(`\n窗口 #${windowId} (${windowInfo.type})`)
+      log.info(`  - 是否主窗口: ${windowInfo.isMain}`)
+      log.info(`  - Tab 总数: ${tabs.length}`)
+      log.info(`  - 当前激活 Tab: ${activeTab ? `#${activeTab.id} "${activeTab.title}"` : '无'}`)
+
+      if (tabs.length > 0) {
+        log.info(`  - Tab 列表:`)
+        tabs.forEach((tab) => {
+          const status: string[] = []
+          if (tab.isActive) status.push('激活')
+          if (tab.closable) status.push('可关闭')
+          else status.push('不可关闭')
+
+          log.info(
+            `    [${tab.position}] Tab #${tab.id}: "${tab.title}" ${status.length > 0 ? `(${status.join(', ')})` : ''}`
+          )
+          log.info(`         URL: ${tab.url}`)
+        })
+      }
+    })
+
+    log.info(`${'='.repeat(80)}\n`)
   }
 
   // ==================== 窗口操作 ====================
