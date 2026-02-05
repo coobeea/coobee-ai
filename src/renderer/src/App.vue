@@ -29,6 +29,7 @@ const windowInfo = computed(() => {
   if (!windowStore.isReady) return null
 
   return {
+    info: windowStore.windowInfo,
     windowId: windowStore.windowId,
     currentTabId: windowStore.currentTabId
   }
@@ -54,6 +55,12 @@ onMounted(async () => {
             当前 Tab ID:
             <span class="font-semibold text-indigo-600">{{ windowInfo.currentTabId }}</span>
           </span>
+        </div>
+        <div class="flex items-center gap-3 text-sm">
+          <span class="text-gray-600">窗口类型: {{ windowInfo.info?.windowType }}</span>
+          <span class="text-gray-600">Tab 列表: {{ windowInfo.info?.tabs.length }}</span>
+          <span class="text-gray-600">当前激活的 Tab ID: {{ windowInfo.info?.currentTabId }}</span>
+          <span class="text-gray-600">调用者的 Tab ID: {{ windowInfo.info?.callerTabId }}</span>
         </div>
       </div>
 
