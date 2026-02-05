@@ -7,6 +7,7 @@ import path from 'node:path'
 import Icons from 'unplugin-icons/vite'
 import IconsResolver from 'unplugin-icons/resolver'
 import Components from 'unplugin-vue-components/vite'
+import vueDevTools from 'vite-plugin-vue-devtools'
 import fs from 'fs'
 import type { Plugin } from 'vite'
 
@@ -128,6 +129,9 @@ export default defineConfig({
             isCustomElement: (tag) => tag.startsWith('custom-')
           }
         }
+      }),
+      vueDevTools({
+        appendTo: 'src/renderer/src/main.ts'
       })
     ],
     worker: {
