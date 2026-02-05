@@ -1,5 +1,7 @@
 /**
  * 应用事件处理器
+ *
+ * 职责：监听应用级事件，处理全局业务逻辑
  */
 import { EventTypes, type EventPayloads } from '@shared/ipc/events'
 import eventBus from '@/eventbus'
@@ -10,7 +12,6 @@ import eventBus from '@/eventbus'
 function handleAppActivated(payload: EventPayloads['app:activated']): void {
   console.log('[AppEvents] 应用激活:', payload)
   console.log(`  - 是否有窗口: ${payload.hasWindows}`)
-  // 这里可以显示欢迎提示或执行其他操作
 }
 
 /**
@@ -18,8 +19,6 @@ function handleAppActivated(payload: EventPayloads['app:activated']): void {
  */
 function handleAppFocus(payload: EventPayloads['app:focus']): void {
   console.log('[AppEvents] 应用获得焦点:', payload)
-  console.log(`  - 时间戳: ${new Date(payload.timestamp).toLocaleString()}`)
-  // 这里可以检查更新、同步数据等
 }
 
 /**
@@ -27,17 +26,15 @@ function handleAppFocus(payload: EventPayloads['app:focus']): void {
  */
 function handleAppBeforeQuit(payload: EventPayloads['app:before-quit']): void {
   console.log('[AppEvents] 应用即将退出:', payload)
-  console.log(`  - 时间戳: ${new Date(payload.timestamp).toLocaleString()}`)
-  // 这里可以保存状态、显示退出确认等
+  // 可以在这里保存状态、清理资源等
 }
 
 /**
  * 处理第二个实例启动事件
  */
 function handleAppSecondInstance(payload: EventPayloads['app:second-instance']): void {
-  console.log('[AppEvents] 检测到第二个实例:', payload)
+  console.log('[AppEvents] 第二个实例启动:', payload)
   console.log(`  - 是否有窗口: ${payload.hasWindows}`)
-  // 这里可以显示提示信息
 }
 
 /**
@@ -48,7 +45,7 @@ function handleAppChildProcessGone(payload: EventPayloads['app:child-process-gon
   console.error(`  - 类型: ${payload.type}`)
   console.error(`  - 原因: ${payload.reason}`)
   console.error(`  - 退出码: ${payload.exitCode}`)
-  // 这里可以显示错误提示、尝试恢复等
+  // 可以在这里上报错误、显示提示等
 }
 
 /**

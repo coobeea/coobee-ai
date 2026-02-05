@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useWindowStore } from '@/stores/window'
 // 方式 1：手动导入图标（推荐用于常用图标）
 import IconMdiPalette from '~icons/mdi/palette'
 import IconMdiHome from '~icons/mdi/home'
@@ -12,7 +13,6 @@ import IconMdiLightningBolt from '~icons/mdi/lightning-bolt'
 import IconMdiCheckCircle from '~icons/mdi/check-circle'
 import IconMdiInformation from '~icons/mdi/information'
 import IconMdiBookOpenVariant from '~icons/mdi/book-open-variant'
-import IconMdiSend from '~icons/mdi/send'
 import IconSvgSpinners3DotsFade from '~icons/svg-spinners/3-dots-fade'
 import IconSvgSpinnersBarsRotateFade from '~icons/svg-spinners/bars-rotate-fade'
 import IconSvgSpinnersRingResize from '~icons/svg-spinners/ring-resize'
@@ -21,38 +21,22 @@ import IconMdiWindowMaximize from '~icons/mdi/window-maximize'
 
 import Versions from './components/Versions.vue'
 
-const ipcHandle = (): void => window.electron.ipcRenderer.send('ping')
+// 使用 Window Store
+const windowStore = useWindowStore()
 
-// 窗口信息
-const windowInfo = ref<{
-  windowId: number
-  windowType: string
-  tabsCount: number
-  currentTabId: number | null
-  callerTabId: number | null
-  tabs: Array<{ id: number; title: string; isActive: boolean }>
-} | null>(null)
+// 计算窗口信息（用于模板）
+const windowInfo = computed(() => {
+  if (!windowStore.isReady) return null
+
+  return {
+    windowId: windowStore.windowId,
+    currentTabId: windowStore.currentTabId
+  }
+})
 
 onMounted(async () => {
-  try {
-    const info = await window.api.getWindowInfo()
-    if (info) {
-      windowInfo.value = {
-        windowId: info.windowId,
-        windowType: info.windowType,
-        tabsCount: info.tabs.length,
-        currentTabId: info.currentTabId,
-        callerTabId: info.callerTabId,
-        tabs: info.tabs.map((tab) => ({
-          id: tab.id,
-          title: tab.title,
-          isActive: tab.isActive
-        }))
-      }
-    }
-  } catch (error) {
-    console.error('Failed to get window info:', error)
-  }
+  // 初始化窗口信息
+  await windowStore.initialize()
 })
 </script>
 
@@ -61,58 +45,15 @@ onMounted(async () => {
     <div class="mx-auto max-w-4xl">
       <!-- Window Info Bar -->
       <div v-if="windowInfo" class="mb-4 rounded-lg bg-white p-4 shadow">
-        <div class="mb-2 flex items-center gap-3 text-sm">
+        <div class="flex items-center gap-3 text-sm">
           <IconMdiWindowMaximize class="text-indigo-600" />
           <span class="font-semibold text-gray-700">窗口信息:</span>
           <span class="text-gray-600">Window ID: {{ windowInfo.windowId }}</span>
           <span class="text-gray-400">|</span>
           <span class="text-gray-600">
-            类型:
-            <span class="font-semibold text-indigo-600">{{ windowInfo.windowType }}</span>
+            当前 Tab ID:
+            <span class="font-semibold text-indigo-600">{{ windowInfo.currentTabId }}</span>
           </span>
-          <span class="text-gray-400">|</span>
-          <span class="text-gray-600">Tabs: {{ windowInfo.tabsCount }}</span>
-          <span class="text-gray-400">|</span>
-          <span class="text-gray-600">
-            <span class="font-bold text-blue-600">本 Tab ID: {{ windowInfo.callerTabId }}</span>
-          </span>
-          <span class="text-gray-400">|</span>
-          <span class="text-gray-600">
-            窗口激活:
-            <span
-              class="font-bold"
-              :class="
-                windowInfo.callerTabId === windowInfo.currentTabId
-                  ? 'text-green-600'
-                  : 'text-gray-400'
-              "
-            >
-              {{ windowInfo.currentTabId }}
-              {{ windowInfo.callerTabId === windowInfo.currentTabId ? '(我)' : '' }}
-            </span>
-          </span>
-        </div>
-
-        <!-- Tabs 列表 -->
-        <div v-if="windowInfo.tabs.length > 0" class="mt-3 border-t pt-3">
-          <div class="mb-2 text-xs font-semibold text-gray-600">Tab 列表:</div>
-          <div class="flex flex-wrap gap-2">
-            <div
-              v-for="tab in windowInfo.tabs"
-              :key="tab.id"
-              class="rounded-md px-3 py-1 text-xs"
-              :class="
-                tab.isActive
-                  ? 'bg-green-100 text-green-800 ring-2 ring-green-500'
-                  : 'bg-gray-100 text-gray-600'
-              "
-            >
-              <span class="font-bold">Tab ID: {{ tab.id }}</span>
-              <span class="mx-1">-</span>
-              <span>{{ tab.title }}</span>
-              <span v-if="tab.isActive" class="ml-1 text-green-600">✓</span>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -324,13 +265,6 @@ onMounted(async () => {
           <IconMdiBookOpenVariant class="text-xl" />
           查看文档
         </a>
-        <button
-          class="flex items-center gap-2 rounded-lg bg-purple-600 px-6 py-3 font-semibold text-white transition hover:bg-purple-700"
-          @click="ipcHandle"
-        >
-          <IconMdiSend class="text-xl" />
-          发送 IPC 消息
-        </button>
       </div>
 
       <!-- Versions Component -->

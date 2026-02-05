@@ -8,3 +8,8 @@ const pinia = createPinia()
 pinia.use(piniaPluginPersistedstate)
 
 export default pinia
+
+// 导出所有 Stores
+export { usePreferenceStore, usePreferenceValue } from './preference'
+export { useLoadingStore } from './loading'
+export { useWindowStore } from './window'

@@ -1,19 +1,17 @@
 /**
- * Tab 事件处理器示例
- * 监听主进程的 Tab 相关事件，自动同步到前端状态
+ * Tab 事件处理器
+ *
+ * 职责：监听 Tab 事件，更新 Store 中的 currentTabId
  */
-
-import { EventTypes } from '@shared/ipc/events'
+import { EventTypes, type EventPayloads } from '@shared/ipc/events'
 import eventBus from '@/eventbus'
-
-import type { EventPayloads } from '@shared/ipc/events'
+import { useWindowStore } from '@/stores/window'
 
 /**
  * 处理 Tab 创建事件
  */
 function handleTabCreated(payload: EventPayloads['tab:created']): void {
   console.log('[TabEvents] Tab 创建:', payload)
-  // 这里可以更新 TabStore 或触发其他业务逻辑
 }
 
 /**
@@ -21,7 +19,6 @@ function handleTabCreated(payload: EventPayloads['tab:created']): void {
  */
 function handleTabClosed(payload: EventPayloads['tab:closed']): void {
   console.log('[TabEvents] Tab 关闭:', payload)
-  // 这里可以更新 TabStore 或触发其他业务逻辑
 }
 
 /**
@@ -29,7 +26,12 @@ function handleTabClosed(payload: EventPayloads['tab:closed']): void {
  */
 function handleTabActivated(payload: EventPayloads['tab:activated']): void {
   console.log('[TabEvents] Tab 激活:', payload)
-  // 这里可以更新 TabStore 或触发其他业务逻辑
+  const windowStore = useWindowStore()
+
+  // 只更新当前窗口的激活 Tab
+  if (payload.windowId === windowStore.windowId) {
+    windowStore.setCurrentTab(payload.tabId)
+  }
 }
 
 /**
@@ -37,7 +39,6 @@ function handleTabActivated(payload: EventPayloads['tab:activated']): void {
  */
 function handleTabUpdated(payload: EventPayloads['tab:updated']): void {
   console.log('[TabEvents] Tab 更新:', payload)
-  // 这里可以更新 TabStore 或触发其他业务逻辑
 }
 
 /**
@@ -45,13 +46,6 @@ function handleTabUpdated(payload: EventPayloads['tab:updated']): void {
  */
 function handleTabsReordered(payload: EventPayloads['tabs:reordered']): void {
   console.log('[TabEvents] Tabs 重新排序:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  console.log(`  - 新顺序: [${payload.tabIds.join(', ')}]`)
-  console.log(`  - 变化数: ${payload.changes.length}`)
-  payload.changes.forEach((change) => {
-    console.log(`    Tab ${change.tabId}: ${change.fromPosition} -> ${change.toPosition}`)
-  })
-  // 这里可以批量更新 TabStore 的顺序
 }
 
 /**
@@ -59,9 +53,6 @@ function handleTabsReordered(payload: EventPayloads['tabs:reordered']): void {
  */
 function handleTabMovedToWindow(payload: EventPayloads['tab:moved-to-window']): void {
   console.log('[TabEvents] Tab 移动到另一个窗口:', payload)
-  console.log(`  - Tab ${payload.tabId}: "${payload.title}"`)
-  console.log(`  - 从窗口 ${payload.fromWindowId} -> 窗口 ${payload.toWindowId}`)
-  // 这里可以更新多个窗口的 TabStore
 }
 
 /**
@@ -69,10 +60,6 @@ function handleTabMovedToWindow(payload: EventPayloads['tab:moved-to-window']): 
  */
 function handleTabDuplicated(payload: EventPayloads['tab:duplicated']): void {
   console.log('[TabEvents] Tab 复制:', payload)
-  console.log(`  - 原 Tab: ${payload.originalTabId}`)
-  console.log(`  - 新 Tab: ${payload.newTabId}`)
-  console.log(`  - 标题: "${payload.title}"`)
-  // 这里可以更新 TabStore
 }
 
 /**
@@ -80,9 +67,6 @@ function handleTabDuplicated(payload: EventPayloads['tab:duplicated']): void {
  */
 function handleTabReloaded(payload: EventPayloads['tab:reloaded']): void {
   console.log('[TabEvents] Tab 刷新:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  console.log(`  - Tab ID: ${payload.tabId}`)
-  // 这里可以更新 TabStore 或显示刷新指示器
 }
 
 /**

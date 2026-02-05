@@ -1,5 +1,7 @@
 /**
  * 窗口事件处理器
+ *
+ * 职责：监听窗口事件，处理窗口相关业务逻辑
  */
 import { EventTypes, type EventPayloads } from '@shared/ipc/events'
 import eventBus from '@/eventbus'
@@ -9,9 +11,6 @@ import eventBus from '@/eventbus'
  */
 function handleWindowCreated(payload: EventPayloads['window:created']): void {
   console.log('[WindowEvents] 窗口创建:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  console.log(`  - 窗口类型: ${payload.type}`)
-  // 这里可以更新 WindowStore - 添加窗口到列表
 }
 
 /**
@@ -19,8 +18,6 @@ function handleWindowCreated(payload: EventPayloads['window:created']): void {
  */
 function handleWindowReady(payload: EventPayloads['window:ready']): void {
   console.log('[WindowEvents] 窗口准备就绪:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore - 标记窗口为可交互状态
 }
 
 /**
@@ -28,8 +25,6 @@ function handleWindowReady(payload: EventPayloads['window:ready']): void {
  */
 function handleWindowShow(payload: EventPayloads['window:show']): void {
   console.log('[WindowEvents] 窗口显示:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore - 标记窗口为可见
 }
 
 /**
@@ -37,8 +32,6 @@ function handleWindowShow(payload: EventPayloads['window:show']): void {
  */
 function handleWindowHide(payload: EventPayloads['window:hide']): void {
   console.log('[WindowEvents] 窗口隐藏:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore - 标记窗口为隐藏
 }
 
 /**
@@ -46,9 +39,6 @@ function handleWindowHide(payload: EventPayloads['window:hide']): void {
  */
 function handleWindowClose(payload: EventPayloads['window:close']): void {
   console.log('[WindowEvents] 窗口即将关闭:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以显示确认对话框或保存未保存的数据
-  // 注意：这个事件在后端可以被阻止
 }
 
 /**
@@ -56,8 +46,6 @@ function handleWindowClose(payload: EventPayloads['window:close']): void {
  */
 function handleWindowClosed(payload: EventPayloads['window:closed']): void {
   console.log('[WindowEvents] 窗口已关闭:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore - 从列表中移除窗口
 }
 
 /**
@@ -65,8 +53,6 @@ function handleWindowClosed(payload: EventPayloads['window:closed']): void {
  */
 function handleWindowFocused(payload: EventPayloads['window:focused']): void {
   console.log('[WindowEvents] 窗口聚焦:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore 中的 focusedWindowId
 }
 
 /**
@@ -74,8 +60,6 @@ function handleWindowFocused(payload: EventPayloads['window:focused']): void {
  */
 function handleWindowBlurred(payload: EventPayloads['window:blurred']): void {
   console.log('[WindowEvents] 窗口失焦:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore
 }
 
 /**
@@ -83,8 +67,6 @@ function handleWindowBlurred(payload: EventPayloads['window:blurred']): void {
  */
 function handleWindowMinimized(payload: EventPayloads['window:minimized']): void {
   console.log('[WindowEvents] 窗口最小化:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore 中的窗口状态
 }
 
 /**
@@ -92,8 +74,6 @@ function handleWindowMinimized(payload: EventPayloads['window:minimized']): void
  */
 function handleWindowMaximized(payload: EventPayloads['window:maximized']): void {
   console.log('[WindowEvents] 窗口最大化:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore 中的窗口状态
 }
 
 /**
@@ -101,8 +81,6 @@ function handleWindowMaximized(payload: EventPayloads['window:maximized']): void
  */
 function handleWindowUnmaximized(payload: EventPayloads['window:unmaximized']): void {
   console.log('[WindowEvents] 窗口取消最大化:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore 中的窗口状态
 }
 
 /**
@@ -110,8 +88,6 @@ function handleWindowUnmaximized(payload: EventPayloads['window:unmaximized']): 
  */
 function handleWindowRestored(payload: EventPayloads['window:restored']): void {
   console.log('[WindowEvents] 窗口恢复:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore 中的窗口状态
 }
 
 /**
@@ -119,8 +95,6 @@ function handleWindowRestored(payload: EventPayloads['window:restored']): void {
  */
 function handleWindowEnterFullScreen(payload: EventPayloads['window:enter-full-screen']): void {
   console.log('[WindowEvents] 窗口进入全屏:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore 中的窗口状态
 }
 
 /**
@@ -128,8 +102,6 @@ function handleWindowEnterFullScreen(payload: EventPayloads['window:enter-full-s
  */
 function handleWindowLeaveFullScreen(payload: EventPayloads['window:leave-full-screen']): void {
   console.log('[WindowEvents] 窗口离开全屏:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore 中的窗口状态
 }
 
 /**
@@ -137,10 +109,6 @@ function handleWindowLeaveFullScreen(payload: EventPayloads['window:leave-full-s
  */
 function handleWindowResized(payload: EventPayloads['window:resized']): void {
   console.log('[WindowEvents] 窗口大小变化:', payload)
-  console.log(`  - 窗口 ID: ${payload.windowId}`)
-  console.log(`  - 新尺寸: ${payload.bounds.width}x${payload.bounds.height}`)
-  console.log(`  - 新位置: (${payload.bounds.x}, ${payload.bounds.y})`)
-  // 这里可以更新 WindowStore 中的窗口边界
 }
 
 /**
