@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useLogStore, type LogLevel, type LogCategory, type LogEntry } from '@/stores/log'
+import { useLogStore, type LogLevel } from '@/stores/log'
 
 const logStore = useLogStore()
 
@@ -49,51 +49,6 @@ function formatData(data: unknown): string {
 function toggleLogDetail(logId: string): void {
   selectedLog.value = selectedLog.value === logId ? null : logId
 }
-
-// 复制日志
-async function copyLog(log: LogEntry): Promise<void> {
-  const text = `[${formatTime(log.timestamp)}] [${log.level.toUpperCase()}] [${log.category}] ${log.message}${log.data ? `\nData: ${formatData(log.data)}` : ''}`
-  await navigator.clipboard.writeText(text)
-}
-
-// 复制所有日志
-async function copyAllLogs(): Promise<void> {
-  const text = logStore.exportLogsAsText()
-  await navigator.clipboard.writeText(text)
-}
-
-// 下载日志
-function downloadLogs(): void {
-  const text = logStore.exportLogsAsText()
-  const blob = new Blob([text], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `logs-${Date.now()}.txt`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-// 级别选项
-const levelOptions: Array<{ value: LogLevel | 'all'; label: string }> = [
-  { value: 'all', label: '全部' },
-  { value: 'debug', label: 'Debug' },
-  { value: 'info', label: 'Info' },
-  { value: 'warn', label: 'Warn' },
-  { value: 'error', label: 'Error' }
-]
-
-// 分类选项
-const categoryOptions: Array<{ value: LogCategory | 'all'; label: string }> = [
-  { value: 'all', label: '全部' },
-  { value: 'event', label: 'Event' },
-  { value: 'ipc', label: 'IPC' },
-  { value: 'window', label: 'Window' },
-  { value: 'tab', label: 'Tab' },
-  { value: 'app', label: 'App' },
-  { value: 'system', label: 'System' },
-  { value: 'user', label: 'User' }
-]
 </script>
 
 <template>
@@ -101,13 +56,13 @@ const categoryOptions: Array<{ value: LogCategory | 'all'; label: string }> = [
     <!-- 浮动按钮 -->
     <button
       v-if="!isOpen"
-      class="relative flex h-14 w-14 items-center justify-center rounded-full bg-blue-500 text-white shadow-lg transition-all hover:bg-blue-600 hover:scale-110"
-      title="打开日志查看器"
+      class="relative flex h-12 w-12 items-center justify-center rounded-full bg-blue-500 text-white shadow-lg transition-all hover:bg-blue-600 hover:scale-110"
+      title="打开日志"
       @click="isOpen = true"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
-        class="h-6 w-6"
+        class="h-5 w-5"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
@@ -128,170 +83,96 @@ const categoryOptions: Array<{ value: LogCategory | 'all'; label: string }> = [
       </span>
     </button>
 
-    <!-- 日志面板 -->
+    <!-- 日志面板（简化版） -->
     <div
       v-if="isOpen"
-      class="flex h-[600px] w-[800px] flex-col rounded-lg bg-white shadow-2xl dark:bg-gray-900"
+      class="flex h-[400px] w-[500px] flex-col rounded-lg bg-white shadow-2xl dark:bg-gray-900"
     >
       <!-- 头部 -->
       <div
-        class="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-700"
+        class="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700"
       >
-        <div class="flex items-center gap-4">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">日志查看器</h3>
-          <div class="flex gap-2 text-sm">
-            <span class="text-gray-500">总计: {{ logStore.stats.total }}</span>
-            <span v-if="logStore.stats.error > 0" class="text-red-500">
-              错误: {{ logStore.stats.error }}
-            </span>
-            <span v-if="logStore.stats.warn > 0" class="text-yellow-500">
-              警告: {{ logStore.stats.warn }}
-            </span>
-          </div>
+        <div class="flex items-center gap-3">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">日志</h3>
+          <span class="text-xs text-gray-500">{{ logStore.stats.total }} 条</span>
         </div>
-        <button
-          class="rounded p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-          title="关闭"
-          @click="isOpen = false"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            viewBox="0 0 20 20"
-            fill="currentColor"
+        <div class="flex items-center gap-2">
+          <!-- 清空按钮 -->
+          <button
+            class="rounded bg-red-100 px-2 py-1 text-xs text-red-700 transition-colors hover:bg-red-200 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/40"
+            title="清空日志"
+            @click="logStore.clearLogs"
           >
-            <path
-              fill-rule="evenodd"
-              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </button>
-      </div>
-
-      <!-- 过滤器 -->
-      <div
-        class="flex flex-wrap items-center gap-3 border-b border-gray-200 p-4 dark:border-gray-700"
-      >
-        <!-- 级别过滤 -->
-        <select
-          v-model="logStore.filterLevel"
-          class="rounded border border-gray-300 bg-white px-3 py-1 text-sm dark:border-gray-600 dark:bg-gray-800"
-        >
-          <option v-for="opt in levelOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
-
-        <!-- 分类过滤 -->
-        <select
-          v-model="logStore.filterCategory"
-          class="rounded border border-gray-300 bg-white px-3 py-1 text-sm dark:border-gray-600 dark:bg-gray-800"
-        >
-          <option v-for="opt in categoryOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
-
-        <!-- 搜索 -->
-        <input
-          v-model="logStore.searchText"
-          type="text"
-          placeholder="搜索日志..."
-          class="flex-1 rounded border border-gray-300 bg-white px-3 py-1 text-sm dark:border-gray-600 dark:bg-gray-800"
-        />
-
-        <!-- 操作按钮 -->
-        <button
-          class="rounded bg-gray-100 px-3 py-1 text-sm text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-          title="重置过滤器"
-          @click="logStore.resetFilters"
-        >
-          重置
-        </button>
-        <button
-          class="rounded bg-blue-100 px-3 py-1 text-sm text-blue-700 transition-colors hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/40"
-          title="复制所有日志"
-          @click="copyAllLogs"
-        >
-          复制
-        </button>
-        <button
-          class="rounded bg-green-100 px-3 py-1 text-sm text-green-700 transition-colors hover:bg-green-200 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/40"
-          title="下载日志"
-          @click="downloadLogs"
-        >
-          下载
-        </button>
-        <button
-          class="rounded bg-red-100 px-3 py-1 text-sm text-red-700 transition-colors hover:bg-red-200 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/40"
-          title="清除所有日志"
-          @click="logStore.clearLogs"
-        >
-          清除
-        </button>
+            清空
+          </button>
+          <!-- 关闭按钮 -->
+          <button
+            class="rounded p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+            title="关闭"
+            @click="isOpen = false"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- 日志列表 -->
-      <div class="flex-1 overflow-y-auto p-4">
+      <div class="flex-1 overflow-y-auto p-2">
         <div
-          v-if="logStore.filteredLogs.length === 0"
-          class="flex h-full items-center justify-center text-gray-500"
+          v-if="logStore.logs.length === 0"
+          class="flex h-full items-center justify-center text-sm text-gray-500"
         >
           暂无日志
         </div>
-        <div v-else class="space-y-2">
+        <div v-else class="space-y-1">
           <div
-            v-for="log in logStore.filteredLogs"
+            v-for="log in logStore.logs"
             :key="log.id"
             :class="[
-              'rounded-lg border p-3 transition-all cursor-pointer',
+              'rounded border p-2 transition-all cursor-pointer text-xs',
               levelBgColors[log.level],
-              selectedLog === log.id ? 'ring-2 ring-blue-500' : ''
+              selectedLog === log.id ? 'ring-1 ring-blue-500' : ''
             ]"
             @click="toggleLogDetail(log.id)"
           >
-            <div class="flex items-start justify-between gap-2">
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 text-sm">
-                  <span class="font-mono text-xs text-gray-500">{{
-                    formatTime(log.timestamp)
-                  }}</span>
-                  <span :class="['font-semibold uppercase', levelColors[log.level]]">
-                    {{ log.level }}
-                  </span>
-                  <span class="rounded bg-gray-200 px-2 py-0.5 text-xs dark:bg-gray-700">
-                    {{ log.category }}
-                  </span>
-                </div>
-                <p class="mt-1 text-sm text-gray-900 dark:text-gray-100">{{ log.message }}</p>
-
-                <!-- 展开的数据 -->
-                <div v-if="selectedLog === log.id && log.data" class="mt-2">
-                  <pre class="rounded bg-gray-100 p-2 text-xs overflow-x-auto dark:bg-gray-800">{{
-                    formatData(log.data)
-                  }}</pre>
-                </div>
-              </div>
-
-              <!-- 复制按钮 -->
-              <button
-                class="flex-shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
-                title="复制日志"
-                @click.stop="copyLog(log)"
+            <div class="flex items-start gap-2">
+              <span class="font-mono text-[10px] text-gray-500 flex-shrink-0">{{
+                formatTime(log.timestamp)
+              }}</span>
+              <span
+                :class="[
+                  'font-semibold uppercase text-[10px] flex-shrink-0',
+                  levelColors[log.level]
+                ]"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
-                  <path
-                    d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"
-                  />
-                </svg>
-              </button>
+                {{ log.level }}
+              </span>
+              <span
+                class="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] flex-shrink-0 dark:bg-gray-700"
+              >
+                {{ log.category }}
+              </span>
+              <p class="flex-1 min-w-0 text-gray-900 dark:text-gray-100 break-words">
+                {{ log.message }}
+              </p>
+            </div>
+
+            <!-- 展开的数据 -->
+            <div v-if="selectedLog === log.id && log.data" class="mt-1.5 pl-2">
+              <pre class="rounded bg-gray-100 p-1.5 text-[10px] overflow-x-auto dark:bg-gray-800">{{
+                formatData(log.data)
+              }}</pre>
             </div>
           </div>
         </div>
