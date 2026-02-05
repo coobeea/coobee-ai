@@ -2,6 +2,7 @@ import ElectronStore from 'electron-store'
 
 import { eventBus } from './eventbus'
 import { log } from './logger'
+import { EventTypes } from '@shared/ipc/events'
 
 enum ConfigKey {
   THEME = 'theme',
@@ -87,7 +88,7 @@ export class Config {
     const currentTheme = this.get(ConfigKey.THEME)
     if (currentTheme !== theme) {
       this.set(ConfigKey.THEME, theme)
-      eventBus.emit('theme:changed', theme)
+      eventBus.emit(EventTypes.CONFIG_THEME_CHANGED, { theme })
     }
   }
 
@@ -100,7 +101,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.AUTO_START)
     if (currentValue !== value) {
       this.set(ConfigKey.AUTO_START, value)
-      eventBus.emit('autoStart:changed', value)
+      eventBus.emit(EventTypes.CONFIG_AUTO_START_CHANGED, { value })
     }
   }
 
@@ -113,7 +114,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.START_TO_TRAY)
     if (currentValue !== value) {
       this.set(ConfigKey.START_TO_TRAY, value)
-      eventBus.emit('startToTray:changed', value)
+      eventBus.emit(EventTypes.CONFIG_START_TO_TRAY_CHANGED, { value })
     }
   }
 
@@ -126,7 +127,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.CLOSE_TO_TRAY)
     if (currentValue !== value) {
       this.set(ConfigKey.CLOSE_TO_TRAY, value)
-      eventBus.emit('closeToTray:changed', value)
+      eventBus.emit(EventTypes.CONFIG_CLOSE_TO_TRAY_CHANGED, { value })
     }
   }
 
@@ -139,7 +140,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.LANGUAGE)
     if (currentValue !== value) {
       this.set(ConfigKey.LANGUAGE, value)
-      eventBus.emit('language:changed', value)
+      eventBus.emit(EventTypes.CONFIG_LANGUAGE_CHANGED, { language: value })
     }
   }
 
@@ -152,7 +153,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.AUTO_UPDATE)
     if (currentValue !== value) {
       this.set(ConfigKey.AUTO_UPDATE, value)
-      eventBus.emit('autoUpdate:changed', value)
+      eventBus.emit(EventTypes.CONFIG_AUTO_UPDATE_CHANGED, { value })
     }
   }
 
@@ -165,7 +166,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.BETA_UPDATES)
     if (currentValue !== value) {
       this.set(ConfigKey.BETA_UPDATES, value)
-      eventBus.emit('betaUpdates:changed', value)
+      eventBus.emit(EventTypes.CONFIG_BETA_UPDATES_CHANGED, { value })
     }
   }
 
@@ -178,7 +179,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.MEMORY_LIMIT)
     if (currentValue !== value) {
       this.set(ConfigKey.MEMORY_LIMIT, value)
-      eventBus.emit('memoryLimit:changed', value)
+      eventBus.emit(EventTypes.CONFIG_MEMORY_LIMIT_CHANGED, { limit: value })
     }
   }
 
@@ -191,7 +192,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.HARDWARE_ACCELERATION)
     if (currentValue !== value) {
       this.set(ConfigKey.HARDWARE_ACCELERATION, value)
-      eventBus.emit('hardwareAcceleration:changed', value)
+      eventBus.emit(EventTypes.CONFIG_HARDWARE_ACCELERATION_CHANGED, { value })
     }
   }
 
@@ -204,7 +205,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.SHOW_TRAY_ICON)
     if (currentValue !== value) {
       this.set(ConfigKey.SHOW_TRAY_ICON, value)
-      eventBus.emit('showTrayIcon:changed', value)
+      eventBus.emit(EventTypes.CONFIG_SHOW_TRAY_ICON_CHANGED, { value })
     }
   }
 
@@ -217,7 +218,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.SOUND_EFFECTS)
     if (currentValue !== value) {
       this.set(ConfigKey.SOUND_EFFECTS, value)
-      eventBus.emit('soundEffects:changed', value)
+      eventBus.emit(EventTypes.CONFIG_SOUND_EFFECTS_CHANGED, { value })
     }
   }
 
@@ -230,7 +231,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.ALWAYS_ON_TOP)
     if (currentValue !== value) {
       this.set(ConfigKey.ALWAYS_ON_TOP, value)
-      eventBus.emit('alwaysOnTop:changed', value)
+      eventBus.emit(EventTypes.CONFIG_ALWAYS_ON_TOP_CHANGED, { value })
     }
   }
 
@@ -243,7 +244,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.WORKSPACE_PATH)
     if (currentValue !== value) {
       this.set(ConfigKey.WORKSPACE_PATH, value)
-      eventBus.emit('workspacePath:changed', value)
+      eventBus.emit(EventTypes.CONFIG_WORKSPACE_PATH_CHANGED, { path: value })
     }
   }
 
@@ -256,7 +257,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.BACKUP_PATH)
     if (currentValue !== value) {
       this.set(ConfigKey.BACKUP_PATH, value)
-      eventBus.emit('backupPath:changed', value)
+      eventBus.emit(EventTypes.CONFIG_BACKUP_PATH_CHANGED, { path: value })
     }
   }
 
@@ -269,7 +270,7 @@ export class Config {
     const currentValue = this.get(ConfigKey.LOG_PATH)
     if (currentValue !== value) {
       this.set(ConfigKey.LOG_PATH, value)
-      eventBus.emit('logPath:changed', value)
+      eventBus.emit(EventTypes.CONFIG_LOG_PATH_CHANGED, { path: value })
     }
   }
 }

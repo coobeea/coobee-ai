@@ -16,23 +16,33 @@ export class IconManager {
     return iconPath
   }
 
-  static getTrayIcon(): string {
-    const iconPath = path.join(
+  /**
+   * 获取托盘图标路径（私有方法）
+   */
+  private static getTrayIconPath(): string {
+    return path.join(
       this.basePath,
-      process.platform === 'win32' ? 'tray-icon.ico' : 'tray-icon.png'
+      process.platform === 'win32' ? 'tray-icon.ico' : 'trayIconTemplate.png'
     )
-    log.debug('托盘图标路径:', iconPath)
-    return iconPath
   }
 
-  static getTrayNativeImage(): Electron.NativeImage {
+  /**
+   * 获取托盘图标的 NativeImage 对象
+   * macOS: 使用 Template 图标（支持明暗主题自适应）
+   * Windows/Linux: 使用普通图标
+   *
+   * @returns NativeImage 对象，如果图标不存在则返回空图标
+   */
+  static getTrayIcon(): Electron.NativeImage {
     if (process.platform === 'darwin') {
-      const optimizedPath = path.join(this.basePath, 'tray-icon.png')
-      const retinaPath = path.join(this.basePath, 'tray-icon@2x.png')
+      // macOS: 使用 Template 图标（黑白单色，支持明暗主题）
+      const templatePath = path.join(this.basePath, 'trayIconTemplate.png')
+      const retinaPath = path.join(this.basePath, 'trayIconTemplate@2x.png')
 
-      if (this.checkIconExists(optimizedPath)) {
-        const icon = nativeImage.createFromPath(optimizedPath)
+      if (this.checkIconExists(templatePath)) {
+        const icon = nativeImage.createFromPath(templatePath)
 
+        // 添加 Retina 版本
         if (this.checkIconExists(retinaPath)) {
           icon.addRepresentation({
             scaleFactor: 2.0,
@@ -40,51 +50,51 @@ export class IconManager {
           })
         }
 
-        log.info('使用彩色托盘图标 (22x22)')
+        // 设置为 Template 图像（关键：自动适配系统主题）
+        icon.setTemplateImage(true)
+
+        log.info('[IconManager] 使用 macOS Template 托盘图标 (22x22, 支持明暗主题)')
         return icon
       }
 
-      log.warn('macOS 优化托盘图标不存在，使用运行时调整')
-      const iconPath = this.getTrayIcon()
+      log.warn('[IconManager] macOS Template 托盘图标不存在，回退到普通图标')
+      const iconPath = this.getTrayIconPath()
       const icon = nativeImage.createFromPath(iconPath)
       return icon.resize({ width: 22, height: 22 })
     }
 
-    const iconPath = this.getTrayIcon()
-    return nativeImage.createFromPath(iconPath)
+    // Windows/Linux: 使用普通图标
+    const iconPath = this.getTrayIconPath()
+    const icon = nativeImage.createFromPath(iconPath)
+
+    if (icon.isEmpty()) {
+      log.error('[IconManager] 托盘图标不存在:', iconPath)
+    } else {
+      log.debug('[IconManager] 托盘图标加载成功:', iconPath)
+    }
+
+    return icon
   }
 
-  static checkIconExists(iconPath: string): boolean {
+  /**
+   * 检查图标文件是否存在（私有方法）
+   */
+  private static checkIconExists(iconPath: string): boolean {
     try {
       return fs.existsSync(iconPath)
     } catch (error) {
-      log.error('检查图标文件失败:', error)
+      log.error('[IconManager] 检查图标文件失败:', error)
       return false
-    }
-  }
-
-  static validateIcons(): { app: boolean; tray: boolean } {
-    const appIcon = this.getAppIcon()
-    const trayIcon = this.getTrayIcon()
-
-    const appExists = this.checkIconExists(appIcon)
-    const trayExists = this.checkIconExists(trayIcon)
-
-    if (!appExists) {
-      log.warn('应用图标文件不存在:', appIcon)
-    }
-    if (!trayExists) {
-      log.warn('托盘图标文件不存在:', trayIcon)
-    }
-
-    return {
-      app: appExists,
-      tray: trayExists
     }
   }
 }
 
+/**
+ * 便捷导出函数
+ */
+
+/** 获取应用图标路径 */
 export const getAppIcon = (): string => IconManager.getAppIcon()
-export const getTrayIcon = (): string => IconManager.getTrayIcon()
-export const getTrayNativeImage = (): Electron.NativeImage => IconManager.getTrayNativeImage()
-export const validateIcons = (): { app: boolean; tray: boolean } => IconManager.validateIcons()
+
+/** 获取托盘图标的 NativeImage（推荐使用，自动处理跨平台兼容和错误处理） */
+export const getTrayNativeImage = (): Electron.NativeImage => IconManager.getTrayIcon()

@@ -18,11 +18,14 @@ export {
   getHardwareSerialNumbers,
   getMachineId
 } from './platform'
+
+// 托盘管理
+export { trayManager } from './tray'
 export { eventBus } from './eventbus'
 export { config, Config } from './config'
 export { stateManager, StateManager } from './state'
 export { ThemeManager } from './theme'
-export { IconManager, getAppIcon, getTrayIcon, getTrayNativeImage, validateIcons } from './icons'
+export { IconManager, getAppIcon, getTrayNativeImage } from './icons'
 
 // 窗口事件（从 window 模块导出）
 export { BrowserWindowEvents } from './window'

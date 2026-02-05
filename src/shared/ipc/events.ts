@@ -70,12 +70,40 @@ export const EventTypes = {
   APP_SECOND_INSTANCE: 'app:second-instance',
   /** 子进程崩溃 */
   APP_CHILD_PROCESS_GONE: 'app:child-process-gone',
-  /** 主题切换 */
-  THEME_CHANGED: 'theme:changed',
-  /** 配置更新 */
-  CONFIG_UPDATED: 'config:updated',
   /** 系统错误 */
-  SYSTEM_ERROR: 'system:error'
+  SYSTEM_ERROR: 'system:error',
+
+  // ==================== Config 配置事件 ====================
+  /** 主题配置变更 */
+  CONFIG_THEME_CHANGED: 'config:theme:changed',
+  /** 自动启动配置变更 */
+  CONFIG_AUTO_START_CHANGED: 'config:autoStart:changed',
+  /** 启动到托盘配置变更 */
+  CONFIG_START_TO_TRAY_CHANGED: 'config:startToTray:changed',
+  /** 关闭到托盘配置变更 */
+  CONFIG_CLOSE_TO_TRAY_CHANGED: 'config:closeToTray:changed',
+  /** 语言配置变更 */
+  CONFIG_LANGUAGE_CHANGED: 'config:language:changed',
+  /** 自动更新配置变更 */
+  CONFIG_AUTO_UPDATE_CHANGED: 'config:autoUpdate:changed',
+  /** Beta 更新配置变更 */
+  CONFIG_BETA_UPDATES_CHANGED: 'config:betaUpdates:changed',
+  /** 内存限制配置变更 */
+  CONFIG_MEMORY_LIMIT_CHANGED: 'config:memoryLimit:changed',
+  /** 硬件加速配置变更 */
+  CONFIG_HARDWARE_ACCELERATION_CHANGED: 'config:hardwareAcceleration:changed',
+  /** 显示托盘图标配置变更 */
+  CONFIG_SHOW_TRAY_ICON_CHANGED: 'config:showTrayIcon:changed',
+  /** 音效配置变更 */
+  CONFIG_SOUND_EFFECTS_CHANGED: 'config:soundEffects:changed',
+  /** 窗口置顶配置变更 */
+  CONFIG_ALWAYS_ON_TOP_CHANGED: 'config:alwaysOnTop:changed',
+  /** 工作区路径配置变更 */
+  CONFIG_WORKSPACE_PATH_CHANGED: 'config:workspacePath:changed',
+  /** 备份路径配置变更 */
+  CONFIG_BACKUP_PATH_CHANGED: 'config:backupPath:changed',
+  /** 日志路径配置变更 */
+  CONFIG_LOG_PATH_CHANGED: 'config:logPath:changed'
 } as const
 
 /**
@@ -211,17 +239,57 @@ export interface EventPayloads {
     reason: string
     exitCode: number
   }
-  [EventTypes.THEME_CHANGED]: {
-    theme: 'light' | 'dark'
-  }
-  [EventTypes.CONFIG_UPDATED]: {
-    key: string
-    value: unknown
-  }
   [EventTypes.SYSTEM_ERROR]: {
     code: string
     message: string
     details?: unknown
+  }
+
+  // ==================== Config 配置事件 ====================
+  [EventTypes.CONFIG_THEME_CHANGED]: {
+    theme: 'light' | 'dark' | 'auto'
+  }
+  [EventTypes.CONFIG_AUTO_START_CHANGED]: {
+    value: boolean
+  }
+  [EventTypes.CONFIG_START_TO_TRAY_CHANGED]: {
+    value: boolean
+  }
+  [EventTypes.CONFIG_CLOSE_TO_TRAY_CHANGED]: {
+    value: boolean
+  }
+  [EventTypes.CONFIG_LANGUAGE_CHANGED]: {
+    language: string
+  }
+  [EventTypes.CONFIG_AUTO_UPDATE_CHANGED]: {
+    value: boolean
+  }
+  [EventTypes.CONFIG_BETA_UPDATES_CHANGED]: {
+    value: boolean
+  }
+  [EventTypes.CONFIG_MEMORY_LIMIT_CHANGED]: {
+    limit: number
+  }
+  [EventTypes.CONFIG_HARDWARE_ACCELERATION_CHANGED]: {
+    value: boolean
+  }
+  [EventTypes.CONFIG_SHOW_TRAY_ICON_CHANGED]: {
+    value: boolean
+  }
+  [EventTypes.CONFIG_SOUND_EFFECTS_CHANGED]: {
+    value: boolean
+  }
+  [EventTypes.CONFIG_ALWAYS_ON_TOP_CHANGED]: {
+    value: boolean
+  }
+  [EventTypes.CONFIG_WORKSPACE_PATH_CHANGED]: {
+    path: string
+  }
+  [EventTypes.CONFIG_BACKUP_PATH_CHANGED]: {
+    path: string
+  }
+  [EventTypes.CONFIG_LOG_PATH_CHANGED]: {
+    path: string
   }
 }
 

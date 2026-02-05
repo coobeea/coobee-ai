@@ -9,8 +9,26 @@ import { ElectronAppEvents } from './types'
 import { eventBus } from '../eventbus'
 import { EventTypes } from '@shared/ipc/events'
 
-// 导入 eventBus 以触发自动初始化（构造函数会自动执行）
-import '../eventbus'
+/**
+ * 预加载核心模块（确保尽早初始化）
+ * ============================================
+ *
+ * 这些模块包含单例实例，需要在应用启动时立即初始化：
+ *
+ * 1. logger  - 日志系统（最优先，其他模块依赖它）
+ * 2. env     - 环境配置（路径、平台信息等）
+ * 3. eventbus - 事件总线（内部事件通信）
+ * 4. config  - 应用配置（用户设置等）
+ *
+ * 注意：
+ * - 这些导入是副作用导入（side-effect imports）
+ * - 即使下面有具名导入，也需要保留这些预加载
+ * - 加载顺序很重要：logger -> env -> eventbus -> config
+ */
+import '../logger' // 1. 日志系统（最高优先级）
+import '../env' // 2. 环境配置
+import '../eventbus' // 3. 事件总线
+import '../config' // 4. 应用配置
 
 /**
  * 应用管理器
@@ -118,10 +136,17 @@ export class AppManager implements IAppManager {
    */
   async initialize(): Promise<void> {
     try {
+      // 确保应用单例运行
+      if (!app.requestSingleInstanceLock()) {
+        log.info('[AppManager] 应用已在运行，退出当前实例')
+        app.quit()
+        process.exit(0)
+      }
+
       log.info('[App] 开始初始化应用...')
 
       // 1. 应用基础配置
-      electronApp.setAppUserModelId('com.electron')
+      electronApp.setAppUserModelId('com.coobee')
       log.info('[App] 应用基础配置完成')
 
       // 2. 触发 INIT 阶段生命周期（供其他模块使用）

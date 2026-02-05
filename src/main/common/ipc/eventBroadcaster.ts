@@ -1,6 +1,45 @@
 /**
  * IPC 事件广播器
  * 负责将主进程的事件广播到前端
+ *
+ * ⚠️ 重要说明：事件广播范围定义
+ * ============================================
+ *
+ * 本广播器只应处理【需要同步到前端】的事件，具体包括：
+ *
+ * 1. ✅ 应该广播的事件：
+ *    - Window 事件（窗口创建、关闭、焦点、最小化、最大化等）
+ *    - Tab 事件（Tab 创建、关闭、激活、更新、移动等）
+ *    - App 事件（应用激活、焦点、第二实例、子进程崩溃等）
+ *    - System 事件（系统错误等）
+ *
+ * 2. ❌ 不应该广播的事件：
+ *    - Config 配置事件（CONFIG_*）
+ *      理由：配置变更是后端内部事件，前端通过 IPC 调用获取配置即可
+ *            如果广播配置事件会导致：
+ *            - 前端状态和后端配置不同步的风险
+ *            - 不必要的网络开销
+ *            - 配置更新逻辑混乱（前端不应被动接收配置）
+ *
+ * 3. 📋 判断标准：
+ *    问：这个事件是否需要前端主动响应或实时更新 UI？
+ *    - 是 → 应该广播（例如：Tab 关闭需要更新 Tab 列表）
+ *    - 否 → 不应该广播（例如：配置变更前端按需获取即可）
+ *
+ * 4. 🔧 配置事件的正确处理方式：
+ *    - 后端：使用 EventBus 在主进程内部监听和响应
+ *    - 前端：需要配置时通过 IPC 调用 `config.getXxx()` 获取
+ *    - 示例：托盘管理器监听 CONFIG_SHOW_TRAY_ICON_CHANGED 是正确的
+ *           但不应该将此事件广播到渲染进程
+ *
+ * ⚠️ 修改提醒：
+ * 如果你正在考虑添加新的事件监听器，请先确认：
+ * 1. 这个事件是否真的需要前端知道？
+ * 2. 前端是否需要实时响应这个事件？
+ * 3. 是否可以通过前端主动查询（IPC 调用）代替被动接收？
+ *
+ * 如果答案都是"是"，才应该添加到本广播器中。
+ * ============================================
  */
 
 import { BrowserWindow, WebContentsView, webContents } from 'electron'
@@ -162,18 +201,6 @@ class IpcEventBroadcaster {
         EventTypes.APP_CHILD_PROCESS_GONE,
         data as EventPayloads['app:child-process-gone']
       )
-    })
-
-    eventBus.on(EventTypes.THEME_CHANGED, (data: unknown) => {
-      this.broadcast(EventTypes.THEME_CHANGED, data as EventPayloads['theme:changed'])
-    })
-
-    eventBus.on(EventTypes.CONFIG_UPDATED, (data: unknown) => {
-      this.broadcast(EventTypes.CONFIG_UPDATED, data as EventPayloads['config:updated'])
-    })
-
-    eventBus.on(EventTypes.SYSTEM_ERROR, (data: unknown) => {
-      this.broadcast(EventTypes.SYSTEM_ERROR, data as EventPayloads['system:error'])
     })
 
     log.info('[IpcEventBroadcaster] Event listeners setup completed')
