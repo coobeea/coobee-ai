@@ -61,6 +61,8 @@ export default defineConfig({
       }),
       // 自动导入 Vue 组件
       Components({
+        // 指定 components.d.ts 文件的生成位置
+        dts: resolve('src/renderer/src/types/components.d.ts'),
         resolvers: [
           // 自动导入图标组件
           IconsResolver({
