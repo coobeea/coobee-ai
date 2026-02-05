@@ -1256,7 +1256,8 @@ export class WindowManager implements IWindowManager {
    * 通知窗口 Tab 列表更新
    * @param windowId 窗口 ID
    */
-  private notifyWindowTabsUpdate(windowId: number): void {
+  // @ts-expect-error - 保留供未来使用
+  private _notifyWindowTabsUpdate(windowId: number): void {
     const windowInfo = this.windows.get(windowId)
     if (!windowInfo) return
 
@@ -1294,7 +1295,8 @@ export class WindowManager implements IWindowManager {
    * @param windowId 窗口 ID
    * @returns 是否属于该窗口
    */
-  private isTabInWindow(tabId: number, windowId: number): boolean {
+  // @ts-ignore - 保留供未来使用
+  private _isTabInWindow(tabId: number, windowId: number): boolean {
     const windowInfo = this.windows.get(windowId)
     return windowInfo?.tabs.has(tabId) ?? false
   }

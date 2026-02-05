@@ -2,7 +2,7 @@ import { exec } from 'child_process'
 import fs from 'fs-extra'
 import { promisify } from 'util'
 
-import { log } from '../logger'
+import { log } from '../common/logger'
 
 const sleep = promisify(setTimeout)
 

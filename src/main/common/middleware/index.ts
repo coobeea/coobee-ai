@@ -19,4 +19,4 @@ export function initializeMiddlewares(): void {
 }
 
 export { middlewareManager } from './manager'
-export { Middleware, MiddlewareContext, MiddlewareResult } from '../types'
+export type { Middleware, MiddlewareContext, MiddlewareResult } from '../types'

@@ -1,6 +1,6 @@
 import path from 'path'
 
-import { generateSnowflakeId, generateSnowflakeIdString } from '@/main/utils/SnowflakeIdGenerator'
+import { generateSnowflakeId, generateSnowflakeIdString } from '../../utils/SnowflakeIdGenerator'
 import pool, { Connection } from './DatabasePool'
 
 const DB_NAME = 'database.db'

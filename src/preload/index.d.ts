@@ -1,11 +1,12 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
+import type { WindowInfoResponse } from '@shared/ipc'
 
 declare global {
   interface Window {
     electron: ElectronAPI
     api: {
       getPlatform: () => string
-      getWindowId: () => Promise<number>
+      getWindowInfo: () => Promise<WindowInfoResponse | null>
     }
   }
 }

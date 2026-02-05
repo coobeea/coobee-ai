@@ -7,8 +7,8 @@
 import { registerShellHandlers } from './shellHandlers'
 import { registerWindowHandlers } from './windowHandlers'
 
-export { ShellChannels, WindowChannels } from '../../../shared/ipcChannels'
-export type { ShellChannel, WindowChannel } from '../../../shared/ipcChannels'
+export { ShellChannels, WindowChannels, TabChannels, EventChannels } from '@shared/ipc'
+export type { ShellChannel, WindowChannel, TabChannel, EventChannel } from '@shared/ipc'
 export { registerShellHandlers } from './shellHandlers'
 export { registerWindowHandlers } from './windowHandlers'
 

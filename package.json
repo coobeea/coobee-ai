@@ -25,6 +25,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@koa/cors": "^5.0.0",
     "@koa/router": "^15.3.0",
+    "@libsql/client": "^0.17.0",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@openai/agents": "^0.4.5",
     "@pinia/colada": "^0.21.2",

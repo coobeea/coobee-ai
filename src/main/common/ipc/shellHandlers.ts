@@ -1,34 +1,62 @@
 /**
  * Shell 相关 IPC 处理器
  *
- * - shell:get-window-id：渲染进程拉取当前窗口 ID
- * - shell:chrome-height：渲染进程上报 Chrome 高度（预留，用于后续 WebContentsView 布局）
+ * - shell:get-window-info：渲染进程拉取当前窗口完整信息（windowId、tabs、currentTabId 等）
  */
 
 import { ipcMain, BrowserWindow } from 'electron'
 
 import { log } from '../logger'
 import { ShellChannels } from './channels'
+import { windowManager } from '../window'
+import type { WindowInfoResponse, TabInfoResponse } from '@shared/ipc'
 
 /**
  * 注册 Shell 相关 IPC 处理器
  */
 export function registerShellHandlers(): void {
-  // 拉取当前窗口 ID
-  ipcMain.handle(ShellChannels.GET_WINDOW_ID, (event) => {
+  // 拉取当前窗口完整信息
+  ipcMain.handle(ShellChannels.GET_WINDOW_INFO, (event): WindowInfoResponse | null => {
     const win = BrowserWindow.fromWebContents(event.sender)
-    const id = win ? win.id : 0
-    log.debug(`[IPC] shell:get-window-id -> ${id}`)
-    return id
-  })
+    if (!win) {
+      log.warn('[IPC] shell:get-window-info - 无法获取窗口')
+      return null
+    }
 
-  // 接收渲染进程上报的 Chrome 高度（预留）
-  ipcMain.on(ShellChannels.CHROME_HEIGHT, (event, payload: { height: number }) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (!win) return
-    const height = payload?.height ?? 0
-    log.debug(`[IPC] shell:chrome-height windowId=${win.id} height=${height}`)
-    // TODO: 可用于更新 WebContentsView 的 y/height，或通知其他模块
+    const windowId = win.id
+    const windowInfo = windowManager.getWindowInfo(windowId)
+
+    if (!windowInfo) {
+      log.warn(`[IPC] shell:get-window-info - 窗口信息不存在: windowId=${windowId}`)
+      return null
+    }
+
+    // 获取所有 Tab 信息（使用公共方法）
+    const windowTabs = windowManager.getWindowTabs(windowId)
+    const tabs: TabInfoResponse[] = windowTabs.map((tab) => ({
+      id: tab.id,
+      title: tab.title,
+      url: tab.url,
+      isActive: tab.isActive,
+      closable: tab.closable,
+      position: tab.position
+    }))
+
+    // 获取当前激活的 Tab
+    const activeTab = windowManager.getActiveTab(windowId)
+    const currentTabId = activeTab ? activeTab.id : null
+
+    const response: WindowInfoResponse = {
+      windowId,
+      windowType: windowInfo.type,
+      tabs,
+      currentTabId
+    }
+
+    log.debug(
+      `[IPC] shell:get-window-info -> windowId=${windowId}, tabs=${tabs.length}, currentTabId=${currentTabId}`
+    )
+    return response
   })
 
   log.info('[IPC] Shell handlers registered')

@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 
-import { log } from '../logger'
+import { log } from '../common/logger'
 
 export function generateMachineFingerprint(): string {
   const os = require('os')

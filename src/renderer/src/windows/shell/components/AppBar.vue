@@ -6,7 +6,7 @@ import IconMdiWindowMaximize from '~icons/mdi/window-maximize'
 import IconMdiWindowRestore from '~icons/mdi/window-restore'
 import IconMdiClose from '~icons/mdi/close'
 
-import { WindowChannels } from '@shared/ipcChannels'
+import { WindowChannels } from '@shared/ipc'
 import TabItem from './TabItem.vue'
 import { useTabStore } from '../stores/tab'
 import { usePlatform } from '../composables/usePlatform'
