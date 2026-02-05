@@ -10,7 +10,15 @@ export const EventTypes = {
   // ==================== Window 事件 ====================
   /** 窗口创建 */
   WINDOW_CREATED: 'window:created',
-  /** 窗口关闭 */
+  /** 窗口准备就绪（内容加载完成，可以显示） */
+  WINDOW_READY: 'window:ready',
+  /** 窗口显示 */
+  WINDOW_SHOW: 'window:show',
+  /** 窗口隐藏 */
+  WINDOW_HIDE: 'window:hide',
+  /** 窗口即将关闭（可阻止） */
+  WINDOW_CLOSE: 'window:close',
+  /** 窗口已关闭 */
   WINDOW_CLOSED: 'window:closed',
   /** 窗口获得焦点 */
   WINDOW_FOCUSED: 'window:focused',
@@ -52,6 +60,16 @@ export const EventTypes = {
   TAB_RELOADED: 'tab:reloaded',
 
   // ==================== App 事件 ====================
+  /** 应用激活（macOS Dock 图标点击） */
+  APP_ACTIVATED: 'app:activated',
+  /** 应用获得焦点 */
+  APP_FOCUS: 'app:focus',
+  /** 应用即将退出 */
+  APP_BEFORE_QUIT: 'app:before-quit',
+  /** 第二个实例启动 */
+  APP_SECOND_INSTANCE: 'app:second-instance',
+  /** 子进程崩溃 */
+  APP_CHILD_PROCESS_GONE: 'app:child-process-gone',
   /** 主题切换 */
   THEME_CHANGED: 'theme:changed',
   /** 配置更新 */
@@ -73,6 +91,18 @@ export interface EventPayloads {
   [EventTypes.WINDOW_CREATED]: {
     windowId: number
     type: string
+  }
+  [EventTypes.WINDOW_READY]: {
+    windowId: number
+  }
+  [EventTypes.WINDOW_SHOW]: {
+    windowId: number
+  }
+  [EventTypes.WINDOW_HIDE]: {
+    windowId: number
+  }
+  [EventTypes.WINDOW_CLOSE]: {
+    windowId: number
   }
   [EventTypes.WINDOW_CLOSED]: {
     windowId: number
@@ -164,6 +194,23 @@ export interface EventPayloads {
   }
 
   // ==================== App 事件 ====================
+  [EventTypes.APP_ACTIVATED]: {
+    hasWindows: boolean
+  }
+  [EventTypes.APP_FOCUS]: {
+    timestamp: number
+  }
+  [EventTypes.APP_BEFORE_QUIT]: {
+    timestamp: number
+  }
+  [EventTypes.APP_SECOND_INSTANCE]: {
+    hasWindows: boolean
+  }
+  [EventTypes.APP_CHILD_PROCESS_GONE]: {
+    type: string
+    reason: string
+    exitCode: number
+  }
   [EventTypes.THEME_CHANGED]: {
     theme: 'light' | 'dark'
   }

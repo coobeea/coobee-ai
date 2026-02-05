@@ -63,6 +63,50 @@ export enum BrowserWindowEvents {
   SCROLL_TOUCH_EDGE = 'scroll-touch-edge' // 触摸滚动到边缘时触发
 }
 
+/**
+ * WebContents 事件枚举
+ *
+ * 定义 WebContents (Tab 内容) 相关的事件名称
+ */
+export enum WebContentsEvents {
+  // 页面生命周期事件
+  DID_FINISH_LOAD = 'did-finish-load', // 页面加载完成
+  DID_FAIL_LOAD = 'did-fail-load', // 页面加载失败
+  DID_START_LOADING = 'did-start-loading', // 开始加载
+  DID_STOP_LOADING = 'did-stop-loading', // 停止加载
+  DESTROYED = 'destroyed', // WebContents 已销毁
+
+  // 导航相关事件
+  DID_NAVIGATE = 'did-navigate', // 页面导航完成
+  DID_NAVIGATE_IN_PAGE = 'did-navigate-in-page', // 页面内导航（锚点跳转）
+  WILL_NAVIGATE = 'will-navigate', // 即将导航（可阻止）
+  DID_START_NAVIGATION = 'did-start-navigation', // 开始导航
+
+  // 页面内容更新事件
+  PAGE_TITLE_UPDATED = 'page-title-updated', // 页面标题更新
+  PAGE_FAVICON_UPDATED = 'page-favicon-updated', // 页面图标更新
+  DOM_READY = 'dom-ready', // DOM 加载完成
+
+  // 控制台和调试事件
+  CONSOLE_MESSAGE = 'console-message', // 控制台消息
+  DEVTOOLS_OPENED = 'devtools-opened', // 开发者工具打开
+  DEVTOOLS_CLOSED = 'devtools-closed', // 开发者工具关闭
+
+  // 渲染进程相关事件
+  RENDER_PROCESS_GONE = 'render-process-gone', // 渲染进程崩溃或被杀死
+  UNRESPONSIVE = 'unresponsive', // 页面无响应
+  RESPONSIVE = 'responsive', // 页面恢复响应
+
+  // 新窗口相关事件
+  NEW_WINDOW = 'new-window', // 新窗口请求（已废弃，使用 did-create-window）
+  DID_CREATE_WINDOW = 'did-create-window', // 创建新窗口
+
+  // 其他事件
+  CONTEXT_MENU = 'context-menu', // 右键菜单
+  MEDIA_STARTED_PLAYING = 'media-started-playing', // 媒体开始播放
+  MEDIA_PAUSED = 'media-paused' // 媒体暂停
+}
+
 // ==================== 窗口类型定义 ====================
 
 /**

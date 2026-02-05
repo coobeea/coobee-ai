@@ -27,7 +27,7 @@ import type {
   TabViewInfo,
   IWindowManager
 } from './types'
-import { getWindowPresets, CHROME_HEIGHT, BrowserWindowEvents } from './types'
+import { getWindowPresets, CHROME_HEIGHT, BrowserWindowEvents, WebContentsEvents } from './types'
 import { log } from '@main/common/logger'
 import { eventBus } from '@main/common/eventbus'
 import { EventTypes } from '@shared/ipc/events'
@@ -1104,9 +1104,43 @@ export class WindowManager implements IWindowManager {
       windowInfo.state.isVisible = true
       window.show()
       log.info(`[WindowManager] 窗口已显示: windowId=${windowId}`)
+
+      // 发送 window:ready 事件
+      eventBus.emit(EventTypes.WINDOW_READY, {
+        windowId
+      })
     })
 
-    // closed: 窗口关闭
+    // show: 窗口显示
+    window.on(BrowserWindowEvents.SHOW, () => {
+      log.debug(`[WindowManager] 窗口显示: windowId=${windowId}`)
+
+      eventBus.emit(EventTypes.WINDOW_SHOW, {
+        windowId
+      })
+    })
+
+    // hide: 窗口隐藏
+    window.on(BrowserWindowEvents.HIDE, () => {
+      log.debug(`[WindowManager] 窗口隐藏: windowId=${windowId}`)
+
+      eventBus.emit(EventTypes.WINDOW_HIDE, {
+        windowId
+      })
+    })
+
+    // close: 窗口即将关闭（可阻止）
+    window.on(BrowserWindowEvents.CLOSE, () => {
+      log.debug(`[WindowManager] 窗口即将关闭: windowId=${windowId}`)
+
+      eventBus.emit(EventTypes.WINDOW_CLOSE, {
+        windowId
+      })
+      // 注意：这里可以通过 event.preventDefault() 阻止关闭
+      // 如果需要阻止关闭，可以在这里添加逻辑
+    })
+
+    // closed: 窗口已关闭
     window.on(BrowserWindowEvents.CLOSED, () => {
       log.info(`[WindowManager] 窗口已关闭: windowId=${windowId}`)
 
@@ -1405,7 +1439,7 @@ export class WindowManager implements IWindowManager {
     log.debug(`[WindowManager] 绑定 Tab 事件: tabId=${tabId}`)
 
     // page-title-updated: 页面标题更新
-    webContents.on('page-title-updated', (_event, title) => {
+    webContents.on(WebContentsEvents.PAGE_TITLE_UPDATED, (_event, title) => {
       const oldTitle = tabInfo.title
       tabInfo.title = title
       log.debug(`[WindowManager] Tab 标题更新: tabId=${tabId}, title=${title}`)
@@ -1426,7 +1460,7 @@ export class WindowManager implements IWindowManager {
     })
 
     // did-navigate: 页面导航
-    webContents.on('did-navigate', (_event, url) => {
+    webContents.on(WebContentsEvents.DID_NAVIGATE, (_event, url) => {
       const oldUrl = tabInfo.url
       tabInfo.url = url
       log.debug(`[WindowManager] Tab 导航: tabId=${tabId}, url=${url}`)
@@ -1447,7 +1481,7 @@ export class WindowManager implements IWindowManager {
     })
 
     // page-favicon-updated: 图标更新
-    webContents.on('page-favicon-updated', (_event, favicons) => {
+    webContents.on(WebContentsEvents.PAGE_FAVICON_UPDATED, (_event, favicons) => {
       if (favicons.length > 0) {
         tabInfo.icon = favicons[0]
         log.debug(`[WindowManager] Tab 图标更新: tabId=${tabId}`)
@@ -1469,28 +1503,10 @@ export class WindowManager implements IWindowManager {
     })
 
     // destroyed: webContents 销毁时自动清理
-    webContents.once('destroyed', () => {
+    webContents.once(WebContentsEvents.DESTROYED, () => {
       log.debug(`[WindowManager] WebContents 已销毁: tabId=${tabId}`)
       // 事件监听器会自动清理
     })
-  }
-
-  /**
-   * 通知窗口 Tab 列表更新
-   * @param windowId 窗口 ID
-   */
-  // @ts-expect-error - 保留供未来使用
-  private _notifyWindowTabsUpdate(windowId: number): void {
-    const windowInfo = this.windows.get(windowId)
-    if (!windowInfo) return
-
-    try {
-      const tabs = this.getWindowTabs(windowId)
-      this.sendToWindow(windowId, 'tabs:updated', tabs)
-      log.debug(`[WindowManager] 通知窗口 Tab 更新: windowId=${windowId}, count=${tabs.length}`)
-    } catch (error) {
-      log.error('[WindowManager] 通知窗口 Tab 列表更新失败:', error)
-    }
   }
 
   /**
@@ -1510,17 +1526,5 @@ export class WindowManager implements IWindowManager {
 
     // 清理 webContents 映射
     this.webContentsToTabId.delete(tabId)
-  }
-
-  /**
-   * 验证 Tab 是否属于窗口
-   * @param tabId Tab ID
-   * @param windowId 窗口 ID
-   * @returns 是否属于该窗口
-   */
-  // @ts-ignore - 保留供未来使用
-  private _isTabInWindow(tabId: number, windowId: number): boolean {
-    const windowInfo = this.windows.get(windowId)
-    return windowInfo?.tabs.has(tabId) ?? false
   }
 }

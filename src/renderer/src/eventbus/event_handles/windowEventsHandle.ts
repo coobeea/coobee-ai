@@ -10,16 +10,54 @@ import eventBus from '@/utils/eventBus'
 function handleWindowCreated(payload: EventPayloads['window:created']): void {
   console.log('[WindowEvents] 窗口创建:', payload)
   console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore
+  console.log(`  - 窗口类型: ${payload.type}`)
+  // 这里可以更新 WindowStore - 添加窗口到列表
 }
 
 /**
- * 处理窗口关闭事件
+ * 处理窗口准备就绪事件
+ */
+function handleWindowReady(payload: EventPayloads['window:ready']): void {
+  console.log('[WindowEvents] 窗口准备就绪:', payload)
+  console.log(`  - 窗口 ID: ${payload.windowId}`)
+  // 这里可以更新 WindowStore - 标记窗口为可交互状态
+}
+
+/**
+ * 处理窗口显示事件
+ */
+function handleWindowShow(payload: EventPayloads['window:show']): void {
+  console.log('[WindowEvents] 窗口显示:', payload)
+  console.log(`  - 窗口 ID: ${payload.windowId}`)
+  // 这里可以更新 WindowStore - 标记窗口为可见
+}
+
+/**
+ * 处理窗口隐藏事件
+ */
+function handleWindowHide(payload: EventPayloads['window:hide']): void {
+  console.log('[WindowEvents] 窗口隐藏:', payload)
+  console.log(`  - 窗口 ID: ${payload.windowId}`)
+  // 这里可以更新 WindowStore - 标记窗口为隐藏
+}
+
+/**
+ * 处理窗口即将关闭事件
+ */
+function handleWindowClose(payload: EventPayloads['window:close']): void {
+  console.log('[WindowEvents] 窗口即将关闭:', payload)
+  console.log(`  - 窗口 ID: ${payload.windowId}`)
+  // 这里可以显示确认对话框或保存未保存的数据
+  // 注意：这个事件在后端可以被阻止
+}
+
+/**
+ * 处理窗口已关闭事件
  */
 function handleWindowClosed(payload: EventPayloads['window:closed']): void {
-  console.log('[WindowEvents] 窗口关闭:', payload)
+  console.log('[WindowEvents] 窗口已关闭:', payload)
   console.log(`  - 窗口 ID: ${payload.windowId}`)
-  // 这里可以更新 WindowStore
+  // 这里可以更新 WindowStore - 从列表中移除窗口
 }
 
 /**
@@ -110,6 +148,10 @@ function handleWindowResized(payload: EventPayloads['window:resized']): void {
  */
 export function setup(): void {
   eventBus.on(EventTypes.WINDOW_CREATED, handleWindowCreated)
+  eventBus.on(EventTypes.WINDOW_READY, handleWindowReady)
+  eventBus.on(EventTypes.WINDOW_SHOW, handleWindowShow)
+  eventBus.on(EventTypes.WINDOW_HIDE, handleWindowHide)
+  eventBus.on(EventTypes.WINDOW_CLOSE, handleWindowClose)
   eventBus.on(EventTypes.WINDOW_CLOSED, handleWindowClosed)
   eventBus.on(EventTypes.WINDOW_FOCUSED, handleWindowFocused)
   eventBus.on(EventTypes.WINDOW_BLURRED, handleWindowBlurred)

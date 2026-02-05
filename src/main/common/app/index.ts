@@ -1,11 +1,13 @@
-import { app } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { electronApp } from '@electron-toolkit/utils'
-
+import { optimizer } from '@electron-toolkit/utils'
 import { log } from '../logger'
 import { LifecycleManager } from '../lifecycle'
 import { LifecyclePhase } from '../types'
 import type { IAppManager } from './types'
 import { ElectronAppEvents } from './types'
+import { eventBus } from '../eventbus'
+import { EventTypes } from '@shared/ipc/events'
 
 // 导入 eventBus 以触发自动初始化（构造函数会自动执行）
 import '../eventbus'
@@ -20,6 +22,7 @@ export class AppManager implements IAppManager {
   constructor() {
     this.lifecycleManager = new LifecycleManager()
     this.setupAppEventHandlers()
+    this.setupDevelopmentFeatures()
   }
 
   /**
@@ -38,15 +41,76 @@ export class AppManager implements IAppManager {
     // macOS 激活应用
     app.on(ElectronAppEvents.ACTIVATE, () => {
       log.info('[App] 应用被激活')
+      const hasWindows = BrowserWindow.getAllWindows().length > 0
+
+      // 发送 app:activated 事件
+      eventBus.emit(EventTypes.APP_ACTIVATED, {
+        hasWindows
+      })
+
       // 通常在 macOS 上，点击 dock 图标时会触发此事件
       // 窗口创建逻辑由其他模块通过生命周期 Hook 处理
+    })
+
+    // 应用获得焦点
+    app.on(ElectronAppEvents.BROWSER_WINDOW_FOCUS, () => {
+      log.debug('[App] 应用窗口获得焦点')
+
+      // 发送 app:focus 事件
+      eventBus.emit(EventTypes.APP_FOCUS, {
+        timestamp: Date.now()
+      })
     })
 
     // 应用退出前清理
     app.on(ElectronAppEvents.BEFORE_QUIT, async () => {
       log.info('[App] 应用准备退出，开始清理资源...')
+
+      // 发送 app:before-quit 事件
+      eventBus.emit(EventTypes.APP_BEFORE_QUIT, {
+        timestamp: Date.now()
+      })
+
       await this.cleanup()
     })
+
+    // 第二个实例启动时的处理
+    app.on(ElectronAppEvents.SECOND_INSTANCE, () => {
+      log.info('[App] 检测到第二个实例启动')
+      const hasWindows = BrowserWindow.getAllWindows().length > 0
+
+      // 发送 app:second-instance 事件
+      eventBus.emit(EventTypes.APP_SECOND_INSTANCE, {
+        hasWindows
+      })
+    })
+
+    // 处理子进程崩溃
+    app.on(ElectronAppEvents.CHILD_PROCESS_GONE, (_event, details) => {
+      log.error('[App] 子进程崩溃:', details)
+
+      // 发送 app:child-process-gone 事件
+      eventBus.emit(EventTypes.APP_CHILD_PROCESS_GONE, {
+        type: details.type,
+        reason: details.reason,
+        exitCode: details.exitCode
+      })
+    })
+  }
+
+  /**
+   * 设置开发环境特性
+   */
+  private setupDevelopmentFeatures(): void {
+    // 开发环境下启用F12开发者工具，生产环境忽略Ctrl+R刷新
+    app.on(ElectronAppEvents.BROWSER_WINDOW_CREATED, (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
+
+    // 注册全局快捷键（开发模式下）
+    if (process.env.NODE_ENV === 'development') {
+      log.info('[AppManager] 开发模式已启用')
+    }
   }
 
   /**

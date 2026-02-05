@@ -41,6 +41,22 @@ class IpcEventBroadcaster {
       this.broadcast(EventTypes.WINDOW_CREATED, data as EventPayloads['window:created'])
     })
 
+    eventBus.on(EventTypes.WINDOW_READY, (data: unknown) => {
+      this.broadcast(EventTypes.WINDOW_READY, data as EventPayloads['window:ready'])
+    })
+
+    eventBus.on(EventTypes.WINDOW_SHOW, (data: unknown) => {
+      this.broadcast(EventTypes.WINDOW_SHOW, data as EventPayloads['window:show'])
+    })
+
+    eventBus.on(EventTypes.WINDOW_HIDE, (data: unknown) => {
+      this.broadcast(EventTypes.WINDOW_HIDE, data as EventPayloads['window:hide'])
+    })
+
+    eventBus.on(EventTypes.WINDOW_CLOSE, (data: unknown) => {
+      this.broadcast(EventTypes.WINDOW_CLOSE, data as EventPayloads['window:close'])
+    })
+
     eventBus.on(EventTypes.WINDOW_CLOSED, (data: unknown) => {
       this.broadcast(EventTypes.WINDOW_CLOSED, data as EventPayloads['window:closed'])
     })
@@ -125,6 +141,29 @@ class IpcEventBroadcaster {
     })
 
     // ==================== App 事件 ====================
+    eventBus.on(EventTypes.APP_ACTIVATED, (data: unknown) => {
+      this.broadcast(EventTypes.APP_ACTIVATED, data as EventPayloads['app:activated'])
+    })
+
+    eventBus.on(EventTypes.APP_FOCUS, (data: unknown) => {
+      this.broadcast(EventTypes.APP_FOCUS, data as EventPayloads['app:focus'])
+    })
+
+    eventBus.on(EventTypes.APP_BEFORE_QUIT, (data: unknown) => {
+      this.broadcast(EventTypes.APP_BEFORE_QUIT, data as EventPayloads['app:before-quit'])
+    })
+
+    eventBus.on(EventTypes.APP_SECOND_INSTANCE, (data: unknown) => {
+      this.broadcast(EventTypes.APP_SECOND_INSTANCE, data as EventPayloads['app:second-instance'])
+    })
+
+    eventBus.on(EventTypes.APP_CHILD_PROCESS_GONE, (data: unknown) => {
+      this.broadcast(
+        EventTypes.APP_CHILD_PROCESS_GONE,
+        data as EventPayloads['app:child-process-gone']
+      )
+    })
+
     eventBus.on(EventTypes.THEME_CHANGED, (data: unknown) => {
       this.broadcast(EventTypes.THEME_CHANGED, data as EventPayloads['theme:changed'])
     })
