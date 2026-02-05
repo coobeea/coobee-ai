@@ -29,7 +29,10 @@ export class SnowflakeIdGenerator {
     }
   }
 
-  public nextId(): bigint {
+  /**
+   * 生成下一个 Snowflake ID（返回 string）
+   */
+  public nextId(): string {
     let timestamp = this.getCurrentTimestamp()
 
     if (timestamp < this.lastTimestamp) {
@@ -55,11 +58,16 @@ export class SnowflakeIdGenerator {
       (BigInt(this.machineId) << BigInt(SnowflakeIdGenerator.MACHINE_ID_SHIFT)) |
       BigInt(this.sequence)
 
-    return id
+    return id.toString()
   }
 
-  public nextIdString(): string {
-    return this.nextId().toString()
+  /**
+   * 生成下一个 Snowflake ID（返回 bigint）
+   * @deprecated 推荐使用 nextId() 返回 string
+   */
+  public nextIdBigInt(): bigint {
+    const id = this.nextId()
+    return BigInt(id)
   }
 
   public static parseTimestamp(id: bigint | string): number {
@@ -78,7 +86,13 @@ export class SnowflakeIdGenerator {
     return Number(bigIntId & BigInt(this.MAX_SEQUENCE))
   }
 
-  public static parseId(id: bigint | string) {
+  public static parseId(id: bigint | string): {
+    id: string
+    timestamp: number
+    date: Date
+    machineId: number
+    sequence: number
+  } {
     const timestamp = this.parseTimestamp(id)
     const machineId = this.parseMachineId(id)
     const sequence = this.parseSequence(id)
@@ -177,10 +191,17 @@ export function getGlobalSnowflakeGenerator(): SnowflakeIdGenerator {
   return globalGenerator
 }
 
-export function generateSnowflakeId(): bigint {
+/**
+ * 生成 Snowflake ID（返回 string）
+ */
+export function generateSnowflakeId(): string {
   return getGlobalSnowflakeGenerator().nextId()
 }
 
-export function generateSnowflakeIdString(): string {
-  return getGlobalSnowflakeGenerator().nextIdString()
+/**
+ * 生成 Snowflake ID（返回 bigint）
+ * @deprecated 推荐使用 generateSnowflakeId() 返回 string
+ */
+export function generateSnowflakeIdBigInt(): bigint {
+  return getGlobalSnowflakeGenerator().nextIdBigInt()
 }

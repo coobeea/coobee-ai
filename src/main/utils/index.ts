@@ -79,15 +79,16 @@ export async function ensureFileIsReleased(filePath: string, timeout = 5000): Pr
       await fs.rename(filePath, filePath)
       log.info(`🔔 [ensureFileIsReleased] 文件锁已释放: ${filePath}`)
       return
-    } catch (e: any) {
-      if (e.code === 'ENOENT') {
+    } catch (e: unknown) {
+      const error = e as NodeJS.ErrnoException
+      if (error.code === 'ENOENT') {
         log.info(`🔔 [ensureFileIsReleased] 文件不存在，视为锁已释放: ${filePath}`)
         return
       }
 
-      if (e.code !== 'EPERM' && e.code !== 'EBUSY') {
-        log.warn(`🔔 [ensureFileIsReleased] 文件锁释放检查失败: ${filePath}`, e)
-        throw e
+      if (error.code !== 'EPERM' && error.code !== 'EBUSY') {
+        log.warn(`🔔 [ensureFileIsReleased] 文件锁释放检查失败: ${filePath}`, error)
+        throw error
       }
 
       await sleep(100)
@@ -97,5 +98,5 @@ export async function ensureFileIsReleased(filePath: string, timeout = 5000): Pr
   throw new Error(`🔔 [ensureFileIsReleased] 等待文件锁释放超时 (${timeout}ms): ${filePath}`)
 }
 
-export { generateSnowflakeId, generateSnowflakeIdString } from './SnowflakeIdGenerator'
-export { generateMachineFingerprint } from './MachineFingerprint'
+export { generateSnowflakeId, generateSnowflakeIdBigInt } from './SnowflakeIdGenerator'
+export { generateMachineFingerprint, generateMachineFingerprintSync } from './MachineFingerprint'

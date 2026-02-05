@@ -1,11 +1,11 @@
 import path from 'path'
 
-import { generateSnowflakeId, generateSnowflakeIdString } from '../../utils/SnowflakeIdGenerator'
+import { generateSnowflakeId } from '../../utils/SnowflakeIdGenerator'
 import pool, { Connection } from './DatabasePool'
 
 const DB_NAME = 'database.db'
 
-export const getDatabasePath = (dataPath: string) => {
+export const getDatabasePath = (dataPath: string): string => {
   return path.join(dataPath, DB_NAME)
 }
 
@@ -16,27 +16,28 @@ export class DatabaseService {
     this.dbPath = getDatabasePath(dataPath)
   }
 
-  async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async query<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
     const connection = await pool.getConnection(this.dbPath)
     return connection.query(sql, params) as Promise<T[]>
   }
 
-  async execute(sql: string, params: any[] = []): Promise<number> {
+  async execute(sql: string, params: unknown[] = []): Promise<number> {
     const connection = await pool.getConnection(this.dbPath)
     return connection.execute(sql, params)
   }
 
-  async insert(sql: string, params: any[] = []): Promise<number> {
+  async insert(sql: string, params: unknown[] = []): Promise<number> {
     const connection = await pool.getConnection(this.dbPath)
     return connection.insert(sql, params)
   }
 
-  async update(sql: string, params: any[] = []): Promise<number> {
+  async update(sql: string, params: unknown[] = []): Promise<number> {
     const connection = await pool.getConnection(this.dbPath)
     return connection.update(sql, params)
   }
 
-  async delete(sql: string, params: any[] = []): Promise<number> {
+  async delete(sql: string, params: unknown[] = []): Promise<number> {
     const connection = await pool.getConnection(this.dbPath)
     return connection.delete(sql, params)
   }
@@ -57,11 +58,18 @@ export class DatabaseService {
     await pool.releaseConnection(this.dbPath)
   }
 
-  public generateId(): bigint {
+  /**
+   * 生成 Snowflake ID（返回 string）
+   */
+  public generateId(): string {
     return generateSnowflakeId()
   }
 
-  public generateIdString(): string {
-    return generateSnowflakeIdString()
+  /**
+   * 生成 Snowflake ID（返回 bigint）
+   * @deprecated 推荐使用 generateId() 返回 string
+   */
+  public generateIdBigInt(): bigint {
+    return BigInt(generateSnowflakeId())
   }
 }

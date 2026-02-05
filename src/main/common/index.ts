@@ -4,6 +4,20 @@ export * from './types'
 // 核心模块
 export { Env } from './env'
 export { log, createLogger, getLogPath, setLogPath } from './logger'
+
+// 平台相关
+export {
+  getAppVersion,
+  getDeviceInfo,
+  getCPUUsage,
+  getMemoryUsage,
+  getDiskSpace,
+  selectDirectory,
+  selectFiles,
+  restartApp,
+  getHardwareSerialNumbers,
+  getMachineId
+} from './platform'
 export { eventBus } from './eventbus'
 export { config, Config } from './config'
 export { stateManager, StateManager } from './state'

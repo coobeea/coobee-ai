@@ -23,3 +23,38 @@ export interface WindowBounds {
 }
 
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
+
+/**
+ * Platform 相关类型定义
+ */
+export interface DeviceInfo {
+  platform: string
+  arch: string
+  cpuModel: string
+  totalMemory: number
+  osVersion: string
+  osVersionMetadata: Array<{
+    name: string
+    build: number
+  }>
+}
+
+export interface MemoryInfo {
+  total: number
+  free: number
+  used: number
+}
+
+export interface DiskInfo {
+  total: number
+  free: number
+  used: number
+}
+
+export interface HardwareSerialNumbers {
+  cpuId?: string
+  boardSerial?: string
+  machineUUID?: string
+  diskSerial?: string
+  platform: string
+}
