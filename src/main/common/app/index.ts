@@ -48,16 +48,34 @@ export class AppManager implements IAppManager {
    */
   private setupAppEventHandlers(): void {
     // 所有窗口关闭
-    app.on(ElectronAppEvents.WINDOW_ALL_CLOSED, () => {
+    app.on(ElectronAppEvents.WINDOW_ALL_CLOSED, async () => {
       log.info('[App] 所有窗口已关闭')
-      // 在 macOS 上，除非用户明确退出（Cmd + Q），否则应用会保持活动状态
-      if (process.platform !== 'darwin') {
+
+      // 动态导入 config 避免循环依赖
+      const { config } = await import('@main/common/config')
+      const showTrayIcon = config.getShowTrayIcon()
+      const closeToTray = config.getCloseToTray()
+
+      // 1. 如果同时满足：托盘图标开启 && 关闭到托盘开启
+      //    → 所有平台都在托盘运行（不退出）
+      if (showTrayIcon && closeToTray) {
+        log.info('[App] 托盘模式已开启，应用继续在托盘运行')
+        return
+      }
+
+      // 2. 其他情况，遵循平台标准行为
+      if (process.platform === 'darwin') {
+        // macOS: 保持应用运行（标准行为）
+        log.info('[App] macOS 应用保持运行，可通过 Dock 图标重新打开窗口')
+      } else {
+        // Windows/Linux: 退出应用（标准行为）
+        log.info('[App] Windows/Linux 应用退出')
         app.quit()
       }
     })
 
     // macOS 激活应用
-    app.on(ElectronAppEvents.ACTIVATE, () => {
+    app.on(ElectronAppEvents.ACTIVATE, async () => {
       log.info('[App] 应用被激活')
       const hasWindows = BrowserWindow.getAllWindows().length > 0
 
@@ -66,8 +84,16 @@ export class AppManager implements IAppManager {
         hasWindows
       })
 
-      // 通常在 macOS 上，点击 dock 图标时会触发此事件
-      // 窗口创建逻辑由其他模块通过生命周期 Hook 处理
+      // macOS 标准行为：点击 Dock 图标时，如果没有窗口，则创建新窗口
+      if (!hasWindows) {
+        log.info('[App] 没有窗口，创建主窗口')
+        try {
+          const { windowManager } = await import('@main/common/window')
+          await windowManager.createWindow({ type: 'agent' })
+        } catch (error) {
+          log.error('[App] 创建主窗口失败:', error)
+        }
+      }
     })
 
     // 应用获得焦点
