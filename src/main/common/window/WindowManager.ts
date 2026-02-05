@@ -649,7 +649,7 @@ export class WindowManager implements IWindowManager {
         url: windowType === 'agent' ? 'local://chat' : 'about:blank',
         title: windowType === 'agent' ? 'Chat' : 'New Tab',
         active: true,
-        closable: false // 默认 Tab 不可关闭
+        closable: true // 都可以关闭
       }
 
       await this.createTab(windowId, defaultTabConfig)
