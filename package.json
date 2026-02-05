@@ -10,15 +10,15 @@
     "lint": "eslint --cache .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
+    "build": "pnpm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps && node scripts/download-uv.mjs",
-    "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win",
-    "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux"
+    "build:unpack": "pnpm run build && electron-builder --dir",
+    "build:win": "pnpm run build && electron-builder --win",
+    "build:mac": "pnpm run build && electron-builder --mac",
+    "build:linux": "pnpm run build && electron-builder --linux"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -102,8 +102,11 @@
     "electron-vite": "^5.0.0",
     "eslint": "^9.39.1",
     "eslint-plugin-vue": "^10.6.2",
+    "lint-staged": "^16.2.7",
     "node-fetch": "^3.3.2",
+    "picocolors": "^1.1.1",
     "prettier": "^3.7.4",
+    "simple-git-hooks": "^2.13.1",
     "sass": "^1.97.3",
     "tailwindcss": "^4.1.18",
     "tar": "^7.5.7",
@@ -116,12 +119,33 @@
     "vue-eslint-parser": "^10.2.0",
     "vue-tsc": "^3.1.6"
   },
+  "simple-git-hooks": {
+    "pre-commit": "node scripts/pre-commit.mjs",
+    "commit-msg": "node scripts/verify-commit.js \"$1\""
+  },
+  "lint-staged": {
+    "*.{js,mjs,cjs}": [
+      "prettier --write"
+    ],
+    "*.ts": [
+      "prettier --write",
+      "eslint --cache --fix"
+    ],
+    "*.vue": [
+      "prettier --write",
+      "eslint --cache --fix"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",
       "esbuild",
       "better-sqlite3-multiple-ciphers",
-      "fs-ext"
+      "fs-ext",
+      "simple-git-hooks"
     ]
   }
 }
