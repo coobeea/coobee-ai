@@ -79,7 +79,11 @@ export const Env = {
     return upgradeDir
   },
 
-  async getRuntimeDir(): Promise<string> {
+  /**
+   * 获取工作区运行时目录（workspace/.runtime）
+   * 用于存储工作区相关的运行时数据
+   */
+  async getWorkspaceRuntimeDir(): Promise<string> {
     const workspacePath = await this.getWorkspacePath()
     const runtimeDir = path.join(workspacePath, '.runtime')
     if (!fs.existsSync(runtimeDir)) {
@@ -88,6 +92,49 @@ export const Env = {
     return runtimeDir
   },
 
+  /**
+   * 获取应用运行时目录（runtime/）
+   * 用于存储跨平台的二进制文件
+   *
+   * @returns 运行时目录路径
+   * @example
+   * - 开发模式: /path/to/coobee-ai/runtime
+   * - 生产模式: /Applications/coobee-ai.app/Contents/Resources/runtime
+   */
+  getAppRuntimeDir(): string {
+    // 支持环境变量覆盖（用于测试）
+    if (process.env.APP_RUNTIME_DIR) {
+      return process.env.APP_RUNTIME_DIR
+    }
+
+    if (this.isDev) {
+      // 开发模式：项目根目录/runtime
+      return path.join(process.cwd(), 'runtime')
+    }
+
+    // 生产模式：resourcesPath/runtime
+    return path.join(process.resourcesPath, 'runtime')
+  },
+
+  /**
+   * 获取当前平台的运行时目录
+   *
+   * @returns 平台特定的运行时目录路径
+   * @example
+   * - macOS: /path/to/runtime/macos
+   * - Windows: /path/to/runtime/win
+   * - Linux: /path/to/runtime/linux
+   */
+  getPlatformRuntimeDir(): string {
+    const runtimeDir = this.getAppRuntimeDir()
+    const platformDir = this.isWindows ? 'win' : this.isMac ? 'macos' : 'linux'
+
+    return path.join(runtimeDir, platformDir)
+  },
+
+  /**
+   * 获取工作区路径
+   */
   async getWorkspacePath(): Promise<string> {
     const workspacePath = this.paths.workspace
     if (!fs.existsSync(workspacePath)) {

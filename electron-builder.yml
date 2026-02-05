@@ -13,6 +13,11 @@ asarUnpack:
   - resources/**
 win:
   executableName: app
+  extraResources:
+    - from: ./runtime/win
+      to: runtime/win
+      filter:
+        - '**/*'
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -26,6 +31,11 @@ mac:
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
+  extraResources:
+    - from: ./runtime/macos
+      to: runtime/macos
+      filter:
+        - '**/*'
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
@@ -35,8 +45,14 @@ linux:
     - deb
   maintainer: electronjs.org
   category: Utility
+  extraResources:
+    - from: ./runtime/linux
+      to: runtime/linux
+      filter:
+        - '**/*'
 appImage:
   artifactName: ${name}-${version}.${ext}
+beforePack: scripts/before-pack.js
 npmRebuild: false
 publish:
   provider: generic

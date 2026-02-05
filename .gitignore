@@ -4,3 +4,7 @@ out
 .DS_Store
 .eslintcache
 *.log*
+
+# 运行时二进制文件（会在需要时自动下载或构建）
+runtime/*/
+runtime/**/.gitkeep
