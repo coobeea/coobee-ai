@@ -12,20 +12,6 @@ import type {
   IpcEventMessage
 } from '@shared/ipc'
 
-// 前端 EventBus 引用（由前端在初始化时注入）
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let frontendEventBus: any = null
-
-// 监听统一的 IPC 事件通道，转发到前端 EventBus
-ipcRenderer.on(IPC_EVENT_CHANNEL, (_, message: IpcEventMessage) => {
-  if (frontendEventBus) {
-    // 转发到前端 EventBus
-    frontendEventBus.emit(message.type, message.payload)
-  } else {
-    console.warn('[Preload] EventBus not registered, event ignored:', message.type)
-  }
-})
-
 // Custom APIs for renderer
 const api = {
   /**
@@ -54,13 +40,12 @@ const api = {
   },
 
   /**
-   * 注册前端 EventBus
-   * 前端在初始化时调用此方法，将 EventBus 实例注入到 Preload
+   * 监听 IPC 事件
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  registerEventBus: (bus: any): void => {
-    frontendEventBus = bus
-    console.log('[Preload] EventBus registered successfully')
+  onEvent: (callback: (message: IpcEventMessage) => void): void => {
+    ipcRenderer.on(IPC_EVENT_CHANNEL, (_, message: IpcEventMessage) => {
+      callback(message)
+    })
   }
 }
 
