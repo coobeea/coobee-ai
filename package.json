@@ -54,7 +54,7 @@
     "dayjs": "^1.11.19",
     "diff": "^8.0.3",
     "electron-log": "^5.4.3",
-    "electron-store": "^11.0.2",
+    "electron-store": "8.2.0",
     "electron-updater": "^6.3.9",
     "electron-window-state": "^5.0.3",
     "events": "^3.3.0",

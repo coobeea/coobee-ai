@@ -32,6 +32,7 @@ import { log } from '@main/common/logger'
 import { eventBus } from '@main/common/eventbus'
 import { EventTypes } from '@shared/ipc/events'
 import { Env } from '@main/common/env'
+import { IconManager } from '@main/common/icons'
 
 export class WindowManager implements IWindowManager {
   // ==================== 窗口管理状态 ====================
@@ -707,6 +708,8 @@ export class WindowManager implements IWindowManager {
         y: windowState.y,
         width: windowState.width,
         height: windowState.height,
+        // 设置应用图标
+        icon: IconManager.getAppIcon(),
         show: false // 先不显示，等待 ready-to-show
       }
 
