@@ -6,7 +6,6 @@ import { LifecycleManager } from '../lifecycle'
 import { LifecyclePhase } from '../types'
 import type { IAppManager } from './types'
 import { ElectronAppEvents } from './types'
-import { registerIpcHandlers } from '../ipc'
 
 // 导入 eventBus 以触发自动初始化（构造函数会自动执行）
 import '../eventbus'
@@ -67,11 +66,8 @@ export class AppManager implements IAppManager {
       // 等待应用准备就绪
       await app.whenReady()
 
-      // 3. 触发 READY 阶段生命周期（供其他模块使用）
+      // 3. 触发 READY 阶段生命周期（IPC 注册、窗口创建等由 Hook 处理）
       await this.lifecycleManager.executePhase(LifecyclePhase.READY)
-
-      // 4. 注册 IPC 处理器（shell: / window:）
-      registerIpcHandlers()
 
       log.info('[App] 应用初始化完成')
     } catch (error) {
