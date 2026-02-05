@@ -1,5 +1,5 @@
 import type { App } from 'vue'
-import eventBus from '@/utils/eventBus'
+import eventBus from '@/eventbus'
 
 /**
  * 是否已初始化

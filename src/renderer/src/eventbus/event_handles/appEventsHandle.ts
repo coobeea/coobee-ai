@@ -2,7 +2,7 @@
  * 应用事件处理器
  */
 import { EventTypes, type EventPayloads } from '@shared/ipc/events'
-import eventBus from '@/utils/eventBus'
+import eventBus from '@/eventbus'
 
 /**
  * 处理应用激活事件（macOS Dock 图标点击）

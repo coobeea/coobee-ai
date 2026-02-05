@@ -4,7 +4,7 @@
  */
 
 import { EventTypes } from '@shared/ipc/events'
-import eventBus from '@/utils/eventBus'
+import eventBus from '@/eventbus'
 
 import type { EventPayloads } from '@shared/ipc/events'
 

@@ -2,7 +2,7 @@
  * 窗口事件处理器
  */
 import { EventTypes, type EventPayloads } from '@shared/ipc/events'
-import eventBus from '@/utils/eventBus'
+import eventBus from '@/eventbus'
 
 /**
  * 处理窗口创建事件

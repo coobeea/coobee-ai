@@ -5,7 +5,7 @@
  */
 
 import { onUnmounted } from 'vue'
-import eventBus from '@/utils/eventBus'
+import eventBus from '@/eventbus'
 import type { EventPayloads } from '@shared/ipc/events'
 
 /**
