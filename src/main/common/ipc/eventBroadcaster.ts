@@ -3,7 +3,7 @@
  * 负责将主进程的事件广播到前端
  */
 
-import { BrowserWindow, WebContentsView } from 'electron'
+import { BrowserWindow, WebContentsView, webContents } from 'electron'
 import { eventBus } from '@main/common/eventbus'
 import { log } from '@main/common/logger'
 import { EventTypes, type IpcEventMessage, type EventPayloads } from '@shared/ipc/events'
@@ -180,7 +180,7 @@ class IpcEventBroadcaster {
   }
 
   /**
-   * 广播事件到所有窗口
+   * 广播事件到所有窗口和 Tab
    * @param type 事件类型
    * @param payload 事件负载
    */
@@ -191,17 +191,22 @@ class IpcEventBroadcaster {
       timestamp: Date.now()
     }
 
-    const windows = BrowserWindow.getAllWindows()
+    // 获取所有的 WebContents（包括 shell 窗口和所有 Tab）
+    const allWebContents = webContents.getAllWebContents()
     let sentCount = 0
 
-    windows.forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(IPC_EVENT_CHANNEL, message)
-        sentCount++
+    allWebContents.forEach((wc) => {
+      if (!wc.isDestroyed()) {
+        try {
+          wc.send(IPC_EVENT_CHANNEL, message)
+          sentCount++
+        } catch (error) {
+          log.warn(`[IpcEventBroadcaster] 发送事件失败: webContentsId=${wc.id}`, error)
+        }
       }
     })
 
-    log.info(`[IpcEventBroadcaster] Broadcast event: ${type} to ${sentCount} windows`, payload)
+    log.info(`[IpcEventBroadcaster] Broadcast event: ${type} to ${sentCount} webContents`, payload)
   }
 
   /**

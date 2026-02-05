@@ -24,6 +24,8 @@ export function initIpcEvents(): void {
       // 转发到 EventBus（由 event_handles 统一记录业务日志）
       eventBus.emit(message.type, message.payload)
     })
+  } else {
+    console.error('[ipcSetup] window.api.onEvent 不可用！')
   }
 
   isInitialized = true
