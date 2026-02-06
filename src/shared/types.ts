@@ -58,3 +58,23 @@ export interface HardwareSerialNumbers {
   diskSerial?: string
   platform: string
 }
+
+// ==================== 快捷键类型 ====================
+
+/**
+ * 快捷键配置接口
+ */
+export interface Shortcut {
+  /** 快捷键标识 */
+  key: string
+  /** 快捷键组合（如 'CommandOrControl+Q'） */
+  shortcut: string
+  /** 是否可编辑 */
+  editable: boolean
+  /** 是否启用 */
+  enabled: boolean
+  /** 是否为全局快捷键 */
+  global: boolean
+  /** 是否已注册 */
+  registered: boolean
+}

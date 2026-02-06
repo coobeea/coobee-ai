@@ -3,10 +3,12 @@
 ## 📦 当前状态
 
 ✅ **已下载：**
+
 - Linux x64 (42MB)
 - Linux ARM64 (35MB)
 
 ⏳ **下载中/待下载：**
+
 - macOS x64
 - macOS ARM64
 - Windows x64
@@ -22,6 +24,7 @@ pnpm install
 ```
 
 **如果网络慢或超时：**
+
 - 脚本会自动重试 3 次
 - 失败的平台会跳过，不影响其他平台
 - 可以稍后手动补充
@@ -134,13 +137,13 @@ ls -lh runtime/*/uv*
 
 直接下载地址（uv 0.7.13）：
 
-| 平台 | 下载链接 |
-|------|---------|
-| macOS ARM64 | https://github.com/astral-sh/uv/releases/download/0.7.13/uv-aarch64-apple-darwin.tar.gz |
-| macOS x64 | https://github.com/astral-sh/uv/releases/download/0.7.13/uv-x86_64-apple-darwin.tar.gz |
-| Linux x64 | https://github.com/astral-sh/uv/releases/download/0.7.13/uv-x86_64-unknown-linux-gnu.tar.gz |
+| 平台        | 下载链接                                                                                     |
+| ----------- | -------------------------------------------------------------------------------------------- |
+| macOS ARM64 | https://github.com/astral-sh/uv/releases/download/0.7.13/uv-aarch64-apple-darwin.tar.gz      |
+| macOS x64   | https://github.com/astral-sh/uv/releases/download/0.7.13/uv-x86_64-apple-darwin.tar.gz       |
+| Linux x64   | https://github.com/astral-sh/uv/releases/download/0.7.13/uv-x86_64-unknown-linux-gnu.tar.gz  |
 | Linux ARM64 | https://github.com/astral-sh/uv/releases/download/0.7.13/uv-aarch64-unknown-linux-gnu.tar.gz |
-| Windows x64 | https://github.com/astral-sh/uv/releases/download/0.7.13/uv-x86_64-pc-windows-msvc.zip |
+| Windows x64 | https://github.com/astral-sh/uv/releases/download/0.7.13/uv-x86_64-pc-windows-msvc.zip       |
 
 ---
 

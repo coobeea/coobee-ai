@@ -283,6 +283,37 @@ export enum LogEvents {
   DEBUG = 'log:debug'
 }
 
+// ==================== 快捷键事件 ====================
+
+/**
+ * 快捷键触发的事件
+ * 后缀：:changed
+ *
+ * 这些事件由快捷键系统触发，通过 EventBus 分发到对应的事件处理器
+ */
+export enum ShortcutEvents {
+  /** 退出应用 (Command+Q) */
+  QUIT = 'quit:changed',
+
+  /** 跳转到设置页 (Command+,) */
+  GO_SETTINGS = 'goSettings:changed',
+
+  /** 显示/隐藏窗口 (Command+Tab) */
+  SHOW_HIDE_WINDOW = 'showHideWindow:changed',
+
+  /** 创建新窗口 (Command+N) */
+  NEW_WINDOW = 'newWindow:changed',
+
+  /** 创建新标签页 (Command+T) */
+  NEW_TAB = 'newTab:changed',
+
+  /** 刷新当前页面 (Command+R) */
+  REFRESH = 'refresh:changed',
+
+  /** 刷新标签页 (F5) */
+  REFRESH_TAB = 'refreshTab:changed'
+}
+
 // ==================== 类型导出 ====================
 
 /**
@@ -298,6 +329,7 @@ export type AllEvents =
   | ThemeEvents
   | ConfigEvents
   | LogEvents
+  | ShortcutEvents
 
 /**
  * 事件负载类型映射
@@ -388,4 +420,13 @@ export interface EventPayloads {
   [LogEvents.WARN]: { message: string; data?: unknown }
   [LogEvents.ERROR]: { message: string; error?: Error }
   [LogEvents.DEBUG]: { message: string; data?: unknown }
+
+  // 快捷键事件
+  [ShortcutEvents.QUIT]: void
+  [ShortcutEvents.GO_SETTINGS]: void
+  [ShortcutEvents.SHOW_HIDE_WINDOW]: void
+  [ShortcutEvents.NEW_WINDOW]: void
+  [ShortcutEvents.NEW_TAB]: void
+  [ShortcutEvents.REFRESH]: void
+  [ShortcutEvents.REFRESH_TAB]: void
 }

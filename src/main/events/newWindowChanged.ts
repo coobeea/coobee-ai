@@ -2,8 +2,8 @@ import { log } from '@main/common/logger'
 import { EventTypes } from '@shared/ipc/events'
 
 /**
- * 新窗口变更事件处理器
- * 事件名: freshWindow:changed
+ * 创建新窗口事件处理器
+ * 事件名: newWindow:changed
  *
  * 处理逻辑：通过 EventBus 发送 UI_CREATE_WINDOW 事件到前端
  * 前端 EventBus 接收后可以显示创建窗口的提示或执行相关 UI 操作

@@ -3,6 +3,7 @@ import ElectronStore from 'electron-store'
 import { eventBus } from './eventbus'
 import { log } from './logger'
 import { EventTypes } from '@shared/ipc/events'
+import type { Shortcut } from '@shared/types'
 
 enum ConfigKey {
   THEME = 'theme',
@@ -19,7 +20,8 @@ enum ConfigKey {
   ALWAYS_ON_TOP = 'alwaysOnTop',
   WORKSPACE_PATH = 'workspacePath',
   BACKUP_PATH = 'backupPath',
-  LOG_PATH = 'logPath'
+  LOG_PATH = 'logPath',
+  SHORTCUTS = 'shortcuts'
 }
 
 type ThemeMode = 'light' | 'dark' | 'auto'
@@ -40,6 +42,7 @@ interface ConfigStore {
   workspacePath: string
   backupPath: string
   logPath: string
+  shortcuts: Shortcut[]
 }
 
 const STORE_NAME = 'app-config'
@@ -65,7 +68,8 @@ export class Config {
         alwaysOnTop: false,
         workspacePath: '',
         backupPath: '',
-        logPath: ''
+        logPath: '',
+        shortcuts: []
       },
       watch: true
     })
@@ -272,6 +276,16 @@ export class Config {
       this.set(ConfigKey.LOG_PATH, value)
       eventBus.emit(EventTypes.CONFIG_LOG_PATH_CHANGED, { path: value })
     }
+  }
+
+  getShortcuts(): Shortcut[] {
+    return this.get(ConfigKey.SHORTCUTS)
+  }
+
+  setShortcuts(value: Shortcut[]): void {
+    log.info(`Setting shortcuts, count: ${value.length}`)
+    this.set(ConfigKey.SHORTCUTS, value)
+    eventBus.emit(EventTypes.CONFIG_SHORTCUTS_CHANGED, { shortcuts: value })
   }
 }
 

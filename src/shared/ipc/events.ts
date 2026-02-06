@@ -109,7 +109,9 @@ export const EventTypes = {
   /** 备份路径配置变更 */
   CONFIG_BACKUP_PATH_CHANGED: 'config:backupPath:changed',
   /** 日志路径配置变更 */
-  CONFIG_LOG_PATH_CHANGED: 'config:logPath:changed'
+  CONFIG_LOG_PATH_CHANGED: 'config:logPath:changed',
+  /** 快捷键配置变更 */
+  CONFIG_SHORTCUTS_CHANGED: 'config:shortcuts:changed'
 } as const
 
 /**
@@ -304,6 +306,16 @@ export interface EventPayloads {
   }
   [EventTypes.CONFIG_LOG_PATH_CHANGED]: {
     path: string
+  }
+  [EventTypes.CONFIG_SHORTCUTS_CHANGED]: {
+    shortcuts: Array<{
+      key: string
+      shortcut: string
+      editable: boolean
+      enabled: boolean
+      global: boolean
+      registered: boolean
+    }>
   }
 }
 
