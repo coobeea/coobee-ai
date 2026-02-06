@@ -120,12 +120,20 @@ export class SQLiteConnection {
    * 执行事务
    */
   async transaction<T>(fn: (tx: SQLiteConnection) => Promise<T>): Promise<T> {
-    const txFn = this.db.transaction(async () => {
-      return await fn(this)
-    })
+    // better-sqlite3 的 transaction() 要求同步函数，但我们需要支持异步操作
+    // 使用手动事务控制来支持异步函数
     try {
-      return txFn()
+      this.db.prepare('BEGIN').run()
+      const result = await fn(this)
+      this.db.prepare('COMMIT').run()
+      return result
     } catch (error) {
+      // 发生错误时回滚
+      try {
+        this.db.prepare('ROLLBACK').run()
+      } catch (rollbackError) {
+        log.error('[SQLite] 回滚失败:', rollbackError)
+      }
       throw new SqlError(`Transaction failed: ${error}`)
     }
   }
@@ -134,9 +142,13 @@ export class SQLiteConnection {
    * 关闭数据库连接
    */
   close(): void {
-    if (this.db.open) {
+    try {
+      // better-sqlite3 的 close() 可以安全地多次调用
       this.db.close()
       log.info('[SQLite] 数据库连接已关闭:', this.dbPath)
+    } catch (error) {
+      // 如果已经关闭，会抛出错误，可以忽略
+      log.debug('[SQLite] 关闭连接时出错（可能已关闭）:', error)
     }
   }
 

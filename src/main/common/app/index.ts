@@ -79,7 +79,7 @@ export class AppManager implements IAppManager {
         log.info('[App] 没有窗口，创建主窗口')
         try {
           const { windowManager } = await import('@main/common/window')
-          await windowManager.createWindow({ type: 'agent' })
+          windowManager.createWindow({ type: 'agent' })
         } catch (error) {
           log.error('[App] 创建主窗口失败:', error)
         }

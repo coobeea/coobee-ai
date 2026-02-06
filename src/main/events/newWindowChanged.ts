@@ -17,7 +17,7 @@ export default async (): Promise<void> => {
 
   try {
     const { windowManager } = await import('@main/common/window')
-    const newWindow = await windowManager.createWindow({ type: 'agent' })
+    const newWindow = windowManager.createWindow({ type: 'agent' })
 
     if (newWindow) {
       log.info(`[Event] 新窗口创建成功: windowId=${newWindow.id}`)

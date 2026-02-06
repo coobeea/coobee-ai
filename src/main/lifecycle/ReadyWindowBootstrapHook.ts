@@ -28,7 +28,7 @@ export const ReadyWindowBootstrapHook: LifecycleHook = {
 
       // Create Shell window (main AI chat window)
       // Use default preset configuration for 'agent' window
-      const mainWindow = await windowManager.createWindow({
+      const mainWindow = windowManager.createWindow({
         type: 'agent'
       })
 

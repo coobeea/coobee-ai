@@ -53,6 +53,8 @@ export class DuckDBConnection {
    * 执行 SQL 查询（返回结果）
    */
   async query(sql: string): Promise<unknown[]> {
+    // @duckdb/node-api 的连接是内部池化管理的，不需要手动关闭
+    // 参考: https://github.com/duckdb/duckdb-node/issues/52
     try {
       const connection = await this.instance.connect()
       const result = await connection.run(sql)
@@ -67,6 +69,8 @@ export class DuckDBConnection {
    * 执行 SQL（INSERT/UPDATE/DELETE，不返回结果）
    */
   async execute(sql: string): Promise<void> {
+    // @duckdb/node-api 的连接是内部池化管理的，不需要手动关闭
+    // 参考: https://github.com/duckdb/duckdb-node/issues/52
     try {
       const connection = await this.instance.connect()
       await connection.run(sql)
