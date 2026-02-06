@@ -91,17 +91,13 @@ class TrayManager {
 
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       {
-        label: '显示主窗口',
+        label: '创建窗口',
         click: async () => {
           const { windowManager } = await import('./window')
-          const mainWindow = windowManager.getMainWindow()
-          if (mainWindow) {
-            if (mainWindow.isMinimized()) {
-              mainWindow.restore()
-            }
-            mainWindow.show()
-            mainWindow.focus()
-          }
+          windowManager.createWindow({
+            type: 'agent',
+            initialUrl: '/shell'
+          })
         }
       },
       { type: 'separator' },
@@ -126,22 +122,6 @@ class TrayManager {
           config.setCloseToTray(menuItem.checked)
         }
       },
-      { type: 'separator' },
-      {
-        label: `关于 Coobee AI`,
-        click: async () => {
-          // TODO: 显示关于对话框
-          log.info('[TrayManager] 显示关于对话框')
-          const { dialog } = await import('electron')
-          dialog.showMessageBox({
-            type: 'info',
-            title: '关于 Coobee AI',
-            message: 'Coobee AI',
-            detail: `版本: ${app.getVersion()}\n\n一个智能 AI 助手应用`
-          })
-        }
-      },
-      { type: 'separator' },
       {
         label: '退出',
         click: () => {

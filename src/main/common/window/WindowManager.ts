@@ -1132,9 +1132,16 @@ export class WindowManager implements IWindowManager {
     log.debug(`[WindowManager] 绑定窗口事件: windowId=${windowId}`)
 
     // ready-to-show: 窗口准备显示
-    window.once(BrowserWindowEvents.READY_TO_SHOW, () => {
+    window.once(BrowserWindowEvents.READY_TO_SHOW, async () => {
       windowInfo.state.isVisible = true
       window.show()
+
+      // macOS: 显示 Dock 图标（当有窗口显示时）
+      if (process.platform === 'darwin') {
+        const { app } = await import('electron')
+        app.dock?.show()
+      }
+
       log.info(`[WindowManager] 窗口已显示: windowId=${windowId}`)
 
       // 发送 window:ready 事件
@@ -1144,8 +1151,14 @@ export class WindowManager implements IWindowManager {
     })
 
     // show: 窗口显示
-    window.on(BrowserWindowEvents.SHOW, () => {
+    window.on(BrowserWindowEvents.SHOW, async () => {
       log.debug(`[WindowManager] 窗口显示: windowId=${windowId}`)
+
+      // macOS: 显示 Dock 图标（当有窗口显示时）
+      if (process.platform === 'darwin') {
+        const { app } = await import('electron')
+        app.dock?.show()
+      }
 
       eventBus.emit(EventTypes.WINDOW_SHOW, {
         windowId
