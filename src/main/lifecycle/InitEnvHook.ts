@@ -73,13 +73,11 @@ export const InitEnvHook: LifecycleHook = {
     try {
       const appRuntimeDir = Env.getAppRuntimeDir()
       const platformRuntimeDir = Env.getPlatformRuntimeDir()
-      const userHomeRuntimeDir = await Env.getUserHomeRuntimeDir()
 
       log.info('')
       log.info('【运行时目录】')
       log.info(`  应用运行时:   ${appRuntimeDir}`)
       log.info(`  平台运行时:   ${platformRuntimeDir}`)
-      log.info(`  用户主目录运行时: ${userHomeRuntimeDir}`)
     } catch (error) {
       log.warn('[EnvHook] 获取运行时目录失败:', error)
     }

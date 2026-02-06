@@ -94,19 +94,6 @@ export const Env = {
   },
 
   /**
-   * 获取用户主目录运行时目录（userHome/.runtime）
-   * 用于存储运行时临时数据
-   */
-  async getUserHomeRuntimeDir(): Promise<string> {
-    const userHomePath = await this.getUserHomePath()
-    const runtimeDir = path.join(userHomePath, '.runtime')
-    if (!fs.existsSync(runtimeDir)) {
-      await mkdirp(runtimeDir)
-    }
-    return runtimeDir
-  },
-
-  /**
    * 获取应用运行时目录（runtime/）
    * 用于存储跨平台的二进制文件
    *
@@ -144,17 +131,6 @@ export const Env = {
     const platformDir = this.isWindows ? 'win' : this.isMac ? 'macos' : 'linux'
 
     return path.join(runtimeDir, platformDir)
-  },
-
-  /**
-   * 获取用户主目录路径
-   */
-  async getUserHomePath(): Promise<string> {
-    const userHomePath = this.paths.userHome
-    if (!fs.existsSync(userHomePath)) {
-      await mkdirp(userHomePath)
-    }
-    return userHomePath
   }
 }
 
