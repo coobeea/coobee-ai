@@ -4,22 +4,23 @@
  * Creates the main window when the application is ready
  */
 
-import { LifecyclePhase, LifecycleContext } from '@main/common/types'
+import { LifecyclePhase, LifecycleContext, LifecycleHook } from '@main/common/types'
 import { log } from '@main/common/logger'
 
 /**
  * Window Bootstrap Hook
  *
+ * 在 READY 阶段创建主窗口
  * Naming convention: Export variable name must end with 'Hook' for auto-discovery
  */
-export const WindowBootstrapHook = {
-  name: 'window-bootstrap',
+export const ReadyWindowBootstrapHook: LifecycleHook = {
+  name: 'ready-window-bootstrap',
   phase: LifecyclePhase.READY,
-  priority: 100,
+  priority: 400,
   critical: true,
 
   async execute(_context: LifecycleContext): Promise<void> {
-    log.info('[WindowBootstrapHook] Creating main window...')
+    log.info('[ReadyWindowBootstrapHook] Creating main window...')
 
     try {
       // Dynamic import to avoid circular dependencies
@@ -33,13 +34,13 @@ export const WindowBootstrapHook = {
 
       if (mainWindow) {
         log.info(
-          `[WindowBootstrapHook] Main window created successfully: windowId=${mainWindow.id}`
+          `[ReadyWindowBootstrapHook] Main window created successfully: windowId=${mainWindow.id}`
         )
       } else {
         throw new Error('Failed to create main window')
       }
     } catch (error) {
-      log.error('[WindowBootstrapHook] Failed to create main window:', error)
+      log.error('[ReadyWindowBootstrapHook] Failed to create main window:', error)
       throw error
     }
   }

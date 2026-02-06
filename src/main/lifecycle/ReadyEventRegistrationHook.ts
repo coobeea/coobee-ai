@@ -7,7 +7,7 @@
  * - 注册事件监听器到 EventBus
  */
 
-import { LifecyclePhase, LifecycleContext } from '@main/common/types'
+import { LifecyclePhase, LifecycleContext, LifecycleHook } from '@main/common/types'
 import { log } from '@main/common/logger'
 
 /**
@@ -27,19 +27,19 @@ function camelToEventName(camelCase: string): string {
  * Event Registration Hook
  *
  * 在 READY 阶段注册所有事件处理器
- * 优先级设置为 1000（在其他服务初始化之前）
+ * 优先级设置为 1000（在其他服务初始化之后）
  *
  * 注意：事件处理器可能依赖多个模块（config、trayManager、windowManager等）
  * 因此需要在这些服务初始化之后再执行
  */
-export const EventRegistrationHook = {
-  name: 'event-registration',
+export const ReadyEventRegistrationHook: LifecycleHook = {
+  name: 'ready-event-registration',
   phase: LifecyclePhase.READY,
   priority: 1000,
-  critical: false,
+  critical: true,
 
   async execute(_context: LifecycleContext): Promise<void> {
-    log.info('[EventRegistrationHook] 开始注册事件处理器...')
+    log.info('[ReadyEventRegistrationHook] 开始注册事件处理器...')
 
     try {
       // 动态导入避免循环依赖
@@ -48,7 +48,7 @@ export const EventRegistrationHook = {
 
       // 扫描所有事件处理器文件
       const discoveredModules = scanEventHandlers()
-      log.info(`[EventRegistrationHook] 扫描到 ${discoveredModules.length} 个事件处理器文件`)
+      log.info(`[ReadyEventRegistrationHook] 扫描到 ${discoveredModules.length} 个事件处理器文件`)
 
       const registeredEvents: string[] = []
       let totalRegisteredCount = 0
@@ -102,23 +102,23 @@ export const EventRegistrationHook = {
             totalRegisteredCount += registeredCount
           }
         } catch (error) {
-          log.error(`[EventRegistrationHook] 注册事件处理器 ${moduleName} 失败:`, error)
+          log.error(`[ReadyEventRegistrationHook] 注册事件处理器 ${moduleName} 失败:`, error)
         }
       }
 
       // 输出所有注册的事件处理器列表
       if (registeredEvents.length > 0) {
-        log.info('[EventRegistrationHook] 📊 已注册的事件处理器: [')
+        log.info('[ReadyEventRegistrationHook] 📊 已注册的事件处理器: [')
         registeredEvents.forEach((event) => log.info(event))
         log.info(']')
         log.info(
-          `[EventRegistrationHook] 🎉 事件处理器注册完成，共注册了 ${totalRegisteredCount} 个事件处理器`
+          `[ReadyEventRegistrationHook] 🎉 事件处理器注册完成，共注册了 ${totalRegisteredCount} 个事件处理器`
         )
       } else {
-        log.warn('[EventRegistrationHook] ⚠️ 没有注册任何事件处理器')
+        log.warn('[ReadyEventRegistrationHook] ⚠️ 没有注册任何事件处理器')
       }
     } catch (error) {
-      log.error('[EventRegistrationHook] 事件处理器注册失败:', error)
+      log.error('[ReadyEventRegistrationHook] 事件处理器注册失败:', error)
       throw error
     }
   }

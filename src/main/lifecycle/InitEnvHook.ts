@@ -5,7 +5,7 @@
  * 用于调试和了解当前运行环境
  */
 
-import { LifecyclePhase, LifecycleContext } from '@main/common/types'
+import { LifecyclePhase, LifecycleContext, LifecycleHook } from '@main/common/types'
 import { log } from '@main/common/logger'
 import { Env } from '@main/common/env'
 
@@ -14,14 +14,14 @@ import { Env } from '@main/common/env'
  *
  * 命名规范：导出变量名必须以 'Hook' 结尾以便自动扫描
  */
-export const EnvHook = {
-  name: 'env-info',
+export const InitEnvHook: LifecycleHook = {
+  name: 'init-env-info',
   phase: LifecyclePhase.INIT,
   priority: 10, // 优先级较高，尽早执行
   critical: false, // 非关键 Hook，失败不中断启动
 
   async execute(_context: LifecycleContext): Promise<void> {
-    log.info('[EnvHook] 打印环境信息...')
+    log.info('[InitEnvHook] 打印环境信息...')
     log.info('================================================================================')
     log.info('                          应用环境信息')
     log.info('================================================================================')
