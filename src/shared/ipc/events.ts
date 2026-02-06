@@ -98,8 +98,8 @@ export const EventTypes = {
   CONFIG_SOUND_EFFECTS_CHANGED: 'config:soundEffects:changed',
   /** 窗口置顶配置变更 */
   CONFIG_ALWAYS_ON_TOP_CHANGED: 'config:alwaysOnTop:changed',
-  /** 工作区路径配置变更 */
-  CONFIG_WORKSPACE_PATH_CHANGED: 'config:workspacePath:changed',
+  /** 用户主目录路径配置变更 */
+  CONFIG_USER_HOME_PATH_CHANGED: 'config:userHomePath:changed',
   /** 备份路径配置变更 */
   CONFIG_BACKUP_PATH_CHANGED: 'config:backupPath:changed',
   /** 日志路径配置变更 */
@@ -284,7 +284,7 @@ export interface EventPayloads {
   [EventTypes.CONFIG_ALWAYS_ON_TOP_CHANGED]: {
     value: boolean
   }
-  [EventTypes.CONFIG_WORKSPACE_PATH_CHANGED]: {
+  [EventTypes.CONFIG_USER_HOME_PATH_CHANGED]: {
     path: string
   }
   [EventTypes.CONFIG_BACKUP_PATH_CHANGED]: {

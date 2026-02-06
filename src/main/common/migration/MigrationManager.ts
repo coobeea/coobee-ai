@@ -1,13 +1,13 @@
-import { DatabaseService } from '../database/DatabaseService'
+import { SQLiteService } from '../database/SQLiteService'
 import { log } from '../logger'
 import { DatabaseStatus, Migration, MigrationHistory, MigrationResult } from '../types'
 
 export class MigrationManager {
   private migrations: Migration[] = []
-  private dbService: DatabaseService
+  private dbService: SQLiteService
 
-  constructor(dbService: DatabaseService) {
-    this.dbService = dbService
+  constructor(dbService?: SQLiteService) {
+    this.dbService = dbService || SQLiteService.getInstance()
   }
 
   async initialize(): Promise<void> {
@@ -156,7 +156,7 @@ export class MigrationManager {
       const sql = `SELECT MAX(version) as version FROM migrations`
       const result = await this.dbService.query<{ version: number | null }>(sql)
       return result[0]?.version ?? 0
-    } catch (error) {
+    } catch {
       return 0
     }
   }

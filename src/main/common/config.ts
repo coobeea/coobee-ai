@@ -18,7 +18,7 @@ enum ConfigKey {
   SHOW_TRAY_ICON = 'showTrayIcon',
   SOUND_EFFECTS = 'soundEffects',
   ALWAYS_ON_TOP = 'alwaysOnTop',
-  WORKSPACE_PATH = 'workspacePath',
+  USER_HOME_PATH = 'userHomePath',
   BACKUP_PATH = 'backupPath',
   LOG_PATH = 'logPath',
   SHORTCUTS = 'shortcuts'
@@ -39,7 +39,7 @@ interface ConfigStore {
   showTrayIcon: boolean
   soundEffects: boolean
   alwaysOnTop: boolean
-  workspacePath: string
+  userHomePath: string
   backupPath: string
   logPath: string
   shortcuts: Shortcut[]
@@ -66,7 +66,7 @@ export class Config {
         showTrayIcon: true,
         soundEffects: true,
         alwaysOnTop: false,
-        workspacePath: '',
+        userHomePath: '',
         backupPath: '',
         logPath: '',
         shortcuts: []
@@ -239,16 +239,16 @@ export class Config {
     }
   }
 
-  getWorkspacePath(): string {
-    return this.get(ConfigKey.WORKSPACE_PATH)
+  getUserHomePath(): string {
+    return this.get(ConfigKey.USER_HOME_PATH)
   }
 
-  setWorkspacePath(value: string): void {
-    log.info(`Setting workspacePath to: ${value}`)
-    const currentValue = this.get(ConfigKey.WORKSPACE_PATH)
+  setUserHomePath(value: string): void {
+    log.info(`Setting userHomePath to: ${value}`)
+    const currentValue = this.get(ConfigKey.USER_HOME_PATH)
     if (currentValue !== value) {
-      this.set(ConfigKey.WORKSPACE_PATH, value)
-      eventBus.emit(EventTypes.CONFIG_WORKSPACE_PATH_CHANGED, { path: value })
+      this.set(ConfigKey.USER_HOME_PATH, value)
+      eventBus.emit(EventTypes.CONFIG_USER_HOME_PATH_CHANGED, { path: value })
     }
   }
 

@@ -1,4 +1,3 @@
-export { DatabaseService, getDatabasePath } from './DatabaseService'
-export { DatabasePool, Connection } from './DatabasePool'
-export { SqlError, type IConnection } from '../types'
-export { default as pool } from './DatabasePool'
+export { SQLiteService, SQLiteConnection, getSQLitePath, ensureSQLiteDir } from './SQLiteService'
+export { DuckDBService, DuckDBConnection, getDuckDBPath, ensureDuckDBDir } from './DuckDBService'
+export { SqlError } from '../types'

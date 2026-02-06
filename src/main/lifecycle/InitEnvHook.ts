@@ -50,27 +50,36 @@ export const InitEnvHook: LifecycleHook = {
     log.info(`  应用版本:     ${Env.app.version}`)
     log.info(`  系统语言:     ${Env.app.locale}`)
 
-    // 路径信息
+    // 应用路径
     log.info('')
-    log.info('【路径信息】')
-    log.info(`  应用根目录:   ${Env.paths.root}`)
-    log.info(`  用户主目录:   ${Env.paths.home}`)
-    log.info(`  用户数据目录: ${Env.paths.userData}`)
-    log.info(`  工作区目录:   ${Env.paths.workspace}`)
-    log.info(`  日志目录:     ${Env.paths.logPath}`)
-    log.info(`  安装目录:     ${Env.paths.installDir}`)
+    log.info('【应用路径】')
+    log.info(`  应用根目录:       ${Env.paths.root}`)
+    log.info(`  应用数据目录:     ${Env.paths.userData}  (数据库、配置等)`)
+    log.info(`  应用数据(系统级): ${Env.paths.appData}`)
+    log.info(`  用户主目录:       ${Env.paths.userHome}`)
+    log.info(`  日志目录:         ${Env.paths.logPath}`)
+    log.info(`  安装目录:         ${Env.paths.installDir}`)
+
+    // 系统路径
+    log.info('')
+    log.info('【系统路径】')
+    log.info(`  系统用户目录:     ${Env.paths.home}`)
+    log.info(`  系统临时目录:     ${Env.paths.temp}`)
+    log.info(`  系统下载目录:     ${Env.paths.downloads}`)
+    log.info(`  系统文档目录:     ${Env.paths.documents}`)
+    log.info(`  系统桌面目录:     ${Env.paths.desktop}`)
 
     // 运行时目录
     try {
       const appRuntimeDir = Env.getAppRuntimeDir()
       const platformRuntimeDir = Env.getPlatformRuntimeDir()
-      const workspaceRuntimeDir = await Env.getWorkspaceRuntimeDir()
+      const userHomeRuntimeDir = await Env.getUserHomeRuntimeDir()
 
       log.info('')
       log.info('【运行时目录】')
       log.info(`  应用运行时:   ${appRuntimeDir}`)
       log.info(`  平台运行时:   ${platformRuntimeDir}`)
-      log.info(`  工作区运行时: ${workspaceRuntimeDir}`)
+      log.info(`  用户主目录运行时: ${userHomeRuntimeDir}`)
     } catch (error) {
       log.warn('[EnvHook] 获取运行时目录失败:', error)
     }

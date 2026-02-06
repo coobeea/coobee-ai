@@ -31,19 +31,33 @@ export const Env = {
   },
 
   paths: {
+    // === 应用路径（Application Paths）===
+    /** 应用根目录 (如: /Applications/coobee-ai.app/Contents/Resources/app.asar) */
     root: app.getAppPath(),
-    home: app.getPath('home'),
+    /** 应用数据目录 - 存储数据库、配置等 (如: ~/Library/Application Support/coobee-ai) */
     userData: app.getPath('userData'),
+    /** 应用数据目录(系统级) (如: ~/Library/Application Support) */
     appData: app.getPath('appData'),
-    temp: app.getPath('temp'),
-    downloads: app.getPath('downloads'),
-    documents: app.getPath('documents'),
-    desktop: app.getPath('desktop'),
+    /** 日志目录 (如: /path/to/app) */
     logPath: !is.dev && app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath(),
+    /** 安装目录 (如: /Applications/coobee-ai.app/Contents/MacOS) */
     installDir: !is.dev && app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath(),
-    workspace: is.dev
-      ? path.join(app.getAppPath(), '.workspace')
-      : path.join(app.getPath('home'), '.' + app.getName())
+    /** 用户主目录 (开发: <项目>/.home | 生产: ~/coobee-ai) */
+    userHome: is.dev
+      ? path.join(app.getAppPath(), '.home')
+      : path.join(app.getPath('home'), '.' + app.getName()),
+
+    // === 系统路径（System Paths）===
+    /** 系统用户目录 (如: /Users/username) */
+    home: app.getPath('home'),
+    /** 系统临时目录 (如: /var/folders/xxx) */
+    temp: app.getPath('temp'),
+    /** 系统下载目录 (如: ~/Downloads) */
+    downloads: app.getPath('downloads'),
+    /** 系统文档目录 (如: ~/Documents) */
+    documents: app.getPath('documents'),
+    /** 系统桌面目录 (如: ~/Desktop) */
+    desktop: app.getPath('desktop')
   },
 
   isRendererProcess(): boolean {
@@ -80,12 +94,12 @@ export const Env = {
   },
 
   /**
-   * 获取工作区运行时目录（workspace/.runtime）
-   * 用于存储工作区相关的运行时数据
+   * 获取用户主目录运行时目录（userHome/.runtime）
+   * 用于存储运行时临时数据
    */
-  async getWorkspaceRuntimeDir(): Promise<string> {
-    const workspacePath = await this.getWorkspacePath()
-    const runtimeDir = path.join(workspacePath, '.runtime')
+  async getUserHomeRuntimeDir(): Promise<string> {
+    const userHomePath = await this.getUserHomePath()
+    const runtimeDir = path.join(userHomePath, '.runtime')
     if (!fs.existsSync(runtimeDir)) {
       await mkdirp(runtimeDir)
     }
@@ -133,14 +147,14 @@ export const Env = {
   },
 
   /**
-   * 获取工作区路径
+   * 获取用户主目录路径
    */
-  async getWorkspacePath(): Promise<string> {
-    const workspacePath = this.paths.workspace
-    if (!fs.existsSync(workspacePath)) {
-      await mkdirp(workspacePath)
+  async getUserHomePath(): Promise<string> {
+    const userHomePath = this.paths.userHome
+    if (!fs.existsSync(userHomePath)) {
+      await mkdirp(userHomePath)
     }
-    return workspacePath
+    return userHomePath
   }
 }
 
