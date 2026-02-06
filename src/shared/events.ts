@@ -290,13 +290,11 @@ export enum LogEvents {
  * 后缀：:changed
  *
  * 这些事件由快捷键系统触发，通过 EventBus 分发到对应的事件处理器
+ * 注意：这些事件都需要后端业务逻辑处理，纯前端操作不应该使用快捷键事件
  */
 export enum ShortcutEvents {
   /** 退出应用 (Command+Q) */
   QUIT = 'quit:changed',
-
-  /** 跳转到设置页 (Command+,) */
-  GO_SETTINGS = 'goSettings:changed',
 
   /** 显示/隐藏窗口 (Command+Tab) */
   SHOW_HIDE_WINDOW = 'showHideWindow:changed',
@@ -423,7 +421,6 @@ export interface EventPayloads {
 
   // 快捷键事件
   [ShortcutEvents.QUIT]: void
-  [ShortcutEvents.GO_SETTINGS]: void
   [ShortcutEvents.SHOW_HIDE_WINDOW]: void
   [ShortcutEvents.NEW_WINDOW]: void
   [ShortcutEvents.NEW_TAB]: void

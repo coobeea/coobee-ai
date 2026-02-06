@@ -45,14 +45,6 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
     registered: false
   },
   {
-    key: 'GoSettings',
-    shortcut: `${CommandKey}+,`,
-    editable: true,
-    enabled: true,
-    global: false,
-    registered: false
-  },
-  {
     key: 'NewWindow',
     shortcut: `${CommandKey}+N`,
     editable: true,
@@ -99,7 +91,7 @@ export class ShortcutManager {
    */
   private handleNewWindow(): void {
     log.info('[ShortcutManager] 快捷键触发: NewWindow')
-    eventBus.emit('newWindow:changed')
+    eventBus.emit(ShortcutEvents.NEW_WINDOW)
   }
 
   /**
@@ -107,7 +99,7 @@ export class ShortcutManager {
    */
   private handleNewTab(): void {
     log.info('[ShortcutManager] 快捷键触发: NewTab')
-    eventBus.emit('newTab:changed')
+    eventBus.emit(ShortcutEvents.NEW_TAB)
   }
 
   /**
@@ -115,7 +107,7 @@ export class ShortcutManager {
    */
   private handleRefresh(): void {
     log.info('[ShortcutManager] 快捷键触发: Refresh')
-    eventBus.emit('refresh:changed')
+    eventBus.emit(ShortcutEvents.REFRESH)
   }
 
   /**
@@ -123,7 +115,7 @@ export class ShortcutManager {
    */
   private handleRefreshTab(): void {
     log.info('[ShortcutManager] 快捷键触发: RefreshTab')
-    eventBus.emit('refreshTab:changed')
+    eventBus.emit(ShortcutEvents.REFRESH_TAB)
   }
 
   /**
@@ -132,14 +124,6 @@ export class ShortcutManager {
   private handleQuit(): void {
     log.info('[ShortcutManager] 快捷键触发: Quit')
     eventBus.emit(ShortcutEvents.QUIT)
-  }
-
-  /**
-   * 跳转到设置页面
-   */
-  private handleGoSettings(): void {
-    log.info('[ShortcutManager] 快捷键触发: GoSettings')
-    eventBus.emit(ShortcutEvents.GO_SETTINGS)
   }
 
   /**
@@ -225,9 +209,6 @@ export class ShortcutManager {
           break
         case 'Quit':
           handler = () => this.handleQuit()
-          break
-        case 'GoSettings':
-          handler = () => this.handleGoSettings()
           break
         case 'ShowHideWindow':
           handler = () => this.handleShowHideWindow()

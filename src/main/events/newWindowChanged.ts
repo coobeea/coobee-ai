@@ -1,33 +1,28 @@
 import { log } from '@main/common/logger'
-import { EventTypes } from '@shared/ipc/events'
 
 /**
  * 创建新窗口事件处理器
  * 事件名: newWindow:changed
  *
- * 处理逻辑：通过 EventBus 发送 UI_CREATE_WINDOW 事件到前端
- * 前端 EventBus 接收后可以显示创建窗口的提示或执行相关 UI 操作
+ * 处理逻辑：
+ * 1. 调用 windowManager.createWindow() 创建新窗口
+ * 2. windowManager 会自动触发 WindowEvents.WINDOW_CREATED 事件
+ * 3. IpcEventBroadcaster 会自动将该事件广播到前端
+ * 4. 前端监听 WINDOW_CREATED 事件更新状态
  *
- * 注意：实际窗口创建由后端直接执行（windowManager.createWindow）
+ * 注意：不需要手动发送额外的 UI 事件，避免事件多次转发
  */
 export default async (): Promise<void> => {
   log.info('[Event] 处理创建新窗口事件')
 
   try {
-    // 1. 创建新窗口
     const { windowManager } = await import('@main/common/window')
     const newWindow = await windowManager.createWindow({ type: 'agent' })
 
     if (newWindow) {
       log.info(`[Event] 新窗口创建成功: windowId=${newWindow.id}`)
-
-      // 2. 发送 UI 事件到前端（可选，用于前端显示提示等）
-      const { eventBus } = await import('@main/common/eventbus')
-      eventBus.emit(EventTypes.UI_CREATE_WINDOW, {
-        timestamp: Date.now()
-      })
-
-      log.info('[Event] UI_CREATE_WINDOW 事件已发送到前端')
+      // windowManager 已经自动触发了 WINDOW_CREATED 事件
+      // IpcEventBroadcaster 会自动广播到前端，无需手动发送
     } else {
       throw new Error('窗口创建失败')
     }
