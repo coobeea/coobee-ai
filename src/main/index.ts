@@ -1,3 +1,4 @@
+import { app } from 'electron'
 import { getAppManager } from './common/app'
 
 /**
@@ -14,6 +15,20 @@ process.on('uncaughtException', (error: Error) => {
 process.on('unhandledRejection', (reason: unknown) => {
   console.error('未处理的 Promise 拒绝:', reason)
   process.exit(1)
+})
+
+/**
+ * 处理进程信号（Ctrl+C, kill 等）
+ * 确保应用能够正常清理资源后退出
+ */
+process.on('SIGINT', () => {
+  console.log('\n[Main] 收到 SIGINT 信号 (Ctrl+C)，开始正常退出流程...')
+  app.quit()
+})
+
+process.on('SIGTERM', () => {
+  console.log('\n[Main] 收到 SIGTERM 信号，开始正常退出流程...')
+  app.quit()
 })
 
 /**
