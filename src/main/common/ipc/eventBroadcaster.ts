@@ -203,6 +203,15 @@ class IpcEventBroadcaster {
       )
     })
 
+    // ==================== UI 操作事件 ====================
+    eventBus.on(EventTypes.UI_GO_SETTINGS, (data: unknown) => {
+      this.broadcast(EventTypes.UI_GO_SETTINGS, data as EventPayloads['ui:go-settings'])
+    })
+
+    eventBus.on(EventTypes.UI_CREATE_WINDOW, (data: unknown) => {
+      this.broadcast(EventTypes.UI_CREATE_WINDOW, data as EventPayloads['ui:create-window'])
+    })
+
     log.info('[IpcEventBroadcaster] Event listeners setup completed')
   }
 

@@ -73,6 +73,12 @@ export const EventTypes = {
   /** 系统错误 */
   SYSTEM_ERROR: 'system:error',
 
+  // ==================== UI 操作事件 ====================
+  /** 跳转到设置页 */
+  UI_GO_SETTINGS: 'ui:go-settings',
+  /** 创建新窗口 */
+  UI_CREATE_WINDOW: 'ui:create-window',
+
   // ==================== Config 配置事件 ====================
   /** 主题配置变更 */
   CONFIG_THEME_CHANGED: 'config:theme:changed',
@@ -243,6 +249,14 @@ export interface EventPayloads {
     code: string
     message: string
     details?: unknown
+  }
+
+  // ==================== UI 操作事件 ====================
+  [EventTypes.UI_GO_SETTINGS]: {
+    timestamp: number
+  }
+  [EventTypes.UI_CREATE_WINDOW]: {
+    timestamp: number
   }
 
   // ==================== Config 配置事件 ====================
