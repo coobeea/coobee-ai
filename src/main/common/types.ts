@@ -252,7 +252,10 @@ export interface MigrationResult {
  * 应用状态接口
  */
 export interface State {
+  /** 维护模式 */
   maintenanceMode: boolean
+  /** 应用是否正在退出 */
+  isQuitting: boolean
 }
 
 // ==================== 模块扫描 ====================

@@ -2,7 +2,8 @@ import { State } from './types'
 
 export class StateManager {
   private state: State = {
-    maintenanceMode: false
+    maintenanceMode: false,
+    isQuitting: false
   }
 
   public getMaintenanceModeState(): boolean {
@@ -11,6 +12,14 @@ export class StateManager {
 
   public setMaintenanceModeState(value: boolean): void {
     this.state.maintenanceMode = value
+  }
+
+  public getIsQuitting(): boolean {
+    return this.state.isQuitting
+  }
+
+  public setIsQuitting(value: boolean): void {
+    this.state.isQuitting = value
   }
 }
 

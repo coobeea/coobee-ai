@@ -100,6 +100,10 @@ export class AppManager implements IAppManager {
     app.on(ElectronAppEvents.BEFORE_QUIT, async () => {
       log.info('[App] 应用准备退出，开始清理资源...')
 
+      // 设置应用退出状态
+      const { stateManager } = await import('@main/common/state')
+      stateManager.setIsQuitting(true)
+
       // 发送 app:before-quit 事件
       eventBus.emit(EventTypes.APP_BEFORE_QUIT, {
         timestamp: Date.now()

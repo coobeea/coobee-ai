@@ -46,9 +46,6 @@ export class WindowManager implements IWindowManager {
   /** 当前聚焦的窗口 ID */
   private focusedWindowId: number | null = null
 
-  /** 应用是否正在退出（用于区分正常关闭和应用退出） */
-  private isQuitting = false
-
   // ==================== Tab 管理状态 ====================
 
   /** WebContents ID → Tab ID 映射 (用于快速查找) */
@@ -60,12 +57,6 @@ export class WindowManager implements IWindowManager {
   constructor() {
     // WindowManager 初始化
     // 事件处理由 EventBus 自动扫描注册，参见 src/main/common/eventbus.ts
-
-    // 监听应用退出事件
-    eventBus.on(EventTypes.APP_BEFORE_QUIT, () => {
-      log.debug('[WindowManager] 应用即将退出，设置 isQuitting = true')
-      this.isQuitting = true
-    })
   }
 
   // ==================== Tab 管理方法 ====================
@@ -1188,7 +1179,8 @@ export class WindowManager implements IWindowManager {
       log.debug(`[WindowManager] 窗口即将关闭: windowId=${windowId}`)
 
       // 如果应用正在退出，不要阻止窗口关闭
-      if (this.isQuitting) {
+      const { stateManager } = await import('@main/common/state')
+      if (stateManager.getIsQuitting()) {
         log.debug(`[WindowManager] 应用正在退出，允许窗口关闭: windowId=${windowId}`)
         return
       }
