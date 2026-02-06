@@ -18,7 +18,6 @@ enum ConfigKey {
   SHOW_TRAY_ICON = 'showTrayIcon',
   SOUND_EFFECTS = 'soundEffects',
   ALWAYS_ON_TOP = 'alwaysOnTop',
-  USER_HOME_PATH = 'userHomePath',
   BACKUP_PATH = 'backupPath',
   LOG_PATH = 'logPath',
   SHORTCUTS = 'shortcuts'
@@ -39,7 +38,6 @@ interface ConfigStore {
   showTrayIcon: boolean
   soundEffects: boolean
   alwaysOnTop: boolean
-  userHomePath: string
   backupPath: string
   logPath: string
   shortcuts: Shortcut[]
@@ -66,7 +64,6 @@ export class Config {
         showTrayIcon: true,
         soundEffects: true,
         alwaysOnTop: false,
-        userHomePath: '',
         backupPath: '',
         logPath: '',
         shortcuts: []
@@ -236,19 +233,6 @@ export class Config {
     if (currentValue !== value) {
       this.set(ConfigKey.ALWAYS_ON_TOP, value)
       eventBus.emit(EventTypes.CONFIG_ALWAYS_ON_TOP_CHANGED, { value })
-    }
-  }
-
-  getUserHomePath(): string {
-    return this.get(ConfigKey.USER_HOME_PATH)
-  }
-
-  setUserHomePath(value: string): void {
-    log.info(`Setting userHomePath to: ${value}`)
-    const currentValue = this.get(ConfigKey.USER_HOME_PATH)
-    if (currentValue !== value) {
-      this.set(ConfigKey.USER_HOME_PATH, value)
-      eventBus.emit(EventTypes.CONFIG_USER_HOME_PATH_CHANGED, { path: value })
     }
   }
 
