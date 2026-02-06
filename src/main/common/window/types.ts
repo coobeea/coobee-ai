@@ -113,8 +113,9 @@ export enum WebContentsEvents {
  * 窗口类型
  * - agent: AI Agent 交互窗口（主要窗口，支持 chat、task、settings 等 Tab）
  * - browser: 浏览器窗口（用于网页浏览，支持 webpage Tab）
+ * - console: 控制台窗口（用于监控和管理所有窗口状态）
  */
-export type WindowType = 'agent' | 'browser'
+export type WindowType = 'agent' | 'browser' | 'console'
 
 /**
  * 窗口配置
@@ -174,6 +175,7 @@ export interface WindowInfo {
  * 为每种窗口类型定义默认的 BrowserWindow 配置
  * - agent: Agent 窗口（AI 助手主窗口）- 1200x800
  * - browser: 浏览器窗口（网页浏览）- 1024x768
+ * - console: 控制台窗口（窗口管理）- 1400x900
  */
 export type WindowPresets = Record<WindowType, Partial<BrowserWindowConstructorOptions>>
 
@@ -225,6 +227,19 @@ export function getWindowPresets(isDev: boolean): WindowPresets {
       transparent: false,
       resizable: true,
       backgroundColor: '#1a1a1a', // 深色背景，避免关闭时白屏
+      ...macOSConfig,
+      webPreferences
+    },
+    console: {
+      width: 400, // 窄一点，像 QQ 控制面板
+      height: 700, // 高一点
+      minWidth: 350,
+      minHeight: 500,
+      frame: false, // 无边框
+      transparent: false,
+      resizable: false, // 不可缩放
+      backgroundColor: '#f9fafb', // 浅色背景，匹配控制台界面
+      title: 'Coobee AI 控制台',
       ...macOSConfig,
       webPreferences
     }
@@ -383,6 +398,12 @@ export interface IWindowManager {
    * @returns BrowserWindow 实例，创建失败返回 null
    */
   createWindow(config: WindowConfig): BrowserWindow | null
+
+  /**
+   * 创建控制台窗口（独立方法）
+   * @returns BrowserWindow 实例，创建失败返回 null
+   */
+  createConsoleWindow(): BrowserWindow | null
 
   // ==================== 窗口查询 ====================
 

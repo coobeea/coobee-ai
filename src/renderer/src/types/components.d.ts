@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    IconMdiClose: typeof import('~icons/mdi/close')['default']
     IconMdiFire: typeof import('~icons/mdi/fire')['default']
     IconMdiThumbUp: typeof import('~icons/mdi/thumb-up')['default']
     IconMdiWeatherSunny: typeof import('~icons/mdi/weather-sunny')['default']

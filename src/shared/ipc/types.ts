@@ -23,7 +23,7 @@ export interface IpcResult<T = unknown> {
 /**
  * 窗口类型
  */
-export type WindowType = 'agent' | 'browser'
+export type WindowType = 'agent' | 'browser' | 'console'
 
 /**
  * Tab 类型

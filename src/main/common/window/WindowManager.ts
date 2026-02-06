@@ -1345,6 +1345,9 @@ export class WindowManager implements IWindowManager {
           case 'browser':
             htmlPath = '/browser.html'
             break
+          case 'console':
+            htmlPath = '/console.html'
+            break
           default:
             htmlPath = '/index.html'
         }
@@ -1362,6 +1365,9 @@ export class WindowManager implements IWindowManager {
           case 'browser':
             htmlFile = 'browser.html'
             break
+          case 'console':
+            htmlFile = 'console.html'
+            break
           default:
             htmlFile = 'index.html'
         }
@@ -1373,6 +1379,51 @@ export class WindowManager implements IWindowManager {
     } catch (error) {
       log.error(`[WindowManager] 加载窗口内容失败: windowId=${window.id}, type=${type}`, error)
       throw error
+    }
+  }
+
+  /**
+   * 创建控制台窗口（独立方法，不参与通用窗口管理）
+   */
+  createConsoleWindow(): BrowserWindow | null {
+    try {
+      log.info('[WindowManager] 开始创建控制台窗口...')
+
+      // 简单的控制台窗口配置
+      const consoleWindow = new BrowserWindow({
+        width: 400,
+        height: 700,
+        minWidth: 350,
+        minHeight: 500,
+        frame: false,
+        transparent: false,
+        resizable: false,
+        backgroundColor: '#f9fafb',
+        title: 'Coobee AI 控制台',
+        webPreferences: {
+          preload: join(__dirname, '../preload/index.js'),
+          sandbox: false,
+          contextIsolation: true,
+          nodeIntegration: false
+        }
+      })
+
+      // 加载控制台页面
+      if (Env.isDev) {
+        const devServerUrl = process.env.ELECTRON_RENDERER_URL || process.env.VITE_DEV_SERVER_URL
+        if (devServerUrl) {
+          consoleWindow.loadURL(`${devServerUrl}/console.html`)
+        }
+      } else {
+        const htmlPath = join(__dirname, '../renderer/console.html')
+        consoleWindow.loadFile(htmlPath)
+      }
+
+      log.info('[WindowManager] 控制台窗口创建成功')
+      return consoleWindow
+    } catch (error) {
+      log.error('[WindowManager] 创建控制台窗口失败:', error)
+      return null
     }
   }
 

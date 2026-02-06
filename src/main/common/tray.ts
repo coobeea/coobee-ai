@@ -100,6 +100,13 @@ class TrayManager {
           })
         }
       },
+      {
+        label: '显示控制台',
+        click: async () => {
+          const { windowManager } = await import('./window')
+          windowManager.createConsoleWindow()
+        }
+      },
       { type: 'separator' },
       {
         label: '开机启动',
