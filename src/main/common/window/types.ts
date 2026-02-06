@@ -212,6 +212,7 @@ export function getWindowPresets(isDev: boolean): WindowPresets {
       frame: false, // 无边框
       transparent: false,
       resizable: true,
+      backgroundColor: '#1a1a1a', // 深色背景，避免关闭时白屏
       ...macOSConfig,
       webPreferences
     },
@@ -223,6 +224,7 @@ export function getWindowPresets(isDev: boolean): WindowPresets {
       frame: false, // 无边框
       transparent: false,
       resizable: true,
+      backgroundColor: '#1a1a1a', // 深色背景，避免关闭时白屏
       ...macOSConfig,
       webPreferences
     }

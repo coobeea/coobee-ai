@@ -27,7 +27,7 @@ export const ReadyShortcutRegistrationHook: LifecycleHook = {
       // 如果配置中没有快捷键，使用默认值
       const configShortcuts = config.getShortcuts()
       if (!configShortcuts || configShortcuts.length === 0) {
-        log.info('[ReadyShortcutRegistrationHook] 首次运行，初始化默认快捷键配置')
+        log.debug('[ReadyShortcutRegistrationHook] 首次运行，初始化默认快捷键配置')
         config.setShortcuts(DEFAULT_SHORTCUTS)
       }
 
@@ -41,5 +41,3 @@ export const ReadyShortcutRegistrationHook: LifecycleHook = {
     }
   }
 }
-
-export default ReadyShortcutRegistrationHook

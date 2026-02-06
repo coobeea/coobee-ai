@@ -904,7 +904,17 @@ export class WindowManager implements IWindowManager {
 
     try {
       const tabCount = windowInfo.tabs.size
-      windowInfo.window.close()
+      const window = windowInfo.window
+
+      // ✅ 先隐藏窗口，避免关闭过程中出现白屏
+      if (!window.isDestroyed() && window.isVisible()) {
+        window.hide()
+        log.debug(`[WindowManager] 窗口已隐藏，准备关闭: windowId=${windowId}`)
+      }
+
+      // 调用 close() 触发关闭流程
+      // → CLOSE 事件 → CLOSED 事件 → cleanupWindow()
+      window.close()
       log.info(`[WindowManager] 窗口关闭成功: windowId=${windowId}, 关闭了 ${tabCount} 个 Tab`)
       return true
     } catch (error) {

@@ -87,20 +87,10 @@ export function scanLifeCycleHooks(): DiscoveredModule[] {
   const modules = import.meta.glob('@main/lifecycle/**/*Hook.ts', { eager: true })
   const totalFound = Object.keys(modules).length
 
-  log.info(`[Scan] 发现 ${totalFound} 个潜在的Hook文件:`)
-  Object.keys(modules).forEach((path, index) => {
-    log.info(`[Scan]   ${index + 1}. ${path}`)
-  })
-
   const filteredModules = filterModules(modules, ['BaseHook'])
   const filteredCount = filteredModules.length
 
-  log.info(`[Scan] 过滤后剩余 ${filteredCount} 个Hook文件:`)
-  filteredModules.forEach((discoveredModule, index) => {
-    log.info(`[Scan]   ${index + 1}. ${discoveredModule.path}`)
-  })
-
-  log.info('[Scan] 生命周期Hook扫描完成')
+  log.info(`[Scan] 生命周期Hook扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`)
 
   return filteredModules
 }
@@ -120,21 +110,13 @@ export function scanEventHandlers(): DiscoveredModule[] {
   const modules = import.meta.glob('@main/events/**/*Changed.ts', { eager: true })
   const totalFound = Object.keys(modules).length
 
-  log.info(`[Scan] 发现 ${totalFound} 个潜在的事件处理器文件:`)
-  Object.keys(modules).forEach((path, index) => {
-    log.info(`[Scan]   ${index + 1}. ${path}`)
-  })
-
   // 过滤掉 README.md 等非事件文件
   const filteredModules = filterModules(modules, ['README'])
   const filteredCount = filteredModules.length
 
-  log.info(`[Scan] 过滤后剩余 ${filteredCount} 个事件处理器文件:`)
-  filteredModules.forEach((discoveredModule, index) => {
-    log.info(`[Scan]   ${index + 1}. ${discoveredModule.path}`)
-  })
-
-  log.info('[Scan] 事件处理器文件扫描完成')
+  log.info(
+    `[Scan] 事件处理器文件扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`
+  )
 
   return filteredModules
 }

@@ -77,7 +77,7 @@ export class LifecycleManager {
           if (this.isLifecycleHook(exportValue)) {
             this.registerHook(exportValue as LifecycleHook)
             registeredCount++
-            log.info(`[LifecycleManager] 自动注册 Hook: ${exportName} (来自 ${discovered.path})`)
+            log.debug(`[LifecycleManager] 自动注册 Hook: ${exportName} (来自 ${discovered.path})`)
           }
         }
       }

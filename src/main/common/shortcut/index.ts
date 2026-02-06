@@ -224,7 +224,7 @@ export class ShortcutManager {
         const success = globalShortcut.register(shortcut.shortcut, handler)
         shortcut.registered = success
         if (success) {
-          log.info(`[ShortcutManager] 全局快捷键注册成功: ${shortcut.key} -> ${shortcut.shortcut}`)
+          log.debug(`[ShortcutManager] 全局快捷键注册成功: ${shortcut.key} -> ${shortcut.shortcut}`)
         } else {
           log.warn(`[ShortcutManager] 全局快捷键注册失败: ${shortcut.key} -> ${shortcut.shortcut}`)
         }
@@ -233,7 +233,7 @@ export class ShortcutManager {
         try {
           LocalShortcut.register(shortcut.shortcut, handler)
           shortcut.registered = true
-          log.info(`[ShortcutManager] 本地快捷键注册成功: ${shortcut.key} -> ${shortcut.shortcut}`)
+          log.debug(`[ShortcutManager] 本地快捷键注册成功: ${shortcut.key} -> ${shortcut.shortcut}`)
         } catch (error) {
           log.warn(
             `[ShortcutManager] 本地快捷键注册失败: ${shortcut.key} -> ${shortcut.shortcut}`,

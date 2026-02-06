@@ -17,12 +17,19 @@ import type { WindowInfoResponse, TabInfoResponse } from '@shared/ipc'
 export function registerShellHandlers(): void {
   // 拉取当前窗口完整信息
   ipcMain.handle(ShellChannels.GET_WINDOW_INFO, (event): WindowInfoResponse | null => {
+    // ✅ 检查 webContents 是否已销毁
+    // 窗口关闭时，前端定时器可能还在调用 IPC，此时 sender 已被销毁
+    // 静默返回 null，避免产生大量警告日志
+    if (event.sender.isDestroyed()) {
+      return null
+    }
+
     // 获取调用者的 webContents ID
     const callerWebContentsId = event.sender.id
 
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) {
-      log.warn(`[IPC] shell:get-window-info - 无法获取窗口 (webContentsId=${callerWebContentsId})`)
+      log.debug(`[IPC] shell:get-window-info - 无法获取窗口 (webContentsId=${callerWebContentsId})`)
       return null
     }
 
