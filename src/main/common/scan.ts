@@ -107,12 +107,17 @@ export function scanLifeCycleHooks(): DiscoveredModule[] {
 
 /**
  * 扫描事件处理器文件
- * 扫描 @main/events 目录下所有 *Handler.ts 文件
+ * 扫描 @main/events 目录下所有 *Changed.ts 文件
+ *
+ * 事件命名规范：
+ * - 文件名以 Changed.ts 结尾（如 themeChanged.ts）
+ * - 必须默认导出一个处理函数
+ * - 文件名会自动转换为事件名（themeChanged → config:theme:changed）
  */
 export function scanEventHandlers(): DiscoveredModule[] {
   log.info('[Scan] 开始扫描事件处理器文件...')
 
-  const modules = import.meta.glob('@main/events/**/*Handler.ts', { eager: true })
+  const modules = import.meta.glob('@main/events/**/*Changed.ts', { eager: true })
   const totalFound = Object.keys(modules).length
 
   log.info(`[Scan] 发现 ${totalFound} 个潜在的事件处理器文件:`)
@@ -120,7 +125,8 @@ export function scanEventHandlers(): DiscoveredModule[] {
     log.info(`[Scan]   ${index + 1}. ${path}`)
   })
 
-  const filteredModules = filterModules(modules, ['BaseHandler'])
+  // 过滤掉 README.md 等非事件文件
+  const filteredModules = filterModules(modules, ['README'])
   const filteredCount = filteredModules.length
 
   log.info(`[Scan] 过滤后剩余 ${filteredCount} 个事件处理器文件:`)

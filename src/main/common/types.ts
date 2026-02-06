@@ -11,33 +11,6 @@
  */
 export type ThemeMode = 'light' | 'dark' | 'auto'
 
-// ==================== 事件处理器 ====================
-
-/**
- * 事件处理器接口
- */
-export interface EventHandler {
-  /**
-   * 处理器名称
-   */
-  name: string
-
-  /**
-   * 监听的事件名称
-   */
-  event: string
-
-  /**
-   * 事件处理函数
-   */
-  handle: (...args: unknown[]) => void | Promise<void>
-
-  /**
-   * 处理器描述（可选）
-   */
-  description?: string
-}
-
 // ==================== 生命周期 ====================
 
 /**
