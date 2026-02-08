@@ -61,6 +61,30 @@ export type { Session, SessionStatus, SessionConfig } from './types'
 // ========== WebSocket 网关 ==========
 export { AgentGateway } from './gateway'
 
+// ========== 流式输出（基于 EventBus）==========
+export {
+  // 类型
+  type StreamMessage,
+  type StreamMessageType,
+  type StreamSource,
+  type StreamEvent,
+  StreamEventType,
+  // 生产者（发射器）
+  type IStreamEmitter,
+  StreamEmitter,
+  createStreamEmitter,
+  // 消费者
+  StreamStore,
+  streamStore,
+  WebSocketBroadcaster,
+  webSocketBroadcaster,
+  StreamMonitor,
+  streamMonitor,
+  type SessionStats,
+  type ClientMessage,
+  type ServerMessage
+} from './streaming'
+
 // ========== 统一运行时接口（Agent & Team）==========
 export {
   // 核心接口

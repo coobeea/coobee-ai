@@ -1,0 +1,161 @@
+/**
+ * 流式监控器（消费者 3：监控统计）
+ * 监听 EventBus 的流式事件，收集统计信息
+ */
+
+import { eventBus } from '@main/common/eventbus'
+import { StreamEventType, type StreamEvent } from '../types'
+
+/**
+ * 会话统计信息
+ */
+export interface SessionStats {
+  sessionId: string
+  messageCount: number
+  textCount: number
+  toolCallCount: number
+  skillCallCount: number
+  errorCount: number
+  startTime?: number
+  endTime?: number
+  duration?: number
+  lastSequence: number
+}
+
+/**
+ * 流式监控器
+ */
+export class StreamMonitor {
+  private sessionStats = new Map<string, SessionStats>()
+  private initialized = false
+
+  /**
+   * 初始化（注册事件监听）
+   */
+  initialize(): void {
+    if (this.initialized) return
+
+    this.registerEventListeners()
+
+    this.initialized = true
+    console.log('[StreamMonitor] Initialized')
+  }
+
+  /**
+   * 注册事件监听器（消费者核心）
+   */
+  private registerEventListeners(): void {
+    // 监听流开始
+    eventBus.on(StreamEventType.START, (event: StreamEvent) => {
+      const stats: SessionStats = {
+        sessionId: event.sessionId,
+        messageCount: 0,
+        textCount: 0,
+        toolCallCount: 0,
+        skillCallCount: 0,
+        errorCount: 0,
+        startTime: Date.now(),
+        lastSequence: 0
+      }
+      this.sessionStats.set(event.sessionId, stats)
+      console.log(`[StreamMonitor] Stream started: ${event.sessionId}`)
+    })
+
+    // 监听消息
+    eventBus.on(StreamEventType.MESSAGE, (event: StreamEvent) => {
+      if (!event.message) return
+
+      const stats = this.getOrCreateStats(event.sessionId)
+      stats.messageCount++
+      stats.lastSequence = event.message.sequence
+
+      // 分类统计
+      switch (event.message.type) {
+        case 'text':
+          stats.textCount++
+          break
+        case 'tool_call':
+          stats.toolCallCount++
+          break
+        case 'skill_call':
+          stats.skillCallCount++
+          break
+        case 'error':
+          stats.errorCount++
+          break
+      }
+    })
+
+    // 监听流结束
+    eventBus.on(StreamEventType.END, (event: StreamEvent) => {
+      const stats = this.sessionStats.get(event.sessionId)
+      if (stats && stats.startTime) {
+        stats.endTime = Date.now()
+        stats.duration = stats.endTime - stats.startTime
+      }
+      console.log(`[StreamMonitor] Stream ended: ${event.sessionId}`, stats)
+    })
+
+    // 监听错误
+    eventBus.on(StreamEventType.ERROR, (event: StreamEvent) => {
+      const stats = this.getOrCreateStats(event.sessionId)
+      stats.errorCount++
+      console.error(`[StreamMonitor] Stream error: ${event.sessionId}`, event.error)
+    })
+
+    console.log('[StreamMonitor] Event listeners registered')
+  }
+
+  /**
+   * 获取或创建统计信息
+   */
+  private getOrCreateStats(sessionId: string): SessionStats {
+    let stats = this.sessionStats.get(sessionId)
+    if (!stats) {
+      stats = {
+        sessionId,
+        messageCount: 0,
+        textCount: 0,
+        toolCallCount: 0,
+        skillCallCount: 0,
+        errorCount: 0,
+        lastSequence: 0
+      }
+      this.sessionStats.set(sessionId, stats)
+    }
+    return stats
+  }
+
+  /**
+   * 获取会话统计
+   */
+  getStats(sessionId: string): SessionStats | null {
+    return this.sessionStats.get(sessionId) || null
+  }
+
+  /**
+   * 获取所有会话统计
+   */
+  getAllStats(): SessionStats[] {
+    return Array.from(this.sessionStats.values())
+  }
+
+  /**
+   * 清除会话统计
+   */
+  clearStats(sessionId: string): void {
+    this.sessionStats.delete(sessionId)
+  }
+
+  /**
+   * 清除所有统计
+   */
+  clearAllStats(): void {
+    this.sessionStats.clear()
+  }
+}
+
+/**
+ * 全局 StreamMonitor 实例
+ */
+export const streamMonitor = new StreamMonitor()

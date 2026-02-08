@@ -6,6 +6,7 @@
 import { teamConfigStore } from '../storage/TeamConfigStore'
 import { agentFactory } from '../agents/AgentFactory'
 import { run, type Agent } from '@openai/agents'
+import { createStreamEmitter, type IStreamEmitter } from '../streaming/StreamEmitter'
 import type { TeamConfig } from '../teams/types'
 import type {
   IExecutable,
@@ -29,6 +30,7 @@ export class TeamRuntime implements IExecutable {
   private sessionId: string
   private teamConfig!: TeamConfig
   private memberRuntimes = new Map<string, Agent>() // agentId -> Agent instance
+  private streamEmitter!: IStreamEmitter
 
   constructor(teamId: string, sessionId?: string) {
     this.id = teamId
@@ -59,6 +61,13 @@ export class TeamRuntime implements IExecutable {
       })
       this.memberRuntimes.set(member.agentId, agent)
     }
+
+    // 3. 创建流式发射器
+    this.streamEmitter = createStreamEmitter(this.sessionId, {
+      type: 'team',
+      id: this.id,
+      name: this.name
+    })
 
     console.log(
       `[TeamRuntime] Initialized team: ${this.name} with ${this.teamConfig.members.length} members`
@@ -124,24 +133,43 @@ export class TeamRuntime implements IExecutable {
   ): Promise<ExecutionResult> {
     console.log(`[TeamRuntime] Running team in stream mode: ${this.name}`)
 
-    // TODO: 实现流式输出
-    // 需要在协作过程中实时发送每个成员的输出
+    try {
+      // 1. 发送流开始事件
+      await this.streamEmitter.emitStart()
 
-    // 暂时回退到同步执行
-    const result = await this.run(input, config)
+      // 2. 发送思考消息
+      await this.streamEmitter.emitThinking(
+        `Team ${this.name} starting with ${this.teamConfig.orchestrationType} mode`
+      )
 
-    // 发送完整结果
-    onChunk({
-      type: 'text',
-      content: result.output
-    })
+      // 3. 执行 Team（会在内部发送各成员的输出）
+      const result = await this.run(input, config)
 
-    onChunk({
-      type: 'done',
-      content: ''
-    })
+      // 4. 发送最终结果
+      await this.streamEmitter.emitText(result.output)
 
-    return result
+      // 5. 发送流结束事件
+      await this.streamEmitter.emitDone()
+
+      // 6. 同时调用回调（兼容旧接口）
+      onChunk({
+        type: 'text',
+        content: result.output
+      })
+
+      onChunk({
+        type: 'done',
+        content: ''
+      })
+
+      return result
+    } catch (error: unknown) {
+      // 发送错误
+      await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
+
+      console.error(`[TeamRuntime] Execution failed:`, error)
+      throw error
+    }
   }
 
   // ========== 协作模式实现 ==========

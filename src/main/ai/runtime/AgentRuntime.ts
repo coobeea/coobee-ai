@@ -7,6 +7,7 @@ import { run } from '@openai/agents'
 import type { Agent } from '@openai/agents'
 import { agentFactory } from '../agents/AgentFactory'
 import { agentConfigStore } from '../storage/AgentConfigStore'
+import { createStreamEmitter, type IStreamEmitter } from '../streaming/StreamEmitter'
 import type {
   IExecutable,
   ExecutionConfig,
@@ -32,6 +33,7 @@ export class AgentRuntime implements IExecutable {
   private config!: { name: string; tools?: string[]; skills?: string[] }
   private enabledTools = new Map<string, boolean>()
   private activeSkills = new Map<string, boolean>()
+  private streamEmitter!: IStreamEmitter
 
   constructor(agentId: string, sessionId?: string) {
     this.id = agentId
@@ -77,6 +79,13 @@ export class AgentRuntime implements IExecutable {
       })
     }
 
+    // 5. 创建流式发射器
+    this.streamEmitter = createStreamEmitter(this.sessionId, {
+      type: 'agent',
+      id: this.id,
+      name: this.name
+    })
+
     console.log(`[AgentRuntime] Initialized agent: ${this.name}`)
   }
 
@@ -119,30 +128,59 @@ export class AgentRuntime implements IExecutable {
 
   async runStream(
     input: string,
-    config: ExecutionConfig,
+    _config: ExecutionConfig,
     onChunk: (chunk: StreamChunk) => void
   ): Promise<ExecutionResult> {
     console.log(`[AgentRuntime] Running agent in stream mode: ${this.name}`)
 
-    // TODO: 实现流式输出
-    // 目前 @openai/agents 的 run() 不直接支持流式
-    // 需要使用底层的 OpenAI SDK 或者轮询机制
+    const startTime = Date.now()
 
-    // 暂时回退到同步执行，但模拟流式输出
-    const result = await this.run(input, config)
+    try {
+      // 1. 发送流开始事件
+      await this.streamEmitter.emitStart()
 
-    // 模拟发送流式块
-    onChunk({
-      type: 'text',
-      content: result.output
-    })
+      // 2. 发送思考消息
+      await this.streamEmitter.emitThinking(`Processing: ${input.substring(0, 50)}...`)
 
-    onChunk({
-      type: 'done',
-      content: ''
-    })
+      // 3. 执行 Agent
+      const result = await run(this.agent, input)
 
-    return result
+      // 4. 发送文本结果
+      await this.streamEmitter.emitText(result.finalOutput || '')
+
+      // 5. 发送流结束事件
+      await this.streamEmitter.emitDone()
+
+      // 6. 同时调用回调（兼容旧接口）
+      onChunk({
+        type: 'text',
+        content: result.finalOutput || ''
+      })
+
+      onChunk({
+        type: 'done',
+        content: ''
+      })
+
+      const duration = Date.now() - startTime
+
+      return {
+        output: result.finalOutput || '',
+        toolCalls: [],
+        skillsUsed: Array.from(this.activeSkills.keys()).filter((id) => this.activeSkills.get(id)),
+        duration,
+        metadata: {
+          agentId: this.id,
+          sessionId: this.sessionId
+        }
+      }
+    } catch (error: unknown) {
+      // 发送错误
+      await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
+
+      console.error(`[AgentRuntime] Execution failed:`, error)
+      throw error
+    }
   }
 
   // ========== 会话管理 ==========

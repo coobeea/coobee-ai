@@ -98,5 +98,10 @@ export async function ensureFileIsReleased(filePath: string, timeout = 5000): Pr
   throw new Error(`🔔 [ensureFileIsReleased] 等待文件锁释放超时 (${timeout}ms): ${filePath}`)
 }
 
-export { generateSnowflakeId, generateSnowflakeIdBigInt } from './SnowflakeIdGenerator'
+export {
+  SnowflakeIdGenerator,
+  generateSnowflakeId,
+  generateSnowflakeIdBigInt,
+  getGlobalSnowflakeGenerator
+} from './SnowflakeIdGenerator'
 export { generateMachineFingerprint, generateMachineFingerprintSync } from './MachineFingerprint'
