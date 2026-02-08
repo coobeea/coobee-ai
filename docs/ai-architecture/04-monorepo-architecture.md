@@ -91,8 +91,7 @@ coobee-ai/
 │   │   │   ├── recovery/         # 恢复策略
 │   │   │   ├── storage/          # 数据存储层
 │   │   │   │   ├── stores/       # 数据访问层
-│   │   │   │   │   ├── SessionStore.ts
-│   │   │   │   │   ├── MessageStore.ts
+│   │   │   │   │   ├── SessionStore.ts      # ⭐ 统一的会话存储（数据库+文件）
 │   │   │   │   │   ├── TaskStore.ts
 │   │   │   │   │   └── ToolExecutionStore.ts
 │   │   │   │   ├── schemas/      # 数据库 Schema
@@ -388,8 +387,9 @@ packages:
 - ✅ 进度监控（Monitoring）
 - ✅ 恢复策略（Recovery）
 - ✅ **数据存储层（Storage）**
-  - MessageStore - 消息存储
-  - SessionStore - 会话存储
+  - SessionStore - 会话存储（数据库 + 文件混合存储）
+    - 数据库：Session 元数据（ID、配置、状态等）
+    - 文件：Session 完整对话历史（JSON/JSONL）
   - TaskStore - 任务存储
   - ToolExecutionStore - 工具执行记录
   - Database Schema - 数据库模式定义
@@ -414,8 +414,7 @@ packages/ai-core/src/
 ├── recovery/          # 恢复策略
 ├── storage/           # ⭐ 存储层
 │   ├── stores/        # 数据访问层
-│   │   ├── SessionStore.ts
-│   │   ├── MessageStore.ts
+│   │   ├── SessionStore.ts           # ⭐ 统一存储（数据库+文件）
 │   │   ├── TaskStore.ts
 │   │   └── ToolExecutionStore.ts
 │   ├── schemas/       # 数据库 Schema
@@ -434,31 +433,122 @@ export { Skill, SkillManager } from './skills'
 export { TaskPlanner, ProjectArchetype } from './planning'
 export { ProgressMonitor, HealthChecker } from './monitoring'
 export { RiskManager, RecoveryAction } from './recovery'
-export { MessageStore, SessionStore, TaskStore, ToolExecutionStore } from './storage'
+export { SessionStore, TaskStore, ToolExecutionStore } from './storage'
 export type * from './types'
 ```
 
-**存储层示例**:
+**存储层示例（混合存储）**:
 
 ```typescript
-// packages/ai-core/src/storage/stores/MessageStore.ts
+// packages/ai-core/src/storage/stores/SessionStore.ts
 import { DatabaseService } from '@main/common/database'
-import type { AIMessage } from '@shared/types'
+import { promises as fs } from 'fs'
+import path from 'path'
+import type { Session, SessionMessage } from '@shared/types'
 
-export class MessageStore {
-  constructor(private db: DatabaseService) {}
+export class SessionStore {
+  private sessionsDir: string
 
-  async save(message: AIMessage): Promise<void> {
+  constructor(
+    private db: DatabaseService,
+    dataDir: string
+  ) {
+    this.sessionsDir = path.join(dataDir, 'sessions')
+  }
+
+  /**
+   * 创建新会话
+   * - 数据库：存储元数据
+   * - 文件：初始化对话历史文件
+   */
+  async create(session: Session): Promise<string> {
+    // 1. 保存元数据到数据库
     await this.db.execute(
       `
-      INSERT INTO ai_messages (id, session_id, role, content, timestamp)
-      VALUES (?, ?, ?, ?, ?)
-    `,
-      [message.id, message.sessionId, message.role, message.content, Date.now()]
+      INSERT INTO ai_sessions (id, agent_type, model, config, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        session.id,
+        session.agentType,
+        session.model,
+        JSON.stringify(session.config),
+        'active',
+        Date.now(),
+        Date.now()
+      ]
     )
+
+    // 2. 创建对话历史文件
+    const sessionFile = path.join(this.sessionsDir, `${session.id}.jsonl`)
+    await fs.mkdir(this.sessionsDir, { recursive: true })
+    await fs.writeFile(sessionFile, '', 'utf-8')
+
+    return session.id
+  }
+
+  /**
+   * 添加消息到会话
+   * - 追加到文件（JSONL 格式，每行一条消息）
+   */
+  async appendMessage(sessionId: string, message: SessionMessage): Promise<void> {
+    const sessionFile = path.join(this.sessionsDir, `${sessionId}.jsonl`)
+    const line =
+      JSON.stringify({
+        ...message,
+        timestamp: Date.now()
+      }) + '\n'
+
+    await fs.appendFile(sessionFile, line, 'utf-8')
+
+    // 更新数据库的 updated_at
+    await this.db.execute('UPDATE ai_sessions SET updated_at = ? WHERE id = ?', [
+      Date.now(),
+      sessionId
+    ])
+  }
+
+  /**
+   * 获取会话完整历史
+   * - 从文件读取对话历史
+   */
+  async getMessages(sessionId: string): Promise<SessionMessage[]> {
+    const sessionFile = path.join(this.sessionsDir, `${sessionId}.jsonl`)
+    const content = await fs.readFile(sessionFile, 'utf-8')
+
+    return content
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line))
+  }
+
+  /**
+   * 获取会话元数据
+   * - 从数据库读取
+   */
+  async get(sessionId: string): Promise<Session | null> {
+    const row = await this.db.get('SELECT * FROM ai_sessions WHERE id = ?', [sessionId])
+
+    if (!row) return null
+
+    return {
+      id: row.id,
+      agentType: row.agent_type,
+      model: row.model,
+      config: JSON.parse(row.config),
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }
   }
 }
 ```
+
+**优势**：
+
+- ✅ **数据库**：快速查询 Session 列表、状态、时间
+- ✅ **文件**：完整对话历史，方便查看、调试、备份
+- ✅ **JSONL 格式**：每行一条消息，追加高效，查看方便
 
 ### 4.2 网关包：@coobee/ai-gateway
 
@@ -483,7 +573,7 @@ export class MessageStore {
 
 ```typescript
 // packages/ai-gateway/src/AgentGateway.ts
-import { Agent, SessionStore, MessageStore } from '@coobee/ai-core'
+import { Agent, SessionStore } from '@coobee/ai-core'
 import { WebSocketServer, WebSocket } from 'ws'
 import { logger } from '@main/common/logger'
 import { eventBus } from '@main/common/eventbus'
@@ -491,14 +581,12 @@ import { eventBus } from '@main/common/eventbus'
 export class AgentGateway {
   private wss: WebSocketServer
   private sessionStore: SessionStore
-  private messageStore: MessageStore
   private agents: Map<string, Agent> = new Map()
 
   async initialize(port: number = 9000): Promise<void> {
     logger.info(`[AI Gateway] 初始化 WebSocket 服务器，端口：${port}`)
 
     this.sessionStore = new SessionStore()
-    this.messageStore = new MessageStore()
 
     this.wss = new WebSocketServer({ port })
     this.wss.on('connection', (ws: WebSocket) => {
@@ -536,6 +624,11 @@ export class AgentGateway {
 
     eventBus.emit('ai:session-created', { sessionId })
     return { sessionId }
+  }
+
+  private async sendMessage(payload: { sessionId: string; message: string }): Promise<any> {
+    // 使用 SessionStore 的 appendMessage 方法
+    // 详见 Step 3 完整示例
   }
 }
 ```
@@ -667,7 +760,6 @@ export type * from './types'
 
 ```typescript
 // packages/ai-core/src/storage/index.ts
-export { MessageStore } from './stores/MessageStore'
 export { SessionStore } from './stores/SessionStore'
 export { TaskStore } from './stores/TaskStore'
 export { ToolExecutionStore } from './stores/ToolExecutionStore'
@@ -675,23 +767,9 @@ export { schemas } from './schemas'
 ```
 
 ```typescript
-// packages/ai-core/src/storage/stores/MessageStore.ts
-import { DatabaseService } from '@main/common/database'
-import type { AIMessage } from '@shared/types'
-
-export class MessageStore {
-  constructor(private db: DatabaseService) {}
-
-  async save(message: AIMessage): Promise<void> {
-    await this.db.execute(
-      `
-      INSERT INTO ai_messages (id, session_id, role, content, timestamp)
-      VALUES (?, ?, ?, ?, ?)
-    `,
-      [message.id, message.sessionId, message.role, message.content, Date.now()]
-    )
-  }
-}
+// packages/ai-core/src/storage/stores/SessionStore.ts
+// 已更新为混合存储（数据库 + 文件）
+// 详见上文 4.1 节的完整示例
 ```
 
 **产出**:
@@ -763,7 +841,7 @@ EOF
 
 ```typescript
 // packages/ai-gateway/src/AgentGateway.ts
-import { Agent, SessionStore, MessageStore } from '@coobee/ai-core'
+import { Agent, SessionStore } from '@coobee/ai-core'
 import { WebSocketServer, WebSocket } from 'ws'
 import { logger } from '@main/common/logger'
 import { eventBus } from '@main/common/eventbus'
@@ -771,14 +849,12 @@ import { eventBus } from '@main/common/eventbus'
 export class AgentGateway {
   private wss: WebSocketServer
   private sessionStore: SessionStore
-  private messageStore: MessageStore
   private agents: Map<string, Agent> = new Map()
 
   async initialize(port: number = 9000): Promise<void> {
     logger.info(`[AI Gateway] 初始化 WebSocket 服务器，端口：${port}`)
 
     this.sessionStore = new SessionStore()
-    this.messageStore = new MessageStore()
 
     // 创建 WebSocket 服务器
     this.wss = new WebSocketServer({ port })
@@ -836,9 +912,8 @@ export class AgentGateway {
       throw new Error('Session not found')
     }
 
-    // 保存用户消息
-    await this.messageStore.save({
-      sessionId,
+    // 追加用户消息到文件
+    await this.sessionStore.appendMessage(sessionId, {
       role: 'user',
       content: message
     })
@@ -846,9 +921,8 @@ export class AgentGateway {
     // 调用 AI Agent
     const response = await agent.chat(message)
 
-    // 保存 AI 回复
-    await this.messageStore.save({
-      sessionId,
+    // 追加 AI 回复到文件
+    await this.sessionStore.appendMessage(sessionId, {
       role: 'assistant',
       content: response
     })
