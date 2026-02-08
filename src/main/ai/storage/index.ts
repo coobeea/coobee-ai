@@ -4,4 +4,5 @@
 
 export * from './AgentConfigStore'
 export * from './TeamConfigStore'
-// export * from './SessionStore'  // TODO: 待实现
+export * from './SessionFileManager'
+// export * from './SessionStore'  // TODO: 待实现（数据库存储）

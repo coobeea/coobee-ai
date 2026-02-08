@@ -244,17 +244,17 @@ export class Orchestrator implements IOrchestrator {
       result?: unknown
       error?: string
     }>
-  ): { summary: string; outputs: unknown[] } {
+  ): { summary: string; results: unknown[] } {
     // TODO: 可以使用一个专门的 Aggregator Agent 来整合结果
     // 目前简单合并所有结果
 
-    const outputs = subTaskResults
+    const results = subTaskResults
       .filter((r) => r.status === 'completed' && r.result)
       .map((r) => r.result)
 
     return {
       summary: `Completed ${subTaskResults.filter((r) => r.status === 'completed').length}/${subTaskResults.length} subtasks`,
-      outputs
+      results
     }
   }
 

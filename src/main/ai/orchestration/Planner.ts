@@ -88,7 +88,8 @@ Output format (JSON):
     return {
       taskId: task.id,
       subTasks: planData.subTasks,
-      stages: planData.stages
+      stages: planData.stages,
+      createdAt: Date.now()
     }
   }
 
@@ -119,7 +120,8 @@ Consider:
     return {
       taskId: task.id,
       subTasks: planData.subTasks,
-      stages: planData.stages
+      stages: planData.stages,
+      createdAt: Date.now()
     }
   }
 
@@ -178,19 +180,23 @@ Consider:
       // 转换为标准格式
       const subTasks: SubTask[] = (parsed.subTasks || []).map((st) => ({
         id: st.id,
+        taskId: '', // 将在外部设置
+        name: st.objective || 'Unnamed Subtask',
         objective: st.objective,
-        description: st.description,
+        description: st.description || st.objective || '',
         dependencies: st.dependencies || [],
+        workerId: st.assignedWorker || 'chat',
         assignedWorker: st.assignedWorker || 'chat',
         status: 'pending' as const
       }))
 
-      const stages: ExecutionStage[] = (parsed.stages || []).map((stage) => ({
-        stageId: stage.stageId,
+      const stages: ExecutionStage[] = (parsed.stages || []).map((stage, index) => ({
+        id: stage.stageId,
         name: stage.name,
         subTaskIds: stage.subTaskIds || [],
-        parallelizable: stage.parallelizable ?? false,
-        status: 'pending' as const
+        order: index,
+        parallel: stage.parallelizable ?? false,
+        parallelizable: stage.parallelizable ?? false
       }))
 
       return { subTasks, stages }
@@ -202,20 +208,24 @@ Consider:
         subTasks: [
           {
             id: 'subtask-1',
+            taskId: '',
+            name: 'Complete the task',
             objective: 'Complete the task',
             description: 'Execute the task as a single unit',
             dependencies: [],
+            workerId: 'chat',
             assignedWorker: 'chat',
             status: 'pending'
           }
         ],
         stages: [
           {
-            stageId: 'stage-1',
+            id: 'stage-1',
             name: 'Main Stage',
             subTaskIds: ['subtask-1'],
-            parallelizable: false,
-            status: 'pending'
+            order: 0,
+            parallel: false,
+            parallelizable: false
           }
         ]
       }

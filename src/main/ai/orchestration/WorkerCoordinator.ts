@@ -67,6 +67,7 @@ export class WorkerCoordinator implements IWorkerCoordinator {
 
     const workerInfo: WorkerInfo = {
       id: workerId,
+      name: workerType,
       type: workerType,
       agent,
       status: 'idle'
@@ -90,7 +91,8 @@ export class WorkerCoordinator implements IWorkerCoordinator {
       const prompt = this.buildSubTaskPrompt(subTask)
 
       // 使用 @openai/agents SDK 的 run() 函数执行
-      const result = await run(worker.agent, prompt)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await run(worker.agent as any, prompt)
 
       // 恢复状态
       worker.status = 'idle'
