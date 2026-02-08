@@ -81,21 +81,24 @@
 ```
 coobee-ai/
 ├── packages/                      # ⭐ 新增：AI 专用包目录
-│   ├── ai-core/                  # AI 核心包（包含核心逻辑 + 存储）
+│   ├── ai-core/                  # AI 核心包（简洁实用）
 │   │   ├── src/
-│   │   │   ├── agents/           # Agent 定义与编排
-│   │   │   ├── tools/            # 工具系统
-│   │   │   ├── skills/           # 技能系统
-│   │   │   ├── planning/         # 任务规划
-│   │   │   ├── monitoring/       # 进度监控
-│   │   │   ├── recovery/         # 恢复策略
-│   │   │   ├── storage/          # 数据存储层
-│   │   │   │   ├── stores/       # 数据访问层
-│   │   │   │   │   ├── SessionStore.ts      # ⭐ 统一的会话存储（数据库+文件）
-│   │   │   │   │   ├── TaskStore.ts
-│   │   │   │   │   └── ToolExecutionStore.ts
-│   │   │   │   ├── schemas/      # 数据库 Schema
+│   │   │   ├── agents/           # Agent 定义
+│   │   │   │   ├── BaseAgent.ts
+│   │   │   │   ├── ChatAgent.ts
 │   │   │   │   └── index.ts
+│   │   │   ├── tools/            # 工具系统
+│   │   │   │   ├── registry.ts
+│   │   │   │   ├── builtin/      # 内置工具
+│   │   │   │   └── index.ts
+│   │   │   ├── skills/           # 技能系统（可选，后期扩展）
+│   │   │   │   └── index.ts
+│   │   │   ├── storage/          # 数据存储层
+│   │   │   │   ├── SessionStore.ts      # ⭐ 统一的会话存储（数据库+文件）
+│   │   │   │   ├── schemas/              # 数据库 Schema
+│   │   │   │   │   └── sessions.sql
+│   │   │   │   └── index.ts
+│   │   │   ├── types.ts          # 类型定义
 │   │   │   └── index.ts          # 统一导出
 │   │   ├── package.json
 │   │   ├── tsconfig.json
@@ -388,11 +391,9 @@ packages:
 - ✅ 恢复策略（Recovery）
 - ✅ **数据存储层（Storage）**
   - SessionStore - 会话存储（数据库 + 文件混合存储）
-    - 数据库：Session 元数据（ID、配置、状态等）
-    - 文件：Session 完整对话历史（JSON/JSONL）
-  - TaskStore - 任务存储
-  - ToolExecutionStore - 工具执行记录
-  - Database Schema - 数据库模式定义
+    - 数据库：Session 元数据（ID、配置、状态、消息计数等）
+    - 文件：Session 完整对话历史（JSONL 格式）
+  - Database Schema - 数据库模式定义（sessions 表）
 
 **依赖**:
 
@@ -413,11 +414,9 @@ packages/ai-core/src/
 ├── monitoring/        # 进度监控
 ├── recovery/          # 恢复策略
 ├── storage/           # ⭐ 存储层
-│   ├── stores/        # 数据访问层
-│   │   ├── SessionStore.ts           # ⭐ 统一存储（数据库+文件）
-│   │   ├── TaskStore.ts
-│   │   └── ToolExecutionStore.ts
-│   ├── schemas/       # 数据库 Schema
+│   ├── SessionStore.ts               # ⭐ 统一存储（数据库+文件）
+│   ├── schemas/                      # 数据库 Schema
+│   │   └── sessions.sql
 │   └── index.ts
 ├── types/             # 类型定义
 └── index.ts           # 统一导出
@@ -430,21 +429,37 @@ packages/ai-core/src/
 export { Agent, AgentConfig } from './agents'
 export { Tool, ToolRegistry } from './tools'
 export { Skill, SkillManager } from './skills'
-export { TaskPlanner, ProjectArchetype } from './planning'
-export { ProgressMonitor, HealthChecker } from './monitoring'
-export { RiskManager, RecoveryAction } from './recovery'
-export { SessionStore, TaskStore, ToolExecutionStore } from './storage'
+export { BaseAgent, ChatAgent } from './agents'
+export { ToolRegistry } from './tools'
+export { SessionStore } from './storage'
 export type * from './types'
 ```
 
-**存储层示例（混合存储）**:
+**存储层示例（混合存储 - 简化实用版）**:
 
 ```typescript
-// packages/ai-core/src/storage/stores/SessionStore.ts
+// packages/ai-core/src/storage/SessionStore.ts
 import { DatabaseService } from '@main/common/database'
 import { promises as fs } from 'fs'
 import path from 'path'
-import type { Session, SessionMessage } from '@shared/types'
+
+export interface Session {
+  id: string
+  agentType: string
+  model: string
+  config: any
+  status: 'active' | 'completed' | 'error'
+  messageCount: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface SessionMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  timestamp: number
+  metadata?: any // 可选：工具调用、思考过程等
+}
 
 export class SessionStore {
   private sessionsDir: string
@@ -458,24 +473,25 @@ export class SessionStore {
 
   /**
    * 创建新会话
-   * - 数据库：存储元数据
-   * - 文件：初始化对话历史文件
    */
-  async create(session: Session): Promise<string> {
+  async create(
+    session: Omit<Session, 'messageCount' | 'createdAt' | 'updatedAt'>
+  ): Promise<string> {
+    const now = Date.now()
+
     // 1. 保存元数据到数据库
     await this.db.execute(
-      `
-      INSERT INTO ai_sessions (id, agent_type, model, config, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      `,
+      `INSERT INTO ai_sessions 
+       (id, agent_type, model, config, status, message_count, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
       [
         session.id,
         session.agentType,
         session.model,
         JSON.stringify(session.config),
-        'active',
-        Date.now(),
-        Date.now()
+        session.status,
+        now,
+        now
       ]
     )
 
@@ -489,42 +505,42 @@ export class SessionStore {
 
   /**
    * 添加消息到会话
-   * - 追加到文件（JSONL 格式，每行一条消息）
    */
-  async appendMessage(sessionId: string, message: SessionMessage): Promise<void> {
+  async appendMessage(
+    sessionId: string,
+    message: Omit<SessionMessage, 'timestamp'>
+  ): Promise<void> {
     const sessionFile = path.join(this.sessionsDir, `${sessionId}.jsonl`)
-    const line =
-      JSON.stringify({
-        ...message,
-        timestamp: Date.now()
-      }) + '\n'
+    const line = JSON.stringify({ ...message, timestamp: Date.now() }) + '\n'
 
     await fs.appendFile(sessionFile, line, 'utf-8')
 
-    // 更新数据库的 updated_at
-    await this.db.execute('UPDATE ai_sessions SET updated_at = ? WHERE id = ?', [
-      Date.now(),
-      sessionId
-    ])
+    // 更新数据库的消息计数和更新时间
+    await this.db.execute(
+      'UPDATE ai_sessions SET message_count = message_count + 1, updated_at = ? WHERE id = ?',
+      [Date.now(), sessionId]
+    )
   }
 
   /**
-   * 获取会话完整历史
-   * - 从文件读取对话历史
+   * 获取会话完整历史（从文件读取）
    */
   async getMessages(sessionId: string): Promise<SessionMessage[]> {
     const sessionFile = path.join(this.sessionsDir, `${sessionId}.jsonl`)
-    const content = await fs.readFile(sessionFile, 'utf-8')
 
-    return content
-      .split('\n')
-      .filter((line) => line.trim())
-      .map((line) => JSON.parse(line))
+    try {
+      const content = await fs.readFile(sessionFile, 'utf-8')
+      return content
+        .split('\n')
+        .filter((line) => line.trim())
+        .map((line) => JSON.parse(line))
+    } catch {
+      return []
+    }
   }
 
   /**
-   * 获取会话元数据
-   * - 从数据库读取
+   * 获取会话元数据（从数据库读取）
    */
   async get(sessionId: string): Promise<Session | null> {
     const row = await this.db.get('SELECT * FROM ai_sessions WHERE id = ?', [sessionId])
@@ -537,18 +553,104 @@ export class SessionStore {
       model: row.model,
       config: JSON.parse(row.config),
       status: row.status,
+      messageCount: row.message_count,
       createdAt: row.created_at,
       updatedAt: row.updated_at
+    }
+  }
+
+  /**
+   * 获取会话列表（用于显示列表）
+   */
+  async list(options?: { status?: string; limit?: number; offset?: number }): Promise<Session[]> {
+    const { status, limit = 50, offset = 0 } = options || {}
+
+    let sql = 'SELECT * FROM ai_sessions'
+    const params: any[] = []
+
+    if (status) {
+      sql += ' WHERE status = ?'
+      params.push(status)
+    }
+
+    sql += ' ORDER BY updated_at DESC LIMIT ? OFFSET ?'
+    params.push(limit, offset)
+
+    const rows = await this.db.all(sql, params)
+
+    return rows.map((row) => ({
+      id: row.id,
+      agentType: row.agent_type,
+      model: row.model,
+      config: JSON.parse(row.config),
+      status: row.status,
+      messageCount: row.message_count,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }))
+  }
+
+  /**
+   * 更新会话状态
+   */
+  async updateStatus(sessionId: string, status: Session['status']): Promise<void> {
+    await this.db.execute('UPDATE ai_sessions SET status = ?, updated_at = ? WHERE id = ?', [
+      status,
+      Date.now(),
+      sessionId
+    ])
+  }
+
+  /**
+   * 删除会话
+   */
+  async delete(sessionId: string): Promise<void> {
+    await this.db.execute('DELETE FROM ai_sessions WHERE id = ?', [sessionId])
+
+    const sessionFile = path.join(this.sessionsDir, `${sessionId}.jsonl`)
+    try {
+      await fs.unlink(sessionFile)
+    } catch {
+      // 文件可能不存在，忽略错误
     }
   }
 }
 ```
 
+**数据库 Schema**:
+
+```sql
+-- packages/ai-core/src/storage/schemas/sessions.sql
+CREATE TABLE IF NOT EXISTS ai_sessions (
+  id TEXT PRIMARY KEY,
+  agent_type TEXT NOT NULL,
+  model TEXT NOT NULL,
+  config JSON,
+  status TEXT NOT NULL,
+  message_count INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON ai_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_sessions_updated ON ai_sessions(updated_at DESC);
+```
+
+**文件存储格式**:
+
+```jsonl
+{"role":"user","content":"你好","timestamp":1738595200000}
+{"role":"assistant","content":"你好！有什么可以帮你的？","timestamp":1738595201500,"metadata":{"model":"gpt-4","tokens":15}}
+{"role":"user","content":"请帮我分析代码","timestamp":1738595210000}
+{"role":"assistant","content":"好的，请把代码发给我","timestamp":1738595211200,"metadata":{"toolCalls":[{"tool":"read_file","params":{"path":"src/main.ts"}}]}}
+```
+
 **优势**：
 
-- ✅ **数据库**：快速查询 Session 列表、状态、时间
-- ✅ **文件**：完整对话历史，方便查看、调试、备份
-- ✅ **JSONL 格式**：每行一条消息，追加高效，查看方便
+- ✅ **简洁实用** - 无复杂 Task 管理，易于理解和维护
+- ✅ **数据库轻量** - 只存元数据，用于快速查询列表
+- ✅ **文件为主** - 完整对话历史存文件，方便查看、调试、备份
+- ✅ **JSONL 格式** - 每行一条消息，追加高效，查看方便
 
 ### 4.2 网关包：@coobee/ai-gateway
 
@@ -760,22 +862,15 @@ export type * from './types'
 
 ```typescript
 // packages/ai-core/src/storage/index.ts
-export { SessionStore } from './stores/SessionStore'
-export { TaskStore } from './stores/TaskStore'
-export { ToolExecutionStore } from './stores/ToolExecutionStore'
-export { schemas } from './schemas'
-```
-
-```typescript
-// packages/ai-core/src/storage/stores/SessionStore.ts
-// 已更新为混合存储（数据库 + 文件）
-// 详见上文 4.1 节的完整示例
+export { SessionStore } from './SessionStore'
+export type { Session, SessionMessage } from './SessionStore'
 ```
 
 **产出**:
 
 - ✅ `@coobee/ai-core` 包
-- ✅ AI 核心逻辑 + 存储层
+- ✅ AI 核心逻辑（Agent + Tools + Skills）
+- ✅ 存储层（SessionStore - 简化版）
 - ✅ 通过 alias 引用 `src/main/common/`
 
 ### Step 3: 创建 AI 网关包（2-3 天）
