@@ -7,7 +7,7 @@ export abstract class BaseJob {
   abstract readonly cron: string
   abstract readonly enabled: boolean
 
-  abstract execute(context: JobExecutionContext): Promise<any>
+  abstract execute(context: JobExecutionContext): Promise<unknown>
 
   getJobConfig(): CronJobConfig {
     return {

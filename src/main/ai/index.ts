@@ -6,6 +6,9 @@
 // ========== 核心类型 ==========
 export type * from './types'
 
+// ========== 通用工具 ==========
+export * from './common'
+
 // ========== @openai/agents SDK ==========
 export { Agent, run, type AgentConfiguration, type Tool } from '@openai/agents'
 
@@ -35,8 +38,25 @@ export {
   type SkillActivationResult
 } from './skills'
 
-// ========== 记忆管理 ==========
-export { SessionMemory, type ISessionMemory } from './memory'
+// ========== 记忆管理（四类记忆）==========
+export {
+  // 类型
+  type Message,
+  type SessionState,
+  type Checkpoint,
+  type LongTermMemoryEntry,
+  type MemoryQuery,
+  LongTermMemoryType,
+  // Session Memory（会话记忆）
+  SessionMemoryStore,
+  // Short-Term Memory（短期记忆）
+  TrimmingSession,
+  SummarizingSession,
+  // Working Memory / State（工作记忆 / 状态）
+  WorkingMemoryStore,
+  // Long-Term Memory（长期记忆）
+  LongTermMemoryStore
+} from './memory'
 
 // ========== 监控系统 ==========
 export {

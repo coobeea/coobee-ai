@@ -12,7 +12,7 @@ export class MiddlewareManager {
 
   async execute(
     context: MiddlewareContext,
-    handler: () => Promise<any>
+    handler: () => Promise<unknown>
   ): Promise<MiddlewareResult> {
     let index = 0
 

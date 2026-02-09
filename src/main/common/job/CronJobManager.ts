@@ -1,4 +1,4 @@
-import cron from 'node-cron'
+import cron, { type ScheduledTask } from 'node-cron'
 
 import { log } from '../logger'
 import {
@@ -23,7 +23,7 @@ export const DEFAULT_CRON_JOB_MANAGER_CONFIG: Required<CronJobManagerConfig> = {
 export class CronJobManager {
   private static instance: CronJobManager
   private jobs = new Map<string, { job: BaseJob; runtimeInfo: JobRuntimeInfo }>()
-  private tasks = new Map<string, any>()
+  private tasks = new Map<string, ScheduledTask>()
   private config: Required<CronJobManagerConfig>
 
   private constructor(config: CronJobManagerConfig = {}) {
@@ -176,7 +176,7 @@ export class CronJobManager {
     job: BaseJob,
     context: JobExecutionContext,
     timeout?: number
-  ): Promise<any> {
+  ): Promise<unknown> {
     if (!timeout) {
       return await job.execute(context)
     }

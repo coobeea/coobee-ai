@@ -22,15 +22,14 @@ export interface Task {
 export interface SubTask {
   id: string
   taskId: string // 父任务ID
-  name: string
+  name: string // 任务名称（统一字段）
   description: string
-  objective?: string // 子任务目标（兼容旧代码）
   dependencies?: string[] // 依赖的子任务ID
-  workerId?: string // 分配给哪个Worker
-  assignedWorker?: string // 分配的Worker（兼容旧代码）
-  status?: 'pending' | 'running' | 'completed' | 'failed'
+  assignedWorker: string // 分配的Worker（统一字段）
+  status: SubTaskStatus
   estimatedDuration?: number
   context?: Record<string, unknown>
+  result?: unknown // 执行结果
 }
 
 /**
@@ -55,10 +54,10 @@ export interface ExecutionPlan {
 export interface Stage {
   id: string
   name: string
-  subTaskIds: string[] // 这个阶段包含的子任务
+  tasks: SubTask[] // 这个阶段包含的子任务（统一字段）
   order: number // 阶段顺序
-  parallel: boolean // 是否并行执行
-  parallelizable?: boolean // 兼容旧代码
+  parallel: boolean // 是否并行执行（统一字段）
+  dependencies?: string[] // 阶段依赖
 }
 
 /**

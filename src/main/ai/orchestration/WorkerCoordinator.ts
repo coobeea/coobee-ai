@@ -139,7 +139,7 @@ export class WorkerCoordinator implements IWorkerCoordinator {
    * 构建子任务提示词
    */
   private buildSubTaskPrompt(subTask: SubTask): string {
-    let prompt = `**Your Task**: ${subTask.objective}\n\n`
+    let prompt = `**Your Task**: ${subTask.name}\n\n`
 
     if (subTask.description) {
       prompt += `**Details**: ${subTask.description}\n\n`

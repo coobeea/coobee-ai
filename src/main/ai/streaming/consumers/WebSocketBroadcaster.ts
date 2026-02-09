@@ -28,12 +28,22 @@ export type ServerMessage =
   | { type: 'latest_sequence'; data: { sequence: number } }
 
 /**
+ * 客户端信息
+ */
+interface ClientInfo {
+  sessionIds: Set<string>
+  isAlive: boolean
+  heartbeatTimer: NodeJS.Timeout | null
+}
+
+/**
  * WebSocket 广播器
  */
 export class WebSocketBroadcaster {
   private wss!: WebSocketServer
-  private clients = new Map<WebSocket, Set<string>>() // client -> sessionIds
+  private clients = new Map<WebSocket, ClientInfo>()
   private initialized = false
+  private heartbeatInterval = 30000 // 30秒心跳间隔
 
   /**
    * 初始化 WebSocket 服务器
@@ -46,7 +56,22 @@ export class WebSocketBroadcaster {
 
     this.wss.on('connection', (ws) => {
       console.log('[WebSocketBroadcaster] Client connected')
-      this.clients.set(ws, new Set())
+
+      // 初始化客户端信息
+      const clientInfo: ClientInfo = {
+        sessionIds: new Set(),
+        isAlive: true,
+        heartbeatTimer: null
+      }
+      this.clients.set(ws, clientInfo)
+
+      // 启动心跳检测
+      this.startHeartbeat(ws, clientInfo)
+
+      // 监听 pong 响应
+      ws.on('pong', () => {
+        clientInfo.isAlive = true
+      })
 
       ws.on('message', (data) => {
         this.handleClientMessage(ws, data.toString()).catch((error) => {
@@ -56,11 +81,12 @@ export class WebSocketBroadcaster {
 
       ws.on('close', () => {
         console.log('[WebSocketBroadcaster] Client disconnected')
-        this.clients.delete(ws)
+        this.cleanupClient(ws)
       })
 
       ws.on('error', (error) => {
         console.error('[WebSocketBroadcaster] WebSocket error:', error)
+        this.cleanupClient(ws)
       })
     })
 
@@ -68,6 +94,41 @@ export class WebSocketBroadcaster {
     this.registerEventListeners()
 
     this.initialized = true
+  }
+
+  /**
+   * 启动心跳检测
+   */
+  private startHeartbeat(ws: WebSocket, clientInfo: ClientInfo): void {
+    clientInfo.heartbeatTimer = setInterval(() => {
+      if (!clientInfo.isAlive) {
+        // 客户端未响应，关闭连接
+        console.log('[WebSocketBroadcaster] Client heartbeat timeout, closing connection')
+        ws.terminate()
+        this.cleanupClient(ws)
+        return
+      }
+
+      // 发送 ping，将 isAlive 标记为 false
+      clientInfo.isAlive = false
+      ws.ping()
+    }, this.heartbeatInterval)
+  }
+
+  /**
+   * 清理客户端资源
+   */
+  private cleanupClient(ws: WebSocket): void {
+    const clientInfo = this.clients.get(ws)
+    if (clientInfo) {
+      // 清理心跳定时器
+      if (clientInfo.heartbeatTimer) {
+        clearInterval(clientInfo.heartbeatTimer)
+        clientInfo.heartbeatTimer = null
+      }
+      // 删除客户端信息
+      this.clients.delete(ws)
+    }
   }
 
   /**
@@ -110,8 +171,8 @@ export class WebSocketBroadcaster {
         case 'subscribe':
           // 订阅会话
           if (msg.sessionId) {
-            const sessions = this.clients.get(ws)
-            sessions?.add(msg.sessionId)
+            const clientInfo = this.clients.get(ws)
+            clientInfo?.sessionIds.add(msg.sessionId)
             console.log(`[WebSocketBroadcaster] Client subscribed to: ${msg.sessionId}`)
 
             // 响应订阅成功
@@ -133,8 +194,8 @@ export class WebSocketBroadcaster {
         case 'unsubscribe':
           // 取消订阅
           if (msg.sessionId) {
-            const sessions = this.clients.get(ws)
-            sessions?.delete(msg.sessionId)
+            const clientInfo = this.clients.get(ws)
+            clientInfo?.sessionIds.delete(msg.sessionId)
             console.log(`[WebSocketBroadcaster] Client unsubscribed from: ${msg.sessionId}`)
           }
           break
@@ -192,8 +253,8 @@ export class WebSocketBroadcaster {
 
     let sentCount = 0
 
-    for (const [ws, sessions] of this.clients) {
-      if (sessions.has(message.sessionId) && ws.readyState === WebSocket.OPEN) {
+    for (const [ws, clientInfo] of this.clients) {
+      if (clientInfo.sessionIds.has(message.sessionId) && ws.readyState === WebSocket.OPEN) {
         this.sendToClient(ws, serverMsg)
         sentCount++
       }
@@ -225,17 +286,44 @@ export class WebSocketBroadcaster {
    */
   getSessionClientCount(sessionId: string): number {
     let count = 0
-    for (const sessions of this.clients.values()) {
-      if (sessions.has(sessionId)) count++
+    for (const clientInfo of this.clients.values()) {
+      if (clientInfo.sessionIds.has(sessionId)) count++
     }
     return count
+  }
+
+  /**
+   * 获取统计信息
+   */
+  getStats(): {
+    totalClients: number
+    heartbeatInterval: number
+    sessions: Record<string, number>
+  } {
+    const sessions: Record<string, number> = {}
+
+    for (const clientInfo of this.clients.values()) {
+      for (const sessionId of clientInfo.sessionIds) {
+        sessions[sessionId] = (sessions[sessionId] || 0) + 1
+      }
+    }
+
+    return {
+      totalClients: this.clients.size,
+      heartbeatInterval: this.heartbeatInterval,
+      sessions
+    }
   }
 
   /**
    * 关闭所有连接
    */
   close(): void {
-    for (const ws of this.clients.keys()) {
+    for (const [ws, clientInfo] of this.clients) {
+      // 清理心跳定时器
+      if (clientInfo.heartbeatTimer) {
+        clearInterval(clientInfo.heartbeatTimer)
+      }
       ws.close()
     }
     this.clients.clear()

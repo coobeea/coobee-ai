@@ -3,3 +3,4 @@
  */
 
 export * from './MonitoringService'
+export * from './PerformanceMonitor'

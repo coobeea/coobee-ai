@@ -5,7 +5,7 @@
  */
 
 import { Agent, run } from '@openai/agents'
-import type { Task, SubTask, ExecutionPlan, ExecutionStage } from './types'
+import type { Task, SubTask, ExecutionPlan, ExecutionStage, SubTaskStatus } from './types'
 
 /**
  * 规划者接口
@@ -178,26 +178,28 @@ Consider:
       }
 
       // 转换为标准格式
-      const subTasks: SubTask[] = (parsed.subTasks || []).map((st) => ({
-        id: st.id,
-        taskId: '', // 将在外部设置
-        name: st.objective || 'Unnamed Subtask',
-        objective: st.objective,
-        description: st.description || st.objective || '',
-        dependencies: st.dependencies || [],
-        workerId: st.assignedWorker || 'chat',
-        assignedWorker: st.assignedWorker || 'chat',
-        status: 'pending' as const
-      }))
+      const subTasks: SubTask[] = (parsed.subTasks || []).map(
+        (st: Record<string, unknown>): SubTask => ({
+          id: String(st.id || `subtask-${Date.now()}`),
+          taskId: '', // 将在外部设置
+          name: String(st.objective || st.name || 'Unnamed Subtask'),
+          description: String(st.description || st.objective || ''),
+          dependencies: Array.isArray(st.dependencies) ? (st.dependencies as string[]) : [],
+          assignedWorker: String(st.assignedWorker || 'chat'),
+          status: 'pending' as SubTaskStatus
+        })
+      )
 
-      const stages: ExecutionStage[] = (parsed.stages || []).map((stage, index) => ({
-        id: stage.stageId,
-        name: stage.name,
-        subTaskIds: stage.subTaskIds || [],
-        order: index,
-        parallel: stage.parallelizable ?? false,
-        parallelizable: stage.parallelizable ?? false
-      }))
+      const stages: ExecutionStage[] = (parsed.stages || []).map((stage, index) => {
+        const stageTasks = subTasks.filter((st) => (stage.subTaskIds || []).includes(st.id))
+        return {
+          id: stage.stageId,
+          name: stage.name,
+          tasks: stageTasks,
+          order: index,
+          parallel: stage.parallelizable ?? false
+        }
+      })
 
       return { subTasks, stages }
     } catch (error) {
@@ -210,22 +212,29 @@ Consider:
             id: 'subtask-1',
             taskId: '',
             name: 'Complete the task',
-            objective: 'Complete the task',
             description: 'Execute the task as a single unit',
             dependencies: [],
-            workerId: 'chat',
             assignedWorker: 'chat',
-            status: 'pending'
+            status: 'pending' as SubTaskStatus
           }
         ],
         stages: [
           {
             id: 'stage-1',
             name: 'Main Stage',
-            subTaskIds: ['subtask-1'],
+            tasks: [
+              {
+                id: 'subtask-1',
+                taskId: '',
+                name: 'Complete the task',
+                description: 'Execute the task as a single unit',
+                dependencies: [],
+                assignedWorker: 'chat',
+                status: 'pending' as SubTaskStatus
+              }
+            ],
             order: 0,
-            parallel: false,
-            parallelizable: false
+            parallel: false
           }
         ]
       }

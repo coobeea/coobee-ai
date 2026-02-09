@@ -282,7 +282,18 @@ export class PlanVersionManager {
 
     const added = newPlan.subTasks.filter((st) => !oldIds.has(st.id)).length
     const removed = oldPlan.subTasks.filter((st) => !newIds.has(st.id)).length
-    const modified = 0 // TODO: 实现内容比较
+
+    // 计算修改的子任务数量（既在旧计划也在新计划中，但内容不同的）
+    let modified = 0
+    for (const newSubTask of newPlan.subTasks) {
+      const oldSubTask = oldPlan.subTasks.find((st) => st.id === newSubTask.id)
+      if (oldSubTask) {
+        // 比较子任务内容（使用 JSON 序列化进行深度比较）
+        if (JSON.stringify(oldSubTask) !== JSON.stringify(newSubTask)) {
+          modified++
+        }
+      }
+    }
 
     return {
       addedSubTasks: added,

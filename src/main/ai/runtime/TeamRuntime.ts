@@ -238,14 +238,34 @@ export class TeamRuntime implements IExecutable {
   private async runWithPlanner(input: string, config?: ExecutionConfig): Promise<string> {
     console.log(`[TeamRuntime] Planner mode - Using Orchestrator`)
 
-    // TODO: 集成 Orchestrator
-    // 1. 使用 Planner 分解任务
-    // 2. 将子任务分配给合适的成员
-    // 3. 协调执行
-    // 4. 聚合结果
+    // 动态导入避免循环依赖
+    const { createOrchestrator } = await import('../orchestration')
 
-    // 暂时回退到顺序执行
-    return await this.runSequential(input, config)
+    // 1. 创建 Orchestrator
+    const emptyContext: Record<string, unknown> = {}
+    const maxRetriesValue = typeof config?.maxRetries === 'number' ? config.maxRetries : 3
+    const orchestrator = createOrchestrator({
+      maxRetries: maxRetriesValue
+    })
+
+    try {
+      // 2. 构建任务
+      const task = {
+        id: `task-${Date.now()}`,
+        objective: input,
+        context: (config?.context as Record<string, unknown>) || emptyContext,
+        requirements: (config?.requirements as string[]) || []
+      }
+
+      // 3. 执行任务
+      const result = await orchestrator.executeTask(task)
+
+      // 4. 返回结果
+      return JSON.stringify(result.subTaskResults || [])
+    } finally {
+      // 5. 清理资源
+      await orchestrator.cleanup()
+    }
   }
 
   // ========== 会话管理 ==========

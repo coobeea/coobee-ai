@@ -16,6 +16,12 @@ export class StreamStore {
   private db: SQLiteService
   private initialized = false
 
+  // 批量写入配置
+  private messageQueue: StreamMessage[] = []
+  private flushInterval = 1000 // 1秒刷新一次
+  private maxBatchSize = 100 // 最大批量大小
+  private flushTimer: NodeJS.Timeout | null = null
+
   constructor() {
     this.db = SQLiteService.getInstance()
   }
@@ -32,8 +38,11 @@ export class StreamStore {
     // 2. 注册事件监听
     this.registerEventListeners()
 
+    // 3. 启动定时刷新
+    this.startFlushTimer()
+
     this.initialized = true
-    console.log('[StreamStore] Initialized')
+    console.log('[StreamStore] Initialized with batch writing')
   }
 
   /**
@@ -74,19 +83,69 @@ export class StreamStore {
   }
 
   /**
+   * 启动定时刷新
+   */
+  private startFlushTimer(): void {
+    this.flushTimer = setInterval(() => {
+      this.flushQueue().catch((error) => {
+        console.error('[StreamStore] Failed to flush queue:', error)
+      })
+    }, this.flushInterval)
+  }
+
+  /**
    * 注册事件监听器（消费者核心）
    */
   private registerEventListeners(): void {
-    // 监听消息事件
+    // 监听消息事件 - 改为入队而不是立即写入
     eventBus.on(StreamEventType.MESSAGE, (event: StreamEvent) => {
       if (event.message) {
-        this.saveMessage(event.message).catch((error) => {
-          console.error('[StreamStore] Failed to save message:', error)
-        })
+        this.enqueueMessage(event.message)
       }
     })
 
     console.log('[StreamStore] Event listeners registered')
+  }
+
+  /**
+   * 入队消息（批量写入）
+   */
+  private enqueueMessage(message: StreamMessage): void {
+    this.messageQueue.push(message)
+
+    // 队列满时立即刷新
+    if (this.messageQueue.length >= this.maxBatchSize) {
+      this.flushQueue().catch((error) => {
+        console.error('[StreamStore] Failed to flush full queue:', error)
+      })
+    }
+  }
+
+  /**
+   * 刷新队列（批量写入数据库）
+   */
+  private async flushQueue(): Promise<void> {
+    if (this.messageQueue.length === 0) {
+      return
+    }
+
+    // 取出当前队列中的所有消息
+    const batch = this.messageQueue.splice(0, this.messageQueue.length)
+
+    try {
+      // 使用事务批量插入
+      await this.db.transaction(async () => {
+        for (const message of batch) {
+          await this.saveMessage(message)
+        }
+      })
+
+      console.log(`[StreamStore] Flushed ${batch.length} messages`)
+    } catch (error) {
+      console.error('[StreamStore] Batch write failed:', error)
+      // 写入失败时，将消息重新入队（简化实现，实际可能需要死信队列）
+      this.messageQueue.unshift(...batch)
+    }
   }
 
   /**
@@ -189,6 +248,37 @@ export class StreamStore {
         name: row.source_name as string
       }
     }
+  }
+
+  /**
+   * 获取队列统计信息
+   */
+  getQueueStats(): {
+    queueSize: number
+    maxBatchSize: number
+    flushInterval: number
+  } {
+    return {
+      queueSize: this.messageQueue.length,
+      maxBatchSize: this.maxBatchSize,
+      flushInterval: this.flushInterval
+    }
+  }
+
+  /**
+   * 清理资源
+   */
+  async destroy(): Promise<void> {
+    // 停止定时器
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer)
+      this.flushTimer = null
+    }
+
+    // 刷新剩余消息
+    await this.flushQueue()
+
+    console.log('[StreamStore] Destroyed')
   }
 }
 

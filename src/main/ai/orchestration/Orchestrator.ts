@@ -158,18 +158,14 @@ export class Orchestrator implements IOrchestrator {
       error?: string
     }> = []
 
-    const subTaskMap = new Map(plan.subTasks.map((st) => [st.id, st]))
-
     // 按阶段执行
     for (const stage of plan.stages) {
       console.log(`[Orchestrator] Executing stage: ${stage.name}`)
 
-      const stageTasks = stage.subTaskIds
-        .map((id) => subTaskMap.get(id))
-        .filter((st): st is SubTask => st !== undefined)
+      const stageTasks = stage.tasks
 
       // 并行或顺序执行
-      if (this.config.allowParallel && stage.parallelizable) {
+      if (this.config.allowParallel && stage.parallel) {
         // 并行执行
         const stageResults = await Promise.allSettled(
           stageTasks.map((subTask) => this.executeSubTask(subTask))
@@ -218,20 +214,61 @@ export class Orchestrator implements IOrchestrator {
   }
 
   /**
-   * 执行单个子任务
+   * 执行单个子任务（支持重试）
    */
   private async executeSubTask(subTask: SubTask): Promise<unknown> {
-    console.log(`[Orchestrator] Executing subtask: ${subTask.objective}`)
+    console.log(`[Orchestrator] Executing subtask: ${subTask.name}`)
 
-    // 获取或创建 Worker
-    const worker = await this.workerCoordinator.getOrCreateWorker(subTask.assignedWorker || 'chat')
+    let lastError: Error | null = null
+    const maxRetries = this.config.maxRetries || 0
 
-    // 执行子任务
-    const result = await this.workerCoordinator.executeSubTask(subTask, worker)
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        // 如果是重试，等待一段时间（指数退避）
+        if (attempt > 0) {
+          const backoffTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000) // 最多10秒
+          console.log(
+            `[Orchestrator] Retry attempt ${attempt}/${maxRetries} for ${subTask.id} after ${backoffTime}ms`
+          )
+          await this.delay(backoffTime)
+        }
 
-    console.log(`[Orchestrator] SubTask ${subTask.id} completed`)
+        // 获取或创建 Worker
+        const worker = await this.workerCoordinator.getOrCreateWorker(
+          subTask.assignedWorker || 'chat'
+        )
 
-    return result
+        // 执行子任务
+        const result = await this.workerCoordinator.executeSubTask(subTask, worker)
+
+        console.log(
+          `[Orchestrator] SubTask ${subTask.id} completed ${attempt > 0 ? `(after ${attempt} retries)` : ''}`
+        )
+
+        return result
+      } catch (error) {
+        lastError = error as Error
+        console.error(`[Orchestrator] Attempt ${attempt + 1} failed for ${subTask.id}:`, error)
+
+        // 如果还有重试机会，继续
+        if (attempt < maxRetries) {
+          continue
+        }
+
+        // 如果是最后一次尝试，抛出错误
+        throw lastError
+      }
+    }
+
+    // 理论上不会到达这里，但为了类型安全
+    throw lastError || new Error('SubTask execution failed')
+  }
+
+  /**
+   * 延迟辅助函数
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   /**

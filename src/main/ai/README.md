@@ -29,12 +29,86 @@ src/main/ai/
 - **AgentFactory**: 从配置创建 Agent
 - **AgentConfigStore**: 持久化 Agent 配置
 
-### 2. Memory（记忆系统）
+### 2. Memory（记忆系统）⭐ 升级
 
-管理 Agent 的长期和短期记忆。
+基于认知科学和 Tachikoma 设计的**四类记忆系统**：
 
-- **MemoryManager**: 记忆存储和检索
-- 支持上下文窗口管理
+#### 1️⃣ Session Memory（会话记忆）
+
+完整持久化对话历史（JSONL 格式）。
+
+- **SessionMemoryStore**: 管理单次会话的所有消息
+- 支持按角色、时间过滤
+- 用于完整追溯、审计、分析
+
+#### 2️⃣ Short-Term Memory（短期记忆 / 上下文窗口）
+
+LLM 上下文窗口管理，支持两种压缩策略：
+
+- **TrimmingSession**: 保留最近 N 轮对话（修剪策略）
+- **SummarizingSession**: 将旧对话压缩为摘要（总结策略）
+- 基于 `@openai/agents` SDK 的 `Session`
+
+#### 3️⃣ Working Memory / State（工作记忆 / 状态）⭐ 新增
+
+会话级别的临时变量和状态管理：
+
+- **WorkingMemoryStore**: 管理任务状态、计划、检查点
+- 存储：当前计划、子任务状态、自定义变量
+- 支持断点续传（Checkpoint 机制）
+- 文件存储：`~/.coobee-ai/sessions/{sessionId}/shared/context.json`
+
+#### 4️⃣ Long-Term Memory（长期记忆 / 知识库）
+
+跨会话的持久化知识：
+
+- **LongTermMemoryStore**: 管理长期记忆条目
+- 支持五种类型：
+  - `SEMANTIC`: 语义记忆（事实性知识）
+  - `EPISODIC`: 情景记忆（具体事件）
+  - `PROCEDURAL`: 程序记忆（如何做事）
+  - `PREFERENCE`: 用户偏好
+  - `LESSON`: 经验教训
+- 支持重要性评分（1-10）
+- 支持关键词检索（未来可升级为向量搜索）
+- 数据库存储：SQLite `long_term_memory` 表
+
+#### 使用示例
+
+```typescript
+import {
+  SessionMemoryStore,
+  WorkingMemoryStore,
+  LongTermMemoryStore,
+  TrimmingSession,
+  LongTermMemoryType
+} from '@main/ai/memory'
+
+// 1. 会话记忆
+const sessionMemory = new SessionMemoryStore(sessionManager, sessionId)
+await sessionMemory.appendMessage({ role: 'user', content: 'Hello' })
+
+// 2. 短期记忆（Trimming 策略）
+const session = new TrimmingSession(openai, { maxTurns: 10 })
+await session.addUserMessage('你好')
+
+// 3. 工作记忆
+const workingMemory = new WorkingMemoryStore(sessionManager, sessionId)
+await workingMemory.setVariable('currentTaskId', 'task-001')
+await workingMemory.markSubtaskCompleted('subtask-1')
+const checkpointId = await workingMemory.createCheckpoint()
+
+// 4. 长期记忆
+const longTermMemory = new LongTermMemoryStore(db)
+await longTermMemory.saveMemory({
+  type: LongTermMemoryType.PREFERENCE,
+  content: '用户偏好使用中文',
+  importance: 8,
+  userId: 'user-123'
+})
+```
+
+详见：[`docs/ai-architecture/12-memory-system-design.md`](../../../docs/ai-architecture/12-memory-system-design.md)
 
 ### 3. Skills（技能系统）
 

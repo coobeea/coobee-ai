@@ -23,14 +23,93 @@ export interface AgentCreateOptions {
 }
 
 /**
+ * Agent 缓存条目
+ */
+interface AgentCacheEntry {
+  agent: Agent
+  lastAccess: number
+  createdAt: number
+}
+
+/**
  * Agent 工厂类
  */
 export class AgentFactory {
-  // Agent 实例缓存：sessionId -> Agent
-  private agents = new Map<string, Agent>()
+  // Agent 实例缓存：sessionId -> AgentCacheEntry
+  private agents = new Map<string, AgentCacheEntry>()
+
+  // 缓存配置
+  private readonly maxCacheSize = 100 // 最大缓存数量
+  private readonly cacheTimeout = 30 * 60 * 1000 // 30分钟过期
 
   // 工具注册表（工具 ID -> Tool 实例）
   private toolRegistry = new Map<string, Tool>()
+
+  // 清理定时器（用于 destroy() 方法）
+
+  private readonly cleanupInterval: NodeJS.Timeout
+
+  constructor() {
+    // 启动定期清理过期缓存
+    this.cleanupInterval = this.startCleanup()
+  }
+
+  /**
+   * 启动定期清理
+   */
+  private startCleanup(): NodeJS.Timeout {
+    // 每5分钟清理一次过期缓存
+    return setInterval(
+      () => {
+        this.cleanupExpiredAgents()
+      },
+      5 * 60 * 1000
+    )
+  }
+
+  /**
+   * 清理过期的 Agent
+   */
+  private cleanupExpiredAgents(): void {
+    const now = Date.now()
+    let cleanedCount = 0
+
+    for (const [sessionId, entry] of this.agents.entries()) {
+      if (now - entry.lastAccess > this.cacheTimeout) {
+        this.agents.delete(sessionId)
+        cleanedCount++
+      }
+    }
+
+    if (cleanedCount > 0) {
+      console.log(`[AgentFactory] Cleaned up ${cleanedCount} expired agents`)
+    }
+  }
+
+  /**
+   * LRU 淘汰：删除最久未使用的 Agent
+   */
+  private evictLRU(): void {
+    if (this.agents.size < this.maxCacheSize) {
+      return
+    }
+
+    // 找到最久未使用的条目
+    let oldestSessionId: string | null = null
+    let oldestTime = Infinity
+
+    for (const [sessionId, entry] of this.agents.entries()) {
+      if (entry.lastAccess < oldestTime) {
+        oldestTime = entry.lastAccess
+        oldestSessionId = sessionId
+      }
+    }
+
+    if (oldestSessionId) {
+      this.agents.delete(oldestSessionId)
+      console.log(`[AgentFactory] Evicted agent for session: ${oldestSessionId}`)
+    }
+  }
 
   /**
    * 注册工具到工具注册表
@@ -111,8 +190,16 @@ export class AgentFactory {
     // 创建 Agent 实例
     const agent = new Agent(mergedConfig)
 
+    // 执行 LRU 淘汰（如果需要）
+    this.evictLRU()
+
     // 缓存实例
-    this.agents.set(sessionId, agent)
+    const now = Date.now()
+    this.agents.set(sessionId, {
+      agent,
+      lastAccess: now,
+      createdAt: now
+    })
 
     return agent
   }
@@ -133,7 +220,23 @@ export class AgentFactory {
    * @param sessionId 会话 ID
    */
   getAgent(sessionId: string): Agent | undefined {
-    return this.agents.get(sessionId)
+    const entry = this.agents.get(sessionId)
+    if (!entry) {
+      return undefined
+    }
+
+    // 检查是否过期
+    const now = Date.now()
+    if (now - entry.lastAccess > this.cacheTimeout) {
+      this.agents.delete(sessionId)
+      console.log(`[AgentFactory] Agent expired for session: ${sessionId}`)
+      return undefined
+    }
+
+    // 更新访问时间
+    entry.lastAccess = now
+
+    return entry.agent
   }
 
   /**
@@ -169,6 +272,33 @@ export class AgentFactory {
    */
   getAllSessionIds(): string[] {
     return Array.from(this.agents.keys())
+  }
+
+  /**
+   * 删除 Agent
+   * @param sessionId 会话 ID
+   */
+  deleteAgent(sessionId: string): void {
+    this.agents.delete(sessionId)
+    console.log(`[AgentFactory] Deleted agent for session: ${sessionId}`)
+  }
+
+  /**
+   * 清空所有 Agent
+   */
+  clearAllAgents(): void {
+    const count = this.agents.size
+    this.agents.clear()
+    console.log(`[AgentFactory] Cleared ${count} agents`)
+  }
+
+  /**
+   * 清理资源
+   */
+  destroy(): void {
+    clearInterval(this.cleanupInterval)
+    this.clearAllAgents()
+    console.log('[AgentFactory] Destroyed')
   }
 }
 
