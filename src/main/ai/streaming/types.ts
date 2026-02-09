@@ -21,7 +21,7 @@ export type StreamMessageType =
  */
 export interface StreamSource {
   /** 来源类型 */
-  type: 'agent' | 'team'
+  type: 'agent' | 'team' | 'swarm'
   /** 来源 ID */
   id: string
   /** 来源名称 */

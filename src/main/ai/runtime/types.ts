@@ -119,7 +119,7 @@ export interface IExecutable {
   /**
    * 执行类型
    */
-  readonly type: 'agent' | 'team'
+  readonly type: 'agent' | 'team' | 'swarm'
 
   /**
    * 执行 ID（Agent ID 或 Team ID）

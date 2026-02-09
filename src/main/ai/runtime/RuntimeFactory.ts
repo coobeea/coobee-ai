@@ -5,6 +5,7 @@
 
 import { AgentRuntime } from './AgentRuntime'
 import { TeamRuntime } from './TeamRuntime'
+import { SwarmRuntime, type SwarmRuntimeOptions } from '../swarm/SwarmRuntime'
 import { agentConfigStore } from '../storage/AgentConfigStore'
 import { teamConfigStore } from '../storage/TeamConfigStore'
 import type { IExecutable } from './types'
@@ -12,7 +13,7 @@ import type { IExecutable } from './types'
 /**
  * 运行时类型
  */
-export type RuntimeType = 'agent' | 'team'
+export type RuntimeType = 'agent' | 'team' | 'swarm'
 
 /**
  * 运行时创建选项
@@ -20,10 +21,12 @@ export type RuntimeType = 'agent' | 'team'
 export interface RuntimeCreateOptions {
   /** 运行时类型 */
   type: RuntimeType
-  /** Agent ID 或 Team ID */
+  /** Agent ID 或 Team ID 或 Swarm ID */
   id: string
   /** 会话 ID（可选，自动生成） */
   sessionId?: string
+  /** Swarm 选项（仅 type='swarm' 时使用） */
+  swarmOptions?: SwarmRuntimeOptions
 }
 
 /**
@@ -51,6 +54,8 @@ export class RuntimeFactory {
       runtime = new AgentRuntime(id, sessionId)
     } else if (type === 'team') {
       runtime = new TeamRuntime(id, sessionId)
+    } else if (type === 'swarm') {
+      runtime = new SwarmRuntime(id, sessionId, options.swarmOptions)
     } else {
       throw new Error(`Unknown runtime type: ${type}`)
     }

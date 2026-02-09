@@ -243,7 +243,7 @@ export class StreamStore {
       data: row.data ? JSON.parse(row.data as string) : undefined,
       timestamp: row.timestamp as number,
       source: {
-        type: row.source_type as 'agent' | 'team',
+        type: row.source_type as 'agent' | 'team' | 'swarm',
         id: row.source_id as string,
         name: row.source_name as string
       }

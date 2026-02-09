@@ -105,7 +105,7 @@ export {
   type ServerMessage
 } from './streaming'
 
-// ========== 统一运行时接口（Agent & Team）==========
+// ========== 统一运行时接口（Agent & Team & Swarm）==========
 export {
   // 核心接口
   type IExecutable,
@@ -120,6 +120,8 @@ export {
   // 运行时
   AgentRuntime,
   TeamRuntime,
+  SwarmRuntime,
+  type SwarmRuntimeOptions,
   RuntimeFactory,
   runtimeFactory,
   type RuntimeType,
@@ -153,3 +155,43 @@ export {
   type TaskExecutionResult,
   type OrchestratorConfig
 } from './orchestration'
+
+// ========== Swarm（群体智能）==========
+export {
+  // 核心组件
+  SwarmCoordinator,
+  type CoordinationResult,
+  AgentPool,
+  HandoffRouter,
+  SwarmContext,
+  SwarmMonitor,
+  // 并发管理
+  ConcurrencyManager,
+  type SwarmSubTask,
+  type SubTaskResult,
+  type ParallelExecutionResult,
+  // 消息通信
+  MessageBus,
+  type SwarmMessage,
+  type MessagePriority,
+  // 通信工具
+  createSwarmTools,
+  // 角色系统
+  RoleRegistry,
+  builtinRoles,
+  coderRole,
+  researcherRole,
+  reviewerRole,
+  writerRole,
+  analystRole,
+  // 类型
+  type AgentRole,
+  type SwarmConfig,
+  type SwarmTask,
+  type SwarmState,
+  type HandoffRecord,
+  type SwarmArtifact,
+  type SwarmMetrics,
+  type SwarmAlert,
+  DEFAULT_SWARM_CONFIG
+} from './swarm'

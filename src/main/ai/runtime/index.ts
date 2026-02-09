@@ -1,6 +1,6 @@
 /**
  * 统一运行时模块
- * 为 Agent 和 Team 提供一致的对外接口
+ * 为 Agent、Team 和 Swarm 提供一致的对外接口
  */
 
 export * from './types'
@@ -12,3 +12,6 @@ export {
   type RuntimeType,
   type RuntimeCreateOptions
 } from './RuntimeFactory'
+
+// Re-export SwarmRuntime for convenience
+export { SwarmRuntime, type SwarmRuntimeOptions } from '../swarm/SwarmRuntime'
