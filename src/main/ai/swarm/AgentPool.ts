@@ -127,9 +127,8 @@ export class AgentPool {
 
     // 3. 创建新 Agent
     const poolId = this.generatePoolId(role.id)
-    const sessionId = `swarm-${this.config.id}-${poolId}`
 
-    const agent = await agentFactory.createAgent(sessionId, {
+    const agent = await agentFactory.createAgent({
       config: {
         name: `${role.name} (Swarm)`,
         instructions: role.instructions,
@@ -210,10 +209,6 @@ export class AgentPool {
     }
 
     entry.status = 'retiring'
-
-    // 从 AgentFactory 中清理
-    const sessionId = `swarm-${this.config.id}-${poolId}`
-    agentFactory.removeAgent(sessionId)
 
     this.pool.delete(poolId)
     this.retiredCount++

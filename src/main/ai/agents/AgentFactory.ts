@@ -1,6 +1,7 @@
 /**
  * Agent 工厂
- * 负责创建和管理 Agent 实例
+ * 负责创建 Agent 实例，不持有缓存。
+ * Agent 的生命周期由使用方（AgentRuntime 等）自行管理。
  */
 
 import { Agent } from '@openai/agents'
@@ -25,93 +26,19 @@ export interface AgentCreateOptions {
 }
 
 /**
- * Agent 缓存条目
- */
-interface AgentCacheEntry {
-  agent: Agent
-  lastAccess: number
-  createdAt: number
-}
-
-/**
  * Agent 工厂类
+ *
+ * 职责：
+ * - 从预设 / 数据库配置 / 自定义选项创建 Agent 实例
+ * - 管理工具注册表（工具 ID → Tool 实例的映射）
+ *
+ * 不负责：
+ * - Agent 生命周期管理（由 AgentRuntime / TeamRuntime / SwarmRuntime 管理）
+ * - Agent 缓存（SDK Agent 是轻量配置对象，创建成本极低）
  */
 export class AgentFactory {
-  // Agent 实例缓存：sessionId -> AgentCacheEntry
-  private agents = new Map<string, AgentCacheEntry>()
-
-  // 缓存配置
-  private readonly maxCacheSize = 100 // 最大缓存数量
-  private readonly cacheTimeout = 30 * 60 * 1000 // 30分钟过期
-
   // 工具注册表（工具 ID -> Tool 实例）
   private toolRegistry = new Map<string, Tool>()
-
-  // 清理定时器（用于 destroy() 方法）
-
-  private readonly cleanupInterval: NodeJS.Timeout
-
-  constructor() {
-    // 启动定期清理过期缓存
-    this.cleanupInterval = this.startCleanup()
-  }
-
-  /**
-   * 启动定期清理
-   */
-  private startCleanup(): NodeJS.Timeout {
-    // 每5分钟清理一次过期缓存
-    return setInterval(
-      () => {
-        this.cleanupExpiredAgents()
-      },
-      5 * 60 * 1000
-    )
-  }
-
-  /**
-   * 清理过期的 Agent
-   */
-  private cleanupExpiredAgents(): void {
-    const now = Date.now()
-    let cleanedCount = 0
-
-    for (const [sessionId, entry] of this.agents.entries()) {
-      if (now - entry.lastAccess > this.cacheTimeout) {
-        this.agents.delete(sessionId)
-        cleanedCount++
-      }
-    }
-
-    if (cleanedCount > 0) {
-      console.log(`[AgentFactory] Cleaned up ${cleanedCount} expired agents`)
-    }
-  }
-
-  /**
-   * LRU 淘汰：删除最久未使用的 Agent
-   */
-  private evictLRU(): void {
-    if (this.agents.size < this.maxCacheSize) {
-      return
-    }
-
-    // 找到最久未使用的条目
-    let oldestSessionId: string | null = null
-    let oldestTime = Infinity
-
-    for (const [sessionId, entry] of this.agents.entries()) {
-      if (entry.lastAccess < oldestTime) {
-        oldestTime = entry.lastAccess
-        oldestSessionId = sessionId
-      }
-    }
-
-    if (oldestSessionId) {
-      this.agents.delete(oldestSessionId)
-      console.log(`[AgentFactory] Evicted agent for session: ${oldestSessionId}`)
-    }
-  }
 
   /**
    * 注册工具到工具注册表
@@ -150,10 +77,9 @@ export class AgentFactory {
 
   /**
    * 创建 Agent 实例
-   * @param sessionId 会话 ID
    * @param options 创建选项
    */
-  async createAgent(sessionId: string, options: AgentCreateOptions = {}): Promise<Agent> {
+  async createAgent(options: AgentCreateOptions = {}): Promise<Agent> {
     const { preset, configId, config = {}, tools = [], modelSettings } = options
 
     let finalConfig: AgentPreset
@@ -195,21 +121,8 @@ export class AgentFactory {
       ...(tools.length > 0 ? { tools } : {})
     }
 
-    // 创建 Agent 实例
-    const agent = new Agent(mergedConfig)
-
-    // 执行 LRU 淘汰（如果需要）
-    this.evictLRU()
-
-    // 缓存实例
-    const now = Date.now()
-    this.agents.set(sessionId, {
-      agent,
-      lastAccess: now,
-      createdAt: now
-    })
-
-    return agent
+    // 创建并返回 Agent 实例
+    return new Agent(mergedConfig)
   }
 
   /**
@@ -223,92 +136,6 @@ export class AgentFactory {
       // 从数据库配置中加载 modelSettings（如果存在）
       ...(config.modelSettings ? { modelSettings: config.modelSettings as ModelSettings } : {})
     }
-  }
-
-  /**
-   * 获取已存在的 Agent
-   * @param sessionId 会话 ID
-   */
-  getAgent(sessionId: string): Agent | undefined {
-    const entry = this.agents.get(sessionId)
-    if (!entry) {
-      return undefined
-    }
-
-    // 检查是否过期
-    const now = Date.now()
-    if (now - entry.lastAccess > this.cacheTimeout) {
-      this.agents.delete(sessionId)
-      console.log(`[AgentFactory] Agent expired for session: ${sessionId}`)
-      return undefined
-    }
-
-    // 更新访问时间
-    entry.lastAccess = now
-
-    return entry.agent
-  }
-
-  /**
-   * 获取或创建 Agent
-   * @param sessionId 会话 ID
-   * @param options 创建选项（仅在不存在时使用）
-   */
-  async getOrCreateAgent(sessionId: string, options?: AgentCreateOptions): Promise<Agent> {
-    const existingAgent = this.getAgent(sessionId)
-    if (existingAgent) {
-      return existingAgent
-    }
-    return await this.createAgent(sessionId, options)
-  }
-
-  /**
-   * 删除 Agent
-   * @param sessionId 会话 ID
-   */
-  removeAgent(sessionId: string): void {
-    this.agents.delete(sessionId)
-  }
-
-  /**
-   * 清空所有 Agent
-   */
-  clear(): void {
-    this.agents.clear()
-  }
-
-  /**
-   * 获取所有 Agent 会话 ID
-   */
-  getAllSessionIds(): string[] {
-    return Array.from(this.agents.keys())
-  }
-
-  /**
-   * 删除 Agent
-   * @param sessionId 会话 ID
-   */
-  deleteAgent(sessionId: string): void {
-    this.agents.delete(sessionId)
-    console.log(`[AgentFactory] Deleted agent for session: ${sessionId}`)
-  }
-
-  /**
-   * 清空所有 Agent
-   */
-  clearAllAgents(): void {
-    const count = this.agents.size
-    this.agents.clear()
-    console.log(`[AgentFactory] Cleared ${count} agents`)
-  }
-
-  /**
-   * 清理资源
-   */
-  destroy(): void {
-    clearInterval(this.cleanupInterval)
-    this.clearAllAgents()
-    console.log('[AgentFactory] Destroyed')
   }
 }
 

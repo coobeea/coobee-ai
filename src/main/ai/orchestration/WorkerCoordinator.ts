@@ -61,7 +61,7 @@ export class WorkerCoordinator implements IWorkerCoordinator {
     const workerId = `worker-${workerType}-${++this.workerCounter}`
 
     // 使用 AgentFactory 创建 Agent
-    const agent = await agentFactory.createAgent(workerId, {
+    const agent = await agentFactory.createAgent({
       preset: this.mapWorkerTypeToPreset(workerType)
     })
 

@@ -130,10 +130,10 @@ describe('TeamRuntime', () => {
       expect(mockGetTeam).toHaveBeenCalledWith('team-1')
       expect(runtime.name).toBe('Test Team')
       expect(mockCreateAgent).toHaveBeenCalledTimes(2)
-      expect(mockCreateAgent).toHaveBeenCalledWith('team-team-1-agent-a', {
+      expect(mockCreateAgent).toHaveBeenCalledWith({
         configId: 'agent-a'
       })
-      expect(mockCreateAgent).toHaveBeenCalledWith('team-team-1-agent-b', {
+      expect(mockCreateAgent).toHaveBeenCalledWith({
         configId: 'agent-b'
       })
     })

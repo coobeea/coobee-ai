@@ -63,7 +63,7 @@ describe('WorkerCoordinator', () => {
       expect(worker.type).toBe('code')
       expect(worker.status).toBe('idle')
       expect(worker.agent).toBe(mockAgent)
-      expect(mockCreateAgent).toHaveBeenCalledWith(expect.stringContaining('worker-code-'), {
+      expect(mockCreateAgent).toHaveBeenCalledWith({
         preset: 'code'
       })
     })
@@ -99,14 +99,14 @@ describe('WorkerCoordinator', () => {
       mockCreateAgent.mockResolvedValue({ name: 'Agent' })
 
       await coordinator.getOrCreateWorker('code')
-      expect(mockCreateAgent).toHaveBeenCalledWith(expect.any(String), { preset: 'code' })
+      expect(mockCreateAgent).toHaveBeenCalledWith({ preset: 'code' })
 
       await coordinator.getOrCreateWorker('research')
-      expect(mockCreateAgent).toHaveBeenCalledWith(expect.any(String), { preset: 'research' })
+      expect(mockCreateAgent).toHaveBeenCalledWith({ preset: 'research' })
 
       // 默认映射到 chat
       await coordinator.getOrCreateWorker('unknown')
-      expect(mockCreateAgent).toHaveBeenCalledWith(expect.any(String), { preset: 'chat' })
+      expect(mockCreateAgent).toHaveBeenCalledWith({ preset: 'chat' })
     })
   })
 

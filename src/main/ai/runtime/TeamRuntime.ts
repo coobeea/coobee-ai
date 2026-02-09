@@ -56,7 +56,7 @@ export class TeamRuntime implements IExecutable {
 
     // 2. 初始化所有成员 Agents
     for (const member of this.teamConfig.members) {
-      const agent = await agentFactory.createAgent(`team-${this.id}-${member.agentId}`, {
+      const agent = await agentFactory.createAgent({
         configId: member.agentId
       })
       this.memberRuntimes.set(member.agentId, agent)

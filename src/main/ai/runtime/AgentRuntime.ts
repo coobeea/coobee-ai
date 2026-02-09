@@ -72,7 +72,7 @@ export class AgentRuntime implements IExecutable {
     this._name = this.config.name
 
     // 2. 创建 Agent 实例
-    this.agent = await agentFactory.createAgent(this.sessionId, {
+    this.agent = await agentFactory.createAgent({
       configId: this.configId
     })
 
