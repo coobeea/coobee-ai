@@ -17,6 +17,7 @@ export interface AgentConfigData {
   instructions: string
   model?: string
   tools?: string[] // 工具 ID 列表
+  skills?: string[] // 技能 ID 列表
   metadata?: Record<string, unknown>
   modelSettings?: Record<string, unknown> // SDK ModelSettings
   createdAt: number
