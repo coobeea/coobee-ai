@@ -18,6 +18,7 @@ export interface AgentConfigData {
   model?: string
   tools?: string[] // 工具 ID 列表
   metadata?: Record<string, unknown>
+  modelSettings?: Record<string, unknown> // SDK ModelSettings
   createdAt: number
   updatedAt: number
   isSystem?: boolean // 是否系统预设

@@ -21,7 +21,11 @@
     "build:win": "pnpm run build && electron-builder --win",
     "build:mac": "pnpm run build && electron-builder --mac",
     "build:linux": "pnpm run build && electron-builder --linux",
-    "generate:icons": "node scripts/generate-icons.js"
+    "generate:icons": "node scripts/generate-icons.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.34",
@@ -99,6 +103,7 @@
     "@tailwindcss/vite": "^4.1.18",
     "@types/node": "^22.19.1",
     "@vitejs/plugin-vue": "^6.0.2",
+    "@vitest/coverage-v8": "^4.0.18",
     "adm-zip": "^0.5.16",
     "dotenv": "^17.2.3",
     "electron": "^39.2.6",
@@ -123,6 +128,7 @@
     "vite": "^7.2.6",
     "vite-plugin-monaco-editor-esm": "^2.0.2",
     "vite-plugin-vue-devtools": "^8.0.6",
+    "vitest": "^4.0.18",
     "vue": "^3.5.25",
     "vue-eslint-parser": "^10.2.0",
     "vue-tsc": "^3.1.6"

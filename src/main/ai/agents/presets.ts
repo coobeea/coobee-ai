@@ -1,16 +1,26 @@
 /**
  * Agent 预设配置
  * 基于 @openai/agents SDK 的标准 Agent 配置
+ *
+ * SDK 合规改进：
+ * - 引入 modelSettings 支持 temperature、topP、toolChoice 等高级参数
  */
+
+import type { ModelSettings } from '@openai/agents'
 
 /**
  * Agent 预设配置类型
- * 简化的配置，只包含必要字段
+ *
+ * SDK 改进：增加 modelSettings 字段
+ * 支持 temperature、topP、frequencyPenalty、presencePenalty、
+ * toolChoice、parallelToolCalls、maxTokens 等参数
  */
 export interface AgentPreset {
   name: string
   instructions: string
   model?: string
+  /** SDK modelSettings: 精细控制模型行为参数 */
+  modelSettings?: ModelSettings
 }
 
 /**
@@ -25,7 +35,12 @@ Your responsibilities:
 - Provide helpful suggestions and recommendations
 - Maintain a friendly and professional tone
 - Use tools when necessary to provide accurate information`,
-  model: 'gpt-4o'
+  model: 'gpt-4o',
+  modelSettings: {
+    temperature: 0.7,
+    topP: 0.9,
+    toolChoice: 'auto'
+  }
 }
 
 /**
@@ -48,7 +63,12 @@ Tech stack:
 - Electron
 - Tailwind CSS
 - OpenAI Agents SDK`,
-  model: 'gpt-4o'
+  model: 'gpt-4o',
+  modelSettings: {
+    temperature: 0.3, // 代码生成需要更确定性的输出
+    topP: 0.85,
+    toolChoice: 'auto'
+  }
 }
 
 /**
@@ -64,7 +84,13 @@ Your responsibilities:
 - Provide well-structured summaries
 - Cite sources when possible
 - Identify key insights and patterns`,
-  model: 'gpt-4o'
+  model: 'gpt-4o',
+  modelSettings: {
+    temperature: 0.5,
+    topP: 0.9,
+    toolChoice: 'auto',
+    parallelToolCalls: true // 研究任务可并行调用多个搜索工具
+  }
 }
 
 /**

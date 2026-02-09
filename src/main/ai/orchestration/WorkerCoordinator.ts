@@ -90,9 +90,11 @@ export class WorkerCoordinator implements IWorkerCoordinator {
       // 构建子任务提示词
       const prompt = this.buildSubTaskPrompt(subTask)
 
-      // 使用 @openai/agents SDK 的 run() 函数执行
+      // 使用 @openai/agents SDK 的 run() 函数执行（带 maxTurns 循环保护）
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await run(worker.agent as any, prompt)
+      const result = await run(worker.agent as any, prompt, {
+        maxTurns: 25
+      })
 
       // 恢复状态
       worker.status = 'idle'

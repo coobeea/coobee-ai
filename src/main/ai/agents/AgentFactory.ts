@@ -4,9 +4,9 @@
  */
 
 import { Agent } from '@openai/agents'
+import type { ModelSettings, Tool } from '@openai/agents'
 import { agentPresets, type AgentPresetType, type AgentPreset } from './presets'
 import { agentConfigStore, type AgentConfigData } from '../storage/AgentConfigStore'
-import type { Tool } from '@openai/agents'
 
 /**
  * Agent 创建选项
@@ -20,6 +20,8 @@ export interface AgentCreateOptions {
   config?: Partial<AgentPreset>
   /** 要注册的工具 */
   tools?: Tool[]
+  /** SDK modelSettings: 精细控制模型行为参数（覆盖预设的 modelSettings） */
+  modelSettings?: ModelSettings
 }
 
 /**
@@ -152,7 +154,7 @@ export class AgentFactory {
    * @param options 创建选项
    */
   async createAgent(sessionId: string, options: AgentCreateOptions = {}): Promise<Agent> {
-    const { preset, configId, config = {}, tools = [] } = options
+    const { preset, configId, config = {}, tools = [], modelSettings } = options
 
     let finalConfig: AgentPreset
 
@@ -183,6 +185,12 @@ export class AgentFactory {
     const mergedConfig = {
       ...finalConfig,
       ...config,
+      // 合并 modelSettings（选项 > 自定义配置 > 预设）
+      modelSettings: {
+        ...(finalConfig.modelSettings || {}),
+        ...(config.modelSettings || {}),
+        ...(modelSettings || {})
+      },
       // 添加工具（如果有）
       ...(tools.length > 0 ? { tools } : {})
     }
@@ -211,7 +219,9 @@ export class AgentFactory {
     return {
       name: config.name,
       instructions: config.instructions,
-      model: config.model || 'gpt-4o'
+      model: config.model || 'gpt-4o',
+      // 从数据库配置中加载 modelSettings（如果存在）
+      ...(config.modelSettings ? { modelSettings: config.modelSettings as ModelSettings } : {})
     }
   }
 

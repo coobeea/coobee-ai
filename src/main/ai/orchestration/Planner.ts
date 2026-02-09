@@ -2,10 +2,54 @@
  * 规划者（Planner）
  * 负责将高层任务分解为可执行的子任务
  * 基于 @openai/agents SDK 实现
+ *
+ * SDK 合规改进：
+ * - 使用 outputType (Zod schema) 替代手动 JSON 解析，获得类型安全的结构化输出
+ * - 使用 maxTurns 防止无限工具调用循环
  */
 
 import { Agent, run } from '@openai/agents'
+import { z } from 'zod'
 import type { Task, SubTask, ExecutionPlan, ExecutionStage, SubTaskStatus } from './types'
+
+// ========== 结构化输出 Schema ==========
+
+/**
+ * 子任务输出 Schema（Zod 定义）
+ * SDK 通过 outputType 自动验证和解析 Agent 输出
+ */
+const SubTaskSchema = z.object({
+  id: z.string().describe('子任务唯一标识，如 "subtask-1"'),
+  objective: z.string().describe('子任务目标'),
+  description: z.string().optional().describe('子任务详细描述'),
+  dependencies: z.array(z.string()).default([]).describe('依赖的子任务 ID 列表'),
+  assignedWorker: z
+    .enum(['code', 'research', 'chat'])
+    .default('chat')
+    .describe('分配的 Worker 类型')
+})
+
+const StageSchema = z.object({
+  stageId: z.string().describe('阶段唯一标识'),
+  name: z.string().describe('阶段名称'),
+  subTaskIds: z.array(z.string()).default([]).describe('包含的子任务 ID 列表'),
+  parallelizable: z.boolean().default(false).describe('是否可并行执行')
+})
+
+/**
+ * 规划输出 Schema
+ * Agent 输出将被 SDK 自动解析为此结构
+ */
+const PlanOutputSchema = z.object({
+  subTasks: z.array(SubTaskSchema).describe('子任务列表'),
+  stages: z.array(StageSchema).describe('执行阶段列表')
+})
+
+/** 规划输出类型 */
+type PlanOutput = z.infer<typeof PlanOutputSchema>
+
+/** Planner Agent 默认 maxTurns（防止无限循环） */
+const PLANNER_MAX_TURNS = 5
 
 /**
  * 规划者接口
@@ -31,12 +75,16 @@ export interface IPlanner {
 /**
  * 规划者实现
  * 使用专门的 Planner Agent（基于 @openai/agents）
+ *
+ * SDK 特性：
+ * - outputType: 使用 Zod schema 定义结构化输出，SDK 自动验证和解析
+ * - maxTurns: 限制 Agent 执行循环次数
  */
 export class Planner implements IPlanner {
-  private plannerAgent: Agent
+  private plannerAgent: Agent<undefined, typeof PlanOutputSchema>
 
   constructor() {
-    // 创建专门的规划 Agent
+    // 创建专门的规划 Agent，配置 outputType 结构化输出
     this.plannerAgent = new Agent({
       name: 'Planner',
       instructions: `You are a task planning expert. Your job is to decompose high-level tasks into executable subtasks.
@@ -46,44 +94,30 @@ Guidelines:
 - Identify dependencies between subtasks
 - Suggest which type of agent should handle each subtask (code/research/chat)
 - Group subtasks into stages (parallelizable or sequential)
-- Keep subtasks focused and manageable
-
-Output format (JSON):
-{
-  "subTasks": [
-    {
-      "id": "subtask-1",
-      "objective": "Clear goal",
-      "description": "Detailed description",
-      "dependencies": [],
-      "assignedWorker": "code"  // code/research/chat
-    }
-  ],
-  "stages": [
-    {
-      "stageId": "stage-1",
-      "name": "Stage name",
-      "subTaskIds": ["subtask-1"],
-      "parallelizable": false
-    }
-  ]
-}`,
-      model: 'gpt-4o'
+- Keep subtasks focused and manageable`,
+      model: 'gpt-4o',
+      // SDK outputType: 结构化输出，自动验证和解析为 PlanOutput 类型
+      outputType: PlanOutputSchema
     })
   }
 
   /**
    * 规划任务
+   *
+   * SDK 改进：使用 outputType 后，result.finalOutput 直接是类型安全的 PlanOutput 对象
+   * 无需手动 JSON 解析和正则提取
    */
   async plan(task: Task): Promise<ExecutionPlan> {
     // 构建规划请求
     const planningPrompt = this.buildPlanningPrompt(task)
 
-    // 调用 Planner Agent
-    const result = await run(this.plannerAgent, planningPrompt)
+    // 调用 Planner Agent（带 maxTurns 循环保护）
+    const result = await run(this.plannerAgent, planningPrompt, {
+      maxTurns: PLANNER_MAX_TURNS
+    })
 
-    // 解析规划结果
-    const planData = this.parsePlanningResult(result.finalOutput || '')
+    // SDK outputType 自动解析：finalOutput 已是 PlanOutput 类型
+    const planData = this.convertPlanOutput(result.finalOutput)
 
     return {
       taskId: task.id,
@@ -114,8 +148,11 @@ Consider:
 - Are there missing prerequisites?
 `
 
-    const result = await run(this.plannerAgent, replanPrompt)
-    const planData = this.parsePlanningResult(result.finalOutput || '')
+    const result = await run(this.plannerAgent, replanPrompt, {
+      maxTurns: PLANNER_MAX_TURNS
+    })
+
+    const planData = this.convertPlanOutput(result.finalOutput)
 
     return {
       taskId: task.id,
@@ -151,93 +188,75 @@ Consider:
   }
 
   /**
-   * 解析规划结果
+   * 将 SDK outputType 输出转换为内部类型
+   *
+   * SDK outputType 保证 finalOutput 已通过 Zod schema 验证
+   * 这里只需进行类型映射，无需 JSON 解析或错误处理
    */
-  private parsePlanningResult(output: string): { subTasks: SubTask[]; stages: ExecutionStage[] } {
-    try {
-      // 尝试从输出中提取 JSON
-      const jsonMatch = output.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) {
-        throw new Error('No JSON found in planning result')
-      }
+  private convertPlanOutput(output: PlanOutput | undefined): {
+    subTasks: SubTask[]
+    stages: ExecutionStage[]
+  } {
+    // 如果 outputType 解析失败（例如模型未返回合法输出），使用默认计划
+    if (!output) {
+      console.warn('[Planner] No structured output from agent, using default plan')
+      return this.getDefaultPlan()
+    }
 
-      const parsed = JSON.parse(jsonMatch[0]) as {
-        subTasks?: Array<{
-          id: string
-          objective: string
-          description?: string
-          dependencies?: string[]
-          assignedWorker?: string
-        }>
-        stages?: Array<{
-          stageId: string
-          name: string
-          subTaskIds?: string[]
-          parallelizable?: boolean
-        }>
-      }
-
-      // 转换为标准格式
-      const subTasks: SubTask[] = (parsed.subTasks || []).map(
-        (st: Record<string, unknown>): SubTask => ({
-          id: String(st.id || `subtask-${Date.now()}`),
-          taskId: '', // 将在外部设置
-          name: String(st.objective || st.name || 'Unnamed Subtask'),
-          description: String(st.description || st.objective || ''),
-          dependencies: Array.isArray(st.dependencies) ? (st.dependencies as string[]) : [],
-          assignedWorker: String(st.assignedWorker || 'chat'),
-          status: 'pending' as SubTaskStatus
-        })
-      )
-
-      const stages: ExecutionStage[] = (parsed.stages || []).map((stage, index) => {
-        const stageTasks = subTasks.filter((st) => (stage.subTaskIds || []).includes(st.id))
-        return {
-          id: stage.stageId,
-          name: stage.name,
-          tasks: stageTasks,
-          order: index,
-          parallel: stage.parallelizable ?? false
-        }
+    const subTasks: SubTask[] = output.subTasks.map(
+      (st): SubTask => ({
+        id: st.id,
+        taskId: '', // 将在外部设置
+        name: st.objective,
+        description: st.description || st.objective,
+        dependencies: st.dependencies,
+        assignedWorker: st.assignedWorker,
+        status: 'pending' as SubTaskStatus
       })
+    )
 
-      return { subTasks, stages }
-    } catch (error) {
-      console.error('[Planner] Failed to parse planning result:', error)
-
-      // 返回默认计划（单个子任务）
+    const stages: ExecutionStage[] = output.stages.map((stage, index) => {
+      const stageTasks = subTasks.filter((st) => stage.subTaskIds.includes(st.id))
       return {
-        subTasks: [
-          {
-            id: 'subtask-1',
-            taskId: '',
-            name: 'Complete the task',
-            description: 'Execute the task as a single unit',
-            dependencies: [],
-            assignedWorker: 'chat',
-            status: 'pending' as SubTaskStatus
-          }
-        ],
-        stages: [
-          {
-            id: 'stage-1',
-            name: 'Main Stage',
-            tasks: [
-              {
-                id: 'subtask-1',
-                taskId: '',
-                name: 'Complete the task',
-                description: 'Execute the task as a single unit',
-                dependencies: [],
-                assignedWorker: 'chat',
-                status: 'pending' as SubTaskStatus
-              }
-            ],
-            order: 0,
-            parallel: false
-          }
-        ]
+        id: stage.stageId,
+        name: stage.name,
+        tasks: stageTasks,
+        order: index,
+        parallel: stage.parallelizable
       }
+    })
+
+    return { subTasks, stages }
+  }
+
+  /**
+   * 默认计划（降级方案）
+   */
+  private getDefaultPlan(): { subTasks: SubTask[]; stages: ExecutionStage[] } {
+    const defaultSubTask: SubTask = {
+      id: 'subtask-1',
+      taskId: '',
+      name: 'Complete the task',
+      description: 'Execute the task as a single unit',
+      dependencies: [],
+      assignedWorker: 'chat',
+      status: 'pending' as SubTaskStatus
+    }
+
+    return {
+      subTasks: [defaultSubTask],
+      stages: [
+        {
+          id: 'stage-1',
+          name: 'Main Stage',
+          tasks: [defaultSubTask],
+          order: 0,
+          parallel: false
+        }
+      ]
     }
   }
 }
+
+// 导出 Schema 供外部使用（如测试）
+export { PlanOutputSchema, type PlanOutput }

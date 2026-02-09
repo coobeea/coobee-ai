@@ -188,7 +188,7 @@ export class SwarmCoordinator {
       // 执行 Triage Agent（SDK 的 run 会自动处理 handoff 链）
       this.state.status = 'executing'
 
-      const result = await run(this.triageAgent, task.input)
+      const result = await run(this.triageAgent, task.input, { maxTurns: 25 })
 
       // 提取最终输出
       const output = result.finalOutput || ''
@@ -398,7 +398,7 @@ export class SwarmCoordinator {
         model: this.config.triageModel || 'gpt-4o'
       })
 
-      const result = await run(decomposerAgent, task.input)
+      const result = await run(decomposerAgent, task.input, { maxTurns: 10 })
       const output = result.finalOutput || ''
 
       // 尝试解析 JSON

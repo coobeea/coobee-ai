@@ -194,7 +194,7 @@ export class TeamRuntime implements IExecutable {
         continue
       }
 
-      const result = await run(agent, currentOutput)
+      const result = await run(agent, currentOutput, { maxTurns: 25 })
       currentOutput = result.finalOutput || currentOutput
     }
 
@@ -217,7 +217,7 @@ export class TeamRuntime implements IExecutable {
           return { role: member.role, output: null }
         }
 
-        const result = await run(agent, input)
+        const result = await run(agent, input, { maxTurns: 25 })
         return {
           role: member.role,
           output: result.finalOutput

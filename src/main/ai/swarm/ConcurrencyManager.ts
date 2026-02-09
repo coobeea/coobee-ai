@@ -289,7 +289,7 @@ export class ConcurrencyManager {
     })
 
     try {
-      const result = await run(agent, input)
+      const result = await run(agent, input, { maxTurns: 25 })
       const completedAt = Date.now()
       this.runningCount--
 

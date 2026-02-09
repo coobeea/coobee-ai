@@ -18,3 +18,6 @@ export { WorkingMemoryStore } from './WorkingMemoryStore'
 
 // Long-Term Memory（长期记忆 - 知识库）
 export { LongTermMemoryStore } from './LongTermMemoryStore'
+
+// SDK Session 适配器
+export { SessionAdapter, createSessionAdapter } from './SessionAdapter'
