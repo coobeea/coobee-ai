@@ -54,6 +54,7 @@ graph TD
 | 12   | [护栏系统](./12-guardrails.md)                         | 输入/输出/流式护栏                | 安全防护、内容过滤 |
 | 13   | [Agent 设计模式](./13-agent-patterns.md)               | 常用架构模式和最佳实践            | 架构设计参考       |
 | 14   | [高级特性](./14-advanced-features.md)                  | 追踪、Reasoning、工具函数         | 高级配置和调优     |
+| 15   | [流式消息格式详解](./15-streaming-message-format.md)   | 三层事件架构、完整类型定义        | 消息转化、前端展示 |
 
 ## 快速导航
 
@@ -69,6 +70,7 @@ graph TD
 - **人工审批工具调用** → [11-hitl.md](./11-hitl.md)
 - **防止有害输出** → [12-guardrails.md](./12-guardrails.md)
 - **监控 Token 用量** → [08-lifecycle-hooks.md](./08-lifecycle-hooks.md)
+- **理解流式消息格式** → [15-streaming-message-format.md](./15-streaming-message-format.md)
 
 ## 示例来源
 
