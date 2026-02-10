@@ -5,17 +5,17 @@
  *
  * 核心能力：
  * - 纯参数驱动：name, instructions, tools, handoffs 全部由调用方传入
- * - FileSession：单层 JSONL 持久化，直接存储 SDK AgentInputItem
+ * - FileSession：JSONL 持久化，带序号的 SessionItem 格式（智能上下文构建）
  * - 完整流式事件：覆盖 doc 15 所有 RunStreamEvent（text, reasoning, tool, handoff, approval 等）
  * - HITL 工具审批：暂停/审批/恢复执行流程
  * - Handoff 支持：SDK 原生 Agent 间切换
- * - previousResponseId：多轮对话延续
  * - maxTurns：防止无限工具调用循环
  */
 
 import { run, Agent } from '@openai/agents'
 import type { StreamedRunResult, RunState, RunToolApprovalItem } from '@openai/agents'
 import { FileSession } from './FileSession'
+import { SessionCompressor } from './SessionCompressor'
 import { createStreamEmitter, type IStreamEmitter } from '../streaming/StreamEmitter'
 import type {
   AgentRuntimeOptions,
@@ -24,7 +24,9 @@ import type {
   ExecutionResult,
   StreamChunk,
   SessionInfo,
-  ToolApprovalInfo
+  ContextSnapshot,
+  ToolApprovalInfo,
+  CompressionResult
 } from './types'
 
 /** 默认最大执行轮次 */
@@ -59,8 +61,8 @@ export class AgentRuntime implements IExecutable {
   // 流式输出
   private streamEmitter!: IStreamEmitter
 
-  // 多轮对话延续
-  private previousResponseId?: string
+  // Session 压缩器
+  private compressor?: SessionCompressor
 
   // HITL 状态
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -111,16 +113,21 @@ export class AgentRuntime implements IExecutable {
       name: this.name
     })
 
+    // 4. 创建 Session 压缩器（如果配置启用）
+    if (this.options.compression?.enabled) {
+      this.compressor = new SessionCompressor(this.options.compression)
+    }
+
     console.log(
       `[AgentRuntime] Initialized: ${this.name} ` +
         `(tools: ${this.options.tools?.length || 0}, ` +
         `handoffs: ${this.options.handoffs?.length || 0}, ` +
+        `compression: ${this.options.compression?.enabled ? 'on' : 'off'}, ` +
         `session: ${this.sessionId})`
     )
   }
 
   async destroy(): Promise<void> {
-    this.previousResponseId = undefined
     this.pendingState = undefined
     this.pendingInterruptions = []
     this._interrupted = false
@@ -133,9 +140,8 @@ export class AgentRuntime implements IExecutable {
    * 同步执行 Agent
    *
    * SDK 特性：
-   * - session：自动管理对话历史读写
+   * - session：自动管理对话历史读写（FileSession JSONL 持久化）
    * - maxTurns：防止无限工具调用循环
-   * - previousResponseId：多轮对话延续
    * - interruptions：HITL 工具审批
    */
   async run(input: string, config?: ExecutionConfig): Promise<ExecutionResult> {
@@ -145,20 +151,17 @@ export class AgentRuntime implements IExecutable {
     console.log(`[AgentRuntime] Running: ${this.name}, input: "${input.slice(0, 100)}"`)
 
     try {
+      // 执行前检查 session 压缩
+      await this.compressSessionIfNeeded()
+
       const result = await run(this.agent, input, {
         session: this.session,
-        maxTurns,
-        ...(this.previousResponseId ? { previousResponseId: this.previousResponseId } : {})
+        maxTurns
       })
 
       // 检查 HITL 中断
       if (result.interruptions && result.interruptions.length > 0) {
         return this.handleInterruptions(result.state, result.interruptions, startTime)
-      }
-
-      // 保存 responseId
-      if (result.lastResponseId) {
-        this.previousResponseId = result.lastResponseId
       }
 
       const duration = Date.now() - startTime
@@ -169,8 +172,7 @@ export class AgentRuntime implements IExecutable {
         duration,
         metadata: {
           agentId: this.id,
-          sessionId: this.sessionId,
-          responseId: result.lastResponseId
+          sessionId: this.sessionId
         }
       }
     } catch (error: unknown) {
@@ -200,12 +202,14 @@ export class AgentRuntime implements IExecutable {
       await this.streamEmitter.emitStart()
       onChunk({ type: 'run:start', content: '' })
 
+      // 1.5 执行前检查 session 压缩（传入 onChunk 以发送压缩事件）
+      await this.compressSessionIfNeeded(onChunk)
+
       // 2. SDK 流式执行
       const streamRunResult = await run(this.agent, input, {
         stream: true,
         session: this.session,
-        maxTurns,
-        ...(this.previousResponseId ? { previousResponseId: this.previousResponseId } : {})
+        maxTurns
       })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const streamResult = streamRunResult as StreamedRunResult<unknown, any>
@@ -246,11 +250,6 @@ export class AgentRuntime implements IExecutable {
         return interruptResult
       }
 
-      // 6. 保存 responseId
-      if (streamResult.lastResponseId) {
-        this.previousResponseId = streamResult.lastResponseId
-      }
-
       const output = (streamResult.finalOutput as string) || fullOutput
 
       // 7. run:done
@@ -265,8 +264,7 @@ export class AgentRuntime implements IExecutable {
         duration,
         metadata: {
           agentId: this.id,
-          sessionId: this.sessionId,
-          responseId: streamResult.lastResponseId
+          sessionId: this.sessionId
         }
       }
     } catch (error: unknown) {
@@ -330,8 +328,7 @@ export class AgentRuntime implements IExecutable {
       // 传入之前的 RunState 继续执行
       const result = await run(this.agent, this.pendingState, {
         session: this.session,
-        maxTurns,
-        ...(this.previousResponseId ? { previousResponseId: this.previousResponseId } : {})
+        maxTurns
       })
 
       // 清除中断状态
@@ -344,18 +341,13 @@ export class AgentRuntime implements IExecutable {
         return this.handleInterruptions(result.state, result.interruptions, startTime)
       }
 
-      if (result.lastResponseId) {
-        this.previousResponseId = result.lastResponseId
-      }
-
       return {
         output: (result.finalOutput as string) || '',
         toolCalls: this.extractToolCalls(result.newItems),
         duration: Date.now() - startTime,
         metadata: {
           agentId: this.id,
-          sessionId: this.sessionId,
-          responseId: result.lastResponseId
+          sessionId: this.sessionId
         }
       }
     } catch (error: unknown) {
@@ -387,8 +379,7 @@ export class AgentRuntime implements IExecutable {
       const streamRunResult = await run(this.agent, this.pendingState, {
         stream: true,
         session: this.session,
-        maxTurns,
-        ...(this.previousResponseId ? { previousResponseId: this.previousResponseId } : {})
+        maxTurns
       })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const streamResult = streamRunResult as StreamedRunResult<unknown, any>
@@ -417,10 +408,6 @@ export class AgentRuntime implements IExecutable {
         return interruptResult
       }
 
-      if (streamResult.lastResponseId) {
-        this.previousResponseId = streamResult.lastResponseId
-      }
-
       const output = (streamResult.finalOutput as string) || fullOutput
 
       await this.streamEmitter.emitDone()
@@ -432,8 +419,7 @@ export class AgentRuntime implements IExecutable {
         duration: Date.now() - startTime,
         metadata: {
           agentId: this.id,
-          sessionId: this.sessionId,
-          responseId: streamResult.lastResponseId
+          sessionId: this.sessionId
         }
       }
     } catch (error: unknown) {
@@ -466,7 +452,36 @@ export class AgentRuntime implements IExecutable {
   async clearSession(): Promise<void> {
     console.log(`[AgentRuntime] Clearing session: ${this.sessionId}`)
     await this.session.clearSession()
-    this.previousResponseId = undefined
+  }
+
+  /**
+   * 获取上下文快照（调试/监控用）
+   *
+   * 返回当前 Session 的完整状态：
+   *   - contextItems：getItems() 返回的内容（即下次 LLM 调用时的上下文）
+   *   - allSessionItems：getAllSessionItems() 返回的完整存储记录
+   *   - lastSummary：最后一个 summary 的元数据
+   *   - stats：统计信息（消息数、summary 数、总 token 估算）
+   */
+  async getContextSnapshot(): Promise<ContextSnapshot> {
+    const contextItems = await this.session.getItems()
+    const allSessionItems = await this.session.getAllSessionItems()
+    const lastSummary = await this.session.getLastSummary()
+
+    const messageCount = allSessionItems.filter((si) => si.type === 'message').length
+    const summaryCount = allSessionItems.filter((si) => si.type === 'summary').length
+
+    return {
+      contextItems,
+      allSessionItems,
+      lastSummary: lastSummary || null,
+      stats: {
+        contextItemCount: contextItems.length,
+        totalSessionItems: allSessionItems.length,
+        messageCount,
+        summaryCount
+      }
+    }
   }
 
   // ========== 内部方法 ==========
@@ -495,22 +510,26 @@ export class AgentRuntime implements IExecutable {
     // Turn 状态追踪
     let turnIndex = 0
     let turnOpen = false
-    let llmOpen = false
-    let hasPendingTools = false // 当前 LLM 是否输出了工具调用
 
-    const openTurn = (): void => {
-      if (!turnOpen) {
-        turnIndex++
-        turnOpen = true
-        onChunk({ type: 'turn:start', content: '', data: { turnIndex } })
-      }
-    }
+    // 闭环 start 事件追踪（Chat Completions 模式下自动补发）
+    let textStartEmitted = false
+    let reasoningStartEmitted = false
+    // tool:start 按 callId 追踪
+    const toolStartEmittedSet = new Set<string>()
 
     const closeTurn = (): void => {
       if (turnOpen) {
         turnOpen = false
         onChunk({ type: 'turn:done', content: '', data: { turnIndex } })
       }
+    }
+
+    const openTurn = (): void => {
+      // 先关闭上一个 turn（确保 tool 事件包含在 turn 内）
+      closeTurn()
+      turnIndex++
+      turnOpen = true
+      onChunk({ type: 'turn:start', content: '', data: { turnIndex } })
     }
 
     for await (const event of streamResult) {
@@ -527,8 +546,6 @@ export class AgentRuntime implements IExecutable {
           // llm:start + turn:start
           if (rawType === 'response_started') {
             openTurn()
-            llmOpen = true
-            hasPendingTools = false
             onChunk({ type: 'llm:start', content: '' })
           }
 
@@ -538,7 +555,6 @@ export class AgentRuntime implements IExecutable {
             const usage = response?.usage as
               | { inputTokens?: number; outputTokens?: number; totalTokens?: number }
               | undefined
-            llmOpen = false
             onChunk({
               type: 'llm:done',
               content: '',
@@ -554,10 +570,15 @@ export class AgentRuntime implements IExecutable {
               }
             })
 
-            // 若本轮 LLM 没有工具调用，则 turn 结束
-            if (!hasPendingTools) {
-              closeTurn()
-            }
+            // 重置 start 追踪（下一轮 LLM 需要重新检测）
+            textStartEmitted = false
+            reasoningStartEmitted = false
+
+            // 注意：不在这里关闭 turn。
+            // Chat Completions 模式下，tool_called/tool_output 事件在 response_done 之后到达，
+            // 如果这里就 closeTurn()，tool 事件会落在 turn 之外。
+            // 正确做法：turn 由下一个 openTurn()（即 response_started）或流结束时的 closeTurn() 关闭，
+            // 这样 tool 事件始终被包含在当前 turn 内。
           }
 
           // ---- ④ text: 文本增量 ----
@@ -565,6 +586,11 @@ export class AgentRuntime implements IExecutable {
           if (rawType === 'output_text_delta') {
             const delta = (rawEvent as { delta?: string }).delta || ''
             if (delta) {
+              // 自动补发 text:start（Chat Completions 模式下无 output_item.added）
+              if (!textStartEmitted) {
+                textStartEmitted = true
+                onChunk({ type: 'text:start', content: '' })
+              }
               onTextDelta(delta)
               await this.streamEmitter.emitText(delta)
               onChunk({ type: 'text:delta', content: delta, data: { delta } })
@@ -582,15 +608,17 @@ export class AgentRuntime implements IExecutable {
             if (rawEventType === 'response.output_item.added') {
               const item = (raw as { item?: { type?: string } }).item
               if (item?.type === 'message') {
+                textStartEmitted = true
                 onChunk({ type: 'text:start', content: '' })
               }
               if (item?.type === 'reasoning') {
+                reasoningStartEmitted = true
                 onChunk({ type: 'reasoning:start', content: '' })
               }
               if (item?.type === 'function_call') {
-                hasPendingTools = true
                 const toolName = (item as { name?: string }).name || 'unknown'
                 const callId = (item as { call_id?: string }).call_id
+                if (callId) toolStartEmittedSet.add(callId)
                 onChunk({
                   type: 'tool:start',
                   content: toolName,
@@ -606,6 +634,11 @@ export class AgentRuntime implements IExecutable {
             ) {
               const delta = (raw as { delta?: string }).delta || ''
               if (delta) {
+                // 自动补发 reasoning:start
+                if (!reasoningStartEmitted) {
+                  reasoningStartEmitted = true
+                  onChunk({ type: 'reasoning:start', content: '' })
+                }
                 await this.streamEmitter.emitThinking(delta)
                 onChunk({ type: 'reasoning:delta', content: delta, data: { delta } })
               }
@@ -616,6 +649,15 @@ export class AgentRuntime implements IExecutable {
               const delta = (raw as { delta?: string }).delta || ''
               const callId = (raw as { call_id?: string }).call_id
               if (delta) {
+                // 自动补发 tool:start（Chat Completions 模式下无 output_item.added）
+                if (callId && !toolStartEmittedSet.has(callId)) {
+                  toolStartEmittedSet.add(callId)
+                  onChunk({
+                    type: 'tool:start',
+                    content: '',
+                    data: { toolName: 'unknown', callId }
+                  })
+                }
                 onChunk({
                   type: 'tool:delta',
                   content: delta,
@@ -650,6 +692,7 @@ export class AgentRuntime implements IExecutable {
           if (eventName === 'tool_called' && item.type === 'tool_call_item') {
             const rawItem = item.rawItem
             const toolName = (rawItem as { name?: string }).name || 'unknown'
+            const callId = (rawItem as { call_id?: string }).call_id
             let parsedArgs: Record<string, unknown> = {}
             try {
               const argsStr = (rawItem as { arguments?: string }).arguments || '{}'
@@ -657,12 +700,20 @@ export class AgentRuntime implements IExecutable {
             } catch {
               // 参数解析失败
             }
-            hasPendingTools = true
+            // 自动补发 tool:start（如果之前的路径未触发）
+            const toolKey = callId || toolName
+            if (!toolStartEmittedSet.has(toolKey)) {
+              toolStartEmittedSet.add(toolKey)
+              onChunk({
+                type: 'tool:start',
+                content: toolName,
+                data: { toolName, callId }
+              })
+            }
             await this.streamEmitter.emitToolCall(toolName, parsedArgs)
-            // 注意：若 tool:start 已由 model 透传触发，此处可作为补充
           }
 
-          // ⑥ tool: 执行完成 → tool:done + turn:done
+          // ⑥ tool: 执行完成 → tool:done
           if (eventName === 'tool_output') {
             const rawItem = (item as { rawItem?: Record<string, unknown> }).rawItem || {}
             const toolName = (rawItem as { name?: string }).name || 'unknown'
@@ -678,10 +729,7 @@ export class AgentRuntime implements IExecutable {
               data: { toolName, callId, output }
             })
 
-            // 工具执行完成 → 如果 llm 已关闭则关闭 turn（SDK 会接着开下一个 turn）
-            if (!llmOpen) {
-              closeTurn()
-            }
+            // 不在这里关闭 turn —— turn 由下一个 openTurn() 或流结束时统一关闭
           }
 
           // ⑧ handoff: 请求
@@ -839,5 +887,103 @@ export class AgentRuntime implements IExecutable {
           }
         })
     )
+  }
+
+  // ========== Session 压缩 ==========
+
+  /**
+   * 检查并执行 session 压缩（如果需要）
+   *
+   * 在每次 run / runStream 前自动调用。
+   * 压缩失败不影响主流程（只打日志）。
+   *
+   * @param onChunk 可选的流式事件回调（传入时发送 compression:start/done 事件）
+   */
+  private async compressSessionIfNeeded(
+    onChunk?: (chunk: StreamChunk) => void
+  ): Promise<CompressionResult | null> {
+    if (!this.compressor) return null
+
+    try {
+      const model = this.options.model || DEFAULT_MODEL
+
+      // 获取压缩前的状态信息（用于 compression:start 事件）
+      const status = await this.compressor.getCompressionStatus(this.session)
+
+      const result = await this.compressor.compressIfNeeded(this.session, model)
+
+      if (result.compressed) {
+        // 发送压缩事件（仅在流式模式下）
+        if (onChunk && status) {
+          onChunk({
+            type: 'compression:start',
+            content: 'Session compression triggered',
+            data: {
+              reason: `tokens ${status.totalTokens} >= threshold ${status.threshold}`,
+              totalTokens: status.totalTokens,
+              threshold: status.threshold
+            }
+          })
+          onChunk({
+            type: 'compression:done',
+            content: `Compressed ${result.summarizedCount} messages`,
+            data: {
+              summarizedSeqs: result.summarizedSeqs || [],
+              endSeq: result.endSeq || 0,
+              originalTokens: result.originalTokens || 0,
+              summaryTokens: result.summaryTokens || 0,
+              compressionRatio: result.compressionRatio || 0,
+              duration: result.duration || 0
+            }
+          })
+        }
+
+        console.log(
+          `[AgentRuntime] Session compressed: ` +
+            `${result.summarizedCount} messages summarized ` +
+            `(seq ${result.summarizedSeqs?.[0]}-${result.endSeq}), ` +
+            `${result.keptCount} kept, ${result.duration}ms`
+        )
+      }
+
+      return result
+    } catch (error) {
+      console.error('[AgentRuntime] Session compression failed (non-fatal):', error)
+      return null
+    }
+  }
+
+  /**
+   * 手动触发 session 压缩
+   *
+   * 外部调用方可主动触发（例如在 UI 上提供"压缩对话"按钮）。
+   * - force=true：跳过阈值检查，只要消息数 >= 2 就执行压缩
+   * - 如果未配置压缩器，会创建一个临时压缩器执行一次
+   */
+  async compressSession(options?: { force?: boolean }): Promise<CompressionResult> {
+    const model = this.options.model || DEFAULT_MODEL
+
+    if (options?.force) {
+      // force 模式：直接创建一个超低阈值的压缩器
+      const forceCompressor = new SessionCompressor({
+        enabled: true,
+        minMessageCount: 2,
+        contextWindowSize: 1, // 极小窗口，确保超过阈值
+        thresholdRatio: 0,
+        keepRatio: this.options.compression?.keepRatio ?? 0.3,
+        summaryModel: this.options.compression?.summaryModel,
+        debug: this.options.compression?.debug
+      })
+      return forceCompressor.compressIfNeeded(this.session, model)
+    }
+
+    const compressor =
+      this.compressor ||
+      new SessionCompressor({
+        enabled: true,
+        ...(this.options.compression || {})
+      })
+
+    return compressor.compressIfNeeded(this.session, model)
   }
 }

@@ -32,6 +32,9 @@ const { mockRun, mockStreamEmitter, mockFileSession } = vi.hoisted(() => ({
     addItems: vi.fn().mockResolvedValue(undefined),
     popItem: vi.fn().mockResolvedValue(undefined),
     clearSession: vi.fn().mockResolvedValue(undefined),
+    getAllSessionItems: vi.fn().mockResolvedValue([]),
+    appendSummaryItem: vi.fn().mockResolvedValue(undefined),
+    getLastSummary: vi.fn().mockResolvedValue(undefined),
     getItemCount: vi.fn().mockResolvedValue(0),
     getFilePath: vi.fn().mockReturnValue('/tmp/test/messages.jsonl')
   }
@@ -157,7 +160,6 @@ describe('AgentRuntime', () => {
     it('成功执行并返回结果', async () => {
       mockRun.mockResolvedValue({
         finalOutput: 'Hello!',
-        lastResponseId: 'resp-1',
         newItems: [],
         interruptions: []
       })
@@ -167,7 +169,6 @@ describe('AgentRuntime', () => {
       expect(result.output).toBe('Hello!')
       expect(result.duration).toBeGreaterThanOrEqual(0)
       expect(result.metadata?.sessionId).toBe('session-1')
-      expect(result.metadata?.responseId).toBe('resp-1')
     })
 
     it('传入 session 参数给 SDK', async () => {
@@ -207,17 +208,15 @@ describe('AgentRuntime', () => {
       )
     })
 
-    it('多轮对话传递 previousResponseId', async () => {
+    it('多轮对话依赖 session 历史（非 previousResponseId）', async () => {
       mockRun
         .mockResolvedValueOnce({
           finalOutput: 'first',
-          lastResponseId: 'resp-1',
           newItems: [],
           interruptions: []
         })
         .mockResolvedValueOnce({
           finalOutput: 'second',
-          lastResponseId: 'resp-2',
           newItems: [],
           interruptions: []
         })
@@ -225,12 +224,15 @@ describe('AgentRuntime', () => {
       await runtime.run('msg1')
       await runtime.run('msg2')
 
-      // 第二次调用应包含 previousResponseId
-      expect(mockRun.mock.calls[1][2]).toEqual(
-        expect.objectContaining({
-          previousResponseId: 'resp-1'
-        })
+      // 两次调用都传 session，但不传 previousResponseId
+      expect(mockRun.mock.calls[0][2]).toEqual(
+        expect.objectContaining({ session: mockFileSession })
       )
+      expect(mockRun.mock.calls[1][2]).toEqual(
+        expect.objectContaining({ session: mockFileSession })
+      )
+      // 不应包含 previousResponseId
+      expect(mockRun.mock.calls[1][2]).not.toHaveProperty('previousResponseId')
     })
 
     it('HITL 中断返回 interrupted 结果', async () => {

@@ -23,6 +23,14 @@ export { RuntimeFactory, runtimeFactory, type RuntimeCreateOptions } from './Run
 
 // ========== Session ==========
 export { FileSession } from './FileSession'
+export { SessionCompressor } from './SessionCompressor'
+export {
+  countTokens,
+  countItemTokens,
+  countItemsTokens,
+  isWithinLimit,
+  formatTokens
+} from './tokenCounter'
 
 // ========== Swarm（re-export for convenience）==========
 export { SwarmRuntime, type SwarmRuntimeOptions } from '../swarm/SwarmRuntime'

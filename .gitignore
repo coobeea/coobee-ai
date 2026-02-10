@@ -9,3 +9,6 @@ out
 # 运行时二进制文件（会在需要时自动下载或构建）
 runtime/*/
 runtime/**/.gitkeep
+
+# 测试结果和日志（每次运行生成）
+test-results/
