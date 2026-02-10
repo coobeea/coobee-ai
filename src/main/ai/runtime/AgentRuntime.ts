@@ -522,14 +522,19 @@ export class AgentRuntime implements IExecutable {
    * 嵌套关系：
    *   run ⊃ turn ⊃ llm ⊃ { text, reasoning, tool } + hitl + handoff
    *
-   * Turn 边界检测：
-   *   - turn:start ← 每次 response_started 时触发
-   *   - turn:done ← tool_output 后 / 无工具时 llm:done 后
+   * 核心信号（基于真实 SDK 事件流分析，见 docs/2.openai-sdk/17-sdk-stream-event-analysis.md）：
    *
-   * SDK 事件来源：
-   *   Layer 1: raw_model_stream_event → llm:start/done, text:start/delta, reasoning:start/delta, tool:delta/pending
-   *   Layer 2: run_item_stream_event → tool:start, tool:done, handoff:*, hitl:required, text:done, reasoning:done
-   *   Layer 3: agent_updated_stream_event → handoff 辅助
+   *   response_started  = 关闭上一轮 turn:done + 开启新一轮 turn:start + llm:start
+   *   output_text_delta = text:delta（首次自动补 text:start）
+   *   response_done     = llm:done（携带 usage）+ text:done
+   *   tool_called       = tool:start
+   *   tool_output       = tool:done
+   *   流结束             = 关闭最后一轮 turn:done
+   *
+   * 一轮的完整生命周期：
+   *   response_started → output_text_delta ×N → response_done
+   *     → message_output_created → tool_called ×N → tool_output ×N
+   *     → [下一个 response_started 触发 turn:done]
    */
   private async consumeStreamEvents(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -537,33 +542,12 @@ export class AgentRuntime implements IExecutable {
     onChunk: (chunk: StreamChunk) => void,
     onTextDelta: (text: string) => void
   ): Promise<void> {
-    // Turn 状态追踪
     let turnIndex = 0
     let turnOpen = false
-
-    // 闭环 start 事件追踪（Chat Completions 模式下自动补发）
     let textStartEmitted = false
-    let reasoningStartEmitted = false
-    // tool:start 按 callId 追踪
-    const toolStartEmittedSet = new Set<string>()
-
-    const closeTurn = (): void => {
-      if (turnOpen) {
-        turnOpen = false
-        onChunk({ type: 'turn:done', content: '', data: { turnIndex } })
-      }
-    }
-
-    const openTurn = (): void => {
-      // 先关闭上一个 turn（确保 tool 事件包含在 turn 内）
-      closeTurn()
-      turnIndex++
-      turnOpen = true
-      onChunk({ type: 'turn:start', content: '', data: { turnIndex } })
-    }
 
     for await (const event of streamResult) {
-      // 记录原始 SDK 事件（debug 级别，结构化输出便于排查事件流）
+      // ---- debug 日志：记录原始 SDK 事件 ----
       if (event.type === 'raw_model_stream_event') {
         const rawEvent = event.data as { type?: string; event?: { type?: string } } | undefined
         const rawType = rawEvent?.type
@@ -583,27 +567,57 @@ export class AgentRuntime implements IExecutable {
       }
 
       switch (event.type) {
-        // ===== Layer 1: 原始模型流事件 =====
+        // ===== raw_model_stream_event =====
         case 'raw_model_stream_event': {
           const rawEvent = event.data
           if (!rawEvent || typeof rawEvent !== 'object') break
-
           const rawType = (rawEvent as { type?: string }).type
 
-          // ---- ③ llm: 模型调用 ----
-
-          // llm:start + turn:start
+          // response_started → 关上一轮 + 开新一轮 + llm:start
           if (rawType === 'response_started') {
-            openTurn()
+            if (turnOpen) {
+              onChunk({ type: 'turn:done', content: '', data: { turnIndex } })
+            }
+            turnIndex++
+            turnOpen = true
+            textStartEmitted = false
+            onChunk({ type: 'turn:start', content: '', data: { turnIndex } })
             onChunk({ type: 'llm:start', content: '' })
           }
 
-          // llm:done
+          // output_text_delta → text:delta（首次自动补 text:start）
+          if (rawType === 'output_text_delta') {
+            const delta = (rawEvent as { delta?: string }).delta || ''
+            if (delta) {
+              if (!textStartEmitted) {
+                textStartEmitted = true
+                onChunk({ type: 'text:start', content: '' })
+              }
+              onTextDelta(delta)
+              await this.streamEmitter.emitText(delta)
+              onChunk({ type: 'text:delta', content: delta, data: { delta } })
+            }
+          }
+
+          // response_done → llm:done（携带 usage）
           if (rawType === 'response_done') {
             const response = (rawEvent as { response?: Record<string, unknown> }).response
             const usage = response?.usage as
               | { inputTokens?: number; outputTokens?: number; totalTokens?: number }
               | undefined
+            // text:done（从 response_done.output 提取完整文本）
+            if (textStartEmitted) {
+              const outputs = response?.output as
+                | Array<{
+                    type?: string
+                    content?: Array<{ text?: string }>
+                  }>
+                | undefined
+              const msgOutput = outputs?.find((o) => o.type === 'message')
+              const fullText = msgOutput?.content?.map((c) => c.text || '').join('') || ''
+              onChunk({ type: 'text:done', content: fullText, data: { text: fullText } })
+            }
+
             onChunk({
               type: 'llm:done',
               content: '',
@@ -618,151 +632,37 @@ export class AgentRuntime implements IExecutable {
                   : undefined
               }
             })
-
-            // 重置 start 追踪（下一轮 LLM 需要重新检测）
-            textStartEmitted = false
-            reasoningStartEmitted = false
-
-            // 注意：不在这里关闭 turn。
-            // Chat Completions 模式下，tool_called/tool_output 事件在 response_done 之后到达，
-            // 如果这里就 closeTurn()，tool 事件会落在 turn 之外。
-            // 正确做法：turn 由下一个 openTurn()（即 response_started）或流结束时的 closeTurn() 关闭，
-            // 这样 tool 事件始终被包含在当前 turn 内。
-          }
-
-          // ---- ④ text: 文本增量 ----
-
-          if (rawType === 'output_text_delta') {
-            const delta = (rawEvent as { delta?: string }).delta || ''
-            if (delta) {
-              // 自动补发 text:start（Chat Completions 模式下无 output_item.added）
-              if (!textStartEmitted) {
-                textStartEmitted = true
-                onChunk({ type: 'text:start', content: '' })
-              }
-              onTextDelta(delta)
-              await this.streamEmitter.emitText(delta)
-              onChunk({ type: 'text:delta', content: delta, data: { delta } })
-            }
-          }
-
-          // ---- model 透传事件 ----
-
-          if (rawType === 'model') {
-            const raw = (rawEvent as { event?: Record<string, unknown> }).event
-            if (!raw) break
-            const rawEventType = (raw as { type?: string }).type
-
-            // output_item.added → text:start / reasoning:start / tool:start
-            if (rawEventType === 'response.output_item.added') {
-              const item = (raw as { item?: { type?: string } }).item
-              if (item?.type === 'message') {
-                textStartEmitted = true
-                onChunk({ type: 'text:start', content: '' })
-              }
-              if (item?.type === 'reasoning') {
-                reasoningStartEmitted = true
-                onChunk({ type: 'reasoning:start', content: '' })
-              }
-              if (item?.type === 'function_call') {
-                const toolName = (item as { name?: string }).name || 'unknown'
-                const callId = (item as { call_id?: string }).call_id
-                if (callId) toolStartEmittedSet.add(callId)
-                onChunk({
-                  type: 'tool:start',
-                  content: toolName,
-                  data: { toolName, callId }
-                })
-              }
-            }
-
-            // ⑤ reasoning: 增量
-            if (
-              rawEventType === 'response.reasoning_text.delta' ||
-              rawEventType === 'response.reasoning_summary_text.delta'
-            ) {
-              const delta = (raw as { delta?: string }).delta || ''
-              if (delta) {
-                // 自动补发 reasoning:start
-                if (!reasoningStartEmitted) {
-                  reasoningStartEmitted = true
-                  onChunk({ type: 'reasoning:start', content: '' })
-                }
-                await this.streamEmitter.emitThinking(delta)
-                onChunk({ type: 'reasoning:delta', content: delta, data: { delta } })
-              }
-            }
-
-            // ⑥ tool: 参数增量
-            if (rawEventType === 'response.function_call_arguments.delta') {
-              const delta = (raw as { delta?: string }).delta || ''
-              const callId = (raw as { call_id?: string }).call_id
-              if (delta) {
-                // 自动补发 tool:start（Chat Completions 模式下无 output_item.added）
-                if (callId && !toolStartEmittedSet.has(callId)) {
-                  toolStartEmittedSet.add(callId)
-                  onChunk({
-                    type: 'tool:start',
-                    content: '',
-                    data: { toolName: 'unknown', callId }
-                  })
-                }
-                onChunk({
-                  type: 'tool:delta',
-                  content: delta,
-                  data: { delta, callId }
-                })
-              }
-            }
-
-            // ⑥ tool: 参数完成 → tool:pending（等待执行）
-            if (rawEventType === 'response.function_call_arguments.done') {
-              const args = (raw as { arguments?: string }).arguments || '{}'
-              const callId = (raw as { call_id?: string }).call_id
-              onChunk({
-                type: 'tool:pending',
-                content: '',
-                data: { callId, arguments: args }
-              })
-            }
+            // response_done 不是 turn 的结束
+            // tool_called/tool_output 在 response_done 之后到达，仍属于当前 turn
           }
 
           break
         }
 
-        // ===== Layer 2: SDK RunItem 事件 =====
+        // ===== run_item_stream_event =====
         case 'run_item_stream_event': {
           const item = event.item
           if (!item) break
-
           const eventName = event.name
 
-          // ⑥ tool: 开始（备用路径 —— 当 model 透传未触发 tool:start 时）
+          // tool_called → tool:start
           if (eventName === 'tool_called' && item.type === 'tool_call_item') {
             const rawItem = item.rawItem
             const toolName = (rawItem as { name?: string }).name || 'unknown'
             const callId = (rawItem as { call_id?: string }).call_id
             let parsedArgs: Record<string, unknown> = {}
             try {
-              const argsStr = (rawItem as { arguments?: string }).arguments || '{}'
-              parsedArgs = JSON.parse(argsStr) as Record<string, unknown>
+              parsedArgs = JSON.parse(
+                (rawItem as { arguments?: string }).arguments || '{}'
+              ) as Record<string, unknown>
             } catch {
               // 参数解析失败
             }
-            // 自动补发 tool:start（如果之前的路径未触发）
-            const toolKey = callId || toolName
-            if (!toolStartEmittedSet.has(toolKey)) {
-              toolStartEmittedSet.add(toolKey)
-              onChunk({
-                type: 'tool:start',
-                content: toolName,
-                data: { toolName, callId }
-              })
-            }
+            onChunk({ type: 'tool:start', content: toolName, data: { toolName, callId } })
             await this.streamEmitter.emitToolCall(toolName, parsedArgs)
           }
 
-          // ⑥ tool: 执行完成 → tool:done
+          // tool_output → tool:done
           if (eventName === 'tool_output') {
             const rawItem = (item as { rawItem?: Record<string, unknown> }).rawItem || {}
             const toolName = (rawItem as { name?: string }).name || 'unknown'
@@ -777,11 +677,9 @@ export class AgentRuntime implements IExecutable {
               content: typeof output === 'string' ? output : JSON.stringify(output),
               data: { toolName, callId, output }
             })
-
-            // 不在这里关闭 turn —— turn 由下一个 openTurn() 或流结束时统一关闭
           }
 
-          // ⑧ handoff: 请求
+          // handoff: 请求
           if (eventName === 'handoff_requested') {
             const agentName =
               (item as unknown as { agent?: { name?: string } }).agent?.name || 'unknown'
@@ -793,7 +691,7 @@ export class AgentRuntime implements IExecutable {
             })
           }
 
-          // ⑧ handoff: 完成
+          // handoff: 完成
           if (eventName === 'handoff_occurred') {
             const targetAgent =
               (item as unknown as { targetAgent?: { name?: string } }).targetAgent?.name ||
@@ -807,7 +705,7 @@ export class AgentRuntime implements IExecutable {
             })
           }
 
-          // ⑦ hitl: 审批请求
+          // hitl: 审批请求
           if (eventName === 'tool_approval_requested' && item.type === 'tool_approval_item') {
             const approvalItem = item as RunToolApprovalItem
             await this.streamEmitter.emitToolApproval(approvalItem.name || 'unknown')
@@ -823,50 +721,22 @@ export class AgentRuntime implements IExecutable {
             })
           }
 
-          // ⑤ reasoning: 完成
-          if (eventName === 'reasoning_item_created') {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const rawItem = (item as any).rawItem as
-              | {
-                  content?: Array<{ text?: string }>
-                  rawContent?: Array<{ text?: string }>
-                }
-              | undefined
-            const summary = rawItem?.content?.map((c) => c.text).join('') || ''
-            const rawContent = rawItem?.rawContent?.map((c) => c.text).join('') || undefined
-            onChunk({
-              type: 'reasoning:done',
-              content: summary || 'Reasoning completed',
-              data: { summary, rawContent }
-            })
-          }
-
-          // ④ text: 完成
-          if (eventName === 'message_output_created') {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const fullText = (item as any).content || ''
-            onChunk({
-              type: 'text:done',
-              content: fullText,
-              data: { text: fullText }
-            })
-          }
-
           break
         }
 
-        // ===== Layer 3: Agent 切换事件 =====
+        // ===== agent_updated_stream_event =====
         case 'agent_updated_stream_event': {
           const agentName = event.agent?.name || 'unknown'
           await this.streamEmitter.emitAgentUpdated(agentName)
-          // agent_updated 不单独映射到新事件，handoff:done 已覆盖
           break
         }
       }
     }
 
-    // 确保最后一个 turn 关闭
-    closeTurn()
+    // 关闭最后一轮
+    if (turnOpen) {
+      onChunk({ type: 'turn:done', content: '', data: { turnIndex } })
+    }
   }
 
   /**
