@@ -42,7 +42,7 @@ vi.mock('../../streaming/StreamEmitter', () => ({
   createStreamEmitter: vi.fn().mockReturnValue(mockStreamEmitter)
 }))
 
-import { TeamRuntime, type TeamRuntimeOptions } from '../TeamRuntime'
+import { TeamRuntime, type TeamRuntimeOptions } from './TeamRuntime'
 
 function createTeamOptions(overrides?: Partial<TeamRuntimeOptions>): TeamRuntimeOptions {
   return {

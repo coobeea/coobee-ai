@@ -17,12 +17,12 @@ import type {
   ExecutionResult,
   StreamChunk,
   SessionInfo
-} from './types'
+} from '../runtime/types'
+import type { OrchestrationType } from './types'
 
 // ========== Team 配置类型 ==========
 
-/** 协作模式 */
-export type OrchestrationType = 'sequential' | 'parallel' | 'planner'
+export type { OrchestrationType }
 
 /** Team 成员配置 */
 export interface TeamMemberConfig {
