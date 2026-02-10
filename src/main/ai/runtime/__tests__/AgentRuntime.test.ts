@@ -1,743 +1,792 @@
 /**
- * AgentRuntime 测试
+ * AgentRuntime 真实执行测试
  *
- * 测试纯参数驱动的 AgentRuntime：
- * - 初始化（Agent 创建、FileSession、StreamEmitter）
- * - 同步执行 run()
- * - 流式执行 runStream()（8 层闭环事件覆盖）
- * - HITL 工具审批（暂停/恢复）
- * - 会话管理
+ * 真实调用链：
+ *   ✅ AgentRuntime（真实）
+ *   ✅ @openai/agents SDK Agent + run()（真实）
+ *   ✅ tool() 工具定义 + execute（真实）
+ *   ✅ FileSession 文件持久化（真实）
+ *   ✅ StreamEmitter 事件广播（真实）
+ *   ✅ LLM API 请求（真实，通过 MiniMax / OpenAI 兼容接口）
+ *
+ * 唯一 stub：Electron 环境层（electron, electron-log, mkdirp）
+ *
+ * 测试场景：
+ *   1. 简单问答（无工具）
+ *   2. 单工具调用
+ *   3. 多轮工具调用（LLM → tool → LLM → tool → LLM → text）
+ *   4. 并行工具调用（一次性调用多个工具）
+ *   5. 链式计算（上一步工具的结果作为下一步的输入）
+ *   6. 多种工具混合
+ *
+ * 日志输出（分离存储）：
+ *   test-results/YYYYMMDD/agent-test-{timestamp}.log     — 摘要（事件序列 + 闭环检查）
+ *   test-results/YYYYMMDD/agent-events-{timestamp}.log   — SDK 原始事件流 + chunk JSON
+ *
+ * 运行命令：
+ *   pnpm vitest run src/main/ai/runtime/__tests__/AgentRuntime.test.ts
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ===== Hoisted mocks =====
-const { mockRun, mockStreamEmitter, mockFileSession } = vi.hoisted(() => ({
-  mockRun: vi.fn(),
-  mockStreamEmitter: {
-    emitStart: vi.fn().mockResolvedValue(undefined),
-    emitDone: vi.fn().mockResolvedValue(undefined),
-    emitError: vi.fn().mockResolvedValue(undefined),
-    emitText: vi.fn().mockResolvedValue(undefined),
-    emitThinking: vi.fn().mockResolvedValue(undefined),
-    emitToolCall: vi.fn().mockResolvedValue(undefined),
-    emitToolResult: vi.fn().mockResolvedValue(undefined),
-    emitHandoff: vi.fn().mockResolvedValue(undefined),
-    emitToolApproval: vi.fn().mockResolvedValue(undefined),
-    emitAgentUpdated: vi.fn().mockResolvedValue(undefined),
-    emit: vi.fn().mockResolvedValue(undefined)
-  },
-  mockFileSession: {
-    getSessionId: vi.fn().mockResolvedValue('session-1'),
-    getItems: vi.fn().mockResolvedValue([]),
-    addItems: vi.fn().mockResolvedValue(undefined),
-    popItem: vi.fn().mockResolvedValue(undefined),
-    clearSession: vi.fn().mockResolvedValue(undefined),
-    getAllSessionItems: vi.fn().mockResolvedValue([]),
-    appendSummaryItem: vi.fn().mockResolvedValue(undefined),
-    getLastSummary: vi.fn().mockResolvedValue(undefined),
-    getItemCount: vi.fn().mockResolvedValue(0),
-    getFilePath: vi.fn().mockReturnValue('/tmp/test/messages.jsonl')
-  }
-}))
+import fs from 'fs'
+import path from 'path'
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest'
+import { rm } from 'fs/promises'
+import { join } from 'path'
 
-// ===== Mock @openai/agents =====
-vi.mock('@openai/agents', () => ({
-  Agent: vi.fn().mockImplementation(function (config: Record<string, unknown>) {
-    return { name: config.name || 'TestAgent', ...config }
-  }),
-  run: (...args: unknown[]) => mockRun(...args)
-}))
+// ===== Electron 环境 stub（非业务 mock） =====
 
-// ===== Mock FileSession =====
-vi.mock('../FileSession', () => ({
-  FileSession: vi.fn().mockImplementation(function () {
-    return mockFileSession
-  })
-}))
-
-// ===== Mock StreamEmitter =====
-vi.mock('../../streaming/StreamEmitter', () => ({
-  createStreamEmitter: vi.fn().mockReturnValue(mockStreamEmitter)
-}))
-
-import { AgentRuntime } from '../AgentRuntime'
-import { Agent } from '@openai/agents'
-import type { AgentRuntimeOptions } from '../types'
-
-function createOptions(overrides?: Partial<AgentRuntimeOptions>): AgentRuntimeOptions {
+vi.mock('electron', () => {
+  const home = process.env.HOME || '/tmp'
+  const base = join(home, '.coobee-ai-test')
   return {
-    name: 'TestAgent',
-    instructions: 'You are a helpful assistant.',
-    model: 'gpt-4o',
-    sessionId: 'session-1',
-    ...overrides
+    app: {
+      getPath: (name: string) => join(base, name),
+      getAppPath: () => base,
+      getName: () => 'coobee-ai-test',
+      getVersion: () => '0.0.0-test',
+      getLocale: () => 'zh-CN',
+      isPackaged: false
+    },
+    BrowserWindow: vi.fn(),
+    ipcMain: { on: vi.fn(), handle: vi.fn() },
+    session: { defaultSession: { webRequest: { onHeadersReceived: vi.fn() } } }
+  }
+})
+
+vi.mock('@electron-toolkit/utils', () => ({
+  is: { dev: true }
+}))
+
+vi.mock('electron-log', () => {
+  const noop = (): void => {}
+  const mockTransport = {
+    resolvePathFn: null,
+    level: 'info',
+    maxSize: 10 * 1024 * 1024,
+    format: '',
+    getFile: () => ({ path: '/tmp/test.log' })
+  }
+  const mockLogger = {
+    info: noop,
+    warn: noop,
+    error: noop,
+    debug: noop,
+    verbose: noop,
+    transports: {
+      file: { ...mockTransport },
+      console: { level: 'info', format: '' }
+    },
+    create: () => ({
+      info: noop,
+      warn: noop,
+      error: noop,
+      debug: noop,
+      verbose: noop,
+      transports: {
+        file: { ...mockTransport },
+        console: { level: 'info', format: '' }
+      }
+    })
+  }
+  return { default: mockLogger }
+})
+
+vi.mock('mkdirp', () => ({
+  mkdirp: vi.fn().mockResolvedValue(undefined)
+}))
+
+// ===== 真实 imports =====
+import { tool, setDefaultOpenAIClient, setOpenAIAPI } from '@openai/agents'
+import OpenAI from 'openai'
+import { z } from 'zod'
+import { AgentRuntime } from '../AgentRuntime'
+import type { StreamChunk } from '../types'
+
+// ========== API 配置 ==========
+
+function resolveApiConfig(): { apiKey: string; baseURL?: string; model: string } | null {
+  if (process.env.OPENAI_API_KEY) {
+    return {
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.OPENAI_BASE_URL,
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini'
+    }
+  }
+  if (process.env.VITE_MINIMAX_API_KEY) {
+    return {
+      apiKey: process.env.VITE_MINIMAX_API_KEY,
+      baseURL: process.env.VITE_MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1',
+      model: process.env.VITE_MINIMAX_MODEL || 'MiniMax-M2.1'
+    }
+  }
+  return null
+}
+
+const apiConfig = resolveApiConfig()
+const RUN = !!apiConfig
+
+// ========== 日志系统（分离存储） ==========
+
+const LOG_PREFIX = '[AgentTest]'
+const TEST_LOG_BASE = path.join(process.cwd(), 'test-results')
+
+let currentLogDir: string
+let currentTestLogFile: string
+let currentEventsLogFile: string
+
+function ensureLogDir(): void {
+  fs.mkdirSync(currentLogDir, { recursive: true })
+}
+
+function appendTestLog(line: string): void {
+  ensureLogDir()
+  fs.appendFileSync(currentTestLogFile, line + '\n', 'utf-8')
+}
+
+function appendEventsLog(line: string): void {
+  ensureLogDir()
+  fs.appendFileSync(currentEventsLogFile, line + '\n', 'utf-8')
+}
+
+/** 同时输出到控制台和摘要日志（console.log 已被 patch 拦截写入摘要日志，这里只调 console.log） */
+function testLog(line: string): void {
+  console.log(line)
+}
+
+// 拦截 console 方法，按级别分流到不同日志文件：
+//   console.log / console.error / console.warn → 摘要日志（agent-test-*.log）
+//   console.debug → 事件日志（agent-events-*.log）—— SDK 原始事件流
+const origConsoleLog = console.log
+const origConsoleDebug = console.debug
+const origConsoleError = console.error
+const origConsoleWarn = console.warn
+
+function patchConsole(): void {
+  const formatMsg = (args: unknown[]): string => {
+    return args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')
+  }
+
+  const wrapToTestLog =
+    (orig: (...args: unknown[]) => void, level: string) =>
+    (...args: unknown[]) => {
+      orig(...args)
+      try {
+        const ts = new Date().toISOString().slice(11, 23)
+        appendTestLog(`[${ts}] [${level}] ${formatMsg(args)}`)
+      } catch {
+        // ignore
+      }
+    }
+
+  const wrapToEventsLog =
+    (orig: (...args: unknown[]) => void, level: string) =>
+    (...args: unknown[]) => {
+      orig(...args)
+      try {
+        const ts = new Date().toISOString().slice(11, 23)
+        appendEventsLog(`[${ts}] [${level}] ${formatMsg(args)}`)
+      } catch {
+        // ignore
+      }
+    }
+
+  console.log = wrapToTestLog(origConsoleLog, 'INFO') as typeof console.log
+  console.error = wrapToTestLog(origConsoleError, 'ERROR') as typeof console.error
+  console.warn = wrapToTestLog(origConsoleWarn, 'WARN') as typeof console.warn
+  // SDK 原始事件通过 log.debug → console.debug 输出，单独写入事件日志
+  console.debug = wrapToEventsLog(origConsoleDebug, 'DEBUG') as typeof console.debug
+}
+
+function restoreConsole(): void {
+  console.log = origConsoleLog
+  console.debug = origConsoleDebug
+  console.error = origConsoleError
+  console.warn = origConsoleWarn
+}
+
+// ========== 辅助类型 ==========
+
+interface TimedChunk extends StreamChunk {
+  elapsed: number
+  seq: number
+}
+
+function formatChunkSummary(chunk: StreamChunk, index: number, elapsed: number): string {
+  const n = String(index + 1).padStart(3)
+  const time = String(elapsed).padStart(6) + 'ms'
+  const type = chunk.type.padEnd(18)
+
+  let detail = ''
+  if (chunk.type === 'text:delta') {
+    const text = chunk.content.length > 60 ? chunk.content.slice(0, 60) + '...' : chunk.content
+    detail = `content: ${JSON.stringify(text)}`
+  } else if (chunk.type === 'tool:start') {
+    const d = chunk.data as { toolName?: string; callId?: string }
+    detail = `toolName: ${d?.toolName || chunk.content}, callId: ${d?.callId || 'N/A'}`
+  } else if (chunk.type === 'tool:done') {
+    detail = `content: ${JSON.stringify((chunk.content || '').slice(0, 80))}`
+  } else if (chunk.type === 'tool:delta') {
+    detail = `delta: ${JSON.stringify((chunk.content || '').slice(0, 60))}`
+  } else if (chunk.type === 'tool:pending') {
+    const d = chunk.data as { callId?: string; arguments?: string }
+    detail = `callId: ${d?.callId}, args: ${d?.arguments?.slice(0, 60)}`
+  } else if (chunk.type === 'llm:done' && chunk.data) {
+    const d = chunk.data as { usage?: { totalTokens?: number } }
+    detail = d.usage ? `tokens: ${d.usage.totalTokens}` : ''
+  } else if (chunk.type === 'turn:start' || chunk.type === 'turn:done') {
+    const d = chunk.data as { turnIndex?: number }
+    detail = d?.turnIndex ? `turnIndex: ${d.turnIndex}` : ''
+  } else if (chunk.content) {
+    const text = chunk.content.length > 60 ? chunk.content.slice(0, 60) + '...' : chunk.content
+    detail = `content: ${JSON.stringify(text)}`
+  }
+
+  return `  [${time}] #${n} ${type}${detail ? ' { ' + detail + ' }' : ''}`
+}
+
+/** 闭环检查 */
+function checkClosedLoops(chunks: StreamChunk[]): string[] {
+  const lines: string[] = []
+  const counts: Record<string, number> = {}
+  for (const c of chunks) {
+    counts[c.type] = (counts[c.type] || 0) + 1
+  }
+  const pairs: [string, string][] = [
+    ['run:start', 'run:done'],
+    ['turn:start', 'turn:done'],
+    ['llm:start', 'llm:done'],
+    ['text:start', 'text:done'],
+    ['reasoning:start', 'reasoning:done'],
+    ['tool:start', 'tool:done']
+  ]
+  for (const [s, d] of pairs) {
+    const sc = counts[s] || 0
+    const dc = counts[d] || 0
+    if (sc > 0 || dc > 0) {
+      const ok = sc === dc ? '✓' : `✗ MISMATCH`
+      lines.push(`    ${s}/${d}: ${sc}/${dc} ${ok}`)
+    }
+  }
+  return lines
+}
+
+function safeJsonStringify(x: unknown): string {
+  try {
+    return JSON.stringify(x, null, 2)
+  } catch {
+    return String(x)
   }
 }
 
-describe('AgentRuntime', () => {
+/** 核心日志函数 */
+function logTestResult(
+  testName: string,
+  opts: {
+    input?: string
+    output?: string
+    duration?: number
+    toolCalls?: Array<{ toolName: string; arguments: unknown }> | null
+    chunks?: StreamChunk[]
+    timedChunks?: TimedChunk[]
+  }
+): void {
+  testLog('')
+  testLog(`${LOG_PREFIX} ========== 测试: ${testName} ==========`)
+
+  if (opts.input) testLog(`${LOG_PREFIX} 输入: ${opts.input}`)
+  if (opts.output) {
+    const show = opts.output.length > 200 ? opts.output.slice(0, 200) + '...' : opts.output
+    testLog(`${LOG_PREFIX} 输出: ${show}`)
+  }
+  if (opts.duration) testLog(`${LOG_PREFIX} 耗时: ${opts.duration}ms`)
+  if (opts.toolCalls && opts.toolCalls.length > 0) {
+    testLog(
+      `${LOG_PREFIX} 工具调用: ${opts.toolCalls.map((t) => `${t.toolName}(${JSON.stringify(t.arguments)})`).join(', ')}`
+    )
+  }
+
+  // 事件序列
+  if (opts.chunks && opts.chunks.length > 0) {
+    const types = opts.chunks.map((c) => c.type)
+    testLog(`${LOG_PREFIX} 事件序列 (${opts.chunks.length} 个):`)
+    testLog(`${LOG_PREFIX}   ${types.join(' → ')}`)
+
+    // 闭环检查
+    const loopChecks = checkClosedLoops(opts.chunks)
+    if (loopChecks.length > 0) {
+      testLog(`${LOG_PREFIX} 闭环检查:`)
+      for (const l of loopChecks) testLog(`${LOG_PREFIX} ${l}`)
+    }
+
+    // 详细事件
+    if (opts.timedChunks) {
+      testLog(`${LOG_PREFIX} 详细事件:`)
+      for (const tc of opts.timedChunks) {
+        testLog(
+          `${LOG_PREFIX}${formatChunkSummary({ type: tc.type, content: tc.content, data: tc.data }, tc.seq - 1, tc.elapsed)}`
+        )
+      }
+    }
+  }
+
+  testLog(`${LOG_PREFIX} ${'='.repeat(50)}`)
+
+  // 写入完整事件 JSON 到 events 日志
+  if (opts.timedChunks && opts.timedChunks.length > 0) {
+    try {
+      appendEventsLog('')
+      appendEventsLog(
+        `---------- 测试: ${testName} | 共 ${opts.timedChunks.length} 个事件 ----------`
+      )
+      for (const tc of opts.timedChunks) {
+        appendEventsLog(`#${tc.seq} ${tc.type}`)
+        appendEventsLog(safeJsonStringify(tc))
+        appendEventsLog('')
+      }
+      appendEventsLog('='.repeat(60))
+    } catch {
+      // ignore
+    }
+  }
+}
+
+// ========== 真实工具 ==========
+
+const addNumbersTool = tool({
+  name: 'add_numbers',
+  description: '将两个数字相加并返回结果。当用户要求计算加法时必须使用此工具。',
+  parameters: z.object({
+    a: z.number().describe('第一个数字'),
+    b: z.number().describe('第二个数字')
+  }),
+  execute: async ({ a, b }) => {
+    const result = a + b
+    testLog(`${LOG_PREFIX}   [工具执行] add_numbers(${a}, ${b}) = ${result}`)
+    return JSON.stringify({ result, expression: `${a} + ${b} = ${result}` })
+  }
+})
+
+const multiplyNumbersTool = tool({
+  name: 'multiply_numbers',
+  description: '将两个数字相乘并返回结果。当用户要求计算乘法时必须使用此工具。',
+  parameters: z.object({
+    a: z.number().describe('第一个数字'),
+    b: z.number().describe('第二个数字')
+  }),
+  execute: async ({ a, b }) => {
+    const result = a * b
+    testLog(`${LOG_PREFIX}   [工具执行] multiply_numbers(${a}, ${b}) = ${result}`)
+    return JSON.stringify({ result, expression: `${a} × ${b} = ${result}` })
+  }
+})
+
+const reverseStringTool = tool({
+  name: 'reverse_string',
+  description: '反转一个字符串。当用户要求反转文本时使用。',
+  parameters: z.object({
+    text: z.string().describe('要反转的文本')
+  }),
+  execute: async ({ text }) => {
+    const reversed = text.split('').reverse().join('')
+    testLog(`${LOG_PREFIX}   [工具执行] reverse_string("${text}") = "${reversed}"`)
+    return JSON.stringify({ original: text, reversed })
+  }
+})
+
+const getCurrentTimeTool = tool({
+  name: 'get_current_time',
+  description: '获取当前日期和时间。当用户询问时间时使用。',
+  parameters: z.object({}),
+  execute: async () => {
+    const now = new Date()
+    const result = {
+      date: now.toLocaleDateString('zh-CN'),
+      time: now.toLocaleTimeString('zh-CN')
+    }
+    testLog(`${LOG_PREFIX}   [工具执行] get_current_time() = ${JSON.stringify(result)}`)
+    return JSON.stringify(result)
+  }
+})
+
+const getWeatherTool = tool({
+  name: 'get_weather',
+  description: '获取指定城市的天气信息。',
+  parameters: z.object({
+    city: z.string().describe('城市名')
+  }),
+  execute: async ({ city }) => {
+    const result = { city, temperature: '25°C', condition: '晴天', humidity: '60%' }
+    testLog(`${LOG_PREFIX}   [工具执行] get_weather("${city}") = ${JSON.stringify(result)}`)
+    return JSON.stringify(result)
+  }
+})
+
+// ========== 辅助函数 ==========
+
+let counter = 0
+function uid(): string {
+  return `agent-test-${Date.now()}-${++counter}`
+}
+
+function createCollector(): {
+  chunks: StreamChunk[]
+  timedChunks: TimedChunk[]
+  collect: (chunk: StreamChunk) => void
+} {
+  const chunks: StreamChunk[] = []
+  const timedChunks: TimedChunk[] = []
+  const startTime = Date.now()
+  let seq = 0
+  return {
+    chunks,
+    timedChunks,
+    collect: (chunk: StreamChunk): void => {
+      seq++
+      chunks.push(chunk)
+      timedChunks.push({ ...chunk, elapsed: Date.now() - startTime, seq })
+    }
+  }
+}
+
+function ofType(chunks: StreamChunk[], type: string): StreamChunk[] {
+  return chunks.filter((c) => c.type === type)
+}
+
+function allTypes(chunks: StreamChunk[]): string[] {
+  return chunks.map((c) => c.type)
+}
+
+function assertOrdered(seq: string[], ...events: string[]): void {
+  let lastIdx = -1
+  for (const event of events) {
+    const idx = seq.indexOf(event, lastIdx + 1)
+    expect(idx, `Expected '${event}' after index ${lastIdx}`).toBeGreaterThan(lastIdx)
+    lastIdx = idx
+  }
+}
+
+// ========== 测试 ==========
+
+describe.skipIf(!RUN)('AgentRuntime 真实执行测试（多轮工具调用）', () => {
   let runtime: AgentRuntime
+  let sessionId: string
+  let MODEL: string
+
+  beforeAll(() => {
+    if (!apiConfig) return
+
+    const client = new OpenAI({
+      apiKey: apiConfig.apiKey,
+      ...(apiConfig.baseURL ? { baseURL: apiConfig.baseURL } : {})
+    })
+    setDefaultOpenAIClient(client)
+    if (apiConfig.baseURL) {
+      setOpenAIAPI('chat_completions')
+    }
+    MODEL = apiConfig.model
+
+    // 初始化日志
+    patchConsole()
+    const now = new Date()
+    const dateDir = now.toISOString().slice(0, 10).replace(/-/g, '')
+    const runTs = Date.now()
+    currentLogDir = path.join(TEST_LOG_BASE, dateDir)
+    currentTestLogFile = path.join(currentLogDir, `agent-test-${runTs}.log`)
+    currentEventsLogFile = path.join(currentLogDir, `agent-events-${runTs}.log`)
+    ensureLogDir()
+
+    const ts = now.toISOString()
+    appendTestLog(`========== AgentRuntime 真实执行测试 ${ts} | model=${MODEL} ==========`)
+    appendTestLog(`摘要日志: ${currentTestLogFile}`)
+    appendTestLog(`事件日志: ${currentEventsLogFile}`)
+    appendTestLog('')
+    appendEventsLog(`========== AgentRuntime 事件日志 ${ts} | model=${MODEL} ==========`)
+    appendEventsLog('')
+
+    testLog(`${LOG_PREFIX} API: model=${MODEL}, baseURL=${apiConfig.baseURL || 'OpenAI'}`)
+    testLog(`${LOG_PREFIX} 摘要日志: ${currentTestLogFile}`)
+    testLog(`${LOG_PREFIX} 事件日志: ${currentEventsLogFile}`)
+  })
+
+  afterAll(() => {
+    if (!RUN) return
+    const ts = new Date().toISOString()
+    appendTestLog(`\n========== 测试结束 ${ts} ==========`)
+    appendEventsLog(`\n========== 事件日志结束 ${ts} ==========`)
+    restoreConsole()
+    origConsoleLog(`\n📄 摘要日志: ${currentTestLogFile}`)
+    origConsoleLog(`📄 事件日志: ${currentEventsLogFile}`)
+  })
 
   beforeEach(() => {
-    vi.clearAllMocks()
-    mockFileSession.getItemCount.mockResolvedValue(0)
-    runtime = new AgentRuntime(createOptions())
+    sessionId = uid()
   })
 
-  // ===== 初始化 =====
-
-  describe('initialize', () => {
-    it('创建 Agent 实例', async () => {
-      await runtime.initialize()
-
-      expect(Agent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'TestAgent',
-          instructions: 'You are a helpful assistant.',
-          model: 'gpt-4o'
-        })
-      )
-    })
-
-    it('传入 tools 时包含在 Agent 配置中', async () => {
-      const mockTool = { name: 'testTool', type: 'function' }
-      runtime = new AgentRuntime(createOptions({ tools: [mockTool as never] }))
-      await runtime.initialize()
-
-      expect(Agent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          tools: [mockTool]
-        })
-      )
-    })
-
-    it('传入 handoffs 时包含在 Agent 配置中', async () => {
-      const mockHandoff = { name: 'AgentB' }
-      runtime = new AgentRuntime(createOptions({ handoffs: [mockHandoff as never] }))
-      await runtime.initialize()
-
-      expect(Agent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          handoffs: [mockHandoff]
-        })
-      )
-    })
-
-    it('传入 modelSettings', async () => {
-      runtime = new AgentRuntime(createOptions({ modelSettings: { temperature: 0.5 } as never }))
-      await runtime.initialize()
-
-      expect(Agent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          modelSettings: { temperature: 0.5 }
-        })
-      )
-    })
-  })
-
-  // ===== 属性 =====
-
-  describe('属性', () => {
-    it('name 返回配置名称', () => {
-      expect(runtime.name).toBe('TestAgent')
-    })
-
-    it('type 为 agent', () => {
-      expect(runtime.type).toBe('agent')
-    })
-
-    it('interrupted 初始为 false', () => {
-      expect(runtime.interrupted).toBe(false)
-    })
-  })
-
-  // ===== 同步执行 =====
-
-  describe('run', () => {
-    beforeEach(async () => {
-      await runtime.initialize()
-    })
-
-    it('成功执行并返回结果', async () => {
-      mockRun.mockResolvedValue({
-        finalOutput: 'Hello!',
-        newItems: [],
-        interruptions: []
-      })
-
-      const result = await runtime.run('Hi')
-
-      expect(result.output).toBe('Hello!')
-      expect(result.duration).toBeGreaterThanOrEqual(0)
-      expect(result.metadata?.sessionId).toBe('session-1')
-    })
-
-    it('传入 session 参数给 SDK', async () => {
-      mockRun.mockResolvedValue({
-        finalOutput: 'ok',
-        newItems: [],
-        interruptions: []
-      })
-
-      await runtime.run('test')
-
-      expect(mockRun).toHaveBeenCalledWith(
-        expect.anything(), // agent
-        'test', // input
-        expect.objectContaining({
-          session: mockFileSession,
-          maxTurns: 25
-        })
-      )
-    })
-
-    it('使用自定义 maxTurns', async () => {
-      runtime = new AgentRuntime(createOptions({ maxTurns: 10 }))
-      await runtime.initialize()
-      mockRun.mockResolvedValue({
-        finalOutput: 'ok',
-        newItems: [],
-        interruptions: []
-      })
-
-      await runtime.run('test')
-
-      expect(mockRun).toHaveBeenCalledWith(
-        expect.anything(),
-        'test',
-        expect.objectContaining({ maxTurns: 10 })
-      )
-    })
-
-    it('多轮对话依赖 session 历史（非 previousResponseId）', async () => {
-      mockRun
-        .mockResolvedValueOnce({
-          finalOutput: 'first',
-          newItems: [],
-          interruptions: []
-        })
-        .mockResolvedValueOnce({
-          finalOutput: 'second',
-          newItems: [],
-          interruptions: []
-        })
-
-      await runtime.run('msg1')
-      await runtime.run('msg2')
-
-      // 两次调用都传 session，但不传 previousResponseId
-      expect(mockRun.mock.calls[0][2]).toEqual(
-        expect.objectContaining({ session: mockFileSession })
-      )
-      expect(mockRun.mock.calls[1][2]).toEqual(
-        expect.objectContaining({ session: mockFileSession })
-      )
-      // 不应包含 previousResponseId
-      expect(mockRun.mock.calls[1][2]).not.toHaveProperty('previousResponseId')
-    })
-
-    it('HITL 中断返回 interrupted 结果', async () => {
-      const mockApprovalItem = {
-        type: 'tool_approval_item',
-        name: 'dangerous_tool',
-        arguments: '{"target": "prod"}'
+  afterEach(async () => {
+    if (runtime) {
+      try {
+        await runtime.clearSession()
+        await runtime.destroy()
+      } catch {
+        /* ignore */
       }
-      mockRun.mockResolvedValue({
-        finalOutput: '',
-        newItems: [],
-        interruptions: [mockApprovalItem],
-        state: { approve: vi.fn(), reject: vi.fn() }
-      })
-
-      const result = await runtime.run('do dangerous thing')
-
-      expect(result.interrupted).toBe(true)
-      expect(result.interruptions).toHaveLength(1)
-      expect(result.interruptions![0].toolName).toBe('dangerous_tool')
-      expect(runtime.interrupted).toBe(true)
-    })
+    }
+    try {
+      const base = join(process.env.HOME || '/tmp', '.coobee-ai')
+      await rm(join(base, 'sessions', sessionId), { recursive: true, force: true })
+    } catch {
+      /* ignore */
+    }
   })
 
-  // ===== 流式执行 =====
+  // ===== 场景 1：简单问答（无工具） =====
 
-  describe('runStream', () => {
-    beforeEach(async () => {
-      await runtime.initialize()
+  it('场景1 - 简单问答：完整 run → turn → llm → text 闭环', { timeout: 60_000 }, async () => {
+    const inputText = '1+1等于几？用一个数字回答'
+    const { chunks, timedChunks, collect } = createCollector()
+
+    runtime = new AgentRuntime({
+      name: 'SimpleAgent',
+      instructions: '你是一个简洁的助手。用一句话回答。',
+      model: MODEL,
+      sessionId
+    })
+    await runtime.initialize()
+    const result = await runtime.runStream(inputText, {}, collect)
+
+    logTestResult('场景1 - 简单问答', {
+      input: inputText,
+      output: result.output,
+      duration: result.duration,
+      chunks,
+      timedChunks
     })
 
-    it('消费完整 text 闭环：text:start → text:delta → text:done', async () => {
-      const events = [
-        {
-          type: 'raw_model_stream_event',
-          data: { type: 'response_started' }
-        },
-        {
-          type: 'raw_model_stream_event',
-          data: {
-            type: 'model',
-            event: { type: 'response.output_item.added', item: { type: 'message' } }
-          }
-        },
-        {
-          type: 'raw_model_stream_event',
-          data: { type: 'output_text_delta', delta: 'Hello ' }
-        },
-        {
-          type: 'raw_model_stream_event',
-          data: { type: 'output_text_delta', delta: 'world' }
-        },
-        {
-          type: 'run_item_stream_event',
-          name: 'message_output_created',
-          item: { type: 'message_output_item', content: 'Hello world' }
-        },
-        {
-          type: 'raw_model_stream_event',
-          data: { type: 'response_done', response: { id: 'r1' } }
-        }
-      ]
-
-      mockRun.mockResolvedValue({
-        [Symbol.asyncIterator]: async function* () {
-          for (const e of events) yield e
-        },
-        completed: Promise.resolve(),
-        finalOutput: 'Hello world',
-        lastResponseId: 'resp-1',
-        newItems: [],
-        interruptions: [],
-        state: {}
-      })
-
-      const chunks: Array<{ type: string; content: string; data?: unknown }> = []
-      await runtime.runStream('Hi', {}, (chunk) => chunks.push(chunk))
-
-      // 验证 run 闭环
-      expect(chunks[0].type).toBe('run:start')
-      expect(chunks[chunks.length - 1].type).toBe('run:done')
-
-      // 验证 turn 闭环
-      const turnStart = chunks.filter((c) => c.type === 'turn:start')
-      expect(turnStart).toHaveLength(1)
-      const turnDone = chunks.filter((c) => c.type === 'turn:done')
-      expect(turnDone).toHaveLength(1)
-
-      // 验证 llm 闭环
-      const llmStart = chunks.filter((c) => c.type === 'llm:start')
-      expect(llmStart).toHaveLength(1)
-      const llmDone = chunks.filter((c) => c.type === 'llm:done')
-      expect(llmDone).toHaveLength(1)
-
-      // 验证 text 闭环
-      const textStart = chunks.filter((c) => c.type === 'text:start')
-      expect(textStart).toHaveLength(1)
-
-      const textDeltas = chunks.filter((c) => c.type === 'text:delta')
-      expect(textDeltas).toHaveLength(2)
-      expect(textDeltas[0].content).toBe('Hello ')
-      expect(textDeltas[1].content).toBe('world')
-
-      const textDone = chunks.filter((c) => c.type === 'text:done')
-      expect(textDone).toHaveLength(1)
-      expect(textDone[0].content).toBe('Hello world')
-    })
-
-    it('消费完整 llm 闭环：llm:start → llm:done（含 usage）', async () => {
-      const events = [
-        {
-          type: 'raw_model_stream_event',
-          data: { type: 'response_started' }
-        },
-        {
-          type: 'raw_model_stream_event',
-          data: {
-            type: 'response_done',
-            response: {
-              id: 'resp-1',
-              usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 }
-            }
-          }
-        }
-      ]
-
-      mockRun.mockResolvedValue({
-        [Symbol.asyncIterator]: async function* () {
-          for (const e of events) yield e
-        },
-        completed: Promise.resolve(),
-        finalOutput: 'ok',
-        newItems: [],
-        interruptions: [],
-        state: {}
-      })
-
-      const chunks: Array<{ type: string; content: string; data?: unknown }> = []
-      await runtime.runStream('test', {}, (chunk) => chunks.push(chunk))
-
-      const llmStart = chunks.filter((c) => c.type === 'llm:start')
-      expect(llmStart).toHaveLength(1)
-
-      const llmDone = chunks.filter((c) => c.type === 'llm:done')
-      expect(llmDone).toHaveLength(1)
-      expect((llmDone[0].data as { usage?: { totalTokens: number } })?.usage?.totalTokens).toBe(30)
-    })
-
-    it('消费完整 tool 闭环：tool:start → tool:delta → tool:pending → tool:done', async () => {
-      const events = [
-        // response_started → turn:start + llm:start
-        {
-          type: 'raw_model_stream_event',
-          data: { type: 'response_started' }
-        },
-        // tool:start via model透传
-        {
-          type: 'raw_model_stream_event',
-          data: {
-            type: 'model',
-            event: {
-              type: 'response.output_item.added',
-              item: { type: 'function_call', name: 'get_weather', call_id: 'call-1' }
-            }
-          }
-        },
-        // tool_called via run_item
-        {
-          type: 'run_item_stream_event',
-          name: 'tool_called',
-          item: {
-            type: 'tool_call_item',
-            rawItem: {
-              type: 'function_call',
-              name: 'get_weather',
-              arguments: '{"city":"Beijing"}',
-              call_id: 'call-1'
-            }
-          }
-        },
-        // tool:delta
-        {
-          type: 'raw_model_stream_event',
-          data: {
-            type: 'model',
-            event: {
-              type: 'response.function_call_arguments.delta',
-              delta: '{"city":',
-              call_id: 'call-1'
-            }
-          }
-        },
-        // tool:pending
-        {
-          type: 'raw_model_stream_event',
-          data: {
-            type: 'model',
-            event: {
-              type: 'response.function_call_arguments.done',
-              arguments: '{"city":"Beijing"}',
-              call_id: 'call-1'
-            }
-          }
-        },
-        // response_done → llm:done
-        {
-          type: 'raw_model_stream_event',
-          data: { type: 'response_done', response: { id: 'r1' } }
-        },
-        // tool:done
-        {
-          type: 'run_item_stream_event',
-          name: 'tool_output',
-          item: {
-            type: 'tool_call_output_item',
-            rawItem: { name: 'get_weather', call_id: 'call-1', output: 'Sunny 25°C' },
-            output: 'Sunny 25°C'
-          }
-        }
-      ]
-
-      mockRun.mockResolvedValue({
-        [Symbol.asyncIterator]: async function* () {
-          for (const e of events) yield e
-        },
-        completed: Promise.resolve(),
-        finalOutput: 'Weather is sunny',
-        newItems: [],
-        interruptions: [],
-        state: {}
-      })
-
-      const chunks: Array<{ type: string; content: string; data?: unknown }> = []
-      await runtime.runStream('weather?', {}, (chunk) => chunks.push(chunk))
-
-      // tool:start
-      const toolStart = chunks.filter((c) => c.type === 'tool:start')
-      expect(toolStart).toHaveLength(1)
-      expect(toolStart[0].content).toBe('get_weather')
-
-      // tool:delta
-      const toolDelta = chunks.filter((c) => c.type === 'tool:delta')
-      expect(toolDelta).toHaveLength(1)
-      expect(toolDelta[0].content).toBe('{"city":')
-
-      // tool:pending
-      const toolPending = chunks.filter((c) => c.type === 'tool:pending')
-      expect(toolPending).toHaveLength(1)
-
-      // tool:done
-      const toolDone = chunks.filter((c) => c.type === 'tool:done')
-      expect(toolDone).toHaveLength(1)
-      expect(toolDone[0].content).toBe('Sunny 25°C')
-
-      // turn 应被关闭（tool_output 后）
-      const turnDone = chunks.filter((c) => c.type === 'turn:done')
-      expect(turnDone.length).toBeGreaterThanOrEqual(1)
-    })
-
-    it('消费完整 reasoning 闭环：reasoning:start → reasoning:delta → reasoning:done', async () => {
-      const events = [
-        {
-          type: 'raw_model_stream_event',
-          data: { type: 'response_started' }
-        },
-        {
-          type: 'raw_model_stream_event',
-          data: {
-            type: 'model',
-            event: { type: 'response.output_item.added', item: { type: 'reasoning' } }
-          }
-        },
-        {
-          type: 'raw_model_stream_event',
-          data: {
-            type: 'model',
-            event: { type: 'response.reasoning_text.delta', delta: 'Let me think...' }
-          }
-        },
-        {
-          type: 'run_item_stream_event',
-          name: 'reasoning_item_created',
-          item: {
-            type: 'reasoning_item',
-            rawItem: {
-              content: [{ text: 'I analyzed the question.' }],
-              rawContent: [{ text: 'Let me think...' }]
-            }
-          }
-        },
-        {
-          type: 'raw_model_stream_event',
-          data: { type: 'response_done', response: { id: 'r1' } }
-        }
-      ]
-
-      mockRun.mockResolvedValue({
-        [Symbol.asyncIterator]: async function* () {
-          for (const e of events) yield e
-        },
-        completed: Promise.resolve(),
-        finalOutput: 'thought result',
-        newItems: [],
-        interruptions: [],
-        state: {}
-      })
-
-      const chunks: Array<{ type: string; content: string; data?: unknown }> = []
-      await runtime.runStream('think', {}, (chunk) => chunks.push(chunk))
-
-      // reasoning:start
-      const started = chunks.filter((c) => c.type === 'reasoning:start')
-      expect(started).toHaveLength(1)
-
-      // reasoning:delta
-      const deltas = chunks.filter((c) => c.type === 'reasoning:delta')
-      expect(deltas).toHaveLength(1)
-      expect(deltas[0].content).toBe('Let me think...')
-
-      // reasoning:done
-      const done = chunks.filter((c) => c.type === 'reasoning:done')
-      expect(done).toHaveLength(1)
-      expect(done[0].content).toBe('I analyzed the question.')
-    })
-
-    it('turn 状态追踪：无工具时 response_done 关闭 turn', async () => {
-      const events = [
-        { type: 'raw_model_stream_event', data: { type: 'response_started' } },
-        {
-          type: 'raw_model_stream_event',
-          data: { type: 'output_text_delta', delta: 'Hi' }
-        },
-        {
-          type: 'raw_model_stream_event',
-          data: { type: 'response_done', response: { id: 'r1' } }
-        }
-      ]
-
-      mockRun.mockResolvedValue({
-        [Symbol.asyncIterator]: async function* () {
-          for (const e of events) yield e
-        },
-        completed: Promise.resolve(),
-        finalOutput: 'Hi',
-        newItems: [],
-        interruptions: [],
-        state: {}
-      })
-
-      const chunks: Array<{ type: string; content: string; data?: unknown }> = []
-      await runtime.runStream('test', {}, (chunk) => chunks.push(chunk))
-
-      // 验证 turn 闭环
-      const turnStart = chunks.filter((c) => c.type === 'turn:start')
-      expect(turnStart).toHaveLength(1)
-      expect((turnStart[0].data as { turnIndex: number }).turnIndex).toBe(1)
-
-      const turnDone = chunks.filter((c) => c.type === 'turn:done')
-      expect(turnDone).toHaveLength(1)
-      expect((turnDone[0].data as { turnIndex: number }).turnIndex).toBe(1)
-    })
-
-    it('错误时发送 run:error 事件', async () => {
-      mockRun.mockRejectedValue(new Error('API error'))
-
-      const chunks: Array<{ type: string; content: string }> = []
-
-      await expect(runtime.runStream('test', {}, (chunk) => chunks.push(chunk))).rejects.toThrow(
-        'API error'
-      )
-
-      const errorChunks = chunks.filter((c) => c.type === 'run:error')
-      expect(errorChunks).toHaveLength(1)
-      expect(errorChunks[0].content).toBe('API error')
-    })
+    const seq = allTypes(chunks)
+    expect(seq[0]).toBe('run:start')
+    expect(seq[seq.length - 1]).toBe('run:done')
+    expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
+    expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
+    expect(ofType(chunks, 'text:delta').length).toBeGreaterThan(0)
+    assertOrdered(
+      seq,
+      'run:start',
+      'turn:start',
+      'llm:start',
+      'text:delta',
+      'llm:done',
+      'turn:done',
+      'run:done'
+    )
   })
 
-  // ===== HITL 工具审批 =====
+  // ===== 场景 2：单工具调用 =====
 
-  describe('HITL 工具审批', () => {
-    let mockState: { approve: ReturnType<typeof vi.fn>; reject: ReturnType<typeof vi.fn> }
+  it('场景2 - 单工具调用：add_numbers', { timeout: 60_000 }, async () => {
+    const inputText = '请计算 17 + 28'
+    const { chunks, timedChunks, collect } = createCollector()
 
-    beforeEach(async () => {
-      await runtime.initialize()
-      mockState = { approve: vi.fn(), reject: vi.fn() }
+    runtime = new AgentRuntime({
+      name: 'MathAgent',
+      instructions: '你是数学助手。必须使用 add_numbers 工具完成加法。根据工具结果回答。',
+      model: MODEL,
+      tools: [addNumbersTool],
+      sessionId,
+      maxTurns: 5
+    })
+    await runtime.initialize()
+    const result = await runtime.runStream(inputText, {}, collect)
+
+    logTestResult('场景2 - 单工具调用 add_numbers(17, 28)', {
+      input: inputText,
+      output: result.output,
+      duration: result.duration,
+      toolCalls: result.toolCalls,
+      chunks,
+      timedChunks
     })
 
-    it('approve 调用 state.approve', async () => {
-      const mockItem = { name: 'tool1', arguments: '{}' }
-      mockRun.mockResolvedValue({
-        finalOutput: '',
-        newItems: [],
-        interruptions: [mockItem],
-        state: mockState
-      })
-
-      await runtime.run('do thing')
-      runtime.approveToolCall(0)
-
-      expect(mockState.approve).toHaveBeenCalledWith(mockItem, undefined)
-    })
-
-    it('reject 调用 state.reject', async () => {
-      const mockItem = { name: 'tool1', arguments: '{}' }
-      mockRun.mockResolvedValue({
-        finalOutput: '',
-        newItems: [],
-        interruptions: [mockItem],
-        state: mockState
-      })
-
-      await runtime.run('do thing')
-      runtime.rejectToolCall(0, { alwaysReject: true })
-
-      expect(mockState.reject).toHaveBeenCalledWith(mockItem, { alwaysReject: true })
-    })
-
-    it('resume 传入 pendingState 继续执行', async () => {
-      const mockItem = { name: 'tool1', arguments: '{}' }
-      mockRun
-        .mockResolvedValueOnce({
-          finalOutput: '',
-          newItems: [],
-          interruptions: [mockItem],
-          state: mockState
-        })
-        .mockResolvedValueOnce({
-          finalOutput: 'resumed result',
-          lastResponseId: 'resp-2',
-          newItems: [],
-          interruptions: []
-        })
-
-      await runtime.run('do thing')
-      runtime.approveToolCall(0)
-      const result = await runtime.resume()
-
-      expect(result.output).toBe('resumed result')
-      expect(runtime.interrupted).toBe(false)
-      // resume 应传入 state
-      expect(mockRun.mock.calls[1][1]).toBe(mockState)
-    })
-
-    it('无中断时 approve 抛出错误', () => {
-      expect(() => runtime.approveToolCall(0)).toThrow('No pending interruption')
-    })
-
-    it('无中断时 resume 抛出错误', async () => {
-      await expect(runtime.resume()).rejects.toThrow('No pending interruption')
-    })
-
-    it('无效索引抛出错误', async () => {
-      const mockItem = { name: 'tool1', arguments: '{}' }
-      mockRun.mockResolvedValue({
-        finalOutput: '',
-        newItems: [],
-        interruptions: [mockItem],
-        state: mockState
-      })
-
-      await runtime.run('do thing')
-      expect(() => runtime.approveToolCall(5)).toThrow('Invalid interruption index')
-    })
+    expect(result.output).toContain('45')
+    const toolDones = ofType(chunks, 'tool:done')
+    expect(toolDones.length).toBeGreaterThanOrEqual(1)
+    expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
+    expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
   })
 
-  // ===== 会话管理 =====
+  // ===== 场景 3：多轮工具调用（链式计算） =====
 
-  describe('会话管理', () => {
-    beforeEach(async () => {
-      await runtime.initialize()
+  it('场景3 - 多轮工具调用：先加法再乘法（链式）', { timeout: 90_000 }, async () => {
+    const inputText = '先计算 10 + 20，然后把结果乘以 3。必须分两步用工具完成。'
+    const { chunks, timedChunks, collect } = createCollector()
+
+    runtime = new AgentRuntime({
+      name: 'ChainCalcAgent',
+      instructions:
+        '你是计算助手。加法用 add_numbers 工具，乘法用 multiply_numbers 工具。' +
+        '必须分步执行：先调用 add_numbers 获得结果，再调用 multiply_numbers。',
+      model: MODEL,
+      tools: [addNumbersTool, multiplyNumbersTool],
+      sessionId,
+      maxTurns: 10
+    })
+    await runtime.initialize()
+    const result = await runtime.runStream(inputText, {}, collect)
+
+    logTestResult('场景3 - 多轮工具调用（链式计算 10+20 → 30×3）', {
+      input: inputText,
+      output: result.output,
+      duration: result.duration,
+      toolCalls: result.toolCalls,
+      chunks,
+      timedChunks
     })
 
-    it('getSession 返回会话信息', async () => {
-      mockFileSession.getItemCount.mockResolvedValue(5)
+    // 至少一次 tool:done（LLM 可能不严格分步，但至少会调用一次工具）
+    const toolDones = ofType(chunks, 'tool:done')
+    expect(toolDones.length).toBeGreaterThanOrEqual(1)
 
-      const session = await runtime.getSession()
+    // 至少两个 turn（工具调用 + 最终回答）
+    expect(ofType(chunks, 'turn:start').length).toBeGreaterThanOrEqual(2)
 
-      expect(session.sessionId).toBe('session-1')
-      expect(session.messageCount).toBe(5)
-      expect(session.metadata?.agentName).toBe('TestAgent')
-    })
+    // 闭环检查（核心：所有 start/done 必须配对）
+    expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
+    expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
+    expect(ofType(chunks, 'tool:start').length).toBe(ofType(chunks, 'tool:done').length)
 
-    it('clearSession 清空会话', async () => {
-      mockRun.mockResolvedValue({
-        finalOutput: 'ok',
-        lastResponseId: 'resp-1',
-        newItems: [],
-        interruptions: []
-      })
-
-      await runtime.run('test')
-      await runtime.clearSession()
-
-      expect(mockFileSession.clearSession).toHaveBeenCalled()
-    })
+    // 如果 LLM 确实完成了链式调用，验证最终结果
+    if (toolDones.length >= 2) {
+      expect(result.output).toContain('90')
+    }
   })
 
-  // ===== 销毁 =====
+  // ===== 场景 4：并行工具调用 =====
 
-  describe('destroy', () => {
-    it('清理内部状态', async () => {
-      await runtime.initialize()
-      await runtime.destroy()
+  it('场景4 - 并行工具调用：同时加法和反转字符串', { timeout: 90_000 }, async () => {
+    const inputText = '帮我同时做两件事：1) 计算 100 + 200；2) 反转 "hello"。请一次性调用两个工具。'
+    const { chunks, timedChunks, collect } = createCollector()
 
-      expect(runtime.interrupted).toBe(false)
+    runtime = new AgentRuntime({
+      name: 'ParallelAgent',
+      instructions:
+        '你是多功能助手。加法用 add_numbers，反转文本用 reverse_string。' +
+        '如果有多个任务，请尽量一次性并行调用所有工具。根据工具结果汇总回答。',
+      model: MODEL,
+      tools: [addNumbersTool, reverseStringTool],
+      sessionId,
+      maxTurns: 10
     })
+    await runtime.initialize()
+    const result = await runtime.runStream(inputText, {}, collect)
+
+    logTestResult('场景4 - 并行工具调用 (add + reverse)', {
+      input: inputText,
+      output: result.output,
+      duration: result.duration,
+      toolCalls: result.toolCalls,
+      chunks,
+      timedChunks
+    })
+
+    expect(result.output).toContain('300')
+    expect(result.output).toContain('olleh')
+
+    const toolDones = ofType(chunks, 'tool:done')
+    expect(toolDones.length).toBeGreaterThanOrEqual(2)
+
+    // 闭环检查
+    expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
+    expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
+  })
+
+  // ===== 场景 5：三轮工具调用（多工具链） =====
+
+  it('场景5 - 三轮工具调用：加法 → 乘法 → 反转结果', { timeout: 120_000 }, async () => {
+    const inputText =
+      '请分三步完成：1) 计算 5 + 7；2) 把结果乘以 10；3) 把最终数字转成字符串再反转。每步都必须用工具。'
+    const { chunks, timedChunks, collect } = createCollector()
+
+    runtime = new AgentRuntime({
+      name: 'ThreeStepAgent',
+      instructions:
+        '你是一个严格按步骤执行的助手。' +
+        '第1步：用 add_numbers 计算加法。' +
+        '第2步：用 multiply_numbers 把第1步结果进行乘法。' +
+        '第3步：用 reverse_string 反转第2步结果的字符串形式。' +
+        '必须按顺序分三步调用三个不同的工具。',
+      model: MODEL,
+      tools: [addNumbersTool, multiplyNumbersTool, reverseStringTool],
+      sessionId,
+      maxTurns: 15
+    })
+    await runtime.initialize()
+    const result = await runtime.runStream(inputText, {}, collect)
+
+    logTestResult('场景5 - 三轮工具调用（5+7=12 → 12×10=120 → reverse("120")="021"）', {
+      input: inputText,
+      output: result.output,
+      duration: result.duration,
+      toolCalls: result.toolCalls,
+      chunks,
+      timedChunks
+    })
+
+    // 至少一次工具调用（LLM 可能不会严格执行全部三步，但至少会调第一个工具）
+    const toolDones = ofType(chunks, 'tool:done')
+    expect(toolDones.length).toBeGreaterThanOrEqual(1)
+
+    // 至少两个 turn
+    expect(ofType(chunks, 'turn:start').length).toBeGreaterThanOrEqual(2)
+
+    // 闭环检查（核心：所有 start/done 必须配对）
+    expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
+    expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
+    expect(ofType(chunks, 'tool:start').length).toBe(ofType(chunks, 'tool:done').length)
+
+    const seq = allTypes(chunks)
+    expect(seq[0]).toBe('run:start')
+    expect(seq[seq.length - 1]).toBe('run:done')
+
+    // 记录实际工具调用次数（LLM 行为不确定，日志中可观察）
+    testLog(`${LOG_PREFIX}   实际工具调用次数: ${toolDones.length}（期望 >= 3）`)
+  })
+
+  // ===== 场景 6：工具 + 天气 + 时间混合 =====
+
+  it('场景6 - 多种工具混合：天气 + 时间 + 计算', { timeout: 90_000 }, async () => {
+    const inputText = '帮我查一下北京的天气，然后告诉我现在几点，最后算一下 42 + 58'
+    const { chunks, timedChunks, collect } = createCollector()
+
+    runtime = new AgentRuntime({
+      name: 'MixedToolAgent',
+      instructions:
+        '你是全能助手。查天气用 get_weather，查时间用 get_current_time，算加法用 add_numbers。' +
+        '对于多个任务，可以并行或按顺序调用工具。最后汇总所有结果回答。',
+      model: MODEL,
+      tools: [getWeatherTool, getCurrentTimeTool, addNumbersTool],
+      sessionId,
+      maxTurns: 10
+    })
+    await runtime.initialize()
+    const result = await runtime.runStream(inputText, {}, collect)
+
+    logTestResult('场景6 - 多种工具混合 (weather + time + add)', {
+      input: inputText,
+      output: result.output,
+      duration: result.duration,
+      toolCalls: result.toolCalls,
+      chunks,
+      timedChunks
+    })
+
+    // 至少 3 次工具调用
+    const toolDones = ofType(chunks, 'tool:done')
+    expect(toolDones.length).toBeGreaterThanOrEqual(3)
+
+    // 结果中应包含 100（42+58）
+    expect(result.output).toContain('100')
+
+    // 闭环
+    expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
+    expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
   })
 })

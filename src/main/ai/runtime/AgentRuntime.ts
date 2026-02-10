@@ -35,6 +35,36 @@ const DEFAULT_MAX_TURNS = 25
 /** 默认模型 */
 const DEFAULT_MODEL = 'gpt-4o'
 
+// ========== Logger ==========
+// 尝试使用 electron-log（生产环境），fallback 到 console（测试环境）
+// 这样无论在 Electron 还是 vitest 中都能输出日志
+
+interface RuntimeLogger {
+  info(message: string, ...args: unknown[]): void
+  warn(message: string, ...args: unknown[]): void
+  error(message: string, ...args: unknown[]): void
+  debug(message: string, ...args: unknown[]): void
+}
+
+const createRuntimeLogger = (): RuntimeLogger => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createLogger } = require('@main/common/logger')
+    return createLogger('agent-runtime') as RuntimeLogger
+  } catch {
+    // Electron 环境不可用（如测试），fallback 到 console
+    const prefix = '[AgentRuntime]'
+    return {
+      info: (msg: string, ...args: unknown[]) => console.log(`${prefix} ${msg}`, ...args),
+      warn: (msg: string, ...args: unknown[]) => console.warn(`${prefix} ${msg}`, ...args),
+      error: (msg: string, ...args: unknown[]) => console.error(`${prefix} ${msg}`, ...args),
+      debug: (msg: string, ...args: unknown[]) => console.debug(`${prefix} ${msg}`, ...args)
+    }
+  }
+}
+
+const log = createRuntimeLogger()
+
 /**
  * Agent 运行时
  *
@@ -118,8 +148,8 @@ export class AgentRuntime implements IExecutable {
       this.compressor = new SessionCompressor(this.options.compression)
     }
 
-    console.log(
-      `[AgentRuntime] Initialized: ${this.name} ` +
+    log.info(
+      `Initialized: ${this.name} ` +
         `(tools: ${this.options.tools?.length || 0}, ` +
         `handoffs: ${this.options.handoffs?.length || 0}, ` +
         `compression: ${this.options.compression?.enabled ? 'on' : 'off'}, ` +
@@ -131,7 +161,7 @@ export class AgentRuntime implements IExecutable {
     this.pendingState = undefined
     this.pendingInterruptions = []
     this._interrupted = false
-    console.log(`[AgentRuntime] Destroyed: ${this.name}`)
+    log.info(`Destroyed: ${this.name}`)
   }
 
   // ========== 执行方法 ==========
@@ -148,7 +178,7 @@ export class AgentRuntime implements IExecutable {
     const startTime = Date.now()
     const maxTurns = config?.maxTurns ?? this.options.maxTurns ?? DEFAULT_MAX_TURNS
 
-    console.log(`[AgentRuntime] Running: ${this.name}, input: "${input.slice(0, 100)}"`)
+    log.info(`Running: ${this.name}, input: "${input.slice(0, 100)}"`)
 
     try {
       // 执行前检查 session 压缩
@@ -176,7 +206,7 @@ export class AgentRuntime implements IExecutable {
         }
       }
     } catch (error: unknown) {
-      console.error(`[AgentRuntime] Execution failed:`, error)
+      log.error(`Execution failed:`, error)
       throw error
     }
   }
@@ -195,7 +225,7 @@ export class AgentRuntime implements IExecutable {
     const startTime = Date.now()
     const maxTurns = config?.maxTurns ?? this.options.maxTurns ?? DEFAULT_MAX_TURNS
 
-    console.log(`[AgentRuntime] Running stream: ${this.name}`)
+    log.info(`Running stream: ${this.name}`)
 
     try {
       // 1. run:start
@@ -274,7 +304,7 @@ export class AgentRuntime implements IExecutable {
         content: error instanceof Error ? error.message : String(error),
         data: { message: error instanceof Error ? error.message : String(error) }
       })
-      console.error(`[AgentRuntime] Stream execution failed:`, error)
+      log.error(`Stream execution failed:`, error)
       throw error
     }
   }
@@ -293,7 +323,7 @@ export class AgentRuntime implements IExecutable {
       throw new Error(`Invalid interruption index: ${index}`)
     }
     this.pendingState.approve(item, options)
-    console.log(`[AgentRuntime] Approved tool call: ${item.name} (index: ${index})`)
+    log.info(`Approved tool call: ${item.name} (index: ${index})`)
   }
 
   /**
@@ -308,7 +338,7 @@ export class AgentRuntime implements IExecutable {
       throw new Error(`Invalid interruption index: ${index}`)
     }
     this.pendingState.reject(item, options)
-    console.log(`[AgentRuntime] Rejected tool call: ${item.name} (index: ${index})`)
+    log.info(`Rejected tool call: ${item.name} (index: ${index})`)
   }
 
   /**
@@ -322,7 +352,7 @@ export class AgentRuntime implements IExecutable {
     const startTime = Date.now()
     const maxTurns = this.options.maxTurns ?? DEFAULT_MAX_TURNS
 
-    console.log(`[AgentRuntime] Resuming execution: ${this.name}`)
+    log.info(`Resuming execution: ${this.name}`)
 
     try {
       // 传入之前的 RunState 继续执行
@@ -351,7 +381,7 @@ export class AgentRuntime implements IExecutable {
         }
       }
     } catch (error: unknown) {
-      console.error(`[AgentRuntime] Resume failed:`, error)
+      log.error(`Resume failed:`, error)
       throw error
     }
   }
@@ -370,7 +400,7 @@ export class AgentRuntime implements IExecutable {
     const startTime = Date.now()
     const maxTurns = config?.maxTurns ?? this.options.maxTurns ?? DEFAULT_MAX_TURNS
 
-    console.log(`[AgentRuntime] Resuming stream execution: ${this.name}`)
+    log.info(`Resuming stream execution: ${this.name}`)
 
     try {
       await this.streamEmitter.emitStart()
@@ -450,7 +480,7 @@ export class AgentRuntime implements IExecutable {
   }
 
   async clearSession(): Promise<void> {
-    console.log(`[AgentRuntime] Clearing session: ${this.sessionId}`)
+    log.info(`Clearing session: ${this.sessionId}`)
     await this.session.clearSession()
   }
 
@@ -533,6 +563,25 @@ export class AgentRuntime implements IExecutable {
     }
 
     for await (const event of streamResult) {
+      // 记录原始 SDK 事件（debug 级别，结构化输出便于排查事件流）
+      if (event.type === 'raw_model_stream_event') {
+        const rawEvent = event.data as { type?: string; event?: { type?: string } } | undefined
+        const rawType = rawEvent?.type
+        const innerType = rawType === 'model' ? rawEvent?.event?.type : undefined
+        log.debug(
+          `[SDK Event] ${event.type} | rawType=${rawType}${innerType ? ` | innerType=${innerType}` : ''}`,
+          JSON.stringify(event.data)
+        )
+      } else if (event.type === 'run_item_stream_event') {
+        const itemType = (event.item as { type?: string })?.type
+        log.debug(
+          `[SDK Event] ${event.type} | name=${event.name} | itemType=${itemType}`,
+          JSON.stringify(event.item?.rawItem ?? event.item)
+        )
+      } else {
+        log.debug(`[SDK Event] ${event.type}`, JSON.stringify(event))
+      }
+
       switch (event.type) {
         // ===== Layer 1: 原始模型流事件 =====
         case 'raw_model_stream_event': {
@@ -839,9 +888,7 @@ export class AgentRuntime implements IExecutable {
       arguments: item.arguments || '{}'
     }))
 
-    console.log(
-      `[AgentRuntime] Execution interrupted: ${interruptions.length} tool(s) need approval`
-    )
+    log.info(`Execution interrupted: ${interruptions.length} tool(s) need approval`)
 
     return {
       output: '',
@@ -938,8 +985,8 @@ export class AgentRuntime implements IExecutable {
           })
         }
 
-        console.log(
-          `[AgentRuntime] Session compressed: ` +
+        log.info(
+          `Session compressed: ` +
             `${result.summarizedCount} messages summarized ` +
             `(seq ${result.summarizedSeqs?.[0]}-${result.endSeq}), ` +
             `${result.keptCount} kept, ${result.duration}ms`
@@ -948,7 +995,7 @@ export class AgentRuntime implements IExecutable {
 
       return result
     } catch (error) {
-      console.error('[AgentRuntime] Session compression failed (non-fatal):', error)
+      log.error('Session compression failed (non-fatal):', error)
       return null
     }
   }
