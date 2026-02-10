@@ -1,8 +1,8 @@
 /**
- * AgentRuntime 真实执行测试
+ * OpenAIAgentRuntime 真实执行测试
  *
  * 真实调用链：
- *   ✅ AgentRuntime（真实）
+ *   ✅ OpenAIAgentRuntime（真实）
  *   ✅ @openai/agents SDK Agent + run()（真实）
  *   ✅ tool() 工具定义 + execute（真实）
  *   ✅ FileSession 文件持久化（真实）
@@ -24,7 +24,7 @@
  *   test-results/YYYYMMDD/agent-events-{timestamp}.log   — SDK 原始事件流 + chunk JSON
  *
  * 运行命令：
- *   pnpm vitest run src/main/ai/runtime/__tests__/AgentRuntime.test.ts
+ *   pnpm vitest run src/main/ai/runtime/__tests__/OpenAIAgentRuntime.test.ts
  */
 
 import fs from 'fs'
@@ -99,8 +99,8 @@ vi.mock('mkdirp', () => ({
 import { tool, setDefaultOpenAIClient, setOpenAIAPI } from '@openai/agents'
 import OpenAI from 'openai'
 import { z } from 'zod'
-import { AgentRuntime } from '../AgentRuntime'
-import type { StreamChunk } from '../types'
+import { OpenAIAgentRuntime } from '../OpenAIAgentRuntime'
+import type { StreamChunk } from '../../types'
 
 // ========== API 配置 ==========
 
@@ -467,8 +467,8 @@ function assertOrdered(seq: string[], ...events: string[]): void {
 
 // ========== 测试 ==========
 
-describe.skipIf(!RUN)('AgentRuntime 真实执行测试（多轮工具调用）', () => {
-  let runtime: AgentRuntime
+describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调用）', () => {
+  let runtime: OpenAIAgentRuntime
   let sessionId: string
   let MODEL: string
 
@@ -496,11 +496,11 @@ describe.skipIf(!RUN)('AgentRuntime 真实执行测试（多轮工具调用）',
     ensureLogDir()
 
     const ts = now.toISOString()
-    appendTestLog(`========== AgentRuntime 真实执行测试 ${ts} | model=${MODEL} ==========`)
+    appendTestLog(`========== OpenAIAgentRuntime 真实执行测试 ${ts} | model=${MODEL} ==========`)
     appendTestLog(`摘要日志: ${currentTestLogFile}`)
     appendTestLog(`事件日志: ${currentEventsLogFile}`)
     appendTestLog('')
-    appendEventsLog(`========== AgentRuntime 事件日志 ${ts} | model=${MODEL} ==========`)
+    appendEventsLog(`========== OpenAIAgentRuntime 事件日志 ${ts} | model=${MODEL} ==========`)
     appendEventsLog('')
 
     testLog(`${LOG_PREFIX} API: model=${MODEL}, baseURL=${apiConfig.baseURL || 'OpenAI'}`)
@@ -545,7 +545,7 @@ describe.skipIf(!RUN)('AgentRuntime 真实执行测试（多轮工具调用）',
     const inputText = '1+1等于几？用一个数字回答'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'SimpleAgent',
       instructions: '你是一个简洁的助手。用一句话回答。',
       model: MODEL,
@@ -586,7 +586,7 @@ describe.skipIf(!RUN)('AgentRuntime 真实执行测试（多轮工具调用）',
     const inputText = '请计算 17 + 28'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'MathAgent',
       instructions: '你是数学助手。必须使用 add_numbers 工具完成加法。根据工具结果回答。',
       model: MODEL,
@@ -619,7 +619,7 @@ describe.skipIf(!RUN)('AgentRuntime 真实执行测试（多轮工具调用）',
     const inputText = '先计算 10 + 20，然后把结果乘以 3。必须分两步用工具完成。'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'ChainCalcAgent',
       instructions:
         '你是计算助手。加法用 add_numbers 工具，乘法用 multiply_numbers 工具。' +
@@ -665,7 +665,7 @@ describe.skipIf(!RUN)('AgentRuntime 真实执行测试（多轮工具调用）',
     const inputText = '帮我同时做两件事：1) 计算 100 + 200；2) 反转 "hello"。请一次性调用两个工具。'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'ParallelAgent',
       instructions:
         '你是多功能助手。加法用 add_numbers，反转文本用 reverse_string。' +
@@ -705,7 +705,7 @@ describe.skipIf(!RUN)('AgentRuntime 真实执行测试（多轮工具调用）',
       '请分三步完成：1) 计算 5 + 7；2) 把结果乘以 10；3) 把最终数字转成字符串再反转。每步都必须用工具。'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'ThreeStepAgent',
       instructions:
         '你是一个严格按步骤执行的助手。' +
@@ -756,7 +756,7 @@ describe.skipIf(!RUN)('AgentRuntime 真实执行测试（多轮工具调用）',
     const inputText = '帮我查一下北京的天气，然后告诉我现在几点，最后算一下 42 + 58'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'MixedToolAgent',
       instructions:
         '你是全能助手。查天气用 get_weather，查时间用 get_current_time，算加法用 add_numbers。' +

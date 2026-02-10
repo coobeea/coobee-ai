@@ -1,46 +1,33 @@
 /**
  * 统一运行时类型定义
  *
- * 设计原则：SDK 原生优先，runtime 是 SDK 的薄封装
+ * 设计原则：
+ *   1. SDK 无关：不依赖任何特定 SDK（@openai/agents、pi-coding-agent 等）
+ *   2. 接口优先：定义通用的 AgentRuntime / IExecutable 接口
+ *   3. 各 SDK 实现在子目录（openai/、pi/）中定义特有类型
  */
 
-import type {
-  Agent,
-  AgentInputItem,
-  Handoff,
-  Tool,
-  ModelSettings,
-  RunToolApprovalItem
-} from '@openai/agents'
-
-// ========== Agent 运行时选项 ==========
+// ========== Agent 运行时通用选项 ==========
 
 /**
- * AgentRuntime 创建选项
+ * AgentRuntime 基础选项（SDK 无关）
  *
- * 所有配置通过参数传入，runtime 不内部加载配置。
- * 调用方（上层模块）负责从 ConfigStore / Presets / 用户输入组装选项。
+ * 各 SDK 实现可扩展此接口添加 SDK 特有配置。
+ * 例如：OpenAI 实现添加 tools、handoffs、modelSettings 等。
  */
 export interface AgentRuntimeOptions {
   /** Agent 名称 */
   name: string
   /** Agent 系统指令 */
   instructions: string
-  /** 模型名称（默认 'gpt-4o'） */
+  /** 模型名称 */
   model?: string
-  /** 模型参数（温度、top_p 等） */
-  modelSettings?: ModelSettings
-  /** SDK Tool 实例列表 */
-  tools?: Tool[]
-  /** SDK Handoff 配置（Agent 或 Handoff 实例） */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handoffs?: (Agent<any, any> | Handoff<any, any>)[]
   /** 会话 ID（不传则自动生成） */
   sessionId?: string
   /** 最大执行轮次，防止无限工具调用循环（默认 25） */
   maxTurns?: number
-  /** Session 压缩配置 */
-  compression?: SessionCompressionOptions
+  /** SDK 特有配置（各实现自定义） */
+  [key: string]: unknown
 }
 
 // ========== 执行配置和结果 ==========
@@ -91,7 +78,7 @@ export interface ExecutionResult {
   metadata?: Record<string, unknown>
 }
 
-// ========== 流式事件：8 层 24 种，分层嵌套闭环 ==========
+// ========== 流式事件 ==========
 
 /**
  * 流式输出块
@@ -110,12 +97,12 @@ export interface StreamChunk {
 }
 
 /**
- * 流式事件类型（8 层 24 种）
+ * 流式事件类型
  *
  * 设计原则：
  *   1. 每层用统一前缀（prefix:event），层级关系清晰
  *   2. 每个实体形成闭环（start → delta → done）
- *   3. 从 SDK RunStreamEvent 映射，消费者不感知底层
+ *   3. 消费者不感知底层 SDK
  *
  * 嵌套关系：
  *   run ⊃ turn ⊃ llm ⊃ { text, reasoning, tool }
@@ -138,16 +125,6 @@ export interface StreamChunk {
  *   │  ┌─ turn:start (下一轮) ─── ... ─── turn:done ─┐                        │
  *   │  └──────────────────────────────────────────────┘                        │
  *   └──────────────────────────────────────────────────────────────────────────┘
- *
- * SDK 映射：
- *   run:*        → Runtime 自身生成
- *   turn:*       → Runtime 状态追踪合成（基于 response_started 和 tool_output 检测边界）
- *   llm:*        → raw_model_stream_event / response_started, response_done
- *   text:*       → raw / output_text_delta + model / output_item.added + run_item / message_output
- *   reasoning:*  → raw / model / reasoning_text.delta + run_item / reasoning_item_created
- *   tool:*       → raw / model / function_call_arguments.* + run_item / tool_called, tool_output
- *   hitl:*       → run_item / tool_approval_requested + Runtime approve/reject
- *   handoff:*    → run_item / handoff_requested, handoff_occurred
  */
 export type StreamChunkType =
   // ① run: 执行生命周期（最外层）
@@ -157,31 +134,31 @@ export type StreamChunkType =
   | 'run:interrupted' // 被 HITL 中断
   | 'run:resumed' // 恢复执行
   // ② turn: 对话轮次（一轮 = 一次 LLM 调用 + 可能的工具执行）
-  | 'turn:start' // 轮次开始 ← response_started 触发
-  | 'turn:done' // 轮次完成 ← tool_output 后 / 无工具时 response_done 后
+  | 'turn:start' // 轮次开始
+  | 'turn:done' // 轮次完成
   // ③ llm: 模型 API 调用
-  | 'llm:start' // 模型调用开始 ← response_started
-  | 'llm:done' // 模型调用完成 ← response_done（含 usage）
+  | 'llm:start' // 模型调用开始
+  | 'llm:done' // 模型调用完成
   // ④ text: 文本输出
-  | 'text:start' // 文本开始 ← output_item.added (message)
-  | 'text:delta' // 文本增量 ← output_text_delta
-  | 'text:done' // 文本完成 ← message_output_created
+  | 'text:start' // 文本开始
+  | 'text:delta' // 文本增量
+  | 'text:done' // 文本完成
   // ⑤ reasoning: 推理/思维链
-  | 'reasoning:start' // 推理开始 ← output_item.added (reasoning)
-  | 'reasoning:delta' // 推理增量 ← reasoning_text.delta
-  | 'reasoning:done' // 推理完成 ← reasoning_item_created
+  | 'reasoning:start' // 推理开始
+  | 'reasoning:delta' // 推理增量
+  | 'reasoning:done' // 推理完成
   // ⑥ tool: 工具调用
-  | 'tool:start' // 工具调用开始 ← output_item.added (function_call)
-  | 'tool:delta' // 参数增量 ← function_call_arguments.delta
-  | 'tool:pending' // 参数完成，等待执行 ← function_call_arguments.done
-  | 'tool:done' // 执行完成 ← tool_output
+  | 'tool:start' // 工具调用开始
+  | 'tool:delta' // 参数增量 / 执行进度
+  | 'tool:pending' // 参数完成，等待执行
+  | 'tool:done' // 执行完成
   // ⑦ hitl: 人工审批
-  | 'hitl:required' // 需要审批 ← tool_approval_requested
-  | 'hitl:approved' // 已批准 ← Runtime.approveToolCall()
-  | 'hitl:rejected' // 已拒绝 ← Runtime.rejectToolCall()
+  | 'hitl:required' // 需要审批
+  | 'hitl:approved' // 已批准
+  | 'hitl:rejected' // 已拒绝
   // ⑧ handoff: Agent 切换
-  | 'handoff:start' // 请求切换 ← handoff_requested
-  | 'handoff:done' // 切换完成 ← handoff_occurred
+  | 'handoff:start' // 请求切换
+  | 'handoff:done' // 切换完成
   // ⑨ compression: Session 压缩
   | 'compression:start' // 压缩开始
   | 'compression:done' // 压缩完成（含统计信息）
@@ -274,7 +251,7 @@ export interface ToolStartData {
 
 /** tool:delta 数据 */
 export interface ToolDeltaData {
-  /** 参数 JSON 片段 */
+  /** 参数 JSON 片段 / 执行进度 */
   delta: string
   /** 调用 ID */
   callId?: string
@@ -310,8 +287,8 @@ export interface HitlRequiredData {
   toolName: string
   /** 工具参数（JSON 字符串） */
   arguments?: string
-  /** SDK 原始审批项引用（用于 approve/reject） */
-  approvalItem: RunToolApprovalItem
+  /** SDK 原始审批项引用（用于 approve/reject，由具体实现定义类型） */
+  approvalItem: unknown
 }
 
 // ---- ⑧ handoff: ----
@@ -322,108 +299,6 @@ export interface HandoffData {
   fromAgent?: string
   /** 目标 Agent 名称 */
   toAgent: string
-}
-
-// ========== Session 存储格式 ==========
-
-/**
- * Session 存储项
- *
- * 每行 JSONL 的实际存储格式，包含序号、类型和元数据。
- * SDK 接口（getItems/addItems）对此透明，仅看到 AgentInputItem[]。
- *
- * 类型说明：
- *   - message: 普通消息（SDK AgentInputItem 的包装）
- *   - summary: 压缩总结（包含被压缩消息的元数据）
- */
-export interface SessionItem {
-  /** 自增序号（1-based） */
-  seq: number
-  /** 项目类型 */
-  type: 'message' | 'summary'
-  /** SDK 原始 AgentInputItem 数据 */
-  item: AgentInputItem
-  /** 总结元数据（仅 type=summary 时有值） */
-  meta?: SummaryMeta
-  /** 时间戳（毫秒） */
-  ts: number
-}
-
-/**
- * 总结元数据
- *
- * 附加在 type=summary 的 SessionItem 上，记录压缩的详细信息。
- * 用于前端展示、审计追踪和智能上下文构建。
- */
-export interface SummaryMeta {
-  /** 总结文本（LLM 生成的结构化总结） */
-  summaryText: string
-  /** 被压缩的消息序号列表 */
-  summarizedSeqs: number[]
-  /** 最后一个被压缩的消息序号（用于 getItems 过滤） */
-  endSeq: number
-  /** 压缩前的 token 数 */
-  originalTokens: number
-  /** 总结的 token 数 */
-  summaryTokens: number
-  /** 压缩比（summaryTokens / originalTokens） */
-  compressionRatio: number
-  /** 压缩耗时（ms） */
-  duration: number
-}
-
-// ========== Session 压缩 ==========
-
-/**
- * Session 压缩配置
- *
- * 参考 Joythink-AI SessionSummaryMiddleware 的分段压缩策略：
- *   - 检测 token 用量是否超过上下文窗口阈值
- *   - 将历史消息分为"待总结部分"和"保留部分"
- *   - 调用 LLM 生成结构化总结，追加总结到 Session 文件
- *   - getItems() 智能路由：返回 [总结上下文 + 后续消息]
- */
-export interface SessionCompressionOptions {
-  /** 是否启用压缩（默认 false） */
-  enabled?: boolean
-  /** 上下文窗口大小（token 数，默认 128000） */
-  contextWindowSize?: number
-  /** 触发压缩的阈值比例（默认 0.7，即达到上下文窗口的 70% 时触发） */
-  thresholdRatio?: number
-  /** 保留最近消息的比例（默认 0.3，即保留最近 30% 的消息不压缩） */
-  keepRatio?: number
-  /** 触发压缩的最小消息数（默认 10，低于此数不压缩） */
-  minMessageCount?: number
-  /** 用于生成总结的模型（不传则使用 Agent 自身的模型） */
-  summaryModel?: string
-  /** 是否调试模式 */
-  debug?: boolean
-}
-
-/**
- * 压缩结果信息
- */
-export interface CompressionResult {
-  /** 是否执行了压缩 */
-  compressed: boolean
-  /** 压缩前的未压缩消息数 */
-  originalCount?: number
-  /** 被总结的消息数 */
-  summarizedCount?: number
-  /** 保留的消息数 */
-  keptCount?: number
-  /** 被压缩的消息序号列表 */
-  summarizedSeqs?: number[]
-  /** 最后一个被压缩的序号 */
-  endSeq?: number
-  /** 压缩前的估算 token 数 */
-  originalTokens?: number
-  /** 总结的 token 数 */
-  summaryTokens?: number
-  /** 压缩比 */
-  compressionRatio?: number
-  /** 压缩耗时（ms） */
-  duration?: number
 }
 
 // ---- ⑨ compression: ----
@@ -452,37 +327,6 @@ export interface CompressionDoneData {
   compressionRatio: number
   /** 压缩耗时（ms） */
   duration: number
-}
-
-// ========== 上下文监控 ==========
-
-/**
- * 上下文快照（调试/监控用）
- *
- * 提供 Session 当前状态的全景视图：
- *   - contextItems：getItems() 返回的 LLM 上下文
- *   - allSessionItems：完整的 SessionItem 存储记录
- *   - lastSummary：最后一个 summary 的元数据
- *   - stats：统计数据
- */
-export interface ContextSnapshot {
-  /** getItems() 返回的 LLM 上下文（下次 run 时发送给模型的内容） */
-  contextItems: AgentInputItem[]
-  /** 完整的 SessionItem 存储记录（含 summary） */
-  allSessionItems: SessionItem[]
-  /** 最后一个 summary 的元数据（null = 尚未压缩） */
-  lastSummary: SummaryMeta | null
-  /** 统计信息 */
-  stats: {
-    /** getItems() 返回的上下文消息数 */
-    contextItemCount: number
-    /** 文件中的总 SessionItem 数 */
-    totalSessionItems: number
-    /** 其中 type=message 的数量 */
-    messageCount: number
-    /** 其中 type=summary 的数量 */
-    summaryCount: number
-  }
 }
 
 // ========== 会话信息 ==========

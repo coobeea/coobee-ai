@@ -89,9 +89,10 @@ import { tool, setDefaultOpenAIClient, setOpenAIAPI } from '@openai/agents'
 import type { AgentInputItem } from '@openai/agents'
 import { z } from 'zod'
 import OpenAI from 'openai'
-import { AgentRuntime } from '../AgentRuntime'
+import { OpenAIAgentRuntime } from '../OpenAIAgentRuntime'
 import { countItemsTokens } from '../tokenCounter'
-import type { ContextSnapshot, StreamChunk } from '../types'
+import type { ContextSnapshot } from '../types'
+import type { StreamChunk } from '../../types'
 
 // ========== API 配置 ==========
 
@@ -289,7 +290,7 @@ function uid(): string {
 // ========== 测试 ==========
 
 describe.skipIf(!RUN)('Session 压缩场景：全链路上下文监控', () => {
-  let runtime: AgentRuntime
+  let runtime: OpenAIAgentRuntime
   let sessionId: string
   let MODEL: string
 
@@ -358,7 +359,7 @@ describe.skipIf(!RUN)('Session 压缩场景：全链路上下文监控', () => {
   it('全链路测试：自动压缩 + 上下文对比 + 信息追踪', { timeout: 240_000 }, async () => {
     sessionId = uid()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'TrackAgent',
       instructions:
         '你是一个简洁的助手。请记住用户告诉你的所有个人信息和项目信息。回复保持简短（不超过30字）。不要使用 <think> 标签。',
@@ -678,7 +679,7 @@ function itemTypeLabel(item: AgentInputItem): string {
 // ========== 工具调用 + 压缩 测试 ==========
 
 describe.skipIf(!RUN)('Session 压缩场景：工具调用 + 压缩', () => {
-  let runtime: AgentRuntime
+  let runtime: OpenAIAgentRuntime
   let sessionId: string
   let MODEL: string
   let toolLogFile: string
@@ -767,7 +768,7 @@ describe.skipIf(!RUN)('Session 压缩场景：工具调用 + 压缩', () => {
     async () => {
       sessionId = uid()
 
-      runtime = new AgentRuntime({
+      runtime = new OpenAIAgentRuntime({
         name: 'ToolAgent',
         instructions: [
           '你是一个能力全面的助手。请记住用户的个人信息。',

@@ -1,8 +1,8 @@
 /**
- * AgentRuntime 集成测试（真实 API 调用）
+ * OpenAIAgentRuntime 集成测试（真实 API 调用）
  *
  * 真实调用链：
- *   ✅ AgentRuntime（真实）
+ *   ✅ OpenAIAgentRuntime（真实）
  *   ✅ @openai/agents SDK Agent + run()（真实）
  *   ✅ tool() 定义 + execute（真实）
  *   ✅ FileSession 文件持久化（真实）
@@ -17,7 +17,7 @@
  *     - integration-events-{timestamp}.log     — 完整事件数据（每个 chunk 的 JSON）
  *
  * 运行命令：
- *   pnpm vitest run src/main/ai/runtime/__tests__/AgentRuntime.integration.test.ts
+ *   pnpm vitest run src/main/ai/runtime/__tests__/OpenAIAgentRuntime.integration.test.ts
  */
 
 import fs from 'fs'
@@ -92,10 +92,10 @@ vi.mock('mkdirp', () => ({
 import { tool, setDefaultOpenAIClient, setOpenAIAPI } from '@openai/agents'
 import OpenAI from 'openai'
 import { z } from 'zod'
-import { AgentRuntime } from '../AgentRuntime'
+import { OpenAIAgentRuntime } from '../OpenAIAgentRuntime'
 import { SessionCompressor } from '../SessionCompressor'
 import { FileSession } from '../FileSession'
-import type { StreamChunk } from '../types'
+import type { StreamChunk } from '../../types'
 
 // ========== API 配置 ==========
 
@@ -382,8 +382,8 @@ function createCollector(): {
 
 // ========== 测试 ==========
 
-describe.skipIf(!RUN)('AgentRuntime 集成测试（真实 API）', () => {
-  let runtime: AgentRuntime
+describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
+  let runtime: OpenAIAgentRuntime
   let sessionId: string
   let MODEL: string
 
@@ -410,11 +410,11 @@ describe.skipIf(!RUN)('AgentRuntime 集成测试（真实 API）', () => {
     ensureLogDir()
 
     const ts = now.toISOString()
-    appendTestLog(`========== AgentRuntime 集成测试 ${ts} | model=${MODEL} ==========`)
+    appendTestLog(`========== OpenAIAgentRuntime 集成测试 ${ts} | model=${MODEL} ==========`)
     appendTestLog(`日志文件: ${currentTestLogFile}`)
     appendTestLog(`事件文件: ${currentEventsLogFile}`)
     appendTestLog('')
-    appendEventsLog(`========== AgentRuntime 事件日志 ${ts} | model=${MODEL} ==========`)
+    appendEventsLog(`========== OpenAIAgentRuntime 事件日志 ${ts} | model=${MODEL} ==========`)
     appendEventsLog('')
 
     testLog(`${LOG_PREFIX} API: model=${MODEL}, baseURL=${apiConfig.baseURL || 'OpenAI'}`)
@@ -457,7 +457,7 @@ describe.skipIf(!RUN)('AgentRuntime 集成测试（真实 API）', () => {
     const inputText = '1+1等于几？'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'SimpleAgent',
       instructions: '你是一个简洁的助手。用一句话回答，不超过20个字。',
       model: MODEL,
@@ -499,7 +499,7 @@ describe.skipIf(!RUN)('AgentRuntime 集成测试（真实 API）', () => {
     const inputText = '请计算 17 + 28'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'MathAgent',
       instructions: '你是数学助手。必须使用 add_numbers 工具完成加法。根据工具结果回答。',
       model: MODEL,
@@ -539,7 +539,7 @@ describe.skipIf(!RUN)('AgentRuntime 集成测试（真实 API）', () => {
     const inputText = '帮我做两件事：1) 100 + 200；2) 反转 "hello"'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'MultiToolAgent',
       instructions:
         '你是多功能助手。加法用 add_numbers，反转文本用 reverse_string。依次完成所有任务后汇总。',
@@ -571,7 +571,7 @@ describe.skipIf(!RUN)('AgentRuntime 集成测试（真实 API）', () => {
   it('同步 run()：工具调用后返回完整结果', { timeout: 60_000 }, async () => {
     const inputText = '50 + 75 等于？'
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'SyncMathAgent',
       instructions: '数学助手。必须使用 add_numbers 工具。只回答计算结果。',
       model: MODEL,
@@ -599,7 +599,7 @@ describe.skipIf(!RUN)('AgentRuntime 集成测试（真实 API）', () => {
   // ===== 场景 5：多轮对话 =====
 
   it('多轮对话：session 保留上下文', { timeout: 60_000 }, async () => {
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'ContextAgent',
       instructions: '你是简洁的助手。请记住用户告诉你的所有个人信息，并在后续对话中准确复述。',
       model: MODEL,
@@ -630,7 +630,7 @@ describe.skipIf(!RUN)('AgentRuntime 集成测试（真实 API）', () => {
     const inputText = '现在几点？'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'TimeAgent',
       instructions: '你是时间助手。必须使用 get_current_time 工具获取时间。',
       model: MODEL,
@@ -660,7 +660,7 @@ describe.skipIf(!RUN)('AgentRuntime 集成测试（真实 API）', () => {
     const inputText = '3 + 7 等于？'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'IntegrityAgent',
       instructions: '数学助手。用 add_numbers 工具，然后中文回答。',
       model: MODEL,
@@ -703,7 +703,7 @@ describe.skipIf(!RUN)('AgentRuntime 集成测试（真实 API）', () => {
     const inputText = '中国的首都是哪里？'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'DeltaAgent',
       instructions: '用一句简短的话回答。',
       model: MODEL,
@@ -735,7 +735,7 @@ describe.skipIf(!RUN)('AgentRuntime 集成测试（真实 API）', () => {
 
   it('Session 压缩：多轮对话后手动压缩，上下文保留', { timeout: 120_000 }, async () => {
     // 1. 创建 runtime（不启用自动压缩，手动测试）
-    runtime = new AgentRuntime({
+    runtime = new OpenAIAgentRuntime({
       name: 'CompressionAgent',
       instructions: '你是一个简洁的助手。请记住用户告知的所有信息。',
       model: MODEL,

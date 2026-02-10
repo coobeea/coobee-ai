@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { FileSession } from '../FileSession'
+// Note: FileSession is now in runtime/openai/
 import { mkdtemp, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
