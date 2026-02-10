@@ -1,23 +1,62 @@
 /**
  * Team 运行时
- * 为 Team 提供统一的 IExecutable 接口实现
+ *
+ * SDK 原生优先的薄封装，所有配置通过参数传入。
+ * 支持三种协作模式：顺序执行、并行执行、Planner 调度。
+ *
+ * 与 AgentRuntime 共享统一的 IExecutable 接口，
+ * 包括 HITL 工具审批（暂停/恢复）和完整流式事件。
  */
 
-import { teamConfigStore } from '../storage/TeamConfigStore'
-import { agentFactory } from '../agents/AgentFactory'
-import { run, type Agent } from '@openai/agents'
+import { run, Agent } from '@openai/agents'
+import type { Tool, ModelSettings } from '@openai/agents'
 import { createStreamEmitter, type IStreamEmitter } from '../streaming/StreamEmitter'
-import type { TeamConfig } from '../teams/types'
 import type {
   IExecutable,
   ExecutionConfig,
   ExecutionResult,
   StreamChunk,
-  SessionInfo,
-  MemorySummary,
-  ToolInfo,
-  SkillInfo
+  SessionInfo
 } from './types'
+
+// ========== Team 配置类型 ==========
+
+/** 协作模式 */
+export type OrchestrationType = 'sequential' | 'parallel' | 'planner'
+
+/** Team 成员配置 */
+export interface TeamMemberConfig {
+  /** Agent 名称 */
+  name: string
+  /** Agent 系统指令 */
+  instructions: string
+  /** 成员角色描述 */
+  role: string
+  /** 模型名称 */
+  model?: string
+  /** 模型参数 */
+  modelSettings?: ModelSettings
+  /** 工具列表 */
+  tools?: Tool[]
+  /** 优先级（顺序执行时生效） */
+  priority?: number
+}
+
+/** TeamRuntime 创建选项 */
+export interface TeamRuntimeOptions {
+  /** Team 名称 */
+  name: string
+  /** 协作模式 */
+  orchestrationType: OrchestrationType
+  /** 成员配置列表 */
+  members: TeamMemberConfig[]
+  /** 会话 ID */
+  sessionId?: string
+  /** 最大轮次 */
+  maxTurns?: number
+}
+
+// ========== TeamRuntime ==========
 
 /**
  * Team 运行时
@@ -25,44 +64,47 @@ import type {
 export class TeamRuntime implements IExecutable {
   readonly type = 'team' as const
   readonly id: string
-  private _name: string
 
-  private sessionId: string
-  private teamConfig!: TeamConfig
-  private memberRuntimes = new Map<string, Agent>() // agentId -> Agent instance
+  private readonly options: TeamRuntimeOptions
+  private readonly sessionId: string
+  private memberAgents = new Map<string, Agent>() // role -> Agent
   private streamEmitter!: IStreamEmitter
+  private createdAt: number
 
-  constructor(teamId: string, sessionId?: string) {
-    this.id = teamId
-    this.sessionId = sessionId || `session-${Date.now()}`
-    this._name = 'Team' // 将在 initialize 时更新
+  // HITL（Team 暂不支持细粒度审批，预留接口）
+  private _interrupted = false
+
+  constructor(options: TeamRuntimeOptions) {
+    this.options = options
+    this.id = `team-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    this.sessionId = options.sessionId || `session-${Date.now()}`
+    this.createdAt = Date.now()
   }
 
   get name(): string {
-    return this._name
+    return this.options.name
+  }
+
+  get interrupted(): boolean {
+    return this._interrupted
   }
 
   // ========== 生命周期 ==========
 
   async initialize(): Promise<void> {
-    // 1. 加载 Team 配置
-    const config = await teamConfigStore.getTeam(this.id)
-    if (!config) {
-      throw new Error(`Team config not found: ${this.id}`)
-    }
-
-    this.teamConfig = config
-    this._name = config.name
-
-    // 2. 初始化所有成员 Agents
-    for (const member of this.teamConfig.members) {
-      const agent = await agentFactory.createAgent({
-        configId: member.agentId
+    // 1. 为每个成员创建 Agent
+    for (const member of this.options.members) {
+      const agent = new Agent({
+        name: member.name,
+        instructions: member.instructions,
+        model: member.model || 'gpt-4o',
+        ...(member.modelSettings ? { modelSettings: member.modelSettings } : {}),
+        ...(member.tools && member.tools.length > 0 ? { tools: member.tools } : {})
       })
-      this.memberRuntimes.set(member.agentId, agent)
+      this.memberAgents.set(member.role, agent)
     }
 
-    // 3. 创建流式发射器
+    // 2. 创建流式发射器
     this.streamEmitter = createStreamEmitter(this.sessionId, {
       type: 'team',
       id: this.id,
@@ -70,54 +112,50 @@ export class TeamRuntime implements IExecutable {
     })
 
     console.log(
-      `[TeamRuntime] Initialized team: ${this.name} with ${this.teamConfig.members.length} members`
+      `[TeamRuntime] Initialized: ${this.name} ` +
+        `(mode: ${this.options.orchestrationType}, members: ${this.options.members.length})`
     )
   }
 
   async destroy(): Promise<void> {
-    // 清理所有成员
-    this.memberRuntimes.clear()
-    console.log(`[TeamRuntime] Destroyed team: ${this.name}`)
+    this.memberAgents.clear()
+    this._interrupted = false
+    console.log(`[TeamRuntime] Destroyed: ${this.name}`)
   }
 
   // ========== 执行方法 ==========
 
   async run(input: string, config?: ExecutionConfig): Promise<ExecutionResult> {
     const startTime = Date.now()
+    const maxTurns = (config?.maxTurns as number) ?? this.options.maxTurns ?? 25
 
-    console.log(`[TeamRuntime] Running team: ${this.name}`)
-    console.log(`[TeamRuntime] Orchestration: ${this.teamConfig.orchestrationType}`)
+    console.log(`[TeamRuntime] Running: ${this.name} (${this.options.orchestrationType})`)
 
     try {
       let output: string | { summary: string; results: unknown[] }
 
-      // 根据协作模式执行
-      switch (this.teamConfig.orchestrationType) {
+      switch (this.options.orchestrationType) {
         case 'sequential':
-          output = await this.runSequential(input, config)
+          output = await this.runSequential(input, maxTurns)
           break
         case 'parallel':
-          output = await this.runParallel(input, config)
+          output = await this.runParallel(input, maxTurns)
           break
         case 'planner':
           output = await this.runWithPlanner(input, config)
           break
         default:
-          throw new Error(`Unknown orchestration type: ${this.teamConfig.orchestrationType}`)
+          throw new Error(`Unknown orchestration type: ${this.options.orchestrationType}`)
       }
-
-      const duration = Date.now() - startTime
 
       return {
         output: typeof output === 'string' ? output : JSON.stringify(output),
-        toolCalls: [], // TODO: 聚合所有成员的工具调用
-        skillsUsed: this.getAggregatedSkills(),
-        duration,
+        duration: Date.now() - startTime,
         metadata: {
           teamId: this.id,
           sessionId: this.sessionId,
-          orchestrationType: this.teamConfig.orchestrationType,
-          memberCount: this.teamConfig.members.length
+          orchestrationType: this.options.orchestrationType,
+          memberCount: this.options.members.length
         }
       }
     } catch (error: unknown) {
@@ -131,71 +169,114 @@ export class TeamRuntime implements IExecutable {
     config: ExecutionConfig,
     onChunk: (chunk: StreamChunk) => void
   ): Promise<ExecutionResult> {
-    console.log(`[TeamRuntime] Running team in stream mode: ${this.name}`)
+    console.log(`[TeamRuntime] Running stream: ${this.name}`)
 
     try {
-      // 1. 发送流开始事件
+      // run:start
       await this.streamEmitter.emitStart()
+      onChunk({ type: 'run:start', content: '' })
 
-      // 2. 发送思考消息
       await this.streamEmitter.emitThinking(
-        `Team ${this.name} starting with ${this.teamConfig.orchestrationType} mode`
+        `Team ${this.name} starting (${this.options.orchestrationType})`
       )
 
-      // 3. 执行 Team（会在内部发送各成员的输出）
+      // turn:start → llm:start → text:start
+      onChunk({ type: 'turn:start', content: '', data: { turnIndex: 1 } })
+      onChunk({ type: 'llm:start', content: '' })
+      onChunk({ type: 'text:start', content: '' })
+
       const result = await this.run(input, config)
 
-      // 4. 发送最终结果
+      // text:delta
       await this.streamEmitter.emitText(result.output)
+      onChunk({ type: 'text:delta', content: result.output, data: { delta: result.output } })
 
-      // 5. 发送流结束事件
+      // text:done → llm:done → turn:done
+      onChunk({ type: 'text:done', content: result.output, data: { text: result.output } })
+      onChunk({ type: 'llm:done', content: '' })
+      onChunk({ type: 'turn:done', content: '', data: { turnIndex: 1 } })
+
+      // run:done
       await this.streamEmitter.emitDone()
-
-      // 6. 同时调用回调（兼容旧接口）
-      onChunk({
-        type: 'text',
-        content: result.output
-      })
-
-      onChunk({
-        type: 'done',
-        content: ''
-      })
+      onChunk({ type: 'run:done', content: '' })
 
       return result
     } catch (error: unknown) {
-      // 发送错误
       await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
-
-      console.error(`[TeamRuntime] Execution failed:`, error)
+      onChunk({
+        type: 'run:error',
+        content: error instanceof Error ? error.message : String(error),
+        data: { message: error instanceof Error ? error.message : String(error) }
+      })
       throw error
     }
+  }
+
+  // ========== HITL（Team 暂不支持，预留接口） ==========
+
+  approveToolCall(_index: number, _options?: { alwaysApprove?: boolean }): void {
+    throw new Error('TeamRuntime does not yet support HITL tool approval')
+  }
+
+  rejectToolCall(_index: number, _options?: { alwaysReject?: boolean }): void {
+    throw new Error('TeamRuntime does not yet support HITL tool approval')
+  }
+
+  async resume(): Promise<ExecutionResult> {
+    throw new Error('TeamRuntime does not yet support HITL resume')
+  }
+
+  async resumeStream(
+    _config: ExecutionConfig,
+    _onChunk: (chunk: StreamChunk) => void
+  ): Promise<ExecutionResult> {
+    throw new Error('TeamRuntime does not yet support HITL resume')
+  }
+
+  // ========== 会话管理 ==========
+
+  async getSession(): Promise<SessionInfo> {
+    return {
+      sessionId: this.sessionId,
+      createdAt: this.createdAt,
+      updatedAt: Date.now(),
+      messageCount: 0,
+      metadata: {
+        teamId: this.id,
+        teamName: this.name,
+        memberCount: this.options.members.length
+      }
+    }
+  }
+
+  async clearSession(): Promise<void> {
+    console.log(`[TeamRuntime] Clearing session: ${this.sessionId}`)
   }
 
   // ========== 协作模式实现 ==========
 
   /**
    * 顺序执行（Chain）
+   * 按优先级排序，前一个 Agent 的输出作为下一个的输入
    */
-  private async runSequential(input: string, _config?: ExecutionConfig): Promise<string> {
+  private async runSequential(input: string, maxTurns: number): Promise<string> {
     let currentOutput = input
 
-    // 按优先级排序
-    const sortedMembers = [...this.teamConfig.members].sort(
+    const sortedMembers = [...this.options.members].sort(
       (a, b) => (b.priority || 0) - (a.priority || 0)
     )
 
     for (const member of sortedMembers) {
-      console.log(`[TeamRuntime] Sequential - Running member: ${member.role}`)
+      console.log(`[TeamRuntime] Sequential - Running: ${member.role}`)
 
-      const agent = this.memberRuntimes.get(member.agentId)
+      const agent = this.memberAgents.get(member.role)
       if (!agent) {
-        console.warn(`[TeamRuntime] Member agent not found: ${member.agentId}`)
+        console.warn(`[TeamRuntime] Member agent not found: ${member.role}`)
         continue
       }
 
-      const result = await run(agent, currentOutput, { maxTurns: 25 })
-      currentOutput = result.finalOutput || currentOutput
+      const result = await run(agent, currentOutput, { maxTurns })
+      currentOutput = (result.finalOutput as string) || currentOutput
     }
 
     return currentOutput
@@ -203,29 +284,25 @@ export class TeamRuntime implements IExecutable {
 
   /**
    * 并行执行
+   * 所有 Agent 同时处理同一输入
    */
   private async runParallel(
     input: string,
-    _config?: ExecutionConfig
+    maxTurns: number
   ): Promise<{ summary: string; results: unknown[] }> {
     console.log(`[TeamRuntime] Parallel - Running all members`)
 
     const results = await Promise.all(
-      this.teamConfig.members.map(async (member) => {
-        const agent = this.memberRuntimes.get(member.agentId)
+      this.options.members.map(async (member) => {
+        const agent = this.memberAgents.get(member.role)
         if (!agent) {
           return { role: member.role, output: null }
         }
-
-        const result = await run(agent, input, { maxTurns: 25 })
-        return {
-          role: member.role,
-          output: result.finalOutput
-        }
+        const result = await run(agent, input, { maxTurns })
+        return { role: member.role, output: result.finalOutput }
       })
     )
 
-    // 聚合结果
     return {
       summary: `Completed ${results.length} parallel tasks`,
       results
@@ -233,121 +310,29 @@ export class TeamRuntime implements IExecutable {
   }
 
   /**
-   * 使用 Planner 执行
+   * Planner 模式
+   * 使用 Orchestrator 进行任务分解和调度
    */
   private async runWithPlanner(input: string, config?: ExecutionConfig): Promise<string> {
     console.log(`[TeamRuntime] Planner mode - Using Orchestrator`)
 
-    // 动态导入避免循环依赖
     const { createOrchestrator } = await import('../orchestration')
 
-    // 1. 创建 Orchestrator
     const emptyContext: Record<string, unknown> = {}
     const maxRetriesValue = typeof config?.maxRetries === 'number' ? config.maxRetries : 3
-    const orchestrator = createOrchestrator({
-      maxRetries: maxRetriesValue
-    })
+    const orchestrator = createOrchestrator({ maxRetries: maxRetriesValue })
 
     try {
-      // 2. 构建任务
       const task = {
         id: `task-${Date.now()}`,
         objective: input,
         context: (config?.context as Record<string, unknown>) || emptyContext,
         requirements: (config?.requirements as string[]) || []
       }
-
-      // 3. 执行任务
       const result = await orchestrator.executeTask(task)
-
-      // 4. 返回结果
       return JSON.stringify(result.subTaskResults || [])
     } finally {
-      // 5. 清理资源
       await orchestrator.cleanup()
     }
-  }
-
-  // ========== 会话管理 ==========
-
-  async getSession(): Promise<SessionInfo> {
-    // TODO: 从 SessionStore 获取
-    return {
-      sessionId: this.sessionId,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messageCount: 0,
-      metadata: {
-        teamId: this.id,
-        teamName: this.name,
-        memberCount: this.teamConfig.members.length
-      }
-    }
-  }
-
-  async clearSession(): Promise<void> {
-    console.log(`[TeamRuntime] Clearing session: ${this.sessionId}`)
-    // TODO: 清除 SessionStore 中的数据
-  }
-
-  // ========== 记忆管理 ==========
-
-  async getMemory(): Promise<MemorySummary> {
-    // TODO: 聚合所有成员的记忆
-    return {
-      shortTermCount: 0,
-      longTermCount: 0,
-      recentKeyPoints: []
-    }
-  }
-
-  async saveMemory(): Promise<void> {
-    console.log(`[TeamRuntime] Saving memory for team session: ${this.sessionId}`)
-    // TODO: 保存所有成员的记忆
-  }
-
-  async clearMemory(): Promise<void> {
-    console.log(`[TeamRuntime] Clearing memory for team session: ${this.sessionId}`)
-    // TODO: 清除所有成员的记忆
-  }
-
-  // ========== 工具管理 ==========
-
-  getTools(): ToolInfo[] {
-    // TODO: 聚合所有成员的工具
-    const allTools = new Map<string, ToolInfo>()
-
-    // 目前返回空列表，实际应该从所有成员收集
-    return Array.from(allTools.values())
-  }
-
-  setToolEnabled(toolName: string, enabled: boolean): void {
-    console.log(`[TeamRuntime] Setting tool ${toolName} to ${enabled} for all members`)
-    // TODO: 更新所有成员的工具状态
-  }
-
-  // ========== 技能管理 ==========
-
-  getSkills(): SkillInfo[] {
-    // TODO: 聚合所有成员的技能
-    const allSkills = new Map<string, SkillInfo>()
-
-    // 目前返回空列表，实际应该从所有成员收集
-    return Array.from(allSkills.values())
-  }
-
-  setSkillActive(skillId: string, active: boolean): void {
-    console.log(`[TeamRuntime] Setting skill ${skillId} to ${active} for all members`)
-    // TODO: 更新所有成员的技能状态
-  }
-
-  // ========== 辅助方法 ==========
-
-  /**
-   * 获取聚合的技能列表
-   */
-  private getAggregatedSkills(): string[] {
-    // TODO: 从所有成员收集技能
-    return []
   }
 }

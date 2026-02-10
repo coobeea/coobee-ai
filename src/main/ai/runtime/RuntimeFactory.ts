@@ -1,33 +1,22 @@
 /**
  * 运行时工厂
- * 根据配置创建 Agent 或 Team 运行时实例
+ *
+ * 根据配置创建并缓存 Agent / Team 运行时实例。
+ * 所有配置通过参数传入，工厂本身不加载配置。
  */
 
 import { AgentRuntime } from './AgentRuntime'
 import { TeamRuntime } from './TeamRuntime'
-import { SwarmRuntime, type SwarmRuntimeOptions } from '../swarm/SwarmRuntime'
-import { agentConfigStore } from '../storage/AgentConfigStore'
-import { teamConfigStore } from '../storage/TeamConfigStore'
+import type { AgentRuntimeOptions } from './types'
+import type { TeamRuntimeOptions } from './TeamRuntime'
 import type { IExecutable } from './types'
-
-/**
- * 运行时类型
- */
-export type RuntimeType = 'agent' | 'team' | 'swarm'
 
 /**
  * 运行时创建选项
  */
-export interface RuntimeCreateOptions {
-  /** 运行时类型 */
-  type: RuntimeType
-  /** Agent ID 或 Team ID 或 Swarm ID */
-  id: string
-  /** 会话 ID（可选，自动生成） */
-  sessionId?: string
-  /** Swarm 选项（仅 type='swarm' 时使用） */
-  swarmOptions?: SwarmRuntimeOptions
-}
+export type RuntimeCreateOptions =
+  | { type: 'agent'; options: AgentRuntimeOptions }
+  | { type: 'team'; options: TeamRuntimeOptions }
 
 /**
  * 运行时工厂
@@ -38,75 +27,47 @@ export class RuntimeFactory {
   /**
    * 创建运行时实例
    */
-  async createRuntime(options: RuntimeCreateOptions): Promise<IExecutable> {
-    const { type, id, sessionId } = options
-    const key = `${type}-${id}-${sessionId || 'default'}`
-
-    // 检查是否已存在
-    if (this.runtimes.has(key)) {
-      return this.runtimes.get(key)!
-    }
-
-    // 创建新的运行时实例
+  async createRuntime(createOptions: RuntimeCreateOptions): Promise<IExecutable> {
     let runtime: IExecutable
 
-    if (type === 'agent') {
-      runtime = new AgentRuntime(id, sessionId)
-    } else if (type === 'team') {
-      runtime = new TeamRuntime(id, sessionId)
-    } else if (type === 'swarm') {
-      runtime = new SwarmRuntime(id, sessionId, options.swarmOptions)
+    if (createOptions.type === 'agent') {
+      runtime = new AgentRuntime(createOptions.options)
+    } else if (createOptions.type === 'team') {
+      runtime = new TeamRuntime(createOptions.options)
     } else {
-      throw new Error(`Unknown runtime type: ${type}`)
+      throw new Error(`Unknown runtime type: ${(createOptions as { type: string }).type}`)
     }
 
     // 初始化
     await runtime.initialize()
 
     // 缓存
+    const key = `${runtime.type}-${runtime.id}`
     this.runtimes.set(key, runtime)
 
     return runtime
   }
 
   /**
-   * 自动检测类型并创建运行时实例
-   * 先尝试 Agent，再尝试 Team
-   */
-  async createRuntimeAuto(id: string, sessionId?: string): Promise<IExecutable> {
-    // 1. 尝试作为 Agent
-    const agentConfig = await agentConfigStore.getConfig(id)
-    if (agentConfig) {
-      return await this.createRuntime({ type: 'agent', id, sessionId })
-    }
-
-    // 2. 尝试作为 Team
-    const teamConfig = await teamConfigStore.getTeam(id)
-    if (teamConfig) {
-      return await this.createRuntime({ type: 'team', id, sessionId })
-    }
-
-    throw new Error(`Runtime not found: ${id}`)
-  }
-
-  /**
    * 获取已创建的运行时实例
    */
-  getRuntime(type: RuntimeType, id: string, sessionId?: string): IExecutable | null {
-    const key = `${type}-${id}-${sessionId || 'default'}`
-    return this.runtimes.get(key) || null
+  getRuntime(id: string): IExecutable | null {
+    for (const runtime of this.runtimes.values()) {
+      if (runtime.id === id) return runtime
+    }
+    return null
   }
 
   /**
    * 销毁运行时实例
    */
-  async destroyRuntime(type: RuntimeType, id: string, sessionId?: string): Promise<void> {
-    const key = `${type}-${id}-${sessionId || 'default'}`
-    const runtime = this.runtimes.get(key)
-
-    if (runtime) {
-      await runtime.destroy()
-      this.runtimes.delete(key)
+  async destroyRuntime(id: string): Promise<void> {
+    for (const [key, runtime] of this.runtimes.entries()) {
+      if (runtime.id === id) {
+        await runtime.destroy()
+        this.runtimes.delete(key)
+        return
+      }
     }
   }
 
@@ -118,6 +79,13 @@ export class RuntimeFactory {
       await runtime.destroy()
     }
     this.runtimes.clear()
+  }
+
+  /**
+   * 获取所有运行时实例
+   */
+  getAllRuntimes(): IExecutable[] {
+    return Array.from(this.runtimes.values())
   }
 }
 

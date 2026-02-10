@@ -1,376 +1,436 @@
 # 15 - 流式消息格式详解
 
-> 来源：SDK 源码 `packages/agents-core/src/events.ts`, `packages/agents-core/src/types/protocol.ts`, `packages/agents-core/src/items.ts`, `packages/agents-openai/src/openaiResponsesModel.ts`
+> 来源：OpenAI SDK `openai/resources/responses/responses.d.ts`（53 种原始事件），
+> Agents SDK `packages/agents-core/src/events.ts`, `packages/agents-core/src/types/protocol.ts`, `packages/agents-core/src/items.ts`
+
+---
 
 ## 概述
 
-本文档完整梳理 OpenAI Agents JS SDK 的流式消息格式体系。SDK 在 OpenAI Responses API 的原始事件之上构建了一套三层事件模型，理解这套格式对于消息转化和前端展示至关重要。
+OpenAI Agents JS SDK 的流式消息格式采用**三层事件模型**：
 
-## 三层事件架构
-
-```mermaid
-graph TD
-    subgraph layer1 [Layer 1: OpenAI Responses API 原始事件]
-        OAI_Created["response.created"]
-        OAI_TextDelta["response.output_text.delta"]
-        OAI_TextDone["response.output_text.done"]
-        OAI_ItemAdded["response.output_item.added"]
-        OAI_ItemDone["response.output_item.done"]
-        OAI_Completed["response.completed"]
-        OAI_Other["...其他事件"]
-    end
-
-    subgraph layer2 [Layer 2: SDK 协议事件 - ResponseStreamEvent]
-        SDK_Started["response_started"]
-        SDK_TextDelta["output_text_delta"]
-        SDK_Done["response_done"]
-        SDK_Model["model（原始事件透传）"]
-    end
-
-    subgraph layer3 [Layer 3: SDK 运行事件 - RunStreamEvent]
-        Raw["raw_model_stream_event"]
-        AgentUpdate["agent_updated_stream_event"]
-        RunItem["run_item_stream_event"]
-    end
-
-    OAI_Created -->|转换| SDK_Started
-    OAI_TextDelta -->|转换| SDK_TextDelta
-    OAI_Completed -->|转换| SDK_Done
-    OAI_Created -->|透传| SDK_Model
-    OAI_TextDelta -->|透传| SDK_Model
-    OAI_TextDone -->|透传| SDK_Model
-    OAI_ItemAdded -->|透传| SDK_Model
-    OAI_ItemDone -->|透传| SDK_Model
-    OAI_Completed -->|透传| SDK_Model
-    OAI_Other -->|透传| SDK_Model
-
-    SDK_Started -->|包装| Raw
-    SDK_TextDelta -->|包装| Raw
-    SDK_Done -->|包装| Raw
-    SDK_Model -->|包装| Raw
+```
+Layer 3  应用层     RunStreamEvent              ← 你的代码消费这一层
+           ↑ 包装
+Layer 2  协议层     StreamEvent（4 种）           ← 模型无关的抽象
+           ↑ 转换/透传
+Layer 1  原始层     Responses API 事件（53 种）   ← OpenAI 底层 SSE
 ```
 
-## Layer 1: OpenAI Responses API 原始事件
+- 日常封装只需关注 **Layer 3**
+- 需要细粒度控制（函数参数增量、思维链等）时深入 **Layer 1**
 
-这是 OpenAI API 返回的原始 Server-Sent Events。SDK 通过 `OpenAIResponsesModel` 接收这些事件。
+> **注意**：使用 `chat_completions` API（如 MiniMax）时，Layer 1 是 Chat Completion Chunk 格式，Layer 2/3 结构不变。
 
-### 原始事件类型列表
+---
 
-| 事件类型                                 | 说明         | 触发时机             |
-| ---------------------------------------- | ------------ | -------------------- |
-| `response.created`                       | 响应创建     | 请求开始             |
-| `response.in_progress`                   | 响应处理中   | 模型开始生成         |
-| `response.output_item.added`             | 新输出项添加 | 模型产生新内容块     |
-| `response.output_item.done`              | 输出项完成   | 一个内容块生成完毕   |
-| `response.content_part.added`            | 内容部分添加 | 输出项中的子部分开始 |
-| `response.content_part.done`             | 内容部分完成 | 子部分完成           |
-| `response.output_text.delta`             | 文本增量     | 每个 token 输出      |
-| `response.output_text.done`              | 文本完成     | 一段文本输出完毕     |
-| `response.function_call_arguments.delta` | 函数参数增量 | 工具调用参数流式输出 |
-| `response.function_call_arguments.done`  | 函数参数完成 | 工具调用参数输出完毕 |
-| `response.completed`                     | 响应完成     | 全部输出完毕         |
-| `response.failed`                        | 响应失败     | 出现错误             |
+## Layer 1: 原始事件（53 种）
 
-> 这些事件类型来自 OpenAI SDK 的 `ResponseStreamEvent` 类型（`openai/resources/responses/responses`）。
+OpenAI Responses API 返回的 Server-Sent Events，通过 `raw_model_stream_event` 中 `data.type === 'model'` 的 `data.event` 获取。
 
-## Layer 2: SDK 协议事件（ResponseStreamEvent / StreamEvent）
+### 1.1 响应生命周期（7 个）
 
-SDK 将 OpenAI 原始事件转换为统一的协议事件格式，这层抽象使 SDK 可以支持不同的模型提供者。
+典型时序：`queued → created → in_progress → completed / failed / incomplete`
 
-### 协议事件定义
+| 事件 `type`            | 说明                                      |
+| ---------------------- | ----------------------------------------- |
+| `response.queued`      | 请求已入队                                |
+| `response.created`     | 响应对象已创建，含完整 `response`         |
+| `response.in_progress` | 模型开始生成                              |
+| `response.completed`   | 正常完成，含 `usage` + `output`           |
+| `response.failed`      | 失败，含 `error`                          |
+| `response.incomplete`  | 被截断（token 上限等）                    |
+| `error`                | 错误事件，含 `code` / `message` / `param` |
 
-```typescript
-// 文件: packages/agents-core/src/types/protocol.ts
+### 1.2 输出项管理（2 个）
 
-type StreamEvent =
-  | StreamEventTextStream // output_text_delta
-  | StreamEventResponseCompleted // response_done
-  | StreamEventResponseStarted // response_started
-  | StreamEventGenericItem // model（透传原始事件）
+| 事件 `type`                  | 说明                                    |
+| ---------------------------- | --------------------------------------- |
+| `response.output_item.added` | 新输出项开始，通过 `item.type` 区分类型 |
+| `response.output_item.done`  | 输出项生成完毕                          |
+
+> 函数调用、文本、推理等都没有单独 "started" 事件，统一通过 `output_item.added` 的 `item.type` 区分。
+
+### 1.3 内容部分（2 个）
+
+| 事件 `type`                   | 说明                 |
+| ----------------------------- | -------------------- |
+| `response.content_part.added` | 输出项内的子内容开始 |
+| `response.content_part.done`  | 子内容完成           |
+
+### 1.4 文本输出（3 个）
+
+| 事件 `type`                             | 关键字段        | 说明                     |
+| --------------------------------------- | --------------- | ------------------------ |
+| `response.output_text.delta`            | `delta: string` | 文本增量（每个 token）   |
+| `response.output_text.done`             | `text: string`  | 文本输出完毕（完整文本） |
+| `response.output_text.annotation.added` | `annotation`    | 文本注释（引用来源等）   |
+
+### 1.5 推理 / 思维链（6 个）
+
+**原始推理文本**（模型完整思维过程，部分模型不返回或加密）：
+
+| 事件 `type`                     | 关键字段        |
+| ------------------------------- | --------------- |
+| `response.reasoning_text.delta` | `delta: string` |
+| `response.reasoning_text.done`  | `text: string`  |
+
+**推理摘要**（面向用户的可读摘要）：
+
+| 事件 `type`                             | 关键字段                |
+| --------------------------------------- | ----------------------- |
+| `response.reasoning_summary_part.added` | `part`, `summary_index` |
+| `response.reasoning_summary_part.done`  | `part`, `summary_index` |
+| `response.reasoning_summary_text.delta` | `delta: string`         |
+| `response.reasoning_summary_text.done`  | `text: string`          |
+
+### 1.6 函数调用（2 个）
+
+| 事件 `type`                              | 关键字段                         |
+| ---------------------------------------- | -------------------------------- |
+| `response.function_call_arguments.delta` | `delta: string`, `call_id`       |
+| `response.function_call_arguments.done`  | `arguments: string`（完整 JSON） |
+
+完整事件流：
+
+```
+output_item.added (type=function_call)
+  → function_call_arguments.delta × N
+  → function_call_arguments.done
+  → output_item.done
 ```
 
-### 各协议事件的详细格式
+### 1.7 拒绝回复（2 个）
 
-#### 1. `response_started` — 响应开始
+| 事件 `type`              | 关键字段          |
+| ------------------------ | ----------------- |
+| `response.refusal.delta` | `delta: string`   |
+| `response.refusal.done`  | `refusal: string` |
 
-```typescript
-interface StreamEventResponseStarted {
-  type: 'response_started'
-  providerData?: Record<string, any> // 原始 OpenAI 事件数据
-}
+### 1.8 音频（4 个）
+
+| 事件 `type`                       | 关键字段                  |
+| --------------------------------- | ------------------------- |
+| `response.audio.delta`            | `delta: string`（base64） |
+| `response.audio.done`             | —                         |
+| `response.audio.transcript.delta` | `delta: string`           |
+| `response.audio.transcript.done`  | `transcript: string`      |
+
+### 1.9 Code Interpreter（5 个）
+
+事件流：`in_progress → interpreting → code.delta × N → code.done → completed`
+
+| 事件 `type`                                   | 说明         |
+| --------------------------------------------- | ------------ |
+| `response.code_interpreter_call.in_progress`  | 开始         |
+| `response.code_interpreter_call.interpreting` | 执行中       |
+| `response.code_interpreter_call_code.delta`   | 代码文本增量 |
+| `response.code_interpreter_call_code.done`    | 代码文本完成 |
+| `response.code_interpreter_call.completed`    | 完成         |
+
+### 1.10 File Search（3 个）
+
+事件流：`in_progress → searching → completed`
+
+| 事件 `type`                             |
+| --------------------------------------- |
+| `response.file_search_call.in_progress` |
+| `response.file_search_call.searching`   |
+| `response.file_search_call.completed`   |
+
+### 1.11 Web Search（3 个）
+
+事件流：`in_progress → searching → completed`
+
+| 事件 `type`                            |
+| -------------------------------------- |
+| `response.web_search_call.in_progress` |
+| `response.web_search_call.searching`   |
+| `response.web_search_call.completed`   |
+
+### 1.12 Image Generation（4 个）
+
+事件流：`in_progress → generating → partial_image × N → completed`
+
+| 事件 `type`                                    | 关键字段                          |
+| ---------------------------------------------- | --------------------------------- |
+| `response.image_generation_call.in_progress`   | —                                 |
+| `response.image_generation_call.generating`    | —                                 |
+| `response.image_generation_call.partial_image` | `partial_image: string`（base64） |
+| `response.image_generation_call.completed`     | —                                 |
+
+### 1.13 MCP 工具（8 个）
+
+事件流：`call.in_progress → arguments.delta/done → completed/failed`
+
+| 事件 `type`                           | 说明           |
+| ------------------------------------- | -------------- |
+| `response.mcp_call.in_progress`       | MCP 调用开始   |
+| `response.mcp_call_arguments.delta`   | 参数增量       |
+| `response.mcp_call_arguments.done`    | 参数完成       |
+| `response.mcp_call.completed`         | 调用完成       |
+| `response.mcp_call.failed`            | 调用失败       |
+| `response.mcp_list_tools.in_progress` | 工具列表请求中 |
+| `response.mcp_list_tools.completed`   | 工具列表完成   |
+| `response.mcp_list_tools.failed`      | 工具列表失败   |
+
+### 1.14 自定义工具（2 个）
+
+| 事件 `type`                             | 关键字段        |
+| --------------------------------------- | --------------- |
+| `response.custom_tool_call_input.delta` | `delta: string` |
+| `response.custom_tool_call_input.done`  | `input: string` |
+
+### Layer 1 分类速查
+
+```
+响应生命周期  (7)  queued → created → in_progress → completed/failed/incomplete + error
+输出项管理    (2)  output_item.added / done
+内容部分      (2)  content_part.added / done
+文本输出      (3)  output_text.delta / done + annotation.added
+推理思维链    (6)  reasoning_text.delta/done + reasoning_summary_*.delta/done
+函数调用      (2)  function_call_arguments.delta / done
+拒绝回复      (2)  refusal.delta / done
+音频          (4)  audio.delta/done + audio.transcript.delta/done
+Code Interp.  (5)  in_progress → interpreting → code.delta/done → completed
+File Search   (3)  in_progress → searching → completed
+Web Search    (3)  in_progress → searching → completed
+Image Gen.    (4)  in_progress → generating → partial_image → completed
+MCP           (8)  call + list_tools 的 in_progress/completed/failed
+自定义工具    (2)  input.delta / done
+──────────────────
+合计 53 种
 ```
 
-#### 2. `output_text_delta` — 文本增量（最常用）
+---
+
+## Layer 2: SDK 协议事件（StreamEvent）
+
+SDK 将 Layer 1 转换为 **4 种**统一协议事件，屏蔽不同模型提供者的差异。
+
+### 四种类型
+
+**`response_started`** — 响应开始
 
 ```typescript
-interface StreamEventTextStream {
-  type: 'output_text_delta'
-  delta: string // 增量文本内容
-  providerData?: Record<string, any> // 原始事件的额外数据
-}
+{ type: 'response_started', providerData?: Record<string, any> }
 ```
 
-这是实现"打字机效果"的核心事件。`toTextStream()` 方法只提取这个事件的 `delta` 字段。
-
-#### 3. `response_done` — 响应完成
+**`output_text_delta`** — 文本增量（最常用，实现打字机效果）
 
 ```typescript
-interface StreamEventResponseCompleted {
-  type: 'response_done'
-  response: {
-    id: string // 响应 ID
-    output: OutputModelItem[] // 完整的输出项列表
-    usage: UsageData // Token 用量统计
-  }
+{ type: 'output_text_delta', delta: string, providerData?: Record<string, any> }
+```
+
+**`response_done`** — 响应完成
+
+```typescript
+{
+  type: 'response_done',
+  response: { id: string, output: OutputModelItem[], usage: UsageData },
   providerData?: Record<string, any>
 }
+```
 
-// UsageData 结构
+其中 `UsageData`：
+
+```typescript
 interface UsageData {
+  requests?: number
   inputTokens: number
   outputTokens: number
   totalTokens: number
-  inputTokensDetails?: {
-    cached_tokens?: number
-  }
-  outputTokensDetails?: {
-    reasoning_tokens?: number
-  }
-  requestUsageEntries?: Array<{
-    inputTokens: number
-    outputTokens: number
-    totalTokens: number
-    source: string
-  }>
+  inputTokensDetails?: Record<string, number> | Array<Record<string, number>>
+  outputTokensDetails?: Record<string, number> | Array<Record<string, number>>
 }
 ```
 
-#### 4. `model` — 原始事件透传
+**`model`** — Layer 1 原始事件透传
 
 ```typescript
-interface StreamEventGenericItem {
-  type: 'model'
-  event: any // OpenAI ResponseStreamEvent 原始事件
-}
+{ type: 'model', event: any /* Layer 1 的 53 种之一 */ }
 ```
-
-**关键点**：所有 OpenAI 原始事件都会产生一个 `model` 类型的事件。某些事件（`response.created`, `response.completed`, `response.output_text.delta`）还会额外产生对应的 SDK 协议事件。
 
 ### 转换规则
 
 ```
-OpenAI 原始事件                    SDK 协议事件
-─────────────────                 ──────────────────
-response.created           →      response_started + model
-response.output_text.delta →      output_text_delta + model
-response.completed         →      response_done + model
-其他所有事件               →      model（仅透传）
+Layer 1                           →  Layer 2
+───────────────────────────────      ──────────────────────
+response.created                 →   response_started  +  model
+response.output_text.delta       →   output_text_delta +  model
+response.completed               →   response_done     +  model
+其余 50 种事件                    →   model（仅透传）
 ```
 
-## Layer 3: SDK 运行事件（RunStreamEvent）
+> 只需文本增量用 `output_text_delta`；需要函数参数增量、推理文本等细粒度事件，从 `model.event` 提取。
 
-这是应用层消费的最终事件格式，通过 `toStream()` 或直接迭代获取。
+---
 
-### RunStreamEvent 联合类型
+## Layer 3: 运行事件（RunStreamEvent）
+
+应用层最终消费的事件，通过 `for await (const event of result)` 获取。
+
+三种类型：
+
+### `raw_model_stream_event`
+
+包装 Layer 2 协议事件：
 
 ```typescript
-// 文件: packages/agents-core/src/events.ts
-
-type RunStreamEvent =
-  | RunRawModelStreamEvent // raw_model_stream_event
-  | RunItemStreamEvent // run_item_stream_event
-  | RunAgentUpdatedStreamEvent // agent_updated_stream_event
+{ type: 'raw_model_stream_event', data: StreamEvent }
 ```
 
-### 事件 1: `raw_model_stream_event`
+`data` 的四种可能值：
 
-包装 Layer 2 的协议事件，`data` 字段就是 `StreamEvent`：
+| `data.type`         | 含义     | 关键字段                             |
+| ------------------- | -------- | ------------------------------------ |
+| `response_started`  | 响应开始 | `providerData`                       |
+| `output_text_delta` | 文本增量 | `delta: string`                      |
+| `response_done`     | 响应完成 | `response.id` / `.output` / `.usage` |
+| `model`             | 原始透传 | `event`（Layer 1 的 53 种之一）      |
 
-```typescript
-class RunRawModelStreamEvent {
-  readonly type = 'raw_model_stream_event'
-  data: ResponseStreamEvent // StreamEvent 类型
-}
-```
-
-**`data` 的四种可能值**：
-
-| data.type             | 含义         | 关键字段                                                          |
-| --------------------- | ------------ | ----------------------------------------------------------------- |
-| `'output_text_delta'` | 文本增量     | `data.delta: string`                                              |
-| `'response_started'`  | 响应开始     | `data.providerData`                                               |
-| `'response_done'`     | 响应完成     | `data.response.id`, `data.response.output`, `data.response.usage` |
-| `'model'`             | 原始事件透传 | `data.event: OpenAI.ResponseStreamEvent`                          |
-
-### 事件 2: `run_item_stream_event`
+### `run_item_stream_event`
 
 Agent 处理模型响应后产生的高级事件：
 
 ```typescript
-class RunItemStreamEvent {
-  readonly type = 'run_item_stream_event'
-  name: RunItemStreamEventName // 事件名称
-  item: RunItem // 运行项
-}
+{ type: 'run_item_stream_event', name: string, item: RunItem }
 ```
 
-#### RunItemStreamEventName 枚举
+7 种 `name` 值：
 
-| name 值                     | 含义           | 对应的 RunItem 类型     |
-| --------------------------- | -------------- | ----------------------- |
-| `'message_output_created'`  | Agent 输出消息 | `RunMessageOutputItem`  |
-| `'tool_called'`             | 工具被调用     | `RunToolCallItem`       |
-| `'tool_output'`             | 工具返回结果   | `RunToolCallOutputItem` |
-| `'handoff_requested'`       | 请求 Handoff   | `RunHandoffCallItem`    |
-| `'handoff_occurred'`        | Handoff 完成   | `RunHandoffOutputItem`  |
-| `'reasoning_item_created'`  | 推理内容       | `RunReasoningItem`      |
-| `'tool_approval_requested'` | 工具需审批     | `RunToolApprovalItem`   |
+| `name`                    | RunItem 类型            | 触发时机         |
+| ------------------------- | ----------------------- | ---------------- |
+| `message_output_created`  | `RunMessageOutputItem`  | 文本消息完成     |
+| `tool_called`             | `RunToolCallItem`       | 模型输出函数调用 |
+| `tool_output`             | `RunToolCallOutputItem` | 工具执行完毕     |
+| `handoff_requested`       | `RunHandoffCallItem`    | 请求切换 Agent   |
+| `handoff_occurred`        | `RunHandoffOutputItem`  | Handoff 完成     |
+| `reasoning_item_created`  | `RunReasoningItem`      | 推理/思维链完成  |
+| `tool_approval_requested` | `RunToolApprovalItem`   | 工具需人工审批   |
 
-### 事件 3: `agent_updated_stream_event`
+### `agent_updated_stream_event`
 
 Agent 发生切换（Handoff 后）：
 
 ```typescript
-class RunAgentUpdatedStreamEvent {
-  readonly type = 'agent_updated_stream_event'
-  agent: Agent // 新的活跃 Agent
-}
+{ type: 'agent_updated_stream_event', agent: Agent }
 ```
 
-## RunItem 完整类型定义
+---
 
-`run_item_stream_event` 中的 `item` 字段是以下类型之一：
+## RunItem 类型详解
 
-### RunItem 联合类型
+`run_item_stream_event` 中 `item` 的 7 种具体类型。
 
-```typescript
-type RunItem =
-  | RunMessageOutputItem // 消息输出
-  | RunToolCallItem // 工具调用
-  | RunToolCallOutputItem // 工具输出
-  | RunReasoningItem // 推理内容
-  | RunHandoffCallItem // Handoff 调用
-  | RunHandoffOutputItem // Handoff 输出
-  | RunToolApprovalItem // 工具审批
-```
-
-### 各 RunItem 的详细结构
-
-#### RunMessageOutputItem
+### RunMessageOutputItem
 
 ```typescript
 class RunMessageOutputItem {
-  readonly type = 'message_output_item';
-  rawItem: AssistantMessageItem;  // 原始消息数据
-  agent: Agent;                    // 所属 Agent
-
-  // 便捷属性：提取纯文本内容
-  get content(): string {
-    let content = '';
-    for (const part of this.rawItem.content) {
-      if (part.type === 'output_text') {
-        content += part.text;
-      }
-    }
-    return content;
-  }
+  readonly type = 'message_output_item'
+  rawItem: AssistantMessageItem
+  agent: Agent
+  get content(): string // 便捷属性：纯文本
 }
-
-// AssistantMessageItem 结构
-interface AssistantMessageItem {
-  type: 'message';
-  role: 'assistant';
-  status: 'in_progress' | 'completed' | 'incomplete';
-  content: AssistantContent[];  // 内容数组
-}
-
-// AssistantContent 可能的类型
-type AssistantContent =
-  | { type: 'output_text'; text: string }        // 文本
-  | { type: 'refusal'; refusal: string }          // 拒绝
-  | { type: 'output_audio'; ... }                 // 音频
-  | { type: 'output_image'; ... };                // 图片
 ```
 
-#### RunToolCallItem
+`AssistantContent` 联合类型：
+
+```typescript
+| { type: 'output_text', text: string }     // 文本
+| { type: 'refusal', refusal: string }      // 拒绝
+| { type: 'audio', audio: string, ... }     // 音频
+| { type: 'image', image: string }          // 图片
+```
+
+### RunToolCallItem
 
 ```typescript
 class RunToolCallItem {
   readonly type = 'tool_call_item'
-  rawItem: ToolCallItem // 可能是以下之一
+  rawItem: ToolCallItem // 5 种工具调用之一
   agent: Agent
-}
-
-// ToolCallItem 联合类型
-type ToolCallItem =
-  | FunctionCallItem // 函数调用
-  | HostedToolCallItem // 托管工具调用（web_search 等）
-  | ComputerUseCallItem // 计算机操作
-  | ShellCallItem // Shell 命令
-  | ApplyPatchCallItem // 补丁应用
-
-// FunctionCallItem 结构（最常用）
-interface FunctionCallItem {
-  type: 'function_call'
-  callId: string // 调用 ID
-  name: string // 函数名
-  arguments: string // JSON 字符串格式的参数
-  status?: 'in_progress' | 'completed' | 'incomplete'
-}
-
-// HostedToolCallItem 结构
-interface HostedToolCallItem {
-  type: 'hosted_tool_call'
-  name: string // 工具名（如 'web_search_call'）
-  arguments?: string // 参数
-  status: 'in_progress' | 'completed' | 'incomplete'
 }
 ```
 
-#### RunToolCallOutputItem
+`ToolCallItem` 联合类型（5 种）：
+
+```typescript
+// 自定义函数调用（最常用）
+interface FunctionCallItem {
+  type: 'function_call'
+  callId: string
+  name: string
+  arguments: string // JSON 字符串
+}
+
+// 托管工具（web_search、file_search 等）
+interface HostedToolCallItem {
+  type: 'hosted_tool_call'
+  name: string
+  arguments?: string
+  output?: string
+}
+
+// 计算机操作
+interface ComputerUseCallItem {
+  type: 'computer_call'
+  callId: string
+  action: ComputerAction // click, type, screenshot, scroll, ...
+}
+
+// Shell 命令
+interface ShellCallItem {
+  type: 'shell_call'
+  callId: string
+  action: { commands: string[]; timeoutMs?: number }
+}
+
+// 补丁应用
+interface ApplyPatchCallItem {
+  type: 'apply_patch_call'
+  callId: string
+  operation: { type: 'create_file' | 'update_file' | 'delete_file'; path: string; diff?: string }
+}
+```
+
+### RunToolCallOutputItem
 
 ```typescript
 class RunToolCallOutputItem {
   readonly type = 'tool_call_output_item'
-  rawItem: FunctionCallResultItem // 原始结果数据
+  rawItem: FunctionCallResultItem | ComputerCallResultItem | ...
   agent: Agent
-  output: string | unknown // 工具输出内容
-}
-
-// FunctionCallResultItem 结构
-interface FunctionCallResultItem {
-  type: 'function_call_result'
-  name: string // 工具名
-  callId: string // 对应的调用 ID
-  status: 'in_progress' | 'completed' | 'incomplete'
-  output: string // 序列化的输出
+  output: string | unknown
 }
 ```
 
-#### RunReasoningItem
+`FunctionCallResultItem`（最常用）：
+
+```typescript
+interface FunctionCallResultItem {
+  type: 'function_call_result'
+  name: string
+  callId: string
+  output: string | ToolCallOutputContent | Array<ToolCallStructuredOutput>
+}
+```
+
+### RunReasoningItem
 
 ```typescript
 class RunReasoningItem {
   readonly type = 'reasoning_item'
-  rawItem: ReasoningItem // 推理数据
+  rawItem: {
+    type: 'reasoning'
+    content: Array<{ type: 'input_text'; text: string }> // 用户可见摘要
+    rawContent?: Array<{ type: 'reasoning_text'; text: string }> // 原始推理文本
+  }
   agent: Agent
-}
-
-// ReasoningItem 结构
-interface ReasoningItem {
-  type: 'reasoning'
-  id?: string
-  content: Array<{ type: 'input_text'; text: string }> // 用户可见的推理摘要
-  rawContent?: Array<{
-    // 原始推理文本
-    type: 'reasoning_text'
-    text: string
-    signature?: string
-  }>
 }
 ```
 
-#### RunHandoffCallItem
+### RunHandoffCallItem / RunHandoffOutputItem
 
 ```typescript
 class RunHandoffCallItem {
@@ -378,223 +438,186 @@ class RunHandoffCallItem {
   rawItem: FunctionCallItem // Handoff 本质是函数调用
   agent: Agent // 发起 Handoff 的 Agent
 }
-```
 
-#### RunHandoffOutputItem
-
-```typescript
 class RunHandoffOutputItem {
   readonly type = 'handoff_output_item'
   rawItem: FunctionCallResultItem
-  sourceAgent: Agent // 源 Agent
-  targetAgent: Agent // 目标 Agent
+  sourceAgent: Agent
+  targetAgent: Agent
 }
 ```
 
-#### RunToolApprovalItem
+### RunToolApprovalItem
 
 ```typescript
 class RunToolApprovalItem {
-  readonly type = 'tool_approval_item';
-  rawItem: FunctionCallItem | HostedToolCallItem | ...;
-  agent: Agent;
-  toolName?: string;      // 工具名
-
-  get name(): string | undefined;       // 工具名
-  get arguments(): string | undefined;  // 工具参数
+  readonly type = 'tool_approval_item'
+  rawItem: FunctionCallItem | HostedToolCallItem | ComputerUseCallItem | ...
+  agent: Agent
+  get name(): string | undefined
+  get arguments(): string | undefined
 }
 ```
+
+---
 
 ## 完整事件时序图
 
-一次典型的 Agent 执行（含工具调用和 Handoff）的完整事件流：
+### 场景 A：纯文本回复
 
-```mermaid
-sequenceDiagram
-    participant App as 应用层
-    participant SDK as SDK Runner
-    participant API as OpenAI API
-
-    Note over SDK,API: Agent A 开始执行
-    App->>SDK: run(agentA, input, {stream: true})
-
-    SDK->>API: responses.create(stream: true)
-
-    API-->>SDK: response.created
-    SDK-->>App: raw_model_stream_event {data: {type: response_started}}
-    SDK-->>App: raw_model_stream_event {data: {type: model, event: response.created}}
-
-    Note over API: 模型决定调用工具
-
-    API-->>SDK: response.output_item.added (function_call)
-    SDK-->>App: raw_model_stream_event {data: {type: model, event: ...}}
-
-    API-->>SDK: response.function_call_arguments.delta
-    SDK-->>App: raw_model_stream_event {data: {type: model, event: ...}}
-
-    API-->>SDK: response.function_call_arguments.done
-    SDK-->>App: raw_model_stream_event {data: {type: model, event: ...}}
-
-    API-->>SDK: response.completed
-    SDK-->>App: raw_model_stream_event {data: {type: response_done, response: {...}}}
-    SDK-->>App: raw_model_stream_event {data: {type: model, event: response.completed}}
-
-    Note over SDK: 解析模型响应，产生 RunItem
-
-    SDK-->>App: run_item_stream_event {name: tool_called, item: RunToolCallItem}
-
-    Note over SDK: 执行工具
-
-    SDK-->>App: run_item_stream_event {name: tool_output, item: RunToolCallOutputItem}
-
-    Note over SDK: 工具结果返回给模型，开始第二轮
-
-    SDK->>API: responses.create(stream: true, 含工具结果)
-
-    API-->>SDK: response.created
-    SDK-->>App: raw_model_stream_event {data: {type: response_started}}
-
-    API-->>SDK: response.output_text.delta "The"
-    SDK-->>App: raw_model_stream_event {data: {type: output_text_delta, delta: "The"}}
-
-    API-->>SDK: response.output_text.delta " weather"
-    SDK-->>App: raw_model_stream_event {data: {type: output_text_delta, delta: " weather"}}
-
-    API-->>SDK: response.output_text.delta " is sunny"
-    SDK-->>App: raw_model_stream_event {data: {type: output_text_delta, delta: " is sunny"}}
-
-    API-->>SDK: response.completed
-    SDK-->>App: raw_model_stream_event {data: {type: response_done, response: {...}}}
-
-    SDK-->>App: run_item_stream_event {name: message_output_created, item: RunMessageOutputItem}
-
-    Note over App: 流结束
+```
+Layer 1 原始事件                     Layer 3 SDK 事件
+────────────────                     ───────────────
+response.created                 →   raw { response_started }
+response.in_progress             →   raw { model }
+output_item.added (message)      →   raw { model }
+content_part.added               →   raw { model }
+output_text.delta "你"           →   raw { output_text_delta, delta: '你' }
+output_text.delta "好"           →   raw { output_text_delta, delta: '好' }
+output_text.done                 →   raw { model }
+content_part.done                →   raw { model }
+output_item.done                 →   raw { model }
+response.completed               →   raw { response_done }
+                                     run_item { message_output_created }
 ```
 
-### Handoff 场景的额外事件
+### 场景 B：工具调用 → 文本回复
 
-```mermaid
-sequenceDiagram
-    participant App as 应用层
-    participant SDK as SDK Runner
+```
+── 第 1 轮：调用工具 ──
 
-    Note over SDK: 模型决定 Handoff
+response.created                 →   raw { response_started }
+output_item.added (fn_call)      →   raw { model }
+fn_call_arguments.delta × N      →   raw { model } × N
+fn_call_arguments.done           →   raw { model }
+output_item.done                 →   raw { model }
+response.completed               →   raw { response_done }
+                                     run_item { tool_called }
+                                     (SDK 执行工具)
+                                     run_item { tool_output }
 
-    SDK-->>App: run_item_stream_event {name: handoff_requested, item: RunHandoffCallItem}
-    SDK-->>App: run_item_stream_event {name: handoff_occurred, item: RunHandoffOutputItem}
-    SDK-->>App: agent_updated_stream_event {agent: AgentB}
+── 第 2 轮：生成回复 ──
 
-    Note over SDK: Agent B 开始执行...
+response.created                 →   raw { response_started }
+output_text.delta "天气晴朗"     →   raw { output_text_delta } × N
+response.completed               →   raw { response_done }
+                                     run_item { message_output_created }
 ```
 
-## 消息转化实用指南
+### 场景 C：推理 + 文本回复
 
-### 场景 1：提取纯文本（打字机效果）
+```
+response.created                 →   raw { response_started }
+output_item.added (reasoning)    →   raw { model }
+reasoning_text.delta × N         →   raw { model } × N
+reasoning_text.done              →   raw { model }
+reasoning_summary_text.delta × N →   raw { model } × N
+output_item.done                 →   raw { model }
+                                     run_item { reasoning_item_created }
+output_item.added (message)      →   raw { model }
+output_text.delta "答案是..."    →   raw { output_text_delta }
+response.completed               →   raw { response_done }
+                                     run_item { message_output_created }
+```
+
+### 场景 D：Handoff 切换
+
+```
+response.completed               →   raw { response_done }
+                                     run_item { handoff_requested }
+                                     run_item { handoff_occurred }
+                                     agent_updated { agent: AgentB }
+                                     (Agent B 开始新一轮...)
+```
+
+---
+
+## 封装实用代码
+
+### 1. 提取纯文本（打字机效果）
 
 ```typescript
-const stream = await run(agent, input, { stream: true })
+// 最简方式
+for await (const delta of result.toTextStream()) {
+  appendToUI(delta)
+}
 
-for await (const event of stream) {
+// 通过事件
+for await (const event of result) {
   if (event.type === 'raw_model_stream_event' && event.data.type === 'output_text_delta') {
-    // event.data.delta 是文本增量
     appendToUI(event.data.delta)
   }
 }
-
-// 或者直接使用 toTextStream()
-for await (const delta of stream.toTextStream()) {
-  appendToUI(delta)
-}
 ```
 
-### 场景 2：追踪工具调用
+### 2. 追踪工具调用全过程
 
 ```typescript
-for await (const event of stream) {
-  if (event.type === 'run_item_stream_event') {
-    switch (event.name) {
-      case 'tool_called':
-        // event.item.type === 'tool_call_item'
-        const toolCall = event.item as RunToolCallItem
-        showToolCallStart(toolCall.rawItem.name, toolCall.rawItem.arguments)
-        break
+for await (const event of result) {
+  // 工具参数增量（从 Layer 1 原始事件获取）
+  if (event.type === 'raw_model_stream_event' && event.data.type === 'model') {
+    const raw = event.data.event
+    if (raw.type === 'response.function_call_arguments.delta') {
+      showArgumentsDelta(raw.delta)
+    }
+  }
 
-      case 'tool_output':
-        // event.item.type === 'tool_call_output_item'
-        const toolOutput = event.item as RunToolCallOutputItem
-        showToolCallResult(toolOutput.output)
-        break
+  // 工具调用完成和结果（Layer 3 高级事件）
+  if (event.type === 'run_item_stream_event') {
+    if (event.name === 'tool_called') {
+      showToolCallStart((event.item as RunToolCallItem).rawItem)
+    }
+    if (event.name === 'tool_output') {
+      showToolCallResult((event.item as RunToolCallOutputItem).output)
     }
   }
 }
 ```
 
-### 场景 3：追踪 Agent 切换
+### 3. 获取推理 / 思维链增量
 
 ```typescript
-for await (const event of stream) {
+for await (const event of result) {
+  if (event.type === 'raw_model_stream_event' && event.data.type === 'model') {
+    const raw = event.data.event
+    if (raw.type === 'response.reasoning_text.delta') appendThinking(raw.delta)
+    if (raw.type === 'response.reasoning_summary_text.delta') appendSummary(raw.delta)
+  }
+
+  // 推理完成后的完整数据
+  if (event.type === 'run_item_stream_event' && event.name === 'reasoning_item_created') {
+    const item = event.item as RunReasoningItem
+    // item.rawItem.content     → 用户可见摘要
+    // item.rawItem.rawContent  → 原始推理文本
+  }
+}
+```
+
+### 4. 追踪 Agent 切换
+
+```typescript
+for await (const event of result) {
   if (event.type === 'agent_updated_stream_event') {
     updateCurrentAgent(event.agent.name)
   }
 }
 ```
 
-### 场景 4：获取推理过程
+### 5. 获取 Token 用量
 
 ```typescript
-for await (const event of stream) {
-  if (event.type === 'run_item_stream_event' && event.name === 'reasoning_item_created') {
-    const reasoning = event.item as RunReasoningItem
-    for (const entry of reasoning.rawItem.content) {
-      if (entry.type === 'input_text') {
-        showThinking(entry.text)
-      }
-    }
-  }
-}
-```
-
-### 场景 5：获取 Token 用量
-
-```typescript
-for await (const event of stream) {
+for await (const event of result) {
   if (event.type === 'raw_model_stream_event' && event.data.type === 'response_done') {
-    const usage = event.data.response.usage
-    updateTokenCount({
-      input: usage.inputTokens,
-      output: usage.outputTokens,
-      total: usage.totalTokens
-    })
+    const { inputTokens, outputTokens, totalTokens } = event.data.response.usage
+    updateTokenCount({ input: inputTokens, output: outputTokens, total: totalTokens })
   }
 }
 ```
 
-### 场景 6：获取 OpenAI 原始事件
+### 6. 处理 HITL 中断
 
 ```typescript
-for await (const event of stream) {
-  if (event.type === 'raw_model_stream_event' && event.data.type === 'model') {
-    // event.data.event 是 OpenAI ResponseStreamEvent 原始对象
-    const oaiEvent = event.data.event
-    console.log(`OpenAI event: ${oaiEvent.type}`)
-
-    // 可以获取工具调用参数的增量
-    if (oaiEvent.type === 'response.function_call_arguments.delta') {
-      showArgumentsDelta(oaiEvent.delta)
-    }
-
-    // 可以获取输出项完成事件
-    if (oaiEvent.type === 'response.output_item.done') {
-      handleItemComplete(oaiEvent.item)
-    }
-  }
-}
-```
-
-### 场景 7：处理 HITL 中断
-
-```typescript
-for await (const event of stream) {
+for await (const event of result) {
   if (event.type === 'run_item_stream_event' && event.name === 'tool_approval_requested') {
     const approval = event.item as RunToolApprovalItem
     showApprovalDialog({
@@ -606,50 +629,172 @@ for await (const event of stream) {
 }
 ```
 
+### 7. 完整处理器模板
+
+```typescript
+for await (const event of result) {
+  switch (event.type) {
+    case 'raw_model_stream_event':
+      switch (event.data.type) {
+        case 'response_started':
+          onResponseStarted()
+          break
+        case 'output_text_delta':
+          onTextDelta(event.data.delta)
+          break
+        case 'response_done':
+          onResponseDone(event.data.response)
+          break
+        case 'model':
+          handleRawEvent(event.data.event)
+          break
+      }
+      break
+
+    case 'run_item_stream_event':
+      switch (event.name) {
+        case 'message_output_created':
+          onMessage(event.item as RunMessageOutputItem)
+          break
+        case 'tool_called':
+          onToolCalled(event.item as RunToolCallItem)
+          break
+        case 'tool_output':
+          onToolOutput(event.item as RunToolCallOutputItem)
+          break
+        case 'reasoning_item_created':
+          onReasoning(event.item as RunReasoningItem)
+          break
+        case 'handoff_requested':
+          onHandoffReq(event.item as RunHandoffCallItem)
+          break
+        case 'handoff_occurred':
+          onHandoffDone(event.item as RunHandoffOutputItem)
+          break
+        case 'tool_approval_requested':
+          onApproval(event.item as RunToolApprovalItem)
+          break
+      }
+      break
+
+    case 'agent_updated_stream_event':
+      onAgentUpdated(event.agent)
+      break
+  }
+}
+```
+
+Layer 1 原始事件子处理器：
+
+```typescript
+function handleRawEvent(raw: any) {
+  switch (raw.type) {
+    // 推理
+    case 'response.reasoning_text.delta':
+      onReasoningDelta(raw.delta)
+      break
+    case 'response.reasoning_summary_text.delta':
+      onSummaryDelta(raw.delta)
+      break
+
+    // 函数参数
+    case 'response.function_call_arguments.delta':
+      onArgsDelta(raw.delta, raw.call_id)
+      break
+    case 'response.function_call_arguments.done':
+      onArgsDone(raw.arguments, raw.call_id)
+      break
+
+    // 拒绝
+    case 'response.refusal.delta':
+      onRefusalDelta(raw.delta)
+      break
+
+    // 输出项
+    case 'response.output_item.added':
+      onItemAdded(raw.item)
+      break
+    case 'response.output_item.done':
+      onItemDone(raw.item)
+      break
+
+    // 托管工具（按需）
+    case 'response.web_search_call.searching':
+      onWebSearch(raw)
+      break
+    case 'response.code_interpreter_call_code.delta':
+      onCodeDelta(raw.delta)
+      break
+    case 'response.image_generation_call.partial_image':
+      onPartialImage(raw.partial_image)
+      break
+  }
+}
+```
+
+---
+
 ## 与 OpenAI 原始格式的关系
 
-### 一致性
+### 一致的部分
 
-| 方面       | SDK 格式                  | OpenAI 原始格式                    | 关系                   |
-| ---------- | ------------------------- | ---------------------------------- | ---------------------- |
-| 文本增量   | `output_text_delta.delta` | `response.output_text.delta.delta` | **一致**，字段名映射   |
-| 响应完成   | `response_done.response`  | `response.completed.response`      | **一致**，结构映射     |
-| Token 用量 | `usage.inputTokens`       | `usage.input_tokens`               | **一致**，驼峰命名映射 |
-| 原始事件   | `model.event`             | 原始事件                           | **完全透传**           |
+| 方面       | SDK 格式                  | OpenAI 原始格式                                |
+| ---------- | ------------------------- | ---------------------------------------------- |
+| 文本增量   | `output_text_delta.delta` | `response.output_text.delta.delta`             |
+| 响应完成   | `response_done.response`  | `response.completed.response`                  |
+| Token 用量 | `usage.inputTokens`       | `usage.input_tokens`（camelCase ↔ snake_case） |
+| 原始事件   | `model.event`             | 完全透传                                       |
 
-### 差异点
+### SDK 额外提供的抽象
 
-| 方面         | SDK 额外提供                 | OpenAI 原始无                      |
-| ------------ | ---------------------------- | ---------------------------------- |
-| RunItem 事件 | `run_item_stream_event`      | 无（需要自行解析 response output） |
-| Agent 切换   | `agent_updated_stream_event` | 无（SDK 概念）                     |
-| 工具审批     | `tool_approval_requested`    | 无（SDK HITL 机制）                |
-| Handoff 事件 | `handoff_requested/occurred` | 无（SDK Handoff 机制）             |
-| 工具输出     | `tool_output`                | 无（需要自行管理工具调用）         |
+| SDK 事件                      | OpenAI 原始 API            |
+| ----------------------------- | -------------------------- |
+| `run_item_stream_event`       | 需自行解析 response output |
+| `agent_updated_stream_event`  | 无（SDK 概念）             |
+| `tool_called` + `tool_output` | 需自行管理工具执行         |
+| `handoff_*`                   | 无（SDK 概念）             |
+| `tool_approval_requested`     | 无（SDK HITL 机制）        |
 
-### 核心结论
+---
 
-> SDK 的 `raw_model_stream_event` 中通过 `data.type === 'model'` 可以获取 OpenAI 的**完整原始事件**，与直接使用 OpenAI API 的体验完全一致。SDK 在此基础上额外提供了 `run_item_stream_event` 和 `agent_updated_stream_event` 作为高级抽象，封装了工具执行、Handoff 切换等 Agent 特有的逻辑。
+## 速查总表
 
-## 事件类型速查表
+### Layer 3: RunStreamEvent（12 种组合）
 
-### RunStreamEvent（顶层）
+| `event.type`                 | 子类型                           | 说明                  |
+| ---------------------------- | -------------------------------- | --------------------- |
+| `raw_model_stream_event`     | `data.type = response_started`   | 响应开始              |
+| `raw_model_stream_event`     | `data.type = output_text_delta`  | 文本增量              |
+| `raw_model_stream_event`     | `data.type = response_done`      | 响应完成              |
+| `raw_model_stream_event`     | `data.type = model`              | Layer 1 透传（53 种） |
+| `run_item_stream_event`      | `name = message_output_created`  | 消息输出              |
+| `run_item_stream_event`      | `name = tool_called`             | 工具调用              |
+| `run_item_stream_event`      | `name = tool_output`             | 工具结果              |
+| `run_item_stream_event`      | `name = handoff_requested`       | 请求 Handoff          |
+| `run_item_stream_event`      | `name = handoff_occurred`        | Handoff 完成          |
+| `run_item_stream_event`      | `name = reasoning_item_created`  | 推理内容              |
+| `run_item_stream_event`      | `name = tool_approval_requested` | 工具审批              |
+| `agent_updated_stream_event` | —                                | Agent 切换            |
 
-| type                         | 子类型                             | 说明                 |
-| ---------------------------- | ---------------------------------- | -------------------- |
-| `raw_model_stream_event`     | `data.type = 'output_text_delta'`  | 文本增量             |
-| `raw_model_stream_event`     | `data.type = 'response_started'`   | 响应开始             |
-| `raw_model_stream_event`     | `data.type = 'response_done'`      | 响应完成（含 usage） |
-| `raw_model_stream_event`     | `data.type = 'model'`              | OpenAI 原始事件透传  |
-| `run_item_stream_event`      | `name = 'message_output_created'`  | Agent 输出消息       |
-| `run_item_stream_event`      | `name = 'tool_called'`             | 工具被调用           |
-| `run_item_stream_event`      | `name = 'tool_output'`             | 工具返回结果         |
-| `run_item_stream_event`      | `name = 'handoff_requested'`       | 请求 Handoff         |
-| `run_item_stream_event`      | `name = 'handoff_occurred'`        | Handoff 完成         |
-| `run_item_stream_event`      | `name = 'reasoning_item_created'`  | 推理内容             |
-| `run_item_stream_event`      | `name = 'tool_approval_requested'` | 工具需审批           |
-| `agent_updated_stream_event` | —                                  | Agent 切换           |
+### Layer 1: 原始事件索引（53 种）
 
-### 文档导航
+| #     | 事件类型                                                                    | 分类             |
+| ----- | --------------------------------------------------------------------------- | ---------------- |
+| 1-7   | `response.queued/created/in_progress/completed/failed/incomplete` + `error` | 生命周期         |
+| 8-9   | `response.output_item.added/done`                                           | 输出项           |
+| 10-11 | `response.content_part.added/done`                                          | 内容部分         |
+| 12-14 | `response.output_text.delta/done` + `annotation.added`                      | 文本             |
+| 15-20 | `response.reasoning_text.*` + `reasoning_summary_*.*`                       | 推理             |
+| 21-22 | `response.function_call_arguments.delta/done`                               | 函数调用         |
+| 23-24 | `response.refusal.delta/done`                                               | 拒绝             |
+| 25-28 | `response.audio.*`                                                          | 音频             |
+| 29-33 | `response.code_interpreter_call*`                                           | Code Interpreter |
+| 34-36 | `response.file_search_call.*`                                               | File Search      |
+| 37-39 | `response.web_search_call.*`                                                | Web Search       |
+| 40-43 | `response.image_generation_call.*`                                          | Image Generation |
+| 44-51 | `response.mcp_call*` + `mcp_list_tools.*`                                   | MCP              |
+| 52-53 | `response.custom_tool_call_input.delta/done`                                | 自定义工具       |
+
+---
 
 返回 [README.md](./README.md) 查看完整文档目录。

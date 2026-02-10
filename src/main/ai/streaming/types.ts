@@ -1,20 +1,33 @@
 /**
  * 流式输出类型定义
+ *
+ * 对齐 runtime/types.ts 的 8 层 24 种事件设计。
+ * StreamEmitter 层使用较粗粒度的消息分类，
+ * 细粒度的 prefix:event 事件通过 StreamChunk 直接传递给消费者。
  */
 
 /**
- * 流式消息类型
+ * 流式消息类型（StreamEmitter 粗粒度分类）
+ *
+ * StreamEmitter 不需要 1:1 映射所有 24 种 StreamChunkType，
+ * 它负责通过 EventBus 广播关键事件供 Monitor/Store 消费。
+ * 更细粒度的事件通过 onChunk 回调直接传递。
  */
 export type StreamMessageType =
-  | 'text' // 普通文本
-  | 'thinking' // 思考过程
-  | 'tool_call' // 工具调用
-  | 'tool_result' // 工具结果
-  | 'skill_call' // 技能调用
-  | 'skill_result' // 技能结果
-  | 'start' // 流开始
-  | 'done' // 流结束
-  | 'error' // 错误
+  // 文本
+  | 'text' // 文本增量 → text:delta
+  | 'thinking' // 推理增量 → reasoning:delta
+  // 工具
+  | 'tool_call' // 工具调用 → tool:start
+  | 'tool_result' // 工具结果 → tool:done
+  // Handoff / HITL
+  | 'handoff' // Handoff 事件
+  | 'hitl' // HITL 审批事件
+  | 'agent_updated' // Agent 切换
+  // 生命周期
+  | 'start' // 流开始 → run:start
+  | 'done' // 流结束 → run:done
+  | 'error' // 错误 → run:error
 
 /**
  * 流式消息来源

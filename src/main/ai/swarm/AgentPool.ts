@@ -10,7 +10,6 @@
  */
 
 import { Agent } from '@openai/agents'
-import { agentFactory } from '../agents/AgentFactory'
 import type { AgentRole, PoolAgentEntry, SwarmConfig } from './types'
 
 /**
@@ -128,13 +127,12 @@ export class AgentPool {
     // 3. 创建新 Agent
     const poolId = this.generatePoolId(role.id)
 
-    const agent = await agentFactory.createAgent({
-      config: {
-        name: `${role.name} (Swarm)`,
-        instructions: role.instructions,
-        model: role.model
-      },
-      tools: role.tools
+    // 直接创建 SDK Agent
+    const agent = new Agent({
+      name: `${role.name} (Swarm)`,
+      instructions: role.instructions,
+      model: role.model,
+      ...(role.tools && role.tools.length > 0 ? { tools: role.tools } : {})
     })
 
     const entry: PoolAgentEntry = {

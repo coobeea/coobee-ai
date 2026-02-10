@@ -1,55 +1,316 @@
 /**
- * 统一运行时接口
- * 为 Agent 和 Team 提供一致的对外接口
+ * 统一运行时类型定义
+ *
+ * 设计原则：SDK 原生优先，runtime 是 SDK 的薄封装
  */
 
+import type { Agent, Handoff, Tool, ModelSettings, RunToolApprovalItem } from '@openai/agents'
+
+// ========== Agent 运行时选项 ==========
+
 /**
- * 执行配置
+ * AgentRuntime 创建选项
+ *
+ * 所有配置通过参数传入，runtime 不内部加载配置。
+ * 调用方（上层模块）负责从 ConfigStore / Presets / 用户输入组装选项。
+ */
+export interface AgentRuntimeOptions {
+  /** Agent 名称 */
+  name: string
+  /** Agent 系统指令 */
+  instructions: string
+  /** 模型名称（默认 'gpt-4o'） */
+  model?: string
+  /** 模型参数（温度、top_p 等） */
+  modelSettings?: ModelSettings
+  /** SDK Tool 实例列表 */
+  tools?: Tool[]
+  /** SDK Handoff 配置（Agent 或 Handoff 实例） */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handoffs?: (Agent<any, any> | Handoff<any, any>)[]
+  /** 会话 ID（不传则自动生成） */
+  sessionId?: string
+  /** 最大执行轮次，防止无限工具调用循环（默认 25） */
+  maxTurns?: number
+}
+
+// ========== 执行配置和结果 ==========
+
+/**
+ * 执行配置（运行时覆盖项）
  */
 export interface ExecutionConfig {
   /** 是否启用流式输出 */
   streaming?: boolean
-  /** 最大 token 数 */
-  maxTokens?: number
-  /** 温度参数 */
-  temperature?: number
+  /** 覆盖最大轮次 */
+  maxTurns?: number
   /** 其他配置 */
   [key: string]: unknown
+}
+
+/**
+ * 工具审批信息（前端可读格式）
+ */
+export interface ToolApprovalInfo {
+  /** 审批项索引 */
+  index: number
+  /** 工具名称 */
+  toolName: string
+  /** 工具参数（JSON 字符串） */
+  arguments: string
 }
 
 /**
  * 执行结果
  */
 export interface ExecutionResult {
-  /** 最终输出 */
+  /** 最终输出文本 */
   output: string
+  /** 是否被中断（HITL 工具审批） */
+  interrupted?: boolean
+  /** 待审批的工具调用列表（仅 interrupted=true 时有值） */
+  interruptions?: ToolApprovalInfo[]
   /** 使用的工具调用记录 */
   toolCalls?: Array<{
     toolName: string
     arguments: Record<string, unknown>
-    result: unknown
+    result?: unknown
   }>
-  /** 使用的技能记录 */
-  skillsUsed?: string[]
-  /** 消耗的 token 数 */
-  tokensUsed?: number
   /** 执行耗时（ms） */
   duration?: number
-  /** 其他元数据 */
+  /** 元数据 */
   metadata?: Record<string, unknown>
 }
 
+// ========== 流式事件：8 层 24 种，分层嵌套闭环 ==========
+
 /**
  * 流式输出块
+ *
+ * 所有流式事件的统一载体。前端通过 `type` 的前缀过滤感兴趣的层级。
  */
 export interface StreamChunk {
-  /** 类型 */
-  type: 'text' | 'tool_call' | 'skill_call' | 'done' | 'error'
-  /** 内容 */
+  /** 事件类型（prefix:event 格式） */
+  type: StreamChunkType
+  /** 主要内容（文本增量、工具名、错误信息等） */
   content: string
-  /** 额外数据 */
-  data?: unknown
+  /** 额外数据（类型随 type 变化） */
+  data?: StreamChunkData
+  /** 发出此事件的 Agent 名称（多 Agent 场景有值） */
+  agentName?: string
 }
+
+/**
+ * 流式事件类型（8 层 24 种）
+ *
+ * 设计原则：
+ *   1. 每层用统一前缀（prefix:event），层级关系清晰
+ *   2. 每个实体形成闭环（start → delta → done）
+ *   3. 从 SDK RunStreamEvent 映射，消费者不感知底层
+ *
+ * 嵌套关系：
+ *   run ⊃ turn ⊃ llm ⊃ { text, reasoning, tool }
+ *                                       ↓
+ *                                     hitl
+ *            ↗ handoff ↘
+ *      (Agent A)    (Agent B)
+ *
+ * 闭环时序示意：
+ *
+ *   ┌─ run:start ──────────────────────────────────────────────────── run:done ─┐
+ *   │  ┌─ turn:start ──────────────────────────────────── turn:done ─┐         │
+ *   │  │  ┌─ llm:start ──────────────────────── llm:done ─┐         │         │
+ *   │  │  │  reasoning:start → :delta × N → :done         │         │         │
+ *   │  │  │  text:start → :delta × N → :done              │         │         │
+ *   │  │  │  tool:start → :delta × N → :pending           │         │         │
+ *   │  │  └────────────────────────────────────────────────┘         │         │
+ *   │  │  tool:done { result }                                       │         │
+ *   │  └─────────────────────────────────────────────────────────────┘         │
+ *   │  ┌─ turn:start (下一轮) ─── ... ─── turn:done ─┐                        │
+ *   │  └──────────────────────────────────────────────┘                        │
+ *   └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * SDK 映射：
+ *   run:*        → Runtime 自身生成
+ *   turn:*       → Runtime 状态追踪合成（基于 response_started 和 tool_output 检测边界）
+ *   llm:*        → raw_model_stream_event / response_started, response_done
+ *   text:*       → raw / output_text_delta + model / output_item.added + run_item / message_output
+ *   reasoning:*  → raw / model / reasoning_text.delta + run_item / reasoning_item_created
+ *   tool:*       → raw / model / function_call_arguments.* + run_item / tool_called, tool_output
+ *   hitl:*       → run_item / tool_approval_requested + Runtime approve/reject
+ *   handoff:*    → run_item / handoff_requested, handoff_occurred
+ */
+export type StreamChunkType =
+  // ① run: 执行生命周期（最外层）
+  | 'run:start' // 整个执行开始
+  | 'run:done' // 整个执行完成
+  | 'run:error' // 执行错误
+  | 'run:interrupted' // 被 HITL 中断
+  | 'run:resumed' // 恢复执行
+  // ② turn: 对话轮次（一轮 = 一次 LLM 调用 + 可能的工具执行）
+  | 'turn:start' // 轮次开始 ← response_started 触发
+  | 'turn:done' // 轮次完成 ← tool_output 后 / 无工具时 response_done 后
+  // ③ llm: 模型 API 调用
+  | 'llm:start' // 模型调用开始 ← response_started
+  | 'llm:done' // 模型调用完成 ← response_done（含 usage）
+  // ④ text: 文本输出
+  | 'text:start' // 文本开始 ← output_item.added (message)
+  | 'text:delta' // 文本增量 ← output_text_delta
+  | 'text:done' // 文本完成 ← message_output_created
+  // ⑤ reasoning: 推理/思维链
+  | 'reasoning:start' // 推理开始 ← output_item.added (reasoning)
+  | 'reasoning:delta' // 推理增量 ← reasoning_text.delta
+  | 'reasoning:done' // 推理完成 ← reasoning_item_created
+  // ⑥ tool: 工具调用
+  | 'tool:start' // 工具调用开始 ← output_item.added (function_call)
+  | 'tool:delta' // 参数增量 ← function_call_arguments.delta
+  | 'tool:pending' // 参数完成，等待执行 ← function_call_arguments.done
+  | 'tool:done' // 执行完成 ← tool_output
+  // ⑦ hitl: 人工审批
+  | 'hitl:required' // 需要审批 ← tool_approval_requested
+  | 'hitl:approved' // 已批准 ← Runtime.approveToolCall()
+  | 'hitl:rejected' // 已拒绝 ← Runtime.rejectToolCall()
+  // ⑧ handoff: Agent 切换
+  | 'handoff:start' // 请求切换 ← handoff_requested
+  | 'handoff:done' // 切换完成 ← handoff_occurred
+
+/**
+ * StreamChunk 额外数据（联合类型，根据 StreamChunkType 变化）
+ */
+export type StreamChunkData =
+  | RunErrorData
+  | TurnData
+  | LlmDoneData
+  | TextDeltaData
+  | TextDoneData
+  | ReasoningDoneData
+  | ToolStartData
+  | ToolDeltaData
+  | ToolPendingData
+  | ToolDoneData
+  | HitlRequiredData
+  | HandoffData
+  | Record<string, unknown>
+
+// ---- ① run: ----
+
+/** run:error 数据 */
+export interface RunErrorData {
+  /** 错误消息 */
+  message: string
+  /** 错误码 */
+  code?: string
+}
+
+// ---- ② turn: ----
+
+/** turn:start / turn:done 数据 */
+export interface TurnData {
+  /** 轮次索引（从 1 开始） */
+  turnIndex: number
+}
+
+// ---- ③ llm: ----
+
+/** llm:done 数据（含 token 用量） */
+export interface LlmDoneData {
+  /** 响应 ID */
+  responseId?: string
+  /** Token 用量 */
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+  }
+}
+
+// ---- ④ text: ----
+
+/** text:delta 数据 */
+export interface TextDeltaData {
+  /** 增量文本片段 */
+  delta: string
+}
+
+/** text:done 数据 */
+export interface TextDoneData {
+  /** 完整文本 */
+  text: string
+}
+
+// ---- ⑤ reasoning: ----
+
+/** reasoning:done 数据 */
+export interface ReasoningDoneData {
+  /** 推理摘要（用户可见） */
+  summary?: string
+  /** 原始推理文本（可能不返回） */
+  rawContent?: string
+}
+
+// ---- ⑥ tool: ----
+
+/** tool:start 数据 */
+export interface ToolStartData {
+  /** 工具名称 */
+  toolName: string
+  /** 调用 ID */
+  callId?: string
+}
+
+/** tool:delta 数据 */
+export interface ToolDeltaData {
+  /** 参数 JSON 片段 */
+  delta: string
+  /** 调用 ID */
+  callId?: string
+}
+
+/** tool:pending 数据（参数完成） */
+export interface ToolPendingData {
+  /** 工具名称 */
+  toolName?: string
+  /** 调用 ID */
+  callId?: string
+  /** 完整参数 JSON 字符串 */
+  arguments: string
+}
+
+/** tool:done 数据（执行结果） */
+export interface ToolDoneData {
+  /** 工具名称 */
+  toolName: string
+  /** 调用 ID */
+  callId?: string
+  /** 输出内容 */
+  output: unknown
+}
+
+// ---- ⑦ hitl: ----
+
+/** hitl:required 数据 */
+export interface HitlRequiredData {
+  /** 审批项索引 */
+  index: number
+  /** 工具名称 */
+  toolName: string
+  /** 工具参数（JSON 字符串） */
+  arguments?: string
+  /** SDK 原始审批项引用（用于 approve/reject） */
+  approvalItem: RunToolApprovalItem
+}
+
+// ---- ⑧ handoff: ----
+
+/** handoff:start / handoff:done 数据 */
+export interface HandoffData {
+  /** 来源 Agent 名称 */
+  fromAgent?: string
+  /** 目标 Agent 名称 */
+  toAgent: string
+}
+
+// ========== 会话信息 ==========
 
 /**
  * 会话信息
@@ -63,73 +324,36 @@ export interface SessionInfo {
   updatedAt: number
   /** 消息数量 */
   messageCount: number
-  /** 其他元数据 */
+  /** 元数据 */
   metadata?: Record<string, unknown>
 }
 
-/**
- * 记忆摘要
- */
-export interface MemorySummary {
-  /** 短期记忆条目数 */
-  shortTermCount: number
-  /** 长期记忆条目数 */
-  longTermCount?: number
-  /** 最近的关键信息 */
-  recentKeyPoints?: string[]
-}
-
-/**
- * 工具信息
- */
-export interface ToolInfo {
-  /** 工具名称 */
-  name: string
-  /** 工具描述 */
-  description: string
-  /** 是否可用 */
-  enabled: boolean
-}
-
-/**
- * 技能信息
- */
-export interface SkillInfo {
-  /** 技能 ID */
-  id: string
-  /** 技能名称 */
-  name: string
-  /** 技能描述 */
-  description: string
-  /** 是否激活 */
-  active: boolean
-}
+// ========== 统一执行接口 ==========
 
 /**
  * 统一执行接口
  *
- * Agent 和 Team 都实现这个接口，对外提供一致的能力：
+ * Agent、Team、Swarm 都实现此接口，对外提供一致的能力：
  * - 执行（同步/流式）
+ * - HITL 工具审批（暂停/恢复）
  * - 会话管理
- * - 记忆管理
- * - 工具管理
- * - 技能管理
  */
 export interface IExecutable {
-  /**
-   * 执行类型
-   */
+  /** 执行类型 */
   readonly type: 'agent' | 'team' | 'swarm'
-
-  /**
-   * 执行 ID（Agent ID 或 Team ID）
-   */
+  /** 执行 ID */
   readonly id: string
-
-  /**
-   * 名称
-   */
+  /** 名称 */
   readonly name: string
+  /** 是否处于中断状态（HITL 工具审批等待中） */
+  readonly interrupted: boolean
+
+  // ========== 生命周期 ==========
+
+  /** 初始化 */
+  initialize(): Promise<void>
+  /** 销毁 */
+  destroy(): Promise<void>
 
   // ========== 执行方法 ==========
 
@@ -141,10 +365,10 @@ export interface IExecutable {
   run(input: string, config?: ExecutionConfig): Promise<ExecutionResult>
 
   /**
-   * 流式执行（实时返回结果块）
+   * 流式执行（实时返回事件块）
    * @param input 用户输入
    * @param config 执行配置
-   * @param onChunk 流式块回调
+   * @param onChunk 流式事件回调
    */
   runStream(
     input: string,
@@ -152,93 +376,40 @@ export interface IExecutable {
     onChunk: (chunk: StreamChunk) => void
   ): Promise<ExecutionResult>
 
+  // ========== HITL 工具审批 ==========
+
+  /**
+   * 批准工具调用
+   * @param index 审批项索引
+   * @param options 选项（如 alwaysApprove）
+   */
+  approveToolCall(index: number, options?: { alwaysApprove?: boolean }): void
+
+  /**
+   * 拒绝工具调用
+   * @param index 审批项索引
+   * @param options 选项（如 alwaysReject）
+   */
+  rejectToolCall(index: number, options?: { alwaysReject?: boolean }): void
+
+  /**
+   * 恢复被中断的执行
+   * 在 approve/reject 工具调用后调用此方法继续执行
+   */
+  resume(): Promise<ExecutionResult>
+
+  /**
+   * 恢复被中断的流式执行
+   */
+  resumeStream(
+    config: ExecutionConfig,
+    onChunk: (chunk: StreamChunk) => void
+  ): Promise<ExecutionResult>
+
   // ========== 会话管理 ==========
 
-  /**
-   * 获取会话信息
-   */
+  /** 获取会话信息 */
   getSession(): Promise<SessionInfo>
-
-  /**
-   * 清除会话历史
-   */
+  /** 清除会话历史 */
   clearSession(): Promise<void>
-
-  // ========== 记忆管理 ==========
-
-  /**
-   * 获取记忆摘要
-   */
-  getMemory(): Promise<MemorySummary>
-
-  /**
-   * 保存记忆
-   */
-  saveMemory(): Promise<void>
-
-  /**
-   * 清除记忆
-   */
-  clearMemory(): Promise<void>
-
-  // ========== 工具管理 ==========
-
-  /**
-   * 获取可用工具列表
-   */
-  getTools(): ToolInfo[]
-
-  /**
-   * 启用/禁用工具
-   * @param toolName 工具名称
-   * @param enabled 是否启用
-   */
-  setToolEnabled(toolName: string, enabled: boolean): void
-
-  // ========== 技能管理 ==========
-
-  /**
-   * 获取技能列表
-   */
-  getSkills(): SkillInfo[]
-
-  /**
-   * 激活/停用技能
-   * @param skillId 技能 ID
-   * @param active 是否激活
-   */
-  setSkillActive(skillId: string, active: boolean): void
-
-  // ========== 生命周期 ==========
-
-  /**
-   * 初始化
-   */
-  initialize(): Promise<void>
-
-  /**
-   * 销毁
-   */
-  destroy(): Promise<void>
-}
-
-/**
- * 执行上下文
- * 用于在执行过程中传递状态
- */
-export interface ExecutionContext {
-  /** 会话 ID */
-  sessionId: string
-  /** 用户输入 */
-  userInput: string
-  /** 执行配置 */
-  config: ExecutionConfig
-  /** 历史消息 */
-  history?: Array<{ role: string; content: string }>
-  /** 激活的技能 */
-  activeSkills?: string[]
-  /** 可用的工具 */
-  availableTools?: string[]
-  /** 其他上下文信息 */
-  metadata?: Record<string, unknown>
 }

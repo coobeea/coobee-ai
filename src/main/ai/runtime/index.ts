@@ -1,17 +1,28 @@
 /**
  * 统一运行时模块
- * 为 Agent、Team 和 Swarm 提供一致的对外接口
+ *
+ * 对外暴露：
+ * - AgentRuntime / TeamRuntime — 核心运行时
+ * - RuntimeFactory — 工厂方法
+ * - FileSession — 文件持久化 Session
+ * - 所有类型定义
  */
 
+// ========== 核心类型 ==========
 export * from './types'
-export { AgentRuntime } from './AgentRuntime'
-export { TeamRuntime } from './TeamRuntime'
-export {
-  RuntimeFactory,
-  runtimeFactory,
-  type RuntimeType,
-  type RuntimeCreateOptions
-} from './RuntimeFactory'
 
-// Re-export SwarmRuntime for convenience
+// ========== 运行时 ==========
+export { AgentRuntime } from './AgentRuntime'
+export {
+  TeamRuntime,
+  type TeamRuntimeOptions,
+  type TeamMemberConfig,
+  type OrchestrationType
+} from './TeamRuntime'
+export { RuntimeFactory, runtimeFactory, type RuntimeCreateOptions } from './RuntimeFactory'
+
+// ========== Session ==========
+export { FileSession } from './FileSession'
+
+// ========== Swarm（re-export for convenience）==========
 export { SwarmRuntime, type SwarmRuntimeOptions } from '../swarm/SwarmRuntime'

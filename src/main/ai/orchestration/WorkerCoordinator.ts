@@ -3,8 +3,7 @@
  * 管理 Worker（Agent）池，分配和执行子任务
  */
 
-import { run } from '@openai/agents'
-import { agentFactory } from '../agents/AgentFactory'
+import { run, Agent } from '@openai/agents'
 import type { SubTask, WorkerInfo } from './types'
 
 /**
@@ -60,9 +59,12 @@ export class WorkerCoordinator implements IWorkerCoordinator {
     // 创建新的 Worker
     const workerId = `worker-${workerType}-${++this.workerCounter}`
 
-    // 使用 AgentFactory 创建 Agent
-    const agent = await agentFactory.createAgent({
-      preset: this.mapWorkerTypeToPreset(workerType)
+    // 直接创建 SDK Agent
+    const preset = this.getWorkerConfig(workerType)
+    const agent = new Agent({
+      name: preset.name,
+      instructions: preset.instructions,
+      model: preset.model
     })
 
     const workerInfo: WorkerInfo = {
@@ -123,17 +125,33 @@ export class WorkerCoordinator implements IWorkerCoordinator {
   }
 
   /**
-   * 将 Worker 类型映射到 Agent 预设
+   * 获取 Worker 类型对应的 Agent 配置
    */
-  private mapWorkerTypeToPreset(workerType: string): 'chat' | 'code' | 'research' {
+  private getWorkerConfig(workerType: string): {
+    name: string
+    instructions: string
+    model: string
+  } {
     switch (workerType.toLowerCase()) {
       case 'code':
-        return 'code'
+        return {
+          name: 'Code Worker',
+          instructions: 'You are a code generation and analysis assistant.',
+          model: 'gpt-4o'
+        }
       case 'research':
-        return 'research'
+        return {
+          name: 'Research Worker',
+          instructions: 'You are a research and analysis assistant.',
+          model: 'gpt-4o'
+        }
       case 'chat':
       default:
-        return 'chat'
+        return {
+          name: 'Chat Worker',
+          instructions: 'You are a helpful assistant.',
+          model: 'gpt-4o'
+        }
     }
   }
 

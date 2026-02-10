@@ -68,7 +68,7 @@ describe('StreamEmitter', () => {
   })
 
   describe('emitToolCall', () => {
-    it('发射工具调用', async () => {
+    it('发射工具调用事件', async () => {
       await emitter.emitToolCall('search', { query: 'test' })
 
       expect(mockEventBus.emit).toHaveBeenCalledWith(

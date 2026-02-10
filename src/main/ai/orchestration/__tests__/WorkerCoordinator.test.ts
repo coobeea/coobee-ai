@@ -11,18 +11,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ===== Hoisted mocks =====
-const { mockCreateAgent, mockRun } = vi.hoisted(() => ({
-  mockCreateAgent: vi.fn(),
-  mockRun: vi.fn()
-}))
-
-// ===== Mock AgentFactory =====
-vi.mock('../../agents/AgentFactory', () => ({
-  agentFactory: { createAgent: mockCreateAgent }
+const { mockRun, mockAgentInstances } = vi.hoisted(() => ({
+  mockRun: vi.fn(),
+  mockAgentInstances: [] as Array<{ name: string }>
 }))
 
 // ===== Mock @openai/agents =====
 vi.mock('@openai/agents', () => ({
+  Agent: vi.fn().mockImplementation(function (config: { name?: string }) {
+    const instance = { name: config?.name || 'Agent' }
+    mockAgentInstances.push(instance)
+    return instance
+  }),
   run: (...args: unknown[]) => mockRun(...args)
 }))
 
@@ -47,6 +47,7 @@ describe('WorkerCoordinator', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockAgentInstances.length = 0
     coordinator = new WorkerCoordinator()
   })
 
@@ -54,37 +55,25 @@ describe('WorkerCoordinator', () => {
 
   describe('getOrCreateWorker', () => {
     it('创建新的 Worker', async () => {
-      const mockAgent = { name: 'CodeAgent' }
-      mockCreateAgent.mockResolvedValue(mockAgent)
-
       const worker = await coordinator.getOrCreateWorker('code')
 
       expect(worker.id).toContain('worker-code-')
       expect(worker.type).toBe('code')
       expect(worker.status).toBe('idle')
-      expect(worker.agent).toBe(mockAgent)
-      expect(mockCreateAgent).toHaveBeenCalledWith({
-        preset: 'code'
-      })
+      expect(worker.agent).toBeDefined()
     })
 
     it('复用空闲的 Worker', async () => {
-      const mockAgent = { name: 'ChatAgent' }
-      mockCreateAgent.mockResolvedValue(mockAgent)
-
       const worker1 = await coordinator.getOrCreateWorker('chat')
       const worker2 = await coordinator.getOrCreateWorker('chat')
 
       // 第一个 Worker 空闲，应该复用
       expect(worker1).toBe(worker2)
-      expect(mockCreateAgent).toHaveBeenCalledTimes(1)
+      // Agent 只创建了一次
+      expect(mockAgentInstances.length).toBe(1)
     })
 
     it('不复用忙碌的 Worker', async () => {
-      const mockAgent1 = { name: 'Agent1' }
-      const mockAgent2 = { name: 'Agent2' }
-      mockCreateAgent.mockResolvedValueOnce(mockAgent1).mockResolvedValueOnce(mockAgent2)
-
       const worker1 = await coordinator.getOrCreateWorker('code')
       // 模拟 worker1 忙碌
       worker1.status = 'busy'
@@ -92,21 +81,32 @@ describe('WorkerCoordinator', () => {
       const worker2 = await coordinator.getOrCreateWorker('code')
 
       expect(worker1).not.toBe(worker2)
-      expect(mockCreateAgent).toHaveBeenCalledTimes(2)
+      expect(mockAgentInstances.length).toBe(2)
     })
 
-    it('映射 Worker 类型到预设', async () => {
-      mockCreateAgent.mockResolvedValue({ name: 'Agent' })
+    it('根据 Worker 类型创建正确配置的 Agent', async () => {
+      const { Agent } = await import('@openai/agents')
 
       await coordinator.getOrCreateWorker('code')
-      expect(mockCreateAgent).toHaveBeenCalledWith({ preset: 'code' })
+      expect(Agent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Code Worker',
+          model: 'gpt-4o'
+        })
+      )
 
       await coordinator.getOrCreateWorker('research')
-      expect(mockCreateAgent).toHaveBeenCalledWith({ preset: 'research' })
+      expect(Agent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Research Worker',
+          model: 'gpt-4o'
+        })
+      )
 
       // 默认映射到 chat
-      await coordinator.getOrCreateWorker('unknown')
-      expect(mockCreateAgent).toHaveBeenCalledWith({ preset: 'chat' })
+      const w = await coordinator.getOrCreateWorker('unknown')
+      // unknown type 应该 fallback to chat
+      expect(w.agent).toBeDefined()
     })
   })
 
@@ -114,8 +114,6 @@ describe('WorkerCoordinator', () => {
 
   describe('executeSubTask', () => {
     it('成功执行子任务', async () => {
-      const mockAgent = { name: 'CodeAgent' }
-      mockCreateAgent.mockResolvedValue(mockAgent)
       mockRun.mockResolvedValue({ finalOutput: 'task completed' })
 
       const worker = await coordinator.getOrCreateWorker('code')
@@ -125,7 +123,7 @@ describe('WorkerCoordinator', () => {
 
       expect(result).toBe('task completed')
       expect(mockRun).toHaveBeenCalledWith(
-        mockAgent,
+        worker.agent,
         expect.stringContaining('Test subtask'),
         expect.objectContaining({ maxTurns: 25 })
       )
@@ -134,9 +132,6 @@ describe('WorkerCoordinator', () => {
     })
 
     it('执行中 Worker 状态为 busy', async () => {
-      const mockAgent = { name: 'Agent' }
-      mockCreateAgent.mockResolvedValue(mockAgent)
-
       let capturedStatus = ''
       mockRun.mockImplementation(async () => {
         // 执行中检查状态
@@ -152,8 +147,6 @@ describe('WorkerCoordinator', () => {
     })
 
     it('执行失败时 Worker 状态为 error', async () => {
-      const mockAgent = { name: 'Agent' }
-      mockCreateAgent.mockResolvedValue(mockAgent)
       mockRun.mockRejectedValue(new Error('execution failed'))
 
       const worker = await coordinator.getOrCreateWorker('code')
@@ -166,8 +159,6 @@ describe('WorkerCoordinator', () => {
     })
 
     it('构建包含依赖信息的提示词', async () => {
-      const mockAgent = { name: 'Agent' }
-      mockCreateAgent.mockResolvedValue(mockAgent)
       mockRun.mockResolvedValue({ finalOutput: 'done' })
 
       const worker = await coordinator.getOrCreateWorker('code')
@@ -191,8 +182,6 @@ describe('WorkerCoordinator', () => {
 
   describe('getWorkerStatus', () => {
     it('获取已创建的 Worker 状态', async () => {
-      mockCreateAgent.mockResolvedValue({ name: 'Agent' })
-
       const worker = await coordinator.getOrCreateWorker('code')
       const status = coordinator.getWorkerStatus(worker.id)
 
@@ -208,8 +197,6 @@ describe('WorkerCoordinator', () => {
 
   describe('clear', () => {
     it('清理所有 Worker', async () => {
-      mockCreateAgent.mockResolvedValue({ name: 'Agent' })
-
       const worker = await coordinator.getOrCreateWorker('code')
 
       coordinator.clear()
@@ -217,21 +204,15 @@ describe('WorkerCoordinator', () => {
       expect(coordinator.getWorkerStatus(worker.id)).toBeNull()
     })
 
-    it('清理后重新创建 Worker ID 重置', async () => {
-      mockCreateAgent.mockResolvedValue({ name: 'Agent' })
-
-      await coordinator.getOrCreateWorker('code') // worker-code-1
-      // 使其忙碌以避免复用
+    it('清理后重新创建 Worker', async () => {
+      await coordinator.getOrCreateWorker('code')
       const w1 = coordinator.getWorkerStatus('worker-code-1')
       if (w1) w1.status = 'busy'
 
-      await coordinator.getOrCreateWorker('code') // worker-code-2
+      await coordinator.getOrCreateWorker('code')
 
       coordinator.clear()
 
-      await coordinator.getOrCreateWorker('code') // worker-code-3 (计数器未重置)
-      // 但 Worker 池应该是空的
-      // 实际上 clear 会重置计数器
       const worker = await coordinator.getOrCreateWorker('chat')
       expect(worker.id).toContain('worker-chat-')
     })

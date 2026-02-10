@@ -12,18 +12,6 @@ export * from './common'
 // ========== @openai/agents SDK ==========
 export { Agent, run, type AgentConfiguration, type Tool } from '@openai/agents'
 
-// ========== Agent 配置和管理 ==========
-export {
-  agentPresets,
-  chatAgentPreset,
-  codeAgentPreset,
-  researchAgentPreset,
-  type AgentPresetType,
-  AgentFactory,
-  agentFactory,
-  type AgentCreateOptions
-} from './agents'
-
 // ========== 技能系统 ==========
 export {
   SkillManager,
@@ -107,25 +95,27 @@ export {
 
 // ========== 统一运行时接口（Agent & Team & Swarm）==========
 export {
-  // 核心接口
+  // 核心接口和类型
   type IExecutable,
   type ExecutionConfig,
   type ExecutionResult,
   type StreamChunk,
+  type StreamChunkType,
   type SessionInfo,
-  type MemorySummary,
-  type ToolInfo,
-  type SkillInfo,
-  type ExecutionContext,
+  type AgentRuntimeOptions,
+  type ToolApprovalInfo,
   // 运行时
   AgentRuntime,
   TeamRuntime,
+  type TeamRuntimeOptions,
+  type TeamMemberConfig,
   SwarmRuntime,
   type SwarmRuntimeOptions,
   RuntimeFactory,
   runtimeFactory,
-  type RuntimeType,
-  type RuntimeCreateOptions
+  type RuntimeCreateOptions,
+  // Session
+  FileSession
 } from './runtime'
 
 // ========== Team（多 Agent 协作）==========

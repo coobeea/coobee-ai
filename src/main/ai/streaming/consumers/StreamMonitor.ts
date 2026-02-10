@@ -14,7 +14,7 @@ export interface SessionStats {
   messageCount: number
   textCount: number
   toolCallCount: number
-  skillCallCount: number
+  handoffCount: number
   errorCount: number
   startTime?: number
   endTime?: number
@@ -52,7 +52,7 @@ export class StreamMonitor {
         messageCount: 0,
         textCount: 0,
         toolCallCount: 0,
-        skillCallCount: 0,
+        handoffCount: 0,
         errorCount: 0,
         startTime: Date.now(),
         lastSequence: 0
@@ -72,13 +72,15 @@ export class StreamMonitor {
       // 分类统计
       switch (event.message.type) {
         case 'text':
+        case 'thinking':
           stats.textCount++
           break
         case 'tool_call':
+        case 'tool_result':
           stats.toolCallCount++
           break
-        case 'skill_call':
-          stats.skillCallCount++
+        case 'handoff':
+          stats.handoffCount++
           break
         case 'error':
           stats.errorCount++
@@ -117,7 +119,7 @@ export class StreamMonitor {
         messageCount: 0,
         textCount: 0,
         toolCallCount: 0,
-        skillCallCount: 0,
+        handoffCount: 0,
         errorCount: 0,
         lastSequence: 0
       }

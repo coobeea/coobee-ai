@@ -5,7 +5,7 @@
  * - run(): 调用 SwarmCoordinator 完成任务
  * - runStream(): 流式输出支持
  * - 完整的生命周期管理
- * - 会话、记忆、工具、技能管理接口
+ * - HITL 接口（预留）
  */
 
 import { createStreamEmitter, type IStreamEmitter } from '../streaming/StreamEmitter'
@@ -18,10 +18,7 @@ import type {
   ExecutionConfig,
   ExecutionResult,
   StreamChunk,
-  SessionInfo,
-  MemorySummary,
-  ToolInfo,
-  SkillInfo
+  SessionInfo
 } from '../runtime/types'
 
 /**
@@ -49,6 +46,9 @@ export class SwarmRuntime implements IExecutable {
   private taskCounter = 0
   private createdAt = Date.now()
 
+  // HITL（Swarm 暂不支持）
+  private _interrupted = false
+
   constructor(swarmId: string, sessionId?: string, options?: SwarmRuntimeOptions) {
     this.id = swarmId
     this.sessionId = sessionId || `swarm-session-${Date.now()}`
@@ -71,13 +71,15 @@ export class SwarmRuntime implements IExecutable {
     return this._name
   }
 
+  get interrupted(): boolean {
+    return this._interrupted
+  }
+
   // ========== 生命周期 ==========
 
   async initialize(): Promise<void> {
-    // 1. 初始化协调器（会创建 Triage Agent 和专家 Agent）
     await this.coordinator.initialize()
 
-    // 2. 创建流式发射器
     this.streamEmitter = createStreamEmitter(this.sessionId, {
       type: 'swarm',
       id: this.id,
@@ -89,6 +91,7 @@ export class SwarmRuntime implements IExecutable {
 
   async destroy(): Promise<void> {
     this.coordinator.destroy()
+    this._interrupted = false
     console.log(`[SwarmRuntime] Destroyed: ${this.name}`)
   }
 
@@ -114,16 +117,12 @@ export class SwarmRuntime implements IExecutable {
         createdAt: Date.now()
       }
 
-      // 根据执行模式选择协调方式
       let result
       if (executionMode === 'parallel' && config?.subTasks) {
-        // 显式并行模式
         result = await this.coordinator.coordinateParallel(task, config.subTasks as SwarmSubTask[])
       } else if (executionMode === 'hybrid' || executionMode === 'auto') {
-        // 混合模式（自动判断是否需要并行）
         result = await this.coordinator.coordinateHybrid(task)
       } else {
-        // 默认串行 handoff 模式
         result = await this.coordinator.coordinate(task)
       }
 
@@ -132,7 +131,6 @@ export class SwarmRuntime implements IExecutable {
       return {
         output: result.output,
         toolCalls: [],
-        skillsUsed: result.rolesUsed,
         duration,
         metadata: {
           swarmId: this.id,
@@ -163,18 +161,21 @@ export class SwarmRuntime implements IExecutable {
     console.log(`[SwarmRuntime] Running task ${taskId} in stream mode`)
 
     try {
-      // 1. 发送流开始事件
+      // run:start
       await this.streamEmitter.emitStart()
-
-      // 2. 发送思考消息
       await this.streamEmitter.emitThinking(`分诊中: ${input.substring(0, 50)}...`)
 
+      // turn:start → llm:start → text:start
+      onChunk({ type: 'turn:start', content: '', data: { turnIndex: 1 } })
+      onChunk({ type: 'llm:start', content: '' })
+      onChunk({ type: 'text:start', content: '' })
+
       onChunk({
-        type: 'text',
-        content: '[Swarm] 正在分析任务需求...\n'
+        type: 'text:delta',
+        content: '[Swarm] 正在分析任务需求...\n',
+        data: { delta: '[Swarm] 正在分析任务需求...\n' }
       })
 
-      // 3. 执行协调
       const result = await this.coordinator.coordinate({
         id: taskId,
         input,
@@ -183,28 +184,34 @@ export class SwarmRuntime implements IExecutable {
         createdAt: Date.now()
       })
 
-      // 4. 发送结果
       await this.streamEmitter.emitText(result.output)
 
       onChunk({
-        type: 'text',
-        content: result.output
+        type: 'text:delta',
+        content: result.output,
+        data: { delta: result.output }
       })
 
-      // 5. 发送元信息
       if (result.rolesUsed.length > 0) {
         const metaInfo = `\n\n---\n[Swarm] 使用专家: ${result.rolesUsed.join(' -> ')} | Handoff: ${result.handoffCount}次 | 耗时: ${result.duration}ms`
         onChunk({
-          type: 'text',
-          content: metaInfo
+          type: 'text:delta',
+          content: metaInfo,
+          data: { delta: metaInfo }
         })
       }
 
-      // 6. 发送完成事件
+      // text:done → llm:done → turn:done
+      const fullOutput = result.output
+      onChunk({ type: 'text:done', content: fullOutput, data: { text: fullOutput } })
+      onChunk({ type: 'llm:done', content: '' })
+      onChunk({ type: 'turn:done', content: '', data: { turnIndex: 1 } })
+
+      // run:done
       await this.streamEmitter.emitDone()
 
       onChunk({
-        type: 'done',
+        type: 'run:done',
         content: ''
       })
 
@@ -213,7 +220,6 @@ export class SwarmRuntime implements IExecutable {
       return {
         output: result.output,
         toolCalls: [],
-        skillsUsed: result.rolesUsed,
         duration,
         metadata: {
           swarmId: this.id,
@@ -228,8 +234,9 @@ export class SwarmRuntime implements IExecutable {
       await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
 
       onChunk({
-        type: 'error',
-        content: error instanceof Error ? error.message : String(error)
+        type: 'run:error',
+        content: error instanceof Error ? error.message : String(error),
+        data: { message: error instanceof Error ? error.message : String(error) }
       })
 
       console.error(`[SwarmRuntime] Task ${taskId} failed:`, error)
@@ -237,66 +244,25 @@ export class SwarmRuntime implements IExecutable {
     }
   }
 
-  // ========== 角色管理（Swarm 特有） ==========
+  // ========== HITL（Swarm 暂不支持） ==========
 
-  /**
-   * 动态注册新角色
-   */
-  async registerRole(role: AgentRole): Promise<void> {
-    await this.coordinator.registerRole(role)
-    console.log(`[SwarmRuntime] Registered new role: ${role.id}`)
+  approveToolCall(_index: number, _options?: { alwaysApprove?: boolean }): void {
+    throw new Error('SwarmRuntime does not yet support HITL tool approval')
   }
 
-  /**
-   * 获取可用角色列表
-   */
-  getAvailableRoles(): AgentRole[] {
-    return this.coordinator.getAvailableRoleList()
+  rejectToolCall(_index: number, _options?: { alwaysReject?: boolean }): void {
+    throw new Error('SwarmRuntime does not yet support HITL tool approval')
   }
 
-  /**
-   * 获取 Swarm 执行指标
-   */
-  getMetrics(): ReturnType<typeof this.coordinator.monitor.getMetrics> {
-    return this.coordinator.monitor.getMetrics()
+  async resume(): Promise<ExecutionResult> {
+    throw new Error('SwarmRuntime does not yet support HITL resume')
   }
 
-  /**
-   * 获取 Agent 池统计
-   */
-  getPoolStats(): ReturnType<typeof this.coordinator.pool.getStats> {
-    return this.coordinator.pool.getStats()
-  }
-
-  /**
-   * 获取 Handoff 统计
-   */
-  getHandoffStats(): ReturnType<typeof this.coordinator.router.getStats> {
-    return this.coordinator.router.getStats()
-  }
-
-  /**
-   * 获取共享上下文摘要
-   */
-  getContextSummary(): string {
-    return this.coordinator.context.toSummary()
-  }
-
-  /**
-   * 获取消息总线统计
-   */
-  getMessageStats(): ReturnType<typeof this.coordinator.messageBus.getStats> {
-    return this.coordinator.messageBus.getStats()
-  }
-
-  /**
-   * 获取并发管理器状态
-   */
-  getConcurrencyStatus(): { running: number; atCapacity: boolean } {
-    return {
-      running: this.coordinator.concurrency.getRunningCount(),
-      atCapacity: this.coordinator.concurrency.isAtCapacity()
-    }
+  async resumeStream(
+    _config: ExecutionConfig,
+    _onChunk: (chunk: StreamChunk) => void
+  ): Promise<ExecutionResult> {
+    throw new Error('SwarmRuntime does not yet support HITL resume')
   }
 
   // ========== 会话管理 ==========
@@ -321,70 +287,41 @@ export class SwarmRuntime implements IExecutable {
     console.log(`[SwarmRuntime] Session cleared: ${this.sessionId}`)
   }
 
-  // ========== 记忆管理 ==========
+  // ========== 角色管理（Swarm 特有） ==========
 
-  async getMemory(): Promise<MemorySummary> {
-    const contextData = this.coordinator.context.export()
+  async registerRole(role: AgentRole): Promise<void> {
+    await this.coordinator.registerRole(role)
+    console.log(`[SwarmRuntime] Registered new role: ${role.id}`)
+  }
+
+  getAvailableRoles(): AgentRole[] {
+    return this.coordinator.getAvailableRoleList()
+  }
+
+  getMetrics(): ReturnType<typeof this.coordinator.monitor.getMetrics> {
+    return this.coordinator.monitor.getMetrics()
+  }
+
+  getPoolStats(): ReturnType<typeof this.coordinator.pool.getStats> {
+    return this.coordinator.pool.getStats()
+  }
+
+  getHandoffStats(): ReturnType<typeof this.coordinator.router.getStats> {
+    return this.coordinator.router.getStats()
+  }
+
+  getContextSummary(): string {
+    return this.coordinator.context.toSummary()
+  }
+
+  getMessageStats(): ReturnType<typeof this.coordinator.messageBus.getStats> {
+    return this.coordinator.messageBus.getStats()
+  }
+
+  getConcurrencyStatus(): { running: number; atCapacity: boolean } {
     return {
-      shortTermCount: Object.keys(contextData.state).length,
-      longTermCount: contextData.artifacts.length,
-      recentKeyPoints: this.coordinator.context.getRecentProgress(5)
+      running: this.coordinator.concurrency.getRunningCount(),
+      atCapacity: this.coordinator.concurrency.isAtCapacity()
     }
-  }
-
-  async saveMemory(): Promise<void> {
-    // 共享上下文在执行过程中自动管理
-    console.log(`[SwarmRuntime] Memory persisted for session: ${this.sessionId}`)
-  }
-
-  async clearMemory(): Promise<void> {
-    this.coordinator.context.clear()
-    console.log(`[SwarmRuntime] Memory cleared for session: ${this.sessionId}`)
-  }
-
-  // ========== 工具管理 ==========
-
-  getTools(): ToolInfo[] {
-    // Swarm 的工具由各专家 Agent 自行管理
-    // 这里返回一个概览
-    return [
-      {
-        name: 'swarm_handoff',
-        description: '自动将任务交接给最合适的专家',
-        enabled: true
-      },
-      {
-        name: 'shared_context',
-        description: '在 Agent 之间共享状态和产物',
-        enabled: this.swarmConfig.enableSharedContext
-      }
-    ]
-  }
-
-  setToolEnabled(toolName: string, enabled: boolean): void {
-    if (toolName === 'shared_context') {
-      // 运行时修改配置不影响已创建的实例，仅记录日志
-      console.log(`[SwarmRuntime] Shared context ${enabled ? 'enabled' : 'disabled'}`)
-    }
-  }
-
-  // ========== 技能管理 ==========
-
-  getSkills(): SkillInfo[] {
-    // Swarm 的"技能"对应可用角色
-    return this.coordinator.getAvailableRoleList().map((role) => ({
-      id: role.id,
-      name: role.name,
-      description: role.description,
-      active: true
-    }))
-  }
-
-  setSkillActive(skillId: string, _active: boolean): void {
-    // 在 Swarm 中，技能对应角色。
-    // 动态启用/禁用角色的能力在 coordinator 的 config.availableRoles 中管理
-    console.log(
-      `[SwarmRuntime] Role ${skillId} activation change requested — rebuild Swarm to apply`
-    )
   }
 }

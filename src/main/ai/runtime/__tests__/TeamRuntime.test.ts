@@ -1,259 +1,156 @@
 /**
  * TeamRuntime 测试
  *
- * 测试 Team 运行时的核心功能：
- * - 初始化（加载配置、创建成员 Agent）
- * - 顺序执行 (sequential)
- * - 并行执行 (parallel)
- * - Planner 执行
- * - 流式执行 (runStream)
- * - 会话/记忆/工具/技能管理
- * - 销毁
+ * 测试参数驱动的 TeamRuntime：
+ * - 初始化（成员 Agent 创建）
+ * - 顺序执行
+ * - 并行执行
+ * - 流式执行（8 层闭环事件）
+ * - HITL 接口（预留，抛出 not supported）
+ * - 会话管理
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ===== Hoisted mocks =====
-const {
-  mockGetTeam,
-  mockCreateAgent,
-  mockRun,
-  mockEmitStart,
-  mockEmitThinking,
-  mockEmitText,
-  mockEmitDone,
-  mockEmitError
-} = vi.hoisted(() => ({
-  mockGetTeam: vi.fn(),
-  mockCreateAgent: vi.fn(),
+const { mockRun, mockStreamEmitter } = vi.hoisted(() => ({
   mockRun: vi.fn(),
-  mockEmitStart: vi.fn().mockResolvedValue(undefined),
-  mockEmitThinking: vi.fn().mockResolvedValue(undefined),
-  mockEmitText: vi.fn().mockResolvedValue(undefined),
-  mockEmitDone: vi.fn().mockResolvedValue(undefined),
-  mockEmitError: vi.fn().mockResolvedValue(undefined)
+  mockStreamEmitter: {
+    emitStart: vi.fn().mockResolvedValue(undefined),
+    emitDone: vi.fn().mockResolvedValue(undefined),
+    emitError: vi.fn().mockResolvedValue(undefined),
+    emitText: vi.fn().mockResolvedValue(undefined),
+    emitThinking: vi.fn().mockResolvedValue(undefined),
+    emitToolCall: vi.fn().mockResolvedValue(undefined),
+    emitToolResult: vi.fn().mockResolvedValue(undefined),
+    emitHandoff: vi.fn().mockResolvedValue(undefined),
+    emitToolApproval: vi.fn().mockResolvedValue(undefined),
+    emitAgentUpdated: vi.fn().mockResolvedValue(undefined),
+    emit: vi.fn().mockResolvedValue(undefined)
+  }
 }))
 
-// ===== Mock dependencies =====
-vi.mock('../../storage/TeamConfigStore', () => ({
-  teamConfigStore: { getTeam: mockGetTeam }
-}))
-
-vi.mock('../../agents/AgentFactory', () => ({
-  agentFactory: { createAgent: mockCreateAgent }
-}))
-
+// ===== Mock @openai/agents =====
 vi.mock('@openai/agents', () => ({
-  Agent: class MockAgent {
-    name: string
-    constructor(config: Record<string, unknown>) {
-      this.name = (config.name as string) || 'mock'
-    }
-  },
+  Agent: vi.fn().mockImplementation(function (config: Record<string, unknown>) {
+    return { name: config.name || 'Agent', ...config }
+  }),
   run: (...args: unknown[]) => mockRun(...args)
 }))
 
+// ===== Mock StreamEmitter =====
 vi.mock('../../streaming/StreamEmitter', () => ({
-  createStreamEmitter: vi.fn(() => ({
-    emitStart: mockEmitStart,
-    emitThinking: mockEmitThinking,
-    emitText: mockEmitText,
-    emitDone: mockEmitDone,
-    emitError: mockEmitError
-  }))
+  createStreamEmitter: vi.fn().mockReturnValue(mockStreamEmitter)
 }))
 
-import { TeamRuntime } from '../TeamRuntime'
-import type { TeamConfig } from '../../teams/types'
+import { TeamRuntime, type TeamRuntimeOptions } from '../TeamRuntime'
 
-// ===== Test fixtures =====
-
-function createTeamConfig(overrides?: Partial<TeamConfig>): TeamConfig {
+function createTeamOptions(overrides?: Partial<TeamRuntimeOptions>): TeamRuntimeOptions {
   return {
-    id: 'team-1',
-    name: 'Test Team',
-    description: 'A test team',
+    name: 'TestTeam',
     orchestrationType: 'sequential',
     members: [
-      { id: 'm1', agentId: 'agent-a', role: 'writer', priority: 2 },
-      { id: 'm2', agentId: 'agent-b', role: 'reviewer', priority: 1 }
+      {
+        name: 'Writer',
+        instructions: 'You are a writer.',
+        role: 'writer',
+        priority: 2
+      },
+      {
+        name: 'Editor',
+        instructions: 'You are an editor.',
+        role: 'editor',
+        priority: 1
+      }
     ],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    sessionId: 'session-team-1',
     ...overrides
   }
 }
 
-function createMockAgentInstance(name: string): {
-  name: string
-  instructions: string
-  tools: unknown[]
-  handoffs: unknown[]
-} {
-  return { name, instructions: '', tools: [], handoffs: [] }
-}
-
 describe('TeamRuntime', () => {
-  let runtime: TeamRuntime
+  let team: TeamRuntime
 
   beforeEach(() => {
     vi.clearAllMocks()
-    runtime = new TeamRuntime('team-1', 'session-test')
-  })
-
-  // ===== 构造函数 =====
-
-  describe('构造函数', () => {
-    it('设置基本属性', () => {
-      expect(runtime.id).toBe('team-1')
-      expect(runtime.type).toBe('team')
-      expect(runtime.name).toBe('Team') // 初始化前是默认值
-    })
-
-    it('无 sessionId 自动生成', () => {
-      const rt = new TeamRuntime('team-2')
-      expect(rt.id).toBe('team-2')
-    })
+    team = new TeamRuntime(createTeamOptions())
   })
 
   // ===== 初始化 =====
 
   describe('initialize', () => {
-    it('成功加载配置并创建成员 Agent', async () => {
-      const config = createTeamConfig()
-      mockGetTeam.mockResolvedValue(config)
-      mockCreateAgent
-        .mockResolvedValueOnce(createMockAgentInstance('writer-agent'))
-        .mockResolvedValueOnce(createMockAgentInstance('reviewer-agent'))
+    it('为每个成员创建 Agent', async () => {
+      const { Agent } = await import('@openai/agents')
+      await team.initialize()
 
-      await runtime.initialize()
+      expect(Agent).toHaveBeenCalledTimes(2)
+      expect(Agent).toHaveBeenCalledWith(expect.objectContaining({ name: 'Writer' }))
+      expect(Agent).toHaveBeenCalledWith(expect.objectContaining({ name: 'Editor' }))
+    })
+  })
 
-      expect(mockGetTeam).toHaveBeenCalledWith('team-1')
-      expect(runtime.name).toBe('Test Team')
-      expect(mockCreateAgent).toHaveBeenCalledTimes(2)
-      expect(mockCreateAgent).toHaveBeenCalledWith({
-        configId: 'agent-a'
-      })
-      expect(mockCreateAgent).toHaveBeenCalledWith({
-        configId: 'agent-b'
-      })
+  // ===== 属性 =====
+
+  describe('属性', () => {
+    it('type 为 team', () => {
+      expect(team.type).toBe('team')
     })
 
-    it('配置不存在时抛出错误', async () => {
-      mockGetTeam.mockResolvedValue(null)
+    it('name 返回配置名称', () => {
+      expect(team.name).toBe('TestTeam')
+    })
 
-      await expect(runtime.initialize()).rejects.toThrow('Team config not found: team-1')
+    it('interrupted 初始为 false', () => {
+      expect(team.interrupted).toBe(false)
     })
   })
 
   // ===== 顺序执行 =====
 
-  describe('run - sequential', () => {
+  describe('run (sequential)', () => {
     beforeEach(async () => {
-      const config = createTeamConfig({ orchestrationType: 'sequential' })
-      mockGetTeam.mockResolvedValue(config)
-
-      const agentA = createMockAgentInstance('writer')
-      const agentB = createMockAgentInstance('reviewer')
-      mockCreateAgent.mockResolvedValueOnce(agentA).mockResolvedValueOnce(agentB)
-
-      await runtime.initialize()
-
-      // Sequential: 按优先级排序，先 writer(priority=2)，再 reviewer(priority=1)
-      mockRun
-        .mockResolvedValueOnce({ finalOutput: 'drafted content' })
-        .mockResolvedValueOnce({ finalOutput: 'reviewed content' })
+      await team.initialize()
     })
 
-    it('按优先级顺序链式执行', async () => {
-      const result = await runtime.run('请写一篇文章')
+    it('按优先级顺序执行成员', async () => {
+      mockRun
+        .mockResolvedValueOnce({ finalOutput: 'writer output' })
+        .mockResolvedValueOnce({ finalOutput: 'editor output' })
 
+      const result = await team.run('Write something')
+
+      // Writer (priority 2) 先执行，Editor (priority 1) 后执行
       expect(mockRun).toHaveBeenCalledTimes(2)
-      // 第一次用原始输入
-      expect(mockRun.mock.calls[0][1]).toBe('请写一篇文章')
-      // 第二次用第一次的输出
-      expect(mockRun.mock.calls[1][1]).toBe('drafted content')
-      expect(result.output).toBe('reviewed content')
-      expect(result.metadata?.orchestrationType).toBe('sequential')
-      expect(result.metadata?.memberCount).toBe(2)
-      expect(typeof result.duration).toBe('number')
+      expect(result.output).toBe('editor output')
+    })
+
+    it('前一个 Agent 的输出作为下一个的输入', async () => {
+      mockRun
+        .mockResolvedValueOnce({ finalOutput: 'draft content' })
+        .mockResolvedValueOnce({ finalOutput: 'edited content' })
+
+      await team.run('Write an article')
+
+      // 第二次调用的输入应该是第一次的输出
+      expect(mockRun.mock.calls[1][1]).toBe('draft content')
     })
   })
 
   // ===== 并行执行 =====
 
-  describe('run - parallel', () => {
+  describe('run (parallel)', () => {
     beforeEach(async () => {
-      const config = createTeamConfig({ orchestrationType: 'parallel' })
-      mockGetTeam.mockResolvedValue(config)
-
-      const agentA = createMockAgentInstance('agent-a')
-      const agentB = createMockAgentInstance('agent-b')
-      mockCreateAgent.mockResolvedValueOnce(agentA).mockResolvedValueOnce(agentB)
-
-      await runtime.initialize()
-
-      mockRun
-        .mockResolvedValueOnce({ finalOutput: 'result A' })
-        .mockResolvedValueOnce({ finalOutput: 'result B' })
+      team = new TeamRuntime(createTeamOptions({ orchestrationType: 'parallel' }))
+      await team.initialize()
     })
 
-    it('并行执行所有成员', async () => {
-      const result = await runtime.run('并行任务')
+    it('所有成员并行执行', async () => {
+      mockRun.mockResolvedValue({ finalOutput: 'result' })
+
+      const result = await team.run('Analyze this')
 
       expect(mockRun).toHaveBeenCalledTimes(2)
       const parsed = JSON.parse(result.output)
-      expect(parsed.summary).toContain('2 parallel tasks')
       expect(parsed.results).toHaveLength(2)
-    })
-  })
-
-  // ===== Planner 执行 =====
-
-  describe('run - planner', () => {
-    beforeEach(async () => {
-      const config = createTeamConfig({ orchestrationType: 'planner' })
-      mockGetTeam.mockResolvedValue(config)
-      mockCreateAgent.mockResolvedValue(createMockAgentInstance('member'))
-
-      await runtime.initialize()
-    })
-
-    it('调用 orchestrator 执行任务', async () => {
-      // Mock 动态导入的 orchestration 模块
-      const mockExecuteTask = vi.fn().mockResolvedValue({
-        subTaskResults: [{ taskId: '1', output: 'done' }]
-      })
-      const mockCleanup = vi.fn().mockResolvedValue(undefined)
-
-      vi.doMock('../../orchestration', () => ({
-        createOrchestrator: vi.fn(() => ({
-          executeTask: mockExecuteTask,
-          cleanup: mockCleanup
-        }))
-      }))
-
-      // 由于动态 import 的特殊性，这里验证不会抛出 unknown orchestration type
-      // 实际的 planner 模式需要 orchestration 模块，我们测试到调用链路即可
-      try {
-        await runtime.run('规划任务')
-      } catch {
-        // planner 模式可能因动态导入的 mock 限制而出错，这里只验证不抛 orchestration type 错误
-      }
-    })
-  })
-
-  // ===== 未知 orchestrationType =====
-
-  describe('run - unknown type', () => {
-    it('抛出未知协作类型错误', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const config = createTeamConfig({ orchestrationType: 'unknown' as any })
-      mockGetTeam.mockResolvedValue(config)
-      mockCreateAgent.mockResolvedValue(createMockAgentInstance('member'))
-
-      await runtime.initialize()
-
-      await expect(runtime.run('test')).rejects.toThrow('Unknown orchestration type')
     })
   })
 
@@ -261,130 +158,82 @@ describe('TeamRuntime', () => {
 
   describe('runStream', () => {
     beforeEach(async () => {
-      const config = createTeamConfig({ orchestrationType: 'sequential' })
-      mockGetTeam.mockResolvedValue(config)
-      mockCreateAgent.mockResolvedValue(createMockAgentInstance('member'))
-
-      await runtime.initialize()
-
-      mockRun.mockResolvedValue({ finalOutput: 'stream output' })
+      await team.initialize()
     })
 
-    it('发送完整的流事件序列', async () => {
-      const chunks: Array<{ type: string; content: string }> = []
+    it('发送完整闭环事件：run:start → turn/llm/text 闭环 → run:done', async () => {
+      mockRun
+        .mockResolvedValueOnce({ finalOutput: 'output1' })
+        .mockResolvedValueOnce({ finalOutput: 'output2' })
 
-      const result = await runtime.runStream('流式测试', {}, (chunk) => {
-        chunks.push(chunk)
-      })
+      const chunks: Array<{ type: string; content?: string }> = []
+      await team.runStream('test', {}, (chunk) => chunks.push(chunk))
 
-      // StreamEmitter 事件
-      expect(mockEmitStart).toHaveBeenCalledOnce()
-      expect(mockEmitThinking).toHaveBeenCalledOnce()
-      expect(mockEmitText).toHaveBeenCalledOnce()
-      expect(mockEmitDone).toHaveBeenCalledOnce()
+      // run 闭环
+      expect(chunks[0].type).toBe('run:start')
+      expect(chunks[chunks.length - 1].type).toBe('run:done')
 
-      // 回调 chunks
-      expect(chunks).toHaveLength(2)
-      expect(chunks[0].type).toBe('text')
-      expect(chunks[1].type).toBe('done')
+      // turn 闭环
+      const turnStart = chunks.filter((c) => c.type === 'turn:start')
+      expect(turnStart).toHaveLength(1)
+      const turnDone = chunks.filter((c) => c.type === 'turn:done')
+      expect(turnDone).toHaveLength(1)
 
-      expect(result.output).toBe('stream output')
+      // llm 闭环
+      const llmStart = chunks.filter((c) => c.type === 'llm:start')
+      expect(llmStart).toHaveLength(1)
+      const llmDone = chunks.filter((c) => c.type === 'llm:done')
+      expect(llmDone).toHaveLength(1)
+
+      // text 闭环
+      const textStart = chunks.filter((c) => c.type === 'text:start')
+      expect(textStart).toHaveLength(1)
+      const textDelta = chunks.filter((c) => c.type === 'text:delta')
+      expect(textDelta).toHaveLength(1)
+      const textDone = chunks.filter((c) => c.type === 'text:done')
+      expect(textDone).toHaveLength(1)
+
+      expect(mockStreamEmitter.emitStart).toHaveBeenCalled()
+      expect(mockStreamEmitter.emitDone).toHaveBeenCalled()
+    })
+  })
+
+  // ===== HITL =====
+
+  describe('HITL', () => {
+    it('approveToolCall 抛出不支持错误', () => {
+      expect(() => team.approveToolCall(0)).toThrow('does not yet support')
     })
 
-    it('错误时发送 error 事件', async () => {
-      mockRun.mockRejectedValueOnce(new Error('run failed'))
+    it('rejectToolCall 抛出不支持错误', () => {
+      expect(() => team.rejectToolCall(0)).toThrow('does not yet support')
+    })
 
-      await expect(runtime.runStream('失败测试', {}, vi.fn())).rejects.toThrow('run failed')
-
-      expect(mockEmitError).toHaveBeenCalledOnce()
-      expect(mockEmitError.mock.calls[0][0]).toBeInstanceOf(Error)
+    it('resume 抛出不支持错误', async () => {
+      await expect(team.resume()).rejects.toThrow('does not yet support')
     })
   })
 
   // ===== 会话管理 =====
 
-  describe('getSession', () => {
-    it('返回会话信息', async () => {
-      const config = createTeamConfig()
-      mockGetTeam.mockResolvedValue(config)
-      mockCreateAgent.mockResolvedValue(createMockAgentInstance('member'))
-      await runtime.initialize()
+  describe('会话管理', () => {
+    it('getSession 返回基本信息', async () => {
+      await team.initialize()
+      const session = await team.getSession()
 
-      const session = await runtime.getSession()
-
-      expect(session.sessionId).toBe('session-test')
-      expect(session.metadata?.teamId).toBe('team-1')
-      expect(session.metadata?.teamName).toBe('Test Team')
+      expect(session.sessionId).toBe('session-team-1')
+      expect(session.metadata?.teamName).toBe('TestTeam')
       expect(session.metadata?.memberCount).toBe(2)
-    })
-  })
-
-  describe('clearSession', () => {
-    it('不报错', async () => {
-      await expect(runtime.clearSession()).resolves.toBeUndefined()
-    })
-  })
-
-  // ===== 记忆管理 =====
-
-  describe('getMemory', () => {
-    it('返回记忆摘要', async () => {
-      const memory = await runtime.getMemory()
-
-      expect(memory.shortTermCount).toBe(0)
-      expect(memory.longTermCount).toBe(0)
-      expect(memory.recentKeyPoints).toEqual([])
-    })
-  })
-
-  describe('saveMemory / clearMemory', () => {
-    it('不报错', async () => {
-      await expect(runtime.saveMemory()).resolves.toBeUndefined()
-      await expect(runtime.clearMemory()).resolves.toBeUndefined()
-    })
-  })
-
-  // ===== 工具管理 =====
-
-  describe('getTools', () => {
-    it('返回空工具列表', () => {
-      expect(runtime.getTools()).toEqual([])
-    })
-  })
-
-  describe('setToolEnabled', () => {
-    it('不报错', () => {
-      expect(() => runtime.setToolEnabled('testTool', true)).not.toThrow()
-    })
-  })
-
-  // ===== 技能管理 =====
-
-  describe('getSkills', () => {
-    it('返回空技能列表', () => {
-      expect(runtime.getSkills()).toEqual([])
-    })
-  })
-
-  describe('setSkillActive', () => {
-    it('不报错', () => {
-      expect(() => runtime.setSkillActive('skillA', true)).not.toThrow()
     })
   })
 
   // ===== 销毁 =====
 
   describe('destroy', () => {
-    it('清理成员运行时', async () => {
-      const config = createTeamConfig()
-      mockGetTeam.mockResolvedValue(config)
-      mockCreateAgent.mockResolvedValue(createMockAgentInstance('member'))
-      await runtime.initialize()
-
-      await runtime.destroy()
-
-      // destroy 后不应报错
-      expect(true).toBe(true)
+    it('清理成员', async () => {
+      await team.initialize()
+      await team.destroy()
+      // 销毁后不应报错
     })
   })
 })

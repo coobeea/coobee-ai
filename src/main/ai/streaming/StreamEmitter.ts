@@ -1,77 +1,50 @@
 /**
- * 流式发射器接口
- * 为 Agent/Team Runtime 提供统一的流式输出接口
+ * 流式发射器
+ *
+ * 为 Agent/Team Runtime 提供统一的流式输出接口。
+ * 通过 EventBus 广播事件，供 StreamStore、WebSocket、Monitor 等消费。
+ *
+ * StreamEmitter 使用粗粒度消息类型（StreamMessageType），
+ * 细粒度的 prefix:event 事件直接通过 onChunk 回调传递。
  */
 
 import type { StreamMessageType, StreamSource } from './types'
 
 /**
  * 流式发射器接口
+ *
+ * 提供关键事件的快捷方法，供 Monitor/Store 等消费者使用。
  */
 export interface IStreamEmitter {
-  /**
-   * 发送文本消息
-   * @param content 文本内容
-   * @param data 额外数据
-   */
+  // ---- 文本 ----
+  /** 发送文本增量 */
   emitText(content: string, data?: Record<string, unknown>): Promise<void>
-
-  /**
-   * 发送思考过程
-   * @param content 思考内容
-   */
+  /** 发送推理增量 */
   emitThinking(content: string): Promise<void>
 
-  /**
-   * 发送工具调用
-   * @param toolName 工具名称
-   * @param args 工具参数
-   */
+  // ---- 工具 ----
+  /** 发送工具调用事件 */
   emitToolCall(toolName: string, args: Record<string, unknown>): Promise<void>
-
-  /**
-   * 发送工具结果
-   * @param toolName 工具名称
-   * @param result 工具结果
-   */
+  /** 发送工具结果 */
   emitToolResult(toolName: string, result: unknown): Promise<void>
 
-  /**
-   * 发送技能调用
-   * @param skillId 技能 ID
-   * @param input 技能输入
-   */
-  emitSkillCall(skillId: string, input: unknown): Promise<void>
+  // ---- Handoff / HITL / Agent ----
+  /** 发送 Handoff 事件 */
+  emitHandoff(agentName: string, data?: Record<string, unknown>): Promise<void>
+  /** 发送 HITL 审批事件 */
+  emitToolApproval(toolName: string, data?: Record<string, unknown>): Promise<void>
+  /** 发送 Agent 切换事件 */
+  emitAgentUpdated(agentName: string): Promise<void>
 
-  /**
-   * 发送技能结果
-   * @param skillId 技能 ID
-   * @param result 技能结果
-   */
-  emitSkillResult(skillId: string, result: unknown): Promise<void>
-
-  /**
-   * 开始流
-   */
+  // ---- 生命周期 ----
+  /** 开始流 */
   emitStart(): Promise<void>
-
-  /**
-   * 结束流
-   */
+  /** 结束流 */
   emitDone(): Promise<void>
-
-  /**
-   * 发送错误
-   * @param error 错误信息
-   */
+  /** 发送错误 */
   emitError(error: string | Error): Promise<void>
 
-  /**
-   * 通用发送方法
-   * @param type 消息类型
-   * @param content 消息内容
-   * @param data 额外数据
-   */
+  /** 通用发送方法 */
   emit(type: StreamMessageType, content: string, data?: Record<string, unknown>): Promise<void>
 }
 
@@ -93,6 +66,8 @@ export class StreamEmitter implements IStreamEmitter {
     this.idGenerator = new SnowflakeIdGenerator(1) // workerId = 1
   }
 
+  // ========== 文本 ==========
+
   async emitText(content: string, data?: Record<string, unknown>): Promise<void> {
     await this.emit('text', content, data)
   }
@@ -100,6 +75,8 @@ export class StreamEmitter implements IStreamEmitter {
   async emitThinking(content: string): Promise<void> {
     await this.emit('thinking', content)
   }
+
+  // ========== 工具 ==========
 
   async emitToolCall(toolName: string, args: Record<string, unknown>): Promise<void> {
     await this.emit('tool_call', `Calling tool: ${toolName}`, { toolName, args })
@@ -109,18 +86,25 @@ export class StreamEmitter implements IStreamEmitter {
     await this.emit('tool_result', `Tool result: ${toolName}`, { toolName, result })
   }
 
-  async emitSkillCall(skillId: string, input: unknown): Promise<void> {
-    await this.emit('skill_call', `Calling skill: ${skillId}`, { skillId, input })
+  // ========== Handoff / HITL / Agent ==========
+
+  async emitHandoff(agentName: string, data?: Record<string, unknown>): Promise<void> {
+    await this.emit('handoff', `Handoff: ${agentName}`, { agentName, ...data })
   }
 
-  async emitSkillResult(skillId: string, result: unknown): Promise<void> {
-    await this.emit('skill_result', `Skill result: ${skillId}`, { skillId, result })
+  async emitToolApproval(toolName: string, data?: Record<string, unknown>): Promise<void> {
+    await this.emit('hitl', `Approval: ${toolName}`, { toolName, ...data })
   }
+
+  async emitAgentUpdated(agentName: string): Promise<void> {
+    await this.emit('agent_updated', `Agent updated: ${agentName}`, { agentName })
+  }
+
+  // ========== 生命周期事件 ==========
 
   async emitStart(): Promise<void> {
     await this.emit('start', '[Stream Started]')
 
-    // 发送 START 事件
     const event: StreamEvent = {
       type: StreamEventType.START,
       sessionId: this.sessionId,
@@ -133,7 +117,6 @@ export class StreamEmitter implements IStreamEmitter {
   async emitDone(): Promise<void> {
     await this.emit('done', '[Stream Ended]')
 
-    // 发送 END 事件
     const event: StreamEvent = {
       type: StreamEventType.END,
       sessionId: this.sessionId,
@@ -148,7 +131,6 @@ export class StreamEmitter implements IStreamEmitter {
 
     await this.emit('error', errorMessage)
 
-    // 发送 ERROR 事件
     const event: StreamEvent = {
       type: StreamEventType.ERROR,
       sessionId: this.sessionId,
@@ -159,20 +141,19 @@ export class StreamEmitter implements IStreamEmitter {
     eventBus.emit(StreamEventType.ERROR, event)
   }
 
+  // ========== 通用方法 ==========
+
   async emit(
     type: StreamMessageType,
     content: string,
     data?: Record<string, unknown>
   ): Promise<void> {
-    // 1. 生成消息 ID
     const id = this.idGenerator.nextId()
 
-    // 2. 获取或初始化序号
     let sequence = this.sequenceCounters.get(this.sessionId) || 0
     sequence++
     this.sequenceCounters.set(this.sessionId, sequence)
 
-    // 3. 构建消息
     const message: StreamMessage = {
       id,
       sessionId: this.sessionId,
@@ -184,7 +165,6 @@ export class StreamEmitter implements IStreamEmitter {
       source: this.source
     }
 
-    // 4. 发送事件（通过 EventBus）
     const event: StreamEvent = {
       type: StreamEventType.MESSAGE,
       sessionId: this.sessionId,
