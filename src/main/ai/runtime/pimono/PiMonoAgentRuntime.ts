@@ -194,12 +194,12 @@ export class PiMonoAgentRuntime implements AgentRuntime {
     //    file 模式：用 sessionId 隔离目录，支持外部管理和恢复会话
     //    memory 模式：内存存储，sessionId 仅作标识
     const cwd = this.options.cwd || process.cwd()
+    const sessionDir = this.options.sessionDir
+      ? path.join(this.options.sessionDir, this.sessionId)
+      : path.join(cwd, '.coobee-ai', 'sessions', this.sessionId)
     const sessionManager =
       this.options.sessionMode === 'file'
-        ? SessionManager.continueRecent(
-            cwd,
-            path.join(cwd, '.coobee-ai', 'sessions', this.sessionId)
-          )
+        ? SessionManager.continueRecent(cwd, sessionDir)
         : SessionManager.inMemory(cwd)
 
     // 4. Settings（压缩/重试配置）

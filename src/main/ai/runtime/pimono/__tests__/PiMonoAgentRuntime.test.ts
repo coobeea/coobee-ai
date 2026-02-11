@@ -59,8 +59,7 @@ import { Type } from '@sinclair/typebox'
 // ===== Electron 环境 stub（非业务 mock） =====
 
 vi.mock('electron', () => {
-  const home = process.env.HOME || '/tmp'
-  const base = path.join(home, '.coobee-ai-test')
+  const base = path.join(process.cwd(), 'test-results')
   return {
     app: {
       getPath: (name: string) => path.join(base, name),

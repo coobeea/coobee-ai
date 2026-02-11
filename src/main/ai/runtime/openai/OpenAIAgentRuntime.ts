@@ -150,7 +150,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
     })
 
     // 2. 创建 FileSession（单层持久化）
-    this.session = new FileSession(this.sessionId)
+    this.session = new FileSession(this.sessionId, this.options.sessionDir)
 
     // 3. 创建流式发射器
     this.streamEmitter = createStreamEmitter(this.sessionId, {

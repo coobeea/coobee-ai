@@ -80,6 +80,18 @@ export interface AgentRuntimeOptions {
   model?: string
   /** 会话 ID（不传则自动生成） */
   sessionId?: string
+  /**
+   * 会话存储根目录
+   *
+   * 各 Runtime 在此目录下以 sessionId 建立子目录存放会话文件。
+   * 不传则由 Executor 层注入 Electron userData 默认路径。
+   *
+   * 示例：
+   *   sessionDir = '~/Library/Application Support/coobee-ai/sessions'
+   *   → OpenAI: {sessionDir}/{sessionId}/messages.jsonl
+   *   → PiMono: {sessionDir}/{sessionId}/（SDK 自行管理内部结构）
+   */
+  sessionDir?: string
   /** 最大执行轮次，防止无限工具调用循环（默认 25） */
   maxTurns?: number
   /**

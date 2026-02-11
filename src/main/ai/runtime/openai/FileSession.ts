@@ -32,29 +32,30 @@ export class FileSession implements Session {
 
   /**
    * @param sessionId 会话 ID
-   * @param basePath 存储根路径（默认使用 Electron userData）
+   * @param sessionDir 会话存储根目录（直接包含 {sessionId}/ 子目录）。
+   *   不传则使用默认路径：{Electron userData}/sessions 或 ~/.coobee-ai/sessions
    */
   constructor(
     private readonly sessionId: string,
-    basePath?: string
+    sessionDir?: string
   ) {
-    const base = basePath || FileSession.getDefaultBasePath()
-    this.filePath = join(base, 'sessions', sessionId, 'messages.jsonl')
+    const dir = sessionDir || FileSession.getDefaultSessionDir()
+    this.filePath = join(dir, sessionId, 'messages.jsonl')
   }
 
   /**
-   * 获取默认存储路径
-   * 在 Electron 环境下使用 app.getPath('userData')
-   * 在测试环境下 fallback 到临时目录
+   * 获取默认会话存储目录
+   *
+   * Electron 环境：{userData}/sessions
+   * 非 Electron 环境（测试等）：~/.coobee-ai/sessions
    */
-  private static getDefaultBasePath(): string {
+  private static getDefaultSessionDir(): string {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { app } = require('electron')
-      return app.getPath('userData')
+      return join(app.getPath('userData'), 'sessions')
     } catch {
-      // 非 Electron 环境（测试等），使用临时目录
-      return join(process.env.HOME || '/tmp', '.coobee-ai')
+      return join(process.env.HOME || '/tmp', '.coobee-ai', 'sessions')
     }
   }
 

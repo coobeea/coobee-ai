@@ -23,8 +23,7 @@ import { join } from 'path'
 // ===== Electron 环境 stub =====
 
 vi.mock('electron', () => {
-  const home = process.env.HOME || '/tmp'
-  const base = join(home, '.coobee-ai-test')
+  const base = join(process.cwd(), 'test-results')
   return {
     app: {
       getPath: (name: string) => join(base, name),
@@ -205,10 +204,9 @@ function ofType(chunks: StreamChunk[], type: string): StreamChunk[] {
  * 读取 session 文件原始内容
  */
 function readSessionFile(sessionId: string): string {
-  const home = process.env.HOME || '/tmp'
   const sessionFilePath = join(
-    home,
-    '.coobee-ai-test',
+    process.cwd(),
+    'test-results',
     'userData',
     'sessions',
     sessionId,
@@ -217,13 +215,7 @@ function readSessionFile(sessionId: string): string {
   try {
     return fs.readFileSync(sessionFilePath, 'utf-8')
   } catch {
-    // 尝试不带 userData 的路径
-    const altPath = join(home, '.coobee-ai', 'sessions', sessionId, 'messages.jsonl')
-    try {
-      return fs.readFileSync(altPath, 'utf-8')
-    } catch {
-      return '[文件未找到]'
-    }
+    return '[文件未找到]'
   }
 }
 

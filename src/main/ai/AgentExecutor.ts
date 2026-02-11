@@ -23,6 +23,7 @@
  *   })
  */
 
+import path from 'node:path'
 import { log } from '@main/common/logger'
 import type { AgentRuntime } from './runtime/AgentRuntime'
 import type { ExecutionResult, StreamChunk, ToolDefinition, SkillDefinition } from './runtime/types'
@@ -52,6 +53,7 @@ export class PiMonoBuilder {
   private _cwd?: string
   private _thinkingLevel?: ThinkingLevel
   private _customTools?: unknown[]
+  private _sessionDir?: string
   private _compaction?: { enabled?: boolean }
   private _retry?: { enabled?: boolean; maxRetries?: number; baseDelayMs?: number }
 
@@ -100,6 +102,12 @@ export class PiMonoBuilder {
   /** 会话持久化模式（默认 memory） */
   sessionMode(mode: 'memory' | 'file'): this {
     this._sessionMode = mode
+    return this
+  }
+
+  /** 会话存储根目录（不传则由 Executor 注入默认值） */
+  sessionDir(dir: string): this {
+    this._sessionDir = dir
     return this
   }
 
@@ -176,6 +184,8 @@ export class PiMonoBuilder {
     if (this._appendInstructions.length > 0) opts.appendInstructions = this._appendInstructions
     if (this._sessionId) opts.sessionId = this._sessionId
     if (this._sessionMode) opts.sessionMode = this._sessionMode
+    // sessionDir: 显式传入 > Executor 默认值
+    opts.sessionDir = this._sessionDir || AgentExecutor.getDefaultSessionDir()
     if (this._tools) opts.tools = this._tools
     if (this._skills) opts.skills = this._skills
     if (this._maxTurns !== undefined) opts.maxTurns = this._maxTurns
@@ -222,6 +232,23 @@ export interface SessionStatus {
 class AgentExecutor {
   /** 正在执行的 session 集合 */
   private busySessions = new Map<string, { startedAt: number }>()
+
+  /**
+   * 获取默认 session 存储目录
+   *
+   * 优先使用 Electron Env.paths.userData/sessions，
+   * fallback 到 ~/.coobee-ai/sessions（测试/非 Electron 环境）。
+   */
+  static getDefaultSessionDir(): string {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Env } = require('@main/common/env')
+      return path.join(Env.paths.userData, 'sessions')
+    } catch {
+      const home = process.env.HOME || '/tmp'
+      return path.join(home, '.coobee-ai', 'sessions')
+    }
+  }
 
   // ========== Builder 工厂 ==========
 

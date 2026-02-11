@@ -29,8 +29,7 @@ import { join } from 'path'
 // ===== Electron 环境 stub（非业务 mock） =====
 
 vi.mock('electron', () => {
-  const home = process.env.HOME || '/tmp'
-  const base = join(home, '.coobee-ai-test')
+  const base = join(process.cwd(), 'test-results')
   return {
     app: {
       getPath: (name: string) => join(base, name),
@@ -480,8 +479,8 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       }
     }
     try {
-      const base = join(process.env.HOME || '/tmp', '.coobee-ai')
-      await rm(join(base, 'sessions', sessionId), { recursive: true, force: true })
+      const sessionsDir = join(process.cwd(), 'test-results', 'userData', 'sessions')
+      await rm(join(sessionsDir, sessionId), { recursive: true, force: true })
     } catch {
       /* ignore */
     }
@@ -815,8 +814,9 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
 
     // 4. 读取压缩前的 session 文件内容（用于调试 — 新格式 SessionItem）
     const sessionFilePath = join(
-      process.env.HOME || '/tmp',
-      '.coobee-ai',
+      process.cwd(),
+      'test-results',
+      'userData',
       'sessions',
       sessionId,
       'messages.jsonl'
@@ -967,7 +967,7 @@ describe('SessionCompressor 单元验证', () => {
 
   it('compressIfNeeded 未启用时返回 compressed=false', async () => {
     const compressor = new SessionCompressor({ enabled: false })
-    const tempDir = join(process.env.HOME || '/tmp', '.coobee-ai-test-compress')
+    const tempDir = join(process.cwd(), 'test-results', 'sessions')
     const session = new FileSession('compress-test-disabled', tempDir)
     const result = await compressor.compressIfNeeded(session, 'test-model')
     expect(result.compressed).toBe(false)
@@ -978,7 +978,7 @@ describe('SessionCompressor 单元验证', () => {
       enabled: true,
       minMessageCount: 10
     })
-    const tempDir = join(process.env.HOME || '/tmp', '.coobee-ai-test-compress')
+    const tempDir = join(process.cwd(), 'test-results', 'sessions')
     const session = new FileSession('compress-test-few', tempDir)
     // 只加 3 条消息
     await session.addItems([
@@ -993,7 +993,7 @@ describe('SessionCompressor 单元验证', () => {
   })
 
   it('FileSession SessionItem 格式：addItems + getItems 往返', async () => {
-    const tempDir = join(process.env.HOME || '/tmp', '.coobee-ai-test-format')
+    const tempDir = join(process.cwd(), 'test-results', 'sessions')
     const session = new FileSession('format-test', tempDir)
     await session.clearSession()
 
@@ -1022,7 +1022,7 @@ describe('SessionCompressor 单元验证', () => {
   })
 
   it('FileSession 智能上下文构建：summary 后只返回总结 + 后续消息', async () => {
-    const tempDir = join(process.env.HOME || '/tmp', '.coobee-ai-test-ctx')
+    const tempDir = join(process.cwd(), 'test-results', 'sessions')
     const session = new FileSession('ctx-test', tempDir)
     await session.clearSession()
 
@@ -1083,8 +1083,8 @@ describe('SessionCompressor 单元验证', () => {
   })
 
   it('FileSession 旧格式兼容：裸 AgentInputItem 自动识别', async () => {
-    const tempDir = join(process.env.HOME || '/tmp', '.coobee-ai-test-compat')
-    const sessionDir = join(tempDir, 'sessions', 'compat-test')
+    const sessionRootDir = join(process.cwd(), 'test-results', 'sessions')
+    const sessionDir = join(sessionRootDir, 'compat-test')
     fs.mkdirSync(sessionDir, { recursive: true })
     const filePath = join(sessionDir, 'messages.jsonl')
 
@@ -1096,7 +1096,7 @@ describe('SessionCompressor 单元验证', () => {
       ].join('\n') + '\n'
     fs.writeFileSync(filePath, oldLines, 'utf-8')
 
-    const session = new FileSession('compat-test', tempDir)
+    const session = new FileSession('compat-test', sessionRootDir)
     const items = await session.getItems()
     expect(items).toHaveLength(2)
     expect((items[0] as Record<string, unknown>).content).toBe('旧消息1')

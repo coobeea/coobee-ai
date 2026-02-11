@@ -36,8 +36,7 @@ import { join } from 'path'
 // ===== Electron 环境 stub（非业务 mock） =====
 
 vi.mock('electron', () => {
-  const home = process.env.HOME || '/tmp'
-  const base = join(home, '.coobee-ai-test')
+  const base = join(process.cwd(), 'test-results')
   return {
     app: {
       getPath: (name: string) => join(base, name),
@@ -583,8 +582,8 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
       }
     }
     try {
-      const base = join(process.env.HOME || '/tmp', '.coobee-ai')
-      await rm(join(base, 'sessions', sessionId), { recursive: true, force: true })
+      const sessionsDir = join(process.cwd(), 'test-results', 'userData', 'sessions')
+      await rm(join(sessionsDir, sessionId), { recursive: true, force: true })
     } catch {
       /* ignore */
     }
