@@ -540,7 +540,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       name: 'MathAgent',
       instructions: '你是数学助手。必须使用 add_numbers 工具完成加法。根据工具结果回答。',
       model: MODEL,
-      tools: [addNumbersTool],
+      sdkTools: [addNumbersTool],
       sessionId,
       maxTurns: 5
     })
@@ -582,7 +582,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       instructions:
         '你是多功能助手。加法用 add_numbers，反转文本用 reverse_string。依次完成所有任务后汇总。',
       model: MODEL,
-      tools: [addNumbersTool, reverseStringTool],
+      sdkTools: [addNumbersTool, reverseStringTool],
       sessionId,
       maxTurns: 10
     })
@@ -614,7 +614,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       name: 'SyncMathAgent',
       instructions: '数学助手。必须使用 add_numbers 工具。只回答计算结果。',
       model: MODEL,
-      tools: [addNumbersTool],
+      sdkTools: [addNumbersTool],
       sessionId,
       maxTurns: 5
     })
@@ -675,7 +675,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       name: 'TimeAgent',
       instructions: '你是时间助手。必须使用 get_current_time 工具获取时间。',
       model: MODEL,
-      tools: [getCurrentTimeTool],
+      sdkTools: [getCurrentTimeTool],
       sessionId,
       maxTurns: 5
     })
@@ -706,7 +706,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       name: 'IntegrityAgent',
       instructions: '数学助手。用 add_numbers 工具，然后中文回答。',
       model: MODEL,
-      tools: [addNumbersTool],
+      sdkTools: [addNumbersTool],
       sessionId,
       maxTurns: 5
     })

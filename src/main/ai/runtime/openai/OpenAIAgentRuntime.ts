@@ -12,8 +12,8 @@
  * - maxTurns：防止无限工具调用循环
  */
 
-import { run, Agent } from '@openai/agents'
-import type { StreamedRunResult, RunState, RunToolApprovalItem } from '@openai/agents'
+import { run, Agent, tool } from '@openai/agents'
+import type { StreamedRunResult, RunState, RunToolApprovalItem, Tool } from '@openai/agents'
 import { FileSession } from './FileSession'
 import { SessionCompressor } from './SessionCompressor'
 import { ThinkTagParser, stripThinkTags } from './ThinkTagParser'
@@ -24,7 +24,8 @@ import type {
   ExecutionResult,
   StreamChunk,
   SessionInfo,
-  ToolApprovalInfo
+  ToolApprovalInfo,
+  ToolDefinition
 } from '../types'
 import type { OpenAIAgentRuntimeOptions, ContextSnapshot, CompressionResult } from './types'
 
@@ -122,13 +123,19 @@ export class OpenAIAgentRuntime implements AgentRuntime {
   // ========== 生命周期 ==========
 
   async initialize(): Promise<void> {
-    // 1. 创建 SDK Agent（纯配置，成本极低）
+    // 1. 合并工具：sdkTools（SDK 原生）+ tools（统一 ToolDefinition 转换后）
+    const allTools: Tool[] = [
+      ...(this.options.sdkTools || []),
+      ...this.convertTools(this.options.tools || [])
+    ]
+
+    // 2. 创建 SDK Agent（纯配置，成本极低）
     this.agent = new Agent({
       name: this.options.name,
       instructions: this.options.instructions,
       model: this.options.model || DEFAULT_MODEL,
       ...(this.options.modelSettings ? { modelSettings: this.options.modelSettings } : {}),
-      ...(this.options.tools && this.options.tools.length > 0 ? { tools: this.options.tools } : {}),
+      ...(allTools.length > 0 ? { tools: allTools } : {}),
       ...(this.options.handoffs && this.options.handoffs.length > 0
         ? { handoffs: this.options.handoffs }
         : {})
@@ -151,7 +158,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
     log.info(
       `Initialized: ${this.name} ` +
-        `(tools: ${this.options.tools?.length || 0}, ` +
+        `(tools: ${allTools.length}, ` +
         `handoffs: ${this.options.handoffs?.length || 0}, ` +
         `compression: ${this.options.compression?.enabled ? 'on' : 'off'}, ` +
         `session: ${this.sessionId})`
@@ -857,6 +864,25 @@ export class OpenAIAgentRuntime implements AgentRuntime {
             result: rawItem.output
           }
         })
+    )
+  }
+
+  /**
+   * 将统一 ToolDefinition 转换为 @openai/agents SDK 原生 Tool
+   *
+   * JSON Schema parameters 直传，execute 包装为返回 string。
+   */
+  private convertTools(defs: ToolDefinition[]): Tool[] {
+    if (!defs.length) return []
+    return defs.map((def) =>
+      tool({
+        name: def.name,
+        description: def.description,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        parameters: def.parameters as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        execute: async (params: any) => def.execute(params as Record<string, unknown>)
+      })
     )
   }
 

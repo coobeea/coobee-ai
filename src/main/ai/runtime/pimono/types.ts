@@ -58,11 +58,11 @@ export interface PiMonoAgentRuntimeOptions extends AgentRuntimeOptions {
   cwd?: string
 
   /**
-   * 自定义工具定义列表
+   * SDK 原生工具定义列表（高级用法）
    *
-   * pi-coding-agent 使用 TypeBox 定义参数。
-   * 每个 ToolDefinition 需要 name, label, description, parameters, execute。
-   * 通过 createAgentSession 的 customTools 传入。
+   * 直接传入 pi-coding-agent 的 ToolDefinition 实例（TypeBox 参数 + SDK execute 签名）。
+   * 优先于 AgentRuntimeOptions.tools 中的统一格式工具。
+   * 一般场景推荐使用 tools（ToolDefinition[]）。
    */
   customTools?: unknown[]
 

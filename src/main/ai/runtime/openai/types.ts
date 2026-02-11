@@ -25,8 +25,8 @@ import type { AgentRuntimeOptions } from '../types'
 export interface OpenAIAgentRuntimeOptions extends AgentRuntimeOptions {
   /** 模型参数（温度、top_p 等） */
   modelSettings?: ModelSettings
-  /** SDK Tool 实例列表 */
-  tools?: Tool[]
+  /** SDK 原生 Tool 实例列表（高级用法，优先于 tools） */
+  sdkTools?: Tool[]
   /** SDK Handoff 配置（Agent 或 Handoff 实例） */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handoffs?: (Agent<any, any> | Handoff<any, any>)[]

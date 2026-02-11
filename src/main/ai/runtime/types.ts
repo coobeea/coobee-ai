@@ -7,6 +7,29 @@
  *   3. 各 SDK 实现在子目录（openai/、pi/）中定义特有类型
  */
 
+// ========== 统一工具定义 ==========
+
+/**
+ * 统一工具定义（SDK 无关）
+ *
+ * 在 Runtime 层提供跨 SDK 的工具定义格式：
+ *   - parameters 使用 JSON Schema（TypeBox 输出即 JSON Schema，Zod 可转换）
+ *   - execute 返回纯 string，各 SDK 适配层自行包装为原生返回值
+ *
+ * 各 Runtime 内部通过 convertTools() 将 ToolDefinition 转为 SDK 原生格式。
+ * 高级用户仍可使用 SDK 特有的工具入口（如 OpenAI 的 Tool[]、PiMono 的 customTools）。
+ */
+export interface ToolDefinition {
+  /** 工具名称（唯一标识） */
+  name: string
+  /** 工具描述（LLM 用于决策是否调用） */
+  description: string
+  /** 参数 JSON Schema（TypeBox / Zod-to-JSON-Schema 输出） */
+  parameters: Record<string, unknown>
+  /** 执行函数（返回纯文本结果） */
+  execute: (params: Record<string, unknown>) => Promise<string>
+}
+
 // ========== Agent 运行时通用选项 ==========
 
 /**
@@ -26,6 +49,13 @@ export interface AgentRuntimeOptions {
   sessionId?: string
   /** 最大执行轮次，防止无限工具调用循环（默认 25） */
   maxTurns?: number
+  /**
+   * 统一工具列表（SDK 无关）
+   *
+   * 使用 ToolDefinition 格式定义工具，Runtime 内部自动转换为 SDK 原生格式。
+   * 与 SDK 特有工具（如 OpenAI 的 Tool[]）共存，SDK 特有工具优先。
+   */
+  tools?: ToolDefinition[]
   /** SDK 特有配置（各实现自定义） */
   [key: string]: unknown
 }

@@ -23,6 +23,7 @@
  * - 会话/压缩/重试全部由 SDK 内置管理
  */
 
+import path from 'node:path'
 import {
   createAgentSession,
   createExtensionRuntime,
@@ -31,11 +32,21 @@ import {
   SessionManager,
   SettingsManager
 } from '@mariozechner/pi-coding-agent'
-import type { AgentSession, AgentSessionEvent, ToolDefinition } from '@mariozechner/pi-coding-agent'
+import type {
+  AgentSession,
+  AgentSessionEvent,
+  ToolDefinition as PiToolDefinition
+} from '@mariozechner/pi-coding-agent'
 import type { Model } from '@mariozechner/pi-ai'
 import { createStreamEmitter, type IStreamEmitter } from '../../streaming/StreamEmitter'
 import type { AgentRuntime } from '../AgentRuntime'
-import type { ExecutionConfig, ExecutionResult, StreamChunk, SessionInfo } from '../types'
+import type {
+  ExecutionConfig,
+  ExecutionResult,
+  StreamChunk,
+  SessionInfo,
+  ToolDefinition
+} from '../types'
 import type { PiMonoAgentRuntimeOptions } from './types'
 
 /** 默认最大执行轮次（TODO: 接入 maxTurns 配置后启用） */
@@ -179,10 +190,16 @@ export class PiMonoAgentRuntime implements AgentRuntime {
     const modelRegistry = new ModelRegistry(authStorage)
 
     // 3. Session 管理
+    //    file 模式：用 sessionId 隔离目录，支持外部管理和恢复会话
+    //    memory 模式：内存存储，sessionId 仅作标识
+    const cwd = this.options.cwd || process.cwd()
     const sessionManager =
       this.options.sessionMode === 'file'
-        ? SessionManager.create(this.options.cwd || process.cwd())
-        : SessionManager.inMemory()
+        ? SessionManager.continueRecent(
+            cwd,
+            path.join(cwd, '.coobee-ai', 'sessions', this.sessionId)
+          )
+        : SessionManager.inMemory(cwd)
 
     // 4. Settings（压缩/重试配置）
     const settingsManager = SettingsManager.inMemory({
@@ -209,7 +226,13 @@ export class PiMonoAgentRuntime implements AgentRuntime {
       reload: async () => {}
     }
 
-    // 6. 创建 AgentSession
+    // 6. 合并工具：customTools（SDK 原生）+ tools（统一 ToolDefinition 转换后）
+    const allCustomTools: PiToolDefinition[] = [
+      ...((this.options.customTools as PiToolDefinition[]) || []),
+      ...this.convertTools(this.options.tools || [])
+    ]
+
+    // 7. 创建 AgentSession
     const { session } = await createAgentSession({
       cwd: this.options.cwd || process.cwd(),
       model,
@@ -219,7 +242,7 @@ export class PiMonoAgentRuntime implements AgentRuntime {
       sessionManager,
       settingsManager,
       resourceLoader,
-      customTools: (this.options.customTools as ToolDefinition[]) || [],
+      customTools: allCustomTools,
       ...(this.options.useCodingTools ? {} : { tools: [] })
     })
 
@@ -237,7 +260,7 @@ export class PiMonoAgentRuntime implements AgentRuntime {
         `(api: openai-completions, model: ${modelName}, ` +
         `baseURL: ${baseURL}, ` +
         `thinking: ${thinkingLevel}, ` +
-        `customTools: ${this.options.customTools?.length || 0}, ` +
+        `tools: ${allCustomTools.length}, ` +
         `session: ${this.sessionId})`
     )
   }
@@ -848,6 +871,30 @@ export class PiMonoAgentRuntime implements AgentRuntime {
 
     // fallback：序列化整个对象
     return JSON.stringify(result)
+  }
+
+  /**
+   * 将统一 ToolDefinition 转换为 pi-coding-agent SDK 原生 PiToolDefinition
+   *
+   * JSON Schema parameters 直接兼容（TypeBox 输出即 JSON Schema），
+   * execute 包装为 SDK 期望的 (toolCallId, params, signal, onUpdate, ctx) => AgentToolResult 签名。
+   */
+  private convertTools(defs: ToolDefinition[]): PiToolDefinition[] {
+    if (!defs.length) return []
+    return defs.map(
+      (def) =>
+        ({
+          name: def.name,
+          label: def.name,
+          description: def.description,
+          parameters: def.parameters,
+          execute: async (_toolCallId: string, params: Record<string, unknown>) => {
+            const text = await def.execute(params)
+            return { content: [{ type: 'text', text }], details: { name: def.name } }
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }) as any as PiToolDefinition
+    )
   }
 
   /**

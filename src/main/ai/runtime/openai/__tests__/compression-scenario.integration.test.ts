@@ -780,7 +780,7 @@ describe.skipIf(!RUN)('Session 压缩场景：工具调用 + 压缩', () => {
         model: MODEL,
         sessionId,
         maxTurns: 5,
-        tools: [addNumbersTool, lookupWeatherTool, multiplyTool, searchKnowledgeTool],
+        sdkTools: [addNumbersTool, lookupWeatherTool, multiplyTool, searchKnowledgeTool],
         compression: {
           enabled: true,
           contextWindowSize: 800, // 工具调用产生更多 token，稍大一些

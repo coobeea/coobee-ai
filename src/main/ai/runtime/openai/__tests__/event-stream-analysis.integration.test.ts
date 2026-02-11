@@ -637,7 +637,7 @@ describe.skipIf(!RUN)('事件流 + Session 完整分析', () => {
       instructions:
         '你是一个全能助手。加法用 add_numbers 工具，反转字符串用 reverse_string 工具。根据工具结果回答。',
       model: MODEL,
-      tools: [addNumbersTool, reverseStringTool],
+      sdkTools: [addNumbersTool, reverseStringTool],
       sessionId,
       maxTurns: 10
     })
@@ -794,7 +794,7 @@ describe.skipIf(!RUN)('事件流 + Session 完整分析', () => {
       name: 'ContextAgent',
       instructions: '你是简洁的助手。请记住用户告诉你的所有信息，后续对话中准确引用。',
       model: MODEL,
-      tools: [addNumbersTool],
+      sdkTools: [addNumbersTool],
       sessionId,
       maxTurns: 5
     })
