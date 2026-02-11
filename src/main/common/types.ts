@@ -4,6 +4,8 @@
  * 此文件包含所有 common 模块的类型定义，按功能模块分组
  */
 
+import { ErrorCode, UnifiedRequest } from '@shared/types'
+
 // ==================== 通用类型 ====================
 
 /**
@@ -314,4 +316,95 @@ export interface FileCopyInfo {
   targetPath: string
   size: number
   isDirectory: boolean
+}
+
+// ==================== 执行环境 ====================
+
+export type ExecutionEnvironment = 'http' | 'ipc'
+
+// ==================== 业务异常 ====================
+
+export class BusinessError extends Error {
+  errorCode: ErrorCode
+
+  private constructor(
+    errorCode: ErrorCode,
+    public status: number = 200
+  ) {
+    super(errorCode.message)
+    this.errorCode = errorCode
+    this.name = 'BusinessError'
+  }
+
+  static useErrorCode(errorCode: ErrorCode, status: number = 200): BusinessError {
+    return new BusinessError(errorCode, status)
+  }
+
+  static useErrorMessage(message: string, code?: string, status: number = 200): BusinessError {
+    return new BusinessError(ErrorCode.of(code || message, message), status)
+  }
+}
+
+// ==================== 请求上下文 ====================
+
+/**
+ * 请求上下文 - 框架内部使用，同时也作为业务函数参数
+ */
+export interface RequestContext {
+  /** 执行环境：http 或 ipc */
+  environment: ExecutionEnvironment
+  /** 是否为 SSE 流式请求 */
+  isSSE: boolean
+  /** 请求路径（HTTP）或通道名称（IPC） */
+  path: string
+  /** 目标类实例 */
+  target: unknown
+  /** 方法名 */
+  propertyKey: string
+  /** 请求 ID */
+  requestId: string
+  /** 时间戳 */
+  timestamp: number
+  /** 流式通道（仅 SSE 请求） */
+  streamChannel?: string
+  /** 原始请求数据 */
+  rawRequest?: UnifiedRequest
+  /** 原始响应对象 */
+  rawResponse?: unknown
+  /** 用户数据（认证后填充） */
+  user?: UserInfo
+  /** 额外数据 */
+  extra?: Record<string, unknown>
+  /** 取消信号（仅 SSE 请求，供业务逻辑使用） */
+  signal?: AbortSignal
+}
+
+// ==================== 用户信息 ====================
+
+export interface UserInfo {
+  id: string
+  name: string
+  isAdmin: boolean
+}
+
+// ==================== 服务端中间件 ====================
+
+/**
+ * 服务端中间件上下文
+ * 注意：与 MiddlewareContext 不同，这里专用于 HTTP/IPC 服务端
+ */
+export interface ServerMiddlewareContext {
+  /** 请求上下文 */
+  requestContext: RequestContext
+  /** 原始请求数据 */
+  request: UnifiedRequest
+  /** 用户信息（认证后填充） */
+  user?: {
+    id: string
+    name: string
+    isAdmin: boolean
+    token: string
+  }
+  /** 中间件间共享数据 */
+  shared: Record<string, unknown>
 }

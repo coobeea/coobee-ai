@@ -5,15 +5,22 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/main/ai/**/__tests__/**/*.test.ts'],
+    include: [
+      'src/main/ai/**/__tests__/**/*.test.ts',
+      'src/main/common/server/__tests__/**/*.test.ts'
+    ],
     // 自动加载 .env 文件中的环境变量
     env: {
       file: '.env'
     },
     coverage: {
       provider: 'v8',
-      include: ['src/main/ai/**/*.ts'],
-      exclude: ['src/main/ai/**/__tests__/**', 'src/main/ai/**/index.ts']
+      include: ['src/main/ai/**/*.ts', 'src/main/common/server/**/*.ts'],
+      exclude: [
+        'src/main/ai/**/__tests__/**',
+        'src/main/ai/**/index.ts',
+        'src/main/common/server/__tests__/**'
+      ]
     },
     alias: {
       '@': resolve(__dirname, 'src'),

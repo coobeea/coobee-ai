@@ -3,6 +3,7 @@ import fs from 'fs-extra'
 import { promisify } from 'util'
 
 import { log } from '../common/logger'
+import type { Result } from '@shared/api'
 
 const sleep = promisify(setTimeout)
 
@@ -97,6 +98,33 @@ export async function ensureFileIsReleased(filePath: string, timeout = 5000): Pr
 
   throw new Error(`🔔 [ensureFileIsReleased] 等待文件锁释放超时 (${timeout}ms): ${filePath}`)
 }
+
+// ==================== 请求/响应工具 ====================
+
+export function createSuccessResponse<T>(data?: T, message?: string): Result<T> {
+  return {
+    success: true,
+    code: '0',
+    data,
+    message,
+    timestamp: Date.now()
+  }
+}
+
+export function createErrorResponse(message: string, code?: string): Result {
+  return {
+    success: false,
+    error: message,
+    code,
+    timestamp: Date.now()
+  }
+}
+
+export function createRequestId(prefix: string): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+}
+
+// ==================== 其他导出 ====================
 
 export {
   SnowflakeIdGenerator,
