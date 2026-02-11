@@ -42,3 +42,10 @@ export type { ChannelConfig } from './streamChannelManager'
 export { SSE, Get, Post, Stream, DecoratorType } from './decorators'
 export { type RouteMetadata } from './decorators'
 export { default as handlerAdapter, setServerMiddlewareManager } from './handlerAdapter'
+export { WsServer } from './wsServer'
+export type {
+  WsServerOptions,
+  WsClientMeta,
+  WsMessageHandler,
+  WsConnectionHandler
+} from './wsServer'

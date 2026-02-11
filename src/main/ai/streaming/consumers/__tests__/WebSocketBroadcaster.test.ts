@@ -109,7 +109,6 @@ describe('WebSocketBroadcaster', () => {
       const stats = broadcaster.getStats()
 
       expect(stats.totalClients).toBe(0)
-      expect(stats.heartbeatInterval).toBe(30000)
       expect(stats.sessions).toEqual({})
     })
   })

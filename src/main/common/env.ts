@@ -21,7 +21,8 @@ export const Env = {
     debug: process.env.VITE_DEBUG,
     openDevTools: process.env.VITE_OPEN_DEVTOOLS,
     enableHttpServer: process.env.VITE_ENABLE_HTTP_SERVER,
-    httpPort: process.env.VITE_HTTP_PORT
+    httpPort: process.env.VITE_HTTP_PORT,
+    wsPort: process.env.VITE_WS_PORT
   },
 
   app: {

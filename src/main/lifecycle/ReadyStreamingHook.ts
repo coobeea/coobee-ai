@@ -28,11 +28,10 @@ export const ReadyStreamingHook: LifecycleHook = {
       const { webSocketBroadcaster } =
         await import('@main/ai/streaming/consumers/WebSocketBroadcaster')
 
-      // 初始化 WebSocket 广播器
-      const port = 8765
-      webSocketBroadcaster.initialize(port)
+      // 初始化（端口由 Broadcaster 内部通过 VITE_WS_PORT 配置，默认 8765）
+      webSocketBroadcaster.initialize()
 
-      log.info(`[ReadyStreamingHook] WebSocketBroadcaster initialized on port ${port}`)
+      log.info('[ReadyStreamingHook] WebSocketBroadcaster initialized')
     } catch (error) {
       log.error('[ReadyStreamingHook] Failed to initialize streaming consumers:', error)
       // 不抛出错误，流式服务失败不应阻断启动
