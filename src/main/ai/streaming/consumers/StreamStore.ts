@@ -13,7 +13,7 @@ import { join } from 'path'
  * 流式消息存储
  */
 export class StreamStore {
-  private db: SQLiteService
+  private db!: SQLiteService
   private initialized = false
 
   // 批量写入配置
@@ -22,15 +22,14 @@ export class StreamStore {
   private maxBatchSize = 100 // 最大批量大小
   private flushTimer: NodeJS.Timeout | null = null
 
-  constructor() {
-    this.db = SQLiteService.getInstance()
-  }
-
   /**
    * 初始化（创建表结构 + 注册事件监听）
    */
   async initialize(): Promise<void> {
     if (this.initialized) return
+
+    // 延迟获取 DB 实例，避免模块加载阶段 SQLite 尚未初始化
+    this.db = SQLiteService.getInstance()
 
     // 1. 创建表结构
     await this.createSchema()

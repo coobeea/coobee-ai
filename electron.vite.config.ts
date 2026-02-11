@@ -15,6 +15,32 @@ import dotenv from 'dotenv'
 // 手动加载 .env 文件到 process.env
 dotenv.config()
 
+// 复制 WASM 等静态资源到构建输出目录
+function copyWasmAssetsPlugin(): Plugin {
+  return {
+    name: 'copy-wasm-assets',
+    writeBundle() {
+      const outDir = path.resolve(__dirname, 'out/main')
+      const wasmFiles = [
+        // @silvia-odwyer/photon-node（pi-coding-agent 的图片处理依赖）
+        {
+          src: path.resolve(__dirname, 'node_modules/@silvia-odwyer/photon-node/photon_rs_bg.wasm'),
+          dest: path.resolve(outDir, 'photon_rs_bg.wasm')
+        }
+      ]
+
+      for (const { src, dest } of wasmFiles) {
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, dest)
+          console.log(`[copy-wasm] Copied ${path.basename(src)} to output directory`)
+        } else {
+          console.warn(`[copy-wasm] WASM file not found: ${src}`)
+        }
+      }
+    }
+  }
+}
+
 // 复制 libs 目录下所有模块的插件
 function copyLibsPlugin(): Plugin {
   return {
@@ -48,7 +74,7 @@ function copyLibsPlugin(): Plugin {
 
 export default defineConfig({
   main: {
-    plugins: [copyLibsPlugin()],
+    plugins: [copyLibsPlugin(), copyWasmAssetsPlugin()],
     resolve: {
       alias: {
         '@': resolve('src/main/'),
@@ -69,9 +95,19 @@ export default defineConfig({
       )
     },
     build: {
+      // ESM-only 的包从自动外部化中排除，强制打包进 bundle
+      externalizeDeps: {
+        exclude: ['@mariozechner/pi-coding-agent', '@mariozechner/pi-ai', 'ws']
+      },
       rollupOptions: {
-        // 将原生模块标记为外部依赖
-        external: ['better-sqlite3-multiple-ciphers', 'fs-ext', 'electron'],
+        // 原生模块标记为外部依赖
+        external: [
+          'better-sqlite3-multiple-ciphers',
+          'fs-ext',
+          'electron',
+          'bufferutil',
+          'utf-8-validate'
+        ],
         output: {
           inlineDynamicImports: true,
           manualChunks: undefined // 禁用自动代码分割
