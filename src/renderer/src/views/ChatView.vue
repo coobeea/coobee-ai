@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted } from 'vue'
+import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import { useChatStore, type ChatMessage } from '@/stores/chat'
 
 const chatStore = useChatStore()
 const inputText = ref('')
 const messageContainer = ref<HTMLElement | null>(null)
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
 // 自动滚动到底部
 function scrollToBottom(): void {
@@ -38,6 +39,7 @@ async function handleSend(): Promise<void> {
   if (!text || chatStore.isStreaming) return
 
   inputText.value = ''
+  resetTextareaHeight()
   await chatStore.sendMessage(text)
 }
 
@@ -49,17 +51,43 @@ function handleKeydown(event: KeyboardEvent): void {
   }
 }
 
+// Textarea 自动高度
+function autoResize(): void {
+  const el = textareaRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px'
+}
+
+function resetTextareaHeight(): void {
+  const el = textareaRef.value
+  if (!el) return
+  el.style.height = 'auto'
+}
+
+// 连接状态文字
+const connectionLabel = computed(() => {
+  switch (chatStore.connectionState) {
+    case 'connected':
+      return '已连接'
+    case 'connecting':
+      return '连接中...'
+    case 'error':
+      return '连接错误'
+    default:
+      return '未连接'
+  }
+})
+
 // 获取状态标签样式
-function getStatusClass(msg: ChatMessage): string {
+function getStatusIcon(msg: ChatMessage): string {
   switch (msg.status) {
     case 'streaming':
-      return 'text-blue-500'
+      return '正在生成...'
     case 'error':
-      return 'text-red-500'
-    case 'done':
-      return 'text-green-500'
+      return '生成失败'
     default:
-      return 'text-gray-400'
+      return ''
   }
 }
 
@@ -69,143 +97,177 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-screen flex-col bg-gray-50">
-    <!-- Header -->
-    <header class="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
-      <div class="flex items-center gap-3">
-        <h1 class="text-lg font-semibold text-gray-800">Agent Chat</h1>
+  <div class="flex h-screen flex-col bg-[#f7f7f8]">
+    <!-- Header: 简洁顶栏 -->
+    <header
+      class="flex h-12 shrink-0 items-center justify-between border-b border-gray-200/80 bg-white/80 px-5 backdrop-blur"
+    >
+      <div class="flex items-center gap-2.5">
+        <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+          <span class="i-carbon-bot inline-block h-4 w-4 text-primary"></span>
+        </div>
+        <h1 class="text-sm font-semibold text-gray-800">Coobee Agent</h1>
         <span
           v-if="chatStore.sessionId"
-          class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+          class="ml-1 max-w-[180px] truncate rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-400"
         >
           {{ chatStore.sessionId }}
         </span>
       </div>
+
       <div class="flex items-center gap-3">
-        <!-- 连接状态 -->
-        <span class="flex items-center gap-1 text-xs">
+        <!-- 连接状态指示 -->
+        <div class="flex items-center gap-1.5">
           <span
-            class="inline-block h-2 w-2 rounded-full"
+            class="inline-block h-1.5 w-1.5 rounded-full"
             :class="{
-              'bg-green-500': chatStore.connectionState === 'connected',
-              'bg-yellow-500': chatStore.connectionState === 'connecting',
-              'bg-red-500': chatStore.connectionState === 'error',
-              'bg-gray-400': chatStore.connectionState === 'disconnected'
+              'bg-emerald-500': chatStore.connectionState === 'connected',
+              'bg-amber-400': chatStore.connectionState === 'connecting',
+              'bg-red-400': chatStore.connectionState === 'error',
+              'bg-gray-300': chatStore.connectionState === 'disconnected'
             }"
           ></span>
-          <span class="text-gray-500">{{ chatStore.connectionState }}</span>
-        </span>
-        <!-- 清空按钮 -->
+          <span class="text-[11px] text-gray-400">{{ connectionLabel }}</span>
+        </div>
+
+        <!-- 新对话按钮 -->
         <button
-          class="rounded-md bg-gray-100 px-3 py-1 text-sm text-gray-600 transition hover:bg-gray-200"
+          class="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
           @click="chatStore.clearMessages()"
         >
-          清空
+          <span class="i-carbon-add inline-block h-3.5 w-3.5"></span>
+          新对话
         </button>
       </div>
     </header>
 
-    <!-- 消息列表 -->
-    <main ref="messageContainer" class="flex-1 overflow-y-auto px-6 py-4">
+    <!-- 消息区域 -->
+    <main ref="messageContainer" class="flex-1 overflow-y-auto">
       <!-- 空状态 -->
-      <div v-if="chatStore.messages.length === 0" class="flex h-full items-center justify-center">
-        <div class="text-center text-gray-400">
-          <p class="mb-2 text-4xl">💬</p>
-          <p class="text-lg">输入消息开始对话</p>
+      <div
+        v-if="chatStore.messages.length === 0"
+        class="flex h-full flex-col items-center justify-center"
+      >
+        <div class="mb-8 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+          <span class="i-carbon-chat-bot inline-block h-8 w-8 text-primary"></span>
         </div>
+        <h2 class="mb-2 text-xl font-semibold text-gray-700">有什么可以帮您？</h2>
+        <p class="max-w-sm text-center text-sm text-gray-400">
+          输入您的问题，AI 助手将为您提供帮助。支持多轮对话、工具调用和推理分析。
+        </p>
       </div>
 
       <!-- 消息列表 -->
-      <div v-else class="mx-auto max-w-3xl space-y-4">
-        <div
-          v-for="msg in chatStore.messages"
-          :key="msg.id"
-          class="flex"
-          :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
-        >
-          <div
-            class="max-w-[80%] rounded-2xl px-4 py-3"
-            :class="
-              msg.role === 'user'
-                ? 'bg-blue-600 text-white'
-                : 'border border-gray-200 bg-white text-gray-800'
-            "
-          >
-            <!-- 思维链（折叠） -->
-            <details
-              v-if="msg.thinking"
-              class="mb-2 rounded-lg"
-              :class="msg.role === 'user' ? 'bg-blue-700/30' : 'bg-gray-50'"
+      <div v-else class="mx-auto max-w-4xl px-6 py-6">
+        <div v-for="msg in chatStore.messages" :key="msg.id" class="mb-6">
+          <!-- 用户消息 -->
+          <div v-if="msg.role === 'user'" class="flex justify-end">
+            <div
+              class="max-w-[75%] rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-relaxed text-white shadow-sm"
             >
-              <summary
-                class="cursor-pointer text-xs"
-                :class="msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'"
-              >
-                思考过程
-              </summary>
-              <pre
-                class="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap p-2 text-xs"
-                :class="msg.role === 'user' ? 'text-blue-100' : 'text-gray-500'"
-                >{{ msg.thinking }}</pre
-              >
-            </details>
+              <div class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
+            </div>
+          </div>
 
-            <!-- 消息内容 -->
-            <div class="whitespace-pre-wrap break-words text-sm leading-relaxed">
-              {{ msg.content }}
-              <!-- 流式光标 -->
-              <span
-                v-if="msg.status === 'streaming'"
-                class="ml-0.5 inline-block h-4 w-1 animate-pulse bg-current"
-              ></span>
+          <!-- 助手消息 -->
+          <div v-else class="flex gap-3">
+            <!-- 头像 -->
+            <div
+              class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10"
+            >
+              <span class="i-carbon-bot inline-block h-4 w-4 text-primary"></span>
             </div>
 
-            <!-- 工具调用 -->
-            <div v-if="msg.toolCalls?.length" class="mt-2 space-y-1">
-              <div
-                v-for="(tool, idx) in msg.toolCalls"
-                :key="idx"
-                class="rounded-lg p-2 text-xs"
-                :class="msg.role === 'user' ? 'bg-blue-700/30' : 'bg-gray-50'"
+            <!-- 消息体 -->
+            <div class="min-w-0 flex-1">
+              <!-- 思维链（折叠） -->
+              <details
+                v-if="msg.thinking"
+                class="mb-2 rounded-lg border border-gray-200/80 bg-gray-50"
               >
-                <div class="flex items-center gap-1">
-                  <span class="font-mono font-semibold">{{ tool.name }}</span>
-                  <span
-                    class="rounded-full px-1.5 py-0.5 text-[10px]"
-                    :class="{
-                      'bg-yellow-100 text-yellow-700': tool.status === 'calling',
-                      'bg-green-100 text-green-700': tool.status === 'done',
-                      'bg-red-100 text-red-700': tool.status === 'error'
-                    }"
-                  >
-                    {{ tool.status }}
-                  </span>
-                </div>
-                <div
-                  v-if="tool.result"
-                  class="mt-1 max-h-20 overflow-y-auto font-mono"
-                  :class="msg.role === 'user' ? 'text-blue-200' : 'text-gray-500'"
+                <summary
+                  class="flex cursor-pointer items-center gap-1.5 px-3 py-2 text-xs text-gray-400 select-none hover:text-gray-500"
                 >
-                  {{ tool.result }}
+                  <span class="i-carbon-idea inline-block h-3.5 w-3.5"></span>
+                  思考过程
+                </summary>
+                <div
+                  class="max-h-48 overflow-y-auto border-t border-gray-100 px-3 py-2 font-mono text-xs leading-relaxed text-gray-500 whitespace-pre-wrap"
+                >
+                  {{ msg.thinking }}
+                </div>
+              </details>
+
+              <!-- 文本内容 -->
+              <div class="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap break-words">
+                {{ msg.content }}
+                <!-- 流式光标 -->
+                <span v-if="msg.status === 'streaming' && !msg.content" class="inline-flex gap-1">
+                  <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400"></span>
+                  <span
+                    class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400"
+                    style="animation-delay: 0.15s"
+                  ></span>
+                  <span
+                    class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400"
+                    style="animation-delay: 0.3s"
+                  ></span>
+                </span>
+                <span
+                  v-else-if="msg.status === 'streaming'"
+                  class="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-gray-400 align-text-bottom"
+                ></span>
+              </div>
+
+              <!-- 工具调用 -->
+              <div v-if="msg.toolCalls?.length" class="mt-3 space-y-2">
+                <div
+                  v-for="(tool, idx) in msg.toolCalls"
+                  :key="idx"
+                  class="rounded-lg border border-gray-200/80 bg-white px-3 py-2"
+                >
+                  <div class="flex items-center gap-2">
+                    <span class="i-carbon-tool-box inline-block h-3.5 w-3.5 text-gray-400"></span>
+                    <span class="font-mono text-xs font-medium text-gray-700">{{ tool.name }}</span>
+                    <span
+                      class="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                      :class="{
+                        'bg-amber-50 text-amber-600': tool.status === 'calling',
+                        'bg-emerald-50 text-emerald-600': tool.status === 'done',
+                        'bg-red-50 text-red-500': tool.status === 'error'
+                      }"
+                    >
+                      {{
+                        tool.status === 'calling'
+                          ? '执行中'
+                          : tool.status === 'done'
+                            ? '完成'
+                            : '错误'
+                      }}
+                    </span>
+                  </div>
+                  <div
+                    v-if="tool.result"
+                    class="mt-1.5 max-h-24 overflow-y-auto rounded bg-gray-50 px-2 py-1.5 font-mono text-[11px] leading-relaxed text-gray-500"
+                  >
+                    {{ tool.result }}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- 错误信息 -->
-            <div
-              v-if="msg.status === 'error' && msg.error"
-              class="mt-2 rounded-lg bg-red-50 p-2 text-xs text-red-600"
-            >
-              {{ msg.error }}
-            </div>
+              <!-- 错误信息 -->
+              <div
+                v-if="msg.status === 'error' && msg.error"
+                class="mt-2 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600"
+              >
+                <span class="i-carbon-warning-alt mt-0.5 inline-block h-3.5 w-3.5 shrink-0"></span>
+                <span>{{ msg.error }}</span>
+              </div>
 
-            <!-- 状态标识 -->
-            <div
-              v-if="msg.role === 'assistant'"
-              class="mt-1 text-right text-[10px]"
-              :class="getStatusClass(msg)"
-            >
-              {{ msg.status === 'streaming' ? '生成中...' : msg.status === 'error' ? '错误' : '' }}
+              <!-- 状态标识 -->
+              <div v-if="getStatusIcon(msg)" class="mt-1.5 text-[11px] text-gray-400">
+                {{ getStatusIcon(msg) }}
+              </div>
             </div>
           </div>
         </div>
@@ -213,28 +275,44 @@ onMounted(() => {
     </main>
 
     <!-- 输入区域 -->
-    <footer class="border-t border-gray-200 bg-white px-6 py-4">
-      <div class="mx-auto flex max-w-3xl gap-3">
-        <textarea
-          v-model="inputText"
-          class="flex-1 resize-none rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-          rows="1"
-          placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-          :disabled="chatStore.isStreaming"
-          @keydown="handleKeydown"
-        ></textarea>
-        <button
-          class="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="!inputText.trim() || chatStore.isStreaming"
-          @click="handleSend"
+    <footer class="shrink-0 border-t border-gray-200/80 bg-white px-6 pb-5 pt-4">
+      <div class="mx-auto max-w-4xl">
+        <div
+          class="flex items-end gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 shadow-sm transition-colors focus-within:border-primary/40 focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.08)]"
         >
-          {{ chatStore.isStreaming ? '生成中...' : '发送' }}
-        </button>
+          <textarea
+            ref="textareaRef"
+            v-model="inputText"
+            class="max-h-[200px] min-h-[24px] flex-1 resize-none bg-transparent text-sm leading-relaxed text-gray-800 outline-none placeholder:text-gray-400"
+            rows="1"
+            placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+            :disabled="chatStore.isStreaming"
+            @keydown="handleKeydown"
+            @input="autoResize"
+          ></textarea>
+          <button
+            class="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition"
+            :class="
+              inputText.trim() && !chatStore.isStreaming
+                ? 'bg-primary text-white hover:bg-primary/90'
+                : 'bg-gray-100 text-gray-300'
+            "
+            :disabled="!inputText.trim() || chatStore.isStreaming"
+            @click="handleSend"
+          >
+            <span
+              v-if="chatStore.isStreaming"
+              class="i-carbon-stop-filled inline-block h-4 w-4"
+            ></span>
+            <span v-else class="i-carbon-send-alt inline-block h-4 w-4"></span>
+          </button>
+        </div>
+        <!-- 错误提示 -->
+        <p v-if="chatStore.lastError" class="mt-2 flex items-center gap-1 text-xs text-red-500">
+          <span class="i-carbon-warning inline-block h-3 w-3"></span>
+          {{ chatStore.lastError }}
+        </p>
       </div>
-      <!-- 错误提示 -->
-      <p v-if="chatStore.lastError" class="mx-auto mt-2 max-w-3xl text-xs text-red-500">
-        {{ chatStore.lastError }}
-      </p>
     </footer>
   </div>
 </template>

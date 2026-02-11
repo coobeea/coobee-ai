@@ -6,6 +6,7 @@
  */
 
 import { ref, onUnmounted, type Ref } from 'vue'
+import configManager from '@/config'
 
 // ==================== 类型定义 ====================
 
@@ -54,7 +55,8 @@ export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'err
 
 // ==================== Composable ====================
 
-const WS_URL = 'ws://localhost:8765'
+/** WebSocket 地址，通过 ConfigManager 统一管理 */
+const WS_URL = configManager.getWsUrl()
 const RECONNECT_DELAY = 2000
 const MAX_RECONNECT_ATTEMPTS = 5
 
