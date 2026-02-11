@@ -561,11 +561,8 @@ export class PiMonoAgentRuntime implements AgentRuntime {
 
           remaining = remaining.slice(thinkEnd + '</think>'.length)
 
-          // 跳过 </think> 后的空白换行
-          const leadingWhitespace = remaining.match(/^\s*/)
-          if (leadingWhitespace) {
-            remaining = remaining.slice(leadingWhitespace[0].length)
-          }
+          // </think> 后的空白换行也要作为文本发出（与 OpenAI 行为一致）
+          // OpenAI 在工具调用轮也会输出 text:start → text:delta("\n\n\n") → text:done({ text: "" })
         }
       }
     }
@@ -657,15 +654,14 @@ export class PiMonoAgentRuntime implements AgentRuntime {
               const rawFullText = msgEvent.content || this.extractFullText(evt.message)
               const cleanText = this.stripThinkTags(rawFullText)
 
-              // 确保 text:start 已发出
-              if (!realTextStartEmitted && cleanText.length > 0) {
+              // 始终发出 text:start + text:done（即使纯文本为空）
+              // 与 OpenAI 行为一致：工具调用轮也会有 text:start/text:done 闭环
+              if (!realTextStartEmitted) {
                 onChunk({ type: 'text:start', content: '' })
                 realTextStartEmitted = true
               }
 
-              if (realTextStartEmitted) {
-                onChunk({ type: 'text:done', content: cleanText, data: { text: cleanText } })
-              }
+              onChunk({ type: 'text:done', content: cleanText, data: { text: cleanText } })
               break
             }
 
@@ -746,24 +742,27 @@ export class PiMonoAgentRuntime implements AgentRuntime {
 
         case 'tool_execution_end': {
           const toolName = evt.toolName || 'unknown'
-          const result = evt.result
-          const isError = evt.isError || false
+          const rawResult = evt.result
+
+          // 从 pi-SDK 的 AgentToolResult 结构中提取纯文本输出
+          // 统一为与 OpenAI SDK 一致的格式：纯 JSON 字符串
+          const output = this.extractToolOutput(rawResult)
 
           // 记录工具调用
           if (toolCalls) {
             toolCalls.push({
               toolName,
               arguments: typeof evt.args === 'object' ? evt.args : {},
-              result
+              result: output
             })
           }
 
           // 双通道分发
-          this.streamEmitter.emitToolResult(toolName, result)
+          this.streamEmitter.emitToolResult(toolName, output)
           onChunk({
             type: 'tool:done',
-            content: typeof result === 'string' ? result : JSON.stringify(result),
-            data: { toolName, callId: evt.toolCallId, output: result, isError }
+            content: output,
+            data: { toolName, callId: evt.toolCallId, output }
           })
           break
         }
@@ -821,6 +820,34 @@ export class PiMonoAgentRuntime implements AgentRuntime {
   private stripThinkTags(text: string): string {
     if (!text) return ''
     return text.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim()
+  }
+
+  /**
+   * 从 pi-SDK 的 AgentToolResult 中提取纯文本输出
+   *
+   * pi-SDK 返回结构化的 { content: [{ type: "text", text: "..." }], details: {...} }
+   * OpenAI SDK 返回纯 JSON 字符串 "{\"result\":45,...}"
+   * 此方法统一为纯字符串格式，与 OpenAI 保持一致。
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private extractToolOutput(result: any): string {
+    if (!result) return ''
+    if (typeof result === 'string') return result
+
+    // pi-SDK AgentToolResult: { content: [{ type: "text", text: "..." }], details: {...} }
+    if (Array.isArray(result.content)) {
+      const texts = result.content
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((c: any) => c.type === 'text' && typeof c.text === 'string')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((c: any) => c.text)
+      if (texts.length > 0) {
+        return texts.join('')
+      }
+    }
+
+    // fallback：序列化整个对象
+    return JSON.stringify(result)
   }
 
   /**
