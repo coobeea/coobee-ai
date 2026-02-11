@@ -1,7 +1,7 @@
 import { log } from '@main/common/logger'
 import { createSuccessResponse } from '@main/utils'
 import { BusinessError, RequestContext, ServerMiddlewareContext } from '@main/common/types'
-import type { SSEStreamResult, Result, UnifiedRequest } from '@shared/types'
+import type { SSEStreamResult, Result, UnifiedRequest } from '@shared/api'
 
 /**
  * 方法参数元数据接口
@@ -210,7 +210,7 @@ class HandlerAdapter {
       const shouldContinue = await serverMiddlewareManager.execute(middlewareContext)
       if (!shouldContinue) {
         throw BusinessError.useErrorCode(
-          (await import('@shared/types')).ErrorCodes.AUTH_PERMISSION_DENIED
+          (await import('@shared/api')).ErrorCodes.AUTH_PERMISSION_DENIED
         )
       }
 

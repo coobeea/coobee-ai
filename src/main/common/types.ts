@@ -4,7 +4,7 @@
  * 此文件包含所有 common 模块的类型定义，按功能模块分组
  */
 
-import { ErrorCode, UnifiedRequest } from '@shared/types'
+import { ErrorCode, UnifiedRequest } from '@shared/api'
 
 // ==================== 通用类型 ====================
 
@@ -327,7 +327,7 @@ export type ExecutionEnvironment = 'http' | 'ipc'
 export class BusinessError extends Error {
   errorCode: ErrorCode
 
-  private constructor(
+  constructor(
     errorCode: ErrorCode,
     public status: number = 200
   ) {

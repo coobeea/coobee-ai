@@ -28,14 +28,14 @@ vi.mock('@main/common/env', () => ({
 }))
 
 // mock ErrorCodes for dynamic import in handlerAdapter
-vi.mock('@shared/types', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@shared/types')>()
+vi.mock('@shared/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@shared/api')>()
   return { ...actual }
 })
 
 import handlerAdapter, { setServerMiddlewareManager } from '../handlerAdapter'
 import { BusinessError, type RequestContext } from '@main/common/types'
-import type { UnifiedRequest } from '@shared/types'
+import type { UnifiedRequest } from '@shared/api'
 
 // ==================== 工具函数 ====================
 
@@ -170,7 +170,11 @@ describe('handlerAdapter - 实例方法绑定', () => {
 
     // 注意：不能用 .bind()，因为 bind 后 toString() 返回 native code，
     // extractParameterMetadata 无法解析参数。直接传原型方法，由 apply(target) 绑定 this。
-    const result = await handlerAdapter.execute(svc.greet, request, context)
+    const result = await handlerAdapter.execute(
+      svc.greet as (...args: unknown[]) => Promise<string>,
+      request,
+      context
+    )
 
     expect(result.success).toBe(true)
     expect(result.data).toBe('svc:world')

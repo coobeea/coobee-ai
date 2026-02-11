@@ -2,7 +2,7 @@ import path from 'node:path'
 
 import { createErrorResponse, createRequestId } from '@main/utils'
 import { BusinessError, RequestContext } from '@main/common/types'
-import type { UnifiedRequest } from '@shared/types'
+import type { UnifiedRequest } from '@shared/api'
 import { BrowserWindow, IpcMain } from 'electron'
 
 import { log } from '@main/common/logger'

@@ -1,5 +1,5 @@
 import { log } from '@main/common/logger'
-import type { SSEStreamResult } from '@shared/types'
+import type { SSEStreamResult } from '@shared/api'
 import { ipcMain } from 'electron'
 
 // ==================== 类型定义 ====================

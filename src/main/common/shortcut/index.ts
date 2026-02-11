@@ -10,7 +10,7 @@ import { globalShortcut } from 'electron'
 import { log } from '@main/common/logger'
 import { eventBus } from '@main/common/eventbus'
 import { ShortcutEvents } from '@shared/events'
-import type { Shortcut } from '@shared/types'
+import type { Shortcut } from '@shared/api'
 import LocalShortcut from './LocalShortcut'
 
 // ==================== 常量定义 ====================

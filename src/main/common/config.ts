@@ -3,7 +3,7 @@ import ElectronStore from 'electron-store'
 import { eventBus } from './eventbus'
 import { log } from './logger'
 import { EventTypes } from '@shared/ipc/events'
-import type { Shortcut } from '@shared/types'
+import type { Shortcut } from '@shared/api'
 
 enum ConfigKey {
   THEME = 'theme',

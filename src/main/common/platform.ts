@@ -1,4 +1,4 @@
-import type { DeviceInfo, MemoryInfo, DiskInfo } from '@shared/types'
+import type { DeviceInfo, MemoryInfo, DiskInfo } from '@shared/api'
 import os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
