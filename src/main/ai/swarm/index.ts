@@ -4,7 +4,7 @@
  * 基于 OpenAI Agents SDK 的 Handoff 机制，实现动态 Agent 自组织协作。
  *
  * 核心组件：
- * - SwarmRuntime: 统一运行时（实现 IExecutable）
+ * - SwarmRuntime: 统一运行时（实现 AgentRuntime）
  * - SwarmCoordinator: 核心协调器（含 Triage Agent）
  * - AgentPool: 动态 Agent 池
  * - HandoffRouter: Handoff 路由管理

@@ -175,26 +175,27 @@ const result = await orchestrator.executeTask({
 
 为 Agent 和 Team 提供统一的执行接口。
 
-#### IExecutable 接口
+#### AgentRuntime 接口
 
 ```typescript
-interface IExecutable {
+interface AgentRuntime {
   // 基本信息
-  readonly type: 'agent' | 'team'
+  readonly type: 'agent' | 'team' | 'swarm'
   readonly id: string
   readonly name: string
+  readonly options: AgentRuntimeOptions
 
   // 生命周期
   initialize(): Promise<void>
-  dispose(): Promise<void>
+  destroy(): Promise<void>
 
-  // 执行
-  run(input: string, config: ExecutionConfig): Promise<ExecutionResult>
-  runStream(
+  // 执行（主方法 — AsyncGenerator）
+  stream(
     input: string,
-    config: ExecutionConfig,
-    onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult>
+    config?: ExecutionConfig
+  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown>
+  // 便捷方法
+  run(input: string, config?: ExecutionConfig): Promise<ExecutionResult>
 
   // 会话管理
   getSessionInfo(): Promise<SessionInfo>

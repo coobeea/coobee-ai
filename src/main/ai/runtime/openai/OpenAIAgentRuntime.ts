@@ -1,7 +1,7 @@
 /**
  * OpenAI Agent 运行时
  *
- * 基于 OpenAI Agents SDK 的 IExecutable 实现。
+ * 基于 OpenAI Agents SDK 实现 AgentRuntime 接口。
  *
  * 核心能力：
  * - 纯参数驱动：name, instructions, tools, handoffs 全部由调用方传入
@@ -69,7 +69,7 @@ const log = createRuntimeLogger()
 /**
  * OpenAI Agent 运行时
  *
- * 基于 OpenAI Agents SDK 实现 IExecutable 接口。
+ * 基于 OpenAI Agents SDK 实现 AgentRuntime 接口。
  *
  * 职责：
  * 1. 根据传入的配置创建 SDK Agent
@@ -199,7 +199,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
     try {
       // 执行前检查 session 压缩
-      await this.compressSessionIfNeeded()
+      await this.compressSessionWithChunks()
 
       const result = await run(this.agent, input, {
         session: this.session,
@@ -230,16 +230,17 @@ export class OpenAIAgentRuntime implements AgentRuntime {
   }
 
   /**
-   * 流式执行 Agent
+   * 流式执行 Agent（主方法 — AsyncGenerator）
    *
    * 8 层闭环事件输出：
    *   run:start → turn:start → llm:start → { text:*, reasoning:*, tool:* } → llm:done → turn:done → run:done
+   *
+   * SDK 的 StreamedRunResult 本身是 AsyncIterable，直接 for await + yield。
    */
-  async runStream(
+  async *stream(
     input: string,
-    config: ExecutionConfig,
-    onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult> {
+    config?: ExecutionConfig
+  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
     const startTime = Date.now()
     const maxTurns = config?.maxTurns ?? this.options.maxTurns ?? DEFAULT_MAX_TURNS
 
@@ -248,10 +249,13 @@ export class OpenAIAgentRuntime implements AgentRuntime {
     try {
       // 1. run:start
       await this.streamEmitter.emitStart()
-      onChunk({ type: 'run:start', content: '' })
+      yield { type: 'run:start', content: '' }
 
-      // 1.5 执行前检查 session 压缩（传入 onChunk 以发送压缩事件）
-      await this.compressSessionIfNeeded(onChunk)
+      // 1.5 执行前检查 session 压缩
+      const compressionChunks = await this.compressSessionWithChunks()
+      for (const chunk of compressionChunks) {
+        yield chunk
+      }
 
       // 2. SDK 流式执行
       const streamRunResult = await run(this.agent, input, {
@@ -262,11 +266,13 @@ export class OpenAIAgentRuntime implements AgentRuntime {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const streamResult = streamRunResult as StreamedRunResult<unknown, any>
 
-      // 3. 消费流事件（内含 turn/llm/text/reasoning/tool/hitl/handoff 闭环）
+      // 3. 消费流事件（AsyncGenerator — 直接 yield）
       let fullOutput = ''
-      await this.consumeStreamEvents(streamResult, onChunk, (text) => {
+      for await (const chunk of this.generateStreamEvents(streamResult, (text) => {
         fullOutput += text
-      })
+      })) {
+        yield chunk
+      }
 
       // 4. 等待完成
       await streamResult.completed
@@ -281,7 +287,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
         // 发送 hitl:required 事件
         for (let i = 0; i < streamResult.interruptions.length; i++) {
           const item = streamResult.interruptions[i]
-          onChunk({
+          yield {
             type: 'hitl:required',
             content: `Approval required: ${item.name || 'unknown'}`,
             data: {
@@ -290,10 +296,10 @@ export class OpenAIAgentRuntime implements AgentRuntime {
               arguments: item.arguments,
               approvalItem: item
             }
-          })
+          }
         }
         // run:interrupted
-        onChunk({ type: 'run:interrupted', content: '' })
+        yield { type: 'run:interrupted', content: '' }
         await this.streamEmitter.emitDone()
         return interruptResult
       }
@@ -303,7 +309,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
       // 7. run:done
       await this.streamEmitter.emitDone()
-      onChunk({ type: 'run:done', content: '' })
+      yield { type: 'run:done', content: '' }
 
       const duration = Date.now() - startTime
 
@@ -318,14 +324,31 @@ export class OpenAIAgentRuntime implements AgentRuntime {
       }
     } catch (error: unknown) {
       await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
-      onChunk({
+      yield {
         type: 'run:error',
         content: error instanceof Error ? error.message : String(error),
         data: { message: error instanceof Error ? error.message : String(error) }
-      })
+      }
       log.error(`Stream execution failed:`, error)
       throw error
     }
+  }
+
+  /**
+   * 流式执行（回调模式 — stream() 的包装）
+   */
+  async runStream(
+    input: string,
+    config: ExecutionConfig,
+    onChunk: (chunk: StreamChunk) => void
+  ): Promise<ExecutionResult> {
+    const gen = this.stream(input, config)
+    let r = await gen.next()
+    while (!r.done) {
+      onChunk(r.value)
+      r = await gen.next()
+    }
+    return r.value
   }
 
   // ========== HITL 工具审批 ==========
@@ -407,12 +430,11 @@ export class OpenAIAgentRuntime implements AgentRuntime {
   }
 
   /**
-   * 恢复被中断的流式执行
+   * 恢复被中断的流式执行（AsyncGenerator 模式）
    */
-  async resumeStream(
-    config: ExecutionConfig,
-    onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult> {
+  async *resumeStream(
+    config?: ExecutionConfig
+  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
     if (!this._interrupted || !this.pendingState) {
       throw new Error('No pending interruption to resume')
     }
@@ -424,7 +446,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
     try {
       await this.streamEmitter.emitStart()
-      onChunk({ type: 'run:resumed', content: '' })
+      yield { type: 'run:resumed', content: '' }
 
       const streamRunResult = await run(this.agent, this.pendingState, {
         stream: true,
@@ -440,9 +462,11 @@ export class OpenAIAgentRuntime implements AgentRuntime {
       this.pendingInterruptions = []
 
       let fullOutput = ''
-      await this.consumeStreamEvents(streamResult, onChunk, (text) => {
+      for await (const chunk of this.generateStreamEvents(streamResult, (text) => {
         fullOutput += text
-      })
+      })) {
+        yield chunk
+      }
 
       await streamResult.completed
 
@@ -453,7 +477,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
           streamResult.interruptions,
           startTime
         )
-        onChunk({ type: 'run:interrupted', content: '' })
+        yield { type: 'run:interrupted', content: '' }
         await this.streamEmitter.emitDone()
         return interruptResult
       }
@@ -462,7 +486,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
       const output = stripThinkTags(rawOutput) || rawOutput
 
       await this.streamEmitter.emitDone()
-      onChunk({ type: 'run:done', content: '' })
+      yield { type: 'run:done', content: '' }
 
       return {
         output,
@@ -475,11 +499,11 @@ export class OpenAIAgentRuntime implements AgentRuntime {
       }
     } catch (error: unknown) {
       await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
-      onChunk({
+      yield {
         type: 'run:error',
         content: error instanceof Error ? error.message : String(error),
         data: { message: error instanceof Error ? error.message : String(error) }
-      })
+      }
       throw error
     }
   }
@@ -538,7 +562,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
   // ========== 内部方法 ==========
 
   /**
-   * 消费 SDK 流事件，映射到闭环 StreamChunk
+   * SDK 流事件 → StreamChunk AsyncGenerator
    *
    * 嵌套关系：
    *   run ⊃ turn ⊃ llm ⊃ { reasoning, text, tool } + hitl + handoff
@@ -547,60 +571,65 @@ export class OpenAIAgentRuntime implements AgentRuntime {
    *   通过 ThinkTagParser 将 <think>...</think> 标签实时拆分为
    *   独立的 reasoning:start/delta/done 事件，text:delta 只包含纯净文本。
    *   前端零解析负担。
+   *
+   * 内部使用缓冲数组收集 ThinkTagParser 回调产生的同步 chunk，
+   * 然后在每次 SDK 事件迭代后 yield 所有收集的 chunk。
    */
-  private async consumeStreamEvents(
+  private async *generateStreamEvents(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     streamResult: StreamedRunResult<unknown, any>,
-    onChunk: (chunk: StreamChunk) => void,
     onTextDelta: (text: string) => void
-  ): Promise<void> {
+  ): AsyncGenerator<StreamChunk, void, unknown> {
     let turnIndex = 0
     let turnOpen = false
     let textStartEmitted = false
     let reasoningStartEmitted = false
     let fullReasoningText = ''
 
+    // 同步缓冲：ThinkTagParser 回调产生的 chunk 先存这里，每轮 yield
+    const buffer: StreamChunk[] = []
+    const emit = (chunk: StreamChunk): void => {
+      buffer.push(chunk)
+    }
+
     // ---- ThinkTagParser：实时拆分 <think> 标签 ----
     const thinkParser = new ThinkTagParser({
       onText: (text) => {
-        // 纯文本内容（<think> 外部）→ text:start + text:delta
         if (!textStartEmitted) {
           textStartEmitted = true
-          onChunk({ type: 'text:start', content: '' })
+          emit({ type: 'text:start', content: '' })
         }
         onTextDelta(text)
         this.streamEmitter.emitText(text)
-        onChunk({ type: 'text:delta', content: text, data: { delta: text } })
+        emit({ type: 'text:delta', content: text, data: { delta: text } })
       },
 
       onReasoningStart: () => {
-        // 进入 <think> 块 → reasoning:start
         if (!reasoningStartEmitted) {
           reasoningStartEmitted = true
-          onChunk({ type: 'reasoning:start', content: '' })
+          emit({ type: 'reasoning:start', content: '' })
         }
       },
 
       onReasoning: (text) => {
-        // 推理内容（<think> 内部）→ reasoning:delta
         fullReasoningText += text
         this.streamEmitter.emitThinking(text)
-        onChunk({ type: 'reasoning:delta', content: text, data: { delta: text } })
+        emit({ type: 'reasoning:delta', content: text, data: { delta: text } })
       },
 
       onReasoningDone: () => {
-        // 退出 </think> 块 → reasoning:done
-        onChunk({
+        emit({
           type: 'reasoning:done',
           content: '',
           data: { rawContent: fullReasoningText }
         })
-        // 注意：不重置 reasoningStartEmitted，同一个 response 中不应有多个 reasoning 块
-        // 但 fullReasoningText 保留到 response_done 使用
       }
     })
 
     for await (const event of streamResult) {
+      // 清空缓冲
+      buffer.length = 0
+
       // ---- debug 日志：记录原始 SDK 事件 ----
       if (event.type === 'raw_model_stream_event') {
         const rawEvent = event.data as { type?: string; event?: { type?: string } } | undefined
@@ -629,21 +658,19 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
           // response_started → 关上一轮 + 开新一轮 + llm:start
           if (rawType === 'response_started') {
-            // flush 上一轮的解析器残余
             thinkParser.flush()
 
             if (turnOpen) {
-              onChunk({ type: 'turn:done', content: '', data: { turnIndex } })
+              emit({ type: 'turn:done', content: '', data: { turnIndex } })
             }
             turnIndex++
             turnOpen = true
-            // 重置每轮状态
             textStartEmitted = false
             reasoningStartEmitted = false
             fullReasoningText = ''
             thinkParser.reset()
-            onChunk({ type: 'turn:start', content: '', data: { turnIndex } })
-            onChunk({ type: 'llm:start', content: '' })
+            emit({ type: 'turn:start', content: '', data: { turnIndex } })
+            emit({ type: 'llm:start', content: '' })
           }
 
           // output_text_delta → 通过 ThinkTagParser 分流
@@ -656,7 +683,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
           // response_done → 关闭 reasoning/text + llm:done（携带 usage）
           if (rawType === 'response_done') {
-            // flush 解析器残余（处理未关闭的 <think> 或缓冲中的标签片段）
             thinkParser.flush()
 
             const response = (rawEvent as { response?: Record<string, unknown> }).response
@@ -664,16 +690,14 @@ export class OpenAIAgentRuntime implements AgentRuntime {
               | { inputTokens?: number; outputTokens?: number; totalTokens?: number }
               | undefined
 
-            // 如果 reasoning 已开始但未关闭（未匹配到 </think>），补发 reasoning:done
             if (reasoningStartEmitted && thinkParser.isInThinking) {
-              onChunk({
+              emit({
                 type: 'reasoning:done',
                 content: '',
                 data: { rawContent: fullReasoningText }
               })
             }
 
-            // text:done（从 response_done.output 提取完整文本，strip <think> 标签）
             if (textStartEmitted) {
               const outputs = response?.output as
                 | Array<{
@@ -683,12 +707,11 @@ export class OpenAIAgentRuntime implements AgentRuntime {
                 | undefined
               const msgOutput = outputs?.find((o) => o.type === 'message')
               const rawFullText = msgOutput?.content?.map((c) => c.text || '').join('') || ''
-              // 清洗 <think>...</think> 标签，只保留纯净文本
               const cleanText = stripThinkTags(rawFullText)
-              onChunk({ type: 'text:done', content: cleanText, data: { text: cleanText } })
+              emit({ type: 'text:done', content: cleanText, data: { text: cleanText } })
             }
 
-            onChunk({
+            emit({
               type: 'llm:done',
               content: '',
               data: {
@@ -726,7 +749,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
             } catch {
               // 参数解析失败
             }
-            onChunk({ type: 'tool:start', content: toolName, data: { toolName, callId } })
+            emit({ type: 'tool:start', content: toolName, data: { toolName, callId } })
             await this.streamEmitter.emitToolCall(toolName, parsedArgs)
           }
 
@@ -740,7 +763,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
             const output =
               (item as { output?: string }).output || (rawItem as { output?: string }).output || ''
             await this.streamEmitter.emitToolResult(toolName, output)
-            onChunk({
+            emit({
               type: 'tool:done',
               content: typeof output === 'string' ? output : JSON.stringify(output),
               data: { toolName, callId, output }
@@ -752,7 +775,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
             const agentName =
               (item as unknown as { agent?: { name?: string } }).agent?.name || 'unknown'
             await this.streamEmitter.emitHandoff(agentName)
-            onChunk({
+            emit({
               type: 'handoff:start',
               content: `Handoff to ${agentName}`,
               data: { toAgent: agentName }
@@ -766,7 +789,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
               (item as unknown as { agent?: { name?: string } }).agent?.name ||
               'unknown'
             await this.streamEmitter.emitHandoff(targetAgent)
-            onChunk({
+            emit({
               type: 'handoff:done',
               content: `Switched to ${targetAgent}`,
               data: { toAgent: targetAgent }
@@ -777,7 +800,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
           if (eventName === 'tool_approval_requested' && item.type === 'tool_approval_item') {
             const approvalItem = item as RunToolApprovalItem
             await this.streamEmitter.emitToolApproval(approvalItem.name || 'unknown')
-            onChunk({
+            emit({
               type: 'hitl:required',
               content: `Approval required: ${approvalItem.name || 'unknown'}`,
               data: {
@@ -799,13 +822,21 @@ export class OpenAIAgentRuntime implements AgentRuntime {
           break
         }
       }
+
+      // yield 本轮收集的所有 chunk
+      for (const chunk of buffer) {
+        yield chunk
+      }
     }
 
     // 关闭最后一轮
     if (turnOpen) {
-      // flush 最后一轮的解析器残余
       thinkParser.flush()
-      onChunk({ type: 'turn:done', content: '', data: { turnIndex } })
+      // flush 可能产生额外 chunk
+      for (const chunk of buffer) {
+        yield chunk
+      }
+      yield { type: 'turn:done', content: '', data: { turnIndex } }
     }
   }
 
@@ -898,46 +929,41 @@ export class OpenAIAgentRuntime implements AgentRuntime {
   // ========== Session 压缩 ==========
 
   /**
-   * 检查并执行 session 压缩（如果需要）
+   * 检查并执行 session 压缩（如果需要），返回产生的 StreamChunk 数组
    */
-  private async compressSessionIfNeeded(
-    onChunk?: (chunk: StreamChunk) => void
-  ): Promise<CompressionResult | null> {
-    if (!this.compressor) return null
+  private async compressSessionWithChunks(): Promise<StreamChunk[]> {
+    if (!this.compressor) return []
+
+    const chunks: StreamChunk[] = []
 
     try {
       const model = this.options.model || DEFAULT_MODEL
 
-      // 获取压缩前的状态信息（用于 compression:start 事件）
       const status = await this.compressor.getCompressionStatus(this.session)
-
       const result = await this.compressor.compressIfNeeded(this.session, model)
 
-      if (result.compressed) {
-        // 发送压缩事件（仅在流式模式下）
-        if (onChunk && status) {
-          onChunk({
-            type: 'compression:start',
-            content: 'Session compression triggered',
-            data: {
-              reason: `tokens ${status.totalTokens} >= threshold ${status.threshold}`,
-              totalTokens: status.totalTokens,
-              threshold: status.threshold
-            }
-          })
-          onChunk({
-            type: 'compression:done',
-            content: `Compressed ${result.summarizedCount} messages`,
-            data: {
-              summarizedSeqs: result.summarizedSeqs || [],
-              endSeq: result.endSeq || 0,
-              originalTokens: result.originalTokens || 0,
-              summaryTokens: result.summaryTokens || 0,
-              compressionRatio: result.compressionRatio || 0,
-              duration: result.duration || 0
-            }
-          })
-        }
+      if (result.compressed && status) {
+        chunks.push({
+          type: 'compression:start',
+          content: 'Session compression triggered',
+          data: {
+            reason: `tokens ${status.totalTokens} >= threshold ${status.threshold}`,
+            totalTokens: status.totalTokens,
+            threshold: status.threshold
+          }
+        })
+        chunks.push({
+          type: 'compression:done',
+          content: `Compressed ${result.summarizedCount} messages`,
+          data: {
+            summarizedSeqs: result.summarizedSeqs || [],
+            endSeq: result.endSeq || 0,
+            originalTokens: result.originalTokens || 0,
+            summaryTokens: result.summaryTokens || 0,
+            compressionRatio: result.compressionRatio || 0,
+            duration: result.duration || 0
+          }
+        })
 
         log.info(
           `Session compressed: ` +
@@ -946,12 +972,11 @@ export class OpenAIAgentRuntime implements AgentRuntime {
             `${result.keptCount} kept, ${result.duration}ms`
         )
       }
-
-      return result
     } catch (error) {
       log.error('Session compression failed (non-fatal):', error)
-      return null
     }
+
+    return chunks
   }
 
   /**

@@ -3,7 +3,7 @@
  *
  * 设计原则：
  *   1. SDK 无关：不依赖任何特定 SDK（@openai/agents、pi-coding-agent 等）
- *   2. 接口优先：定义通用的 AgentRuntime / IExecutable 接口
+ *   2. 接口优先：定义通用的 AgentRuntime 接口
  *   3. 各 SDK 实现在子目录（openai/、pi/）中定义特有类型
  */
 
@@ -457,90 +457,4 @@ export interface SessionInfo {
   messageCount: number
   /** 元数据 */
   metadata?: Record<string, unknown>
-}
-
-// ========== 统一执行接口 ==========
-
-/**
- * 统一执行接口
- *
- * Agent、Team、Swarm 都实现此接口，对外提供一致的能力：
- * - 执行（同步/流式）
- * - HITL 工具审批（暂停/恢复）
- * - 会话管理
- */
-export interface IExecutable {
-  /** 执行类型 */
-  readonly type: 'agent' | 'team' | 'swarm'
-  /** 执行 ID */
-  readonly id: string
-  /** 名称 */
-  readonly name: string
-  /** 是否处于中断状态（HITL 工具审批等待中） */
-  readonly interrupted: boolean
-
-  // ========== 生命周期 ==========
-
-  /** 初始化 */
-  initialize(): Promise<void>
-  /** 销毁 */
-  destroy(): Promise<void>
-
-  // ========== 执行方法 ==========
-
-  /**
-   * 同步执行（等待完整结果）
-   * @param input 用户输入
-   * @param config 执行配置
-   */
-  run(input: string, config?: ExecutionConfig): Promise<ExecutionResult>
-
-  /**
-   * 流式执行（实时返回事件块）
-   * @param input 用户输入
-   * @param config 执行配置
-   * @param onChunk 流式事件回调
-   */
-  runStream(
-    input: string,
-    config: ExecutionConfig,
-    onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult>
-
-  // ========== HITL 工具审批 ==========
-
-  /**
-   * 批准工具调用
-   * @param index 审批项索引
-   * @param options 选项（如 alwaysApprove）
-   */
-  approveToolCall(index: number, options?: { alwaysApprove?: boolean }): void
-
-  /**
-   * 拒绝工具调用
-   * @param index 审批项索引
-   * @param options 选项（如 alwaysReject）
-   */
-  rejectToolCall(index: number, options?: { alwaysReject?: boolean }): void
-
-  /**
-   * 恢复被中断的执行
-   * 在 approve/reject 工具调用后调用此方法继续执行
-   */
-  resume(): Promise<ExecutionResult>
-
-  /**
-   * 恢复被中断的流式执行
-   */
-  resumeStream(
-    config: ExecutionConfig,
-    onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult>
-
-  // ========== 会话管理 ==========
-
-  /** 获取会话信息 */
-  getSession(): Promise<SessionInfo>
-  /** 清除会话历史 */
-  clearSession(): Promise<void>
 }

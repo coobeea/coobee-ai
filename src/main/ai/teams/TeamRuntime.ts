@@ -4,15 +4,16 @@
  * SDK 原生优先的薄封装，所有配置通过参数传入。
  * 支持三种协作模式：顺序执行、并行执行、Planner 调度。
  *
- * 与 AgentRuntime 共享统一的 IExecutable 接口，
+ * 实现统一的 AgentRuntime 接口，
  * 包括 HITL 工具审批（暂停/恢复）和完整流式事件。
  */
 
 import { run, Agent } from '@openai/agents'
 import type { Tool, ModelSettings } from '@openai/agents'
 import { createStreamEmitter, type IStreamEmitter } from '../streaming/StreamEmitter'
+import type { AgentRuntime } from '../runtime/AgentRuntime'
 import type {
-  IExecutable,
+  AgentRuntimeOptions,
   ExecutionConfig,
   ExecutionResult,
   StreamChunk,
@@ -61,11 +62,11 @@ export interface TeamRuntimeOptions {
 /**
  * Team 运行时
  */
-export class TeamRuntime implements IExecutable {
+export class TeamRuntime implements AgentRuntime {
   readonly type = 'team' as const
   readonly id: string
 
-  private readonly options: TeamRuntimeOptions
+  private readonly _options: TeamRuntimeOptions
   private readonly sessionId: string
   private memberAgents = new Map<string, Agent>() // role -> Agent
   private streamEmitter!: IStreamEmitter
@@ -75,14 +76,21 @@ export class TeamRuntime implements IExecutable {
   private _interrupted = false
 
   constructor(options: TeamRuntimeOptions) {
-    this.options = options
+    this._options = options
     this.id = `team-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     this.sessionId = options.sessionId || `session-${Date.now()}`
     this.createdAt = Date.now()
   }
 
   get name(): string {
-    return this.options.name
+    return this._options.name
+  }
+
+  get options(): AgentRuntimeOptions {
+    return {
+      name: this._options.name,
+      instructions: `Team: ${this._options.orchestrationType}`
+    }
   }
 
   get interrupted(): boolean {
@@ -93,7 +101,7 @@ export class TeamRuntime implements IExecutable {
 
   async initialize(): Promise<void> {
     // 1. 为每个成员创建 Agent
-    for (const member of this.options.members) {
+    for (const member of this._options.members) {
       const agent = new Agent({
         name: member.name,
         instructions: member.instructions,
@@ -113,7 +121,7 @@ export class TeamRuntime implements IExecutable {
 
     console.log(
       `[TeamRuntime] Initialized: ${this.name} ` +
-        `(mode: ${this.options.orchestrationType}, members: ${this.options.members.length})`
+        `(mode: ${this._options.orchestrationType}, members: ${this._options.members.length})`
     )
   }
 
@@ -127,14 +135,14 @@ export class TeamRuntime implements IExecutable {
 
   async run(input: string, config?: ExecutionConfig): Promise<ExecutionResult> {
     const startTime = Date.now()
-    const maxTurns = (config?.maxTurns as number) ?? this.options.maxTurns ?? 25
+    const maxTurns = (config?.maxTurns as number) ?? this._options.maxTurns ?? 25
 
-    console.log(`[TeamRuntime] Running: ${this.name} (${this.options.orchestrationType})`)
+    console.log(`[TeamRuntime] Running: ${this.name} (${this._options.orchestrationType})`)
 
     try {
       let output: string | { summary: string; results: unknown[] }
 
-      switch (this.options.orchestrationType) {
+      switch (this._options.orchestrationType) {
         case 'sequential':
           output = await this.runSequential(input, maxTurns)
           break
@@ -145,7 +153,7 @@ export class TeamRuntime implements IExecutable {
           output = await this.runWithPlanner(input, config)
           break
         default:
-          throw new Error(`Unknown orchestration type: ${this.options.orchestrationType}`)
+          throw new Error(`Unknown orchestration type: ${this._options.orchestrationType}`)
       }
 
       return {
@@ -154,12 +162,59 @@ export class TeamRuntime implements IExecutable {
         metadata: {
           teamId: this.id,
           sessionId: this.sessionId,
-          orchestrationType: this.options.orchestrationType,
-          memberCount: this.options.members.length
+          orchestrationType: this._options.orchestrationType,
+          memberCount: this._options.members.length
         }
       }
     } catch (error: unknown) {
       console.error(`[TeamRuntime] Execution failed:`, error)
+      throw error
+    }
+  }
+
+  async *stream(
+    input: string,
+    config?: ExecutionConfig
+  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
+    console.log(`[TeamRuntime] Running stream: ${this.name}`)
+
+    try {
+      // run:start
+      await this.streamEmitter.emitStart()
+      yield { type: 'run:start', content: '' }
+
+      await this.streamEmitter.emitThinking(
+        `Team ${this.name} starting (${this._options.orchestrationType})`
+      )
+
+      // turn:start → llm:start → text:start
+      yield { type: 'turn:start', content: '', data: { turnIndex: 1 } }
+      yield { type: 'llm:start', content: '' }
+      yield { type: 'text:start', content: '' }
+
+      const result = await this.run(input, config)
+
+      // text:delta
+      await this.streamEmitter.emitText(result.output)
+      yield { type: 'text:delta', content: result.output, data: { delta: result.output } }
+
+      // text:done → llm:done → turn:done
+      yield { type: 'text:done', content: result.output, data: { text: result.output } }
+      yield { type: 'llm:done', content: '' }
+      yield { type: 'turn:done', content: '', data: { turnIndex: 1 } }
+
+      // run:done
+      await this.streamEmitter.emitDone()
+      yield { type: 'run:done', content: '' }
+
+      return result
+    } catch (error: unknown) {
+      await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
+      yield {
+        type: 'run:error',
+        content: error instanceof Error ? error.message : String(error),
+        data: { message: error instanceof Error ? error.message : String(error) }
+      }
       throw error
     }
   }
@@ -169,47 +224,13 @@ export class TeamRuntime implements IExecutable {
     config: ExecutionConfig,
     onChunk: (chunk: StreamChunk) => void
   ): Promise<ExecutionResult> {
-    console.log(`[TeamRuntime] Running stream: ${this.name}`)
-
-    try {
-      // run:start
-      await this.streamEmitter.emitStart()
-      onChunk({ type: 'run:start', content: '' })
-
-      await this.streamEmitter.emitThinking(
-        `Team ${this.name} starting (${this.options.orchestrationType})`
-      )
-
-      // turn:start → llm:start → text:start
-      onChunk({ type: 'turn:start', content: '', data: { turnIndex: 1 } })
-      onChunk({ type: 'llm:start', content: '' })
-      onChunk({ type: 'text:start', content: '' })
-
-      const result = await this.run(input, config)
-
-      // text:delta
-      await this.streamEmitter.emitText(result.output)
-      onChunk({ type: 'text:delta', content: result.output, data: { delta: result.output } })
-
-      // text:done → llm:done → turn:done
-      onChunk({ type: 'text:done', content: result.output, data: { text: result.output } })
-      onChunk({ type: 'llm:done', content: '' })
-      onChunk({ type: 'turn:done', content: '', data: { turnIndex: 1 } })
-
-      // run:done
-      await this.streamEmitter.emitDone()
-      onChunk({ type: 'run:done', content: '' })
-
-      return result
-    } catch (error: unknown) {
-      await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
-      onChunk({
-        type: 'run:error',
-        content: error instanceof Error ? error.message : String(error),
-        data: { message: error instanceof Error ? error.message : String(error) }
-      })
-      throw error
+    const gen = this.stream(input, config)
+    let r = await gen.next()
+    while (!r.done) {
+      onChunk(r.value)
+      r = await gen.next()
     }
+    return r.value
   }
 
   // ========== HITL（Team 暂不支持，预留接口） ==========
@@ -222,14 +243,10 @@ export class TeamRuntime implements IExecutable {
     throw new Error('TeamRuntime does not yet support HITL tool approval')
   }
 
-  async resume(): Promise<ExecutionResult> {
-    throw new Error('TeamRuntime does not yet support HITL resume')
-  }
-
-  async resumeStream(
-    _config: ExecutionConfig,
-    _onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult> {
+  // eslint-disable-next-line require-yield
+  async *resumeStream(
+    _config?: ExecutionConfig
+  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
     throw new Error('TeamRuntime does not yet support HITL resume')
   }
 
@@ -244,7 +261,7 @@ export class TeamRuntime implements IExecutable {
       metadata: {
         teamId: this.id,
         teamName: this.name,
-        memberCount: this.options.members.length
+        memberCount: this._options.members.length
       }
     }
   }
@@ -262,7 +279,7 @@ export class TeamRuntime implements IExecutable {
   private async runSequential(input: string, maxTurns: number): Promise<string> {
     let currentOutput = input
 
-    const sortedMembers = [...this.options.members].sort(
+    const sortedMembers = [...this._options.members].sort(
       (a, b) => (b.priority || 0) - (a.priority || 0)
     )
 
@@ -293,7 +310,7 @@ export class TeamRuntime implements IExecutable {
     console.log(`[TeamRuntime] Parallel - Running all members`)
 
     const results = await Promise.all(
-      this.options.members.map(async (member) => {
+      this._options.members.map(async (member) => {
         const agent = this.memberAgents.get(member.role)
         if (!agent) {
           return { role: member.role, output: null }

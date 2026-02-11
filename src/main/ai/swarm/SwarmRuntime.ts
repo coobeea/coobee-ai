@@ -1,9 +1,9 @@
 /**
  * SwarmRuntime - 统一运行时
  *
- * 实现 IExecutable 接口，使 Swarm 与 Agent/Team 运行时对等：
- * - run(): 调用 SwarmCoordinator 完成任务
- * - runStream(): 流式输出支持
+ * 实现 AgentRuntime 接口，使 Swarm 与 Agent/Team 运行时对等：
+ * - stream(): AsyncGenerator 流式输出（主方法）
+ * - run(): 便捷方法
  * - 完整的生命周期管理
  * - HITL 接口（预留）
  */
@@ -13,8 +13,9 @@ import { SwarmCoordinator } from './SwarmCoordinator'
 import type { SwarmSubTask } from './ConcurrencyManager'
 import type { AgentRole, SwarmConfig } from './types'
 import { DEFAULT_SWARM_CONFIG } from './types'
+import type { AgentRuntime } from '../runtime/AgentRuntime'
 import type {
-  IExecutable,
+  AgentRuntimeOptions,
   ExecutionConfig,
   ExecutionResult,
   StreamChunk,
@@ -34,7 +35,7 @@ export interface SwarmRuntimeOptions {
 /**
  * Swarm 运行时
  */
-export class SwarmRuntime implements IExecutable {
+export class SwarmRuntime implements AgentRuntime {
   readonly type = 'swarm' as const
   readonly id: string
   private _name: string
@@ -69,6 +70,13 @@ export class SwarmRuntime implements IExecutable {
 
   get name(): string {
     return this._name
+  }
+
+  get options(): AgentRuntimeOptions {
+    return {
+      name: this._name,
+      instructions: `Swarm: ${this.swarmConfig.name}`
+    }
   }
 
   get interrupted(): boolean {
@@ -148,11 +156,10 @@ export class SwarmRuntime implements IExecutable {
     }
   }
 
-  async runStream(
+  async *stream(
     input: string,
-    config: ExecutionConfig,
-    onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult> {
+    config?: ExecutionConfig
+  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
     const startTime = Date.now()
     this.taskCounter++
 
@@ -166,15 +173,15 @@ export class SwarmRuntime implements IExecutable {
       await this.streamEmitter.emitThinking(`分诊中: ${input.substring(0, 50)}...`)
 
       // turn:start → llm:start → text:start
-      onChunk({ type: 'turn:start', content: '', data: { turnIndex: 1 } })
-      onChunk({ type: 'llm:start', content: '' })
-      onChunk({ type: 'text:start', content: '' })
+      yield { type: 'turn:start', content: '', data: { turnIndex: 1 } }
+      yield { type: 'llm:start', content: '' }
+      yield { type: 'text:start', content: '' }
 
-      onChunk({
+      yield {
         type: 'text:delta',
         content: '[Swarm] 正在分析任务需求...\n',
         data: { delta: '[Swarm] 正在分析任务需求...\n' }
-      })
+      }
 
       const result = await this.coordinator.coordinate({
         id: taskId,
@@ -186,34 +193,30 @@ export class SwarmRuntime implements IExecutable {
 
       await this.streamEmitter.emitText(result.output)
 
-      onChunk({
+      yield {
         type: 'text:delta',
         content: result.output,
         data: { delta: result.output }
-      })
+      }
 
       if (result.rolesUsed.length > 0) {
         const metaInfo = `\n\n---\n[Swarm] 使用专家: ${result.rolesUsed.join(' -> ')} | Handoff: ${result.handoffCount}次 | 耗时: ${result.duration}ms`
-        onChunk({
+        yield {
           type: 'text:delta',
           content: metaInfo,
           data: { delta: metaInfo }
-        })
+        }
       }
 
       // text:done → llm:done → turn:done
       const fullOutput = result.output
-      onChunk({ type: 'text:done', content: fullOutput, data: { text: fullOutput } })
-      onChunk({ type: 'llm:done', content: '' })
-      onChunk({ type: 'turn:done', content: '', data: { turnIndex: 1 } })
+      yield { type: 'text:done', content: fullOutput, data: { text: fullOutput } }
+      yield { type: 'llm:done', content: '' }
+      yield { type: 'turn:done', content: '', data: { turnIndex: 1 } }
 
       // run:done
       await this.streamEmitter.emitDone()
-
-      onChunk({
-        type: 'run:done',
-        content: ''
-      })
+      yield { type: 'run:done', content: '' }
 
       const duration = Date.now() - startTime
 
@@ -233,15 +236,29 @@ export class SwarmRuntime implements IExecutable {
     } catch (error: unknown) {
       await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
 
-      onChunk({
+      yield {
         type: 'run:error',
         content: error instanceof Error ? error.message : String(error),
         data: { message: error instanceof Error ? error.message : String(error) }
-      })
+      }
 
       console.error(`[SwarmRuntime] Task ${taskId} failed:`, error)
       throw error
     }
+  }
+
+  async runStream(
+    input: string,
+    config: ExecutionConfig,
+    onChunk: (chunk: StreamChunk) => void
+  ): Promise<ExecutionResult> {
+    const gen = this.stream(input, config)
+    let r = await gen.next()
+    while (!r.done) {
+      onChunk(r.value)
+      r = await gen.next()
+    }
+    return r.value
   }
 
   // ========== HITL（Swarm 暂不支持） ==========
@@ -254,14 +271,10 @@ export class SwarmRuntime implements IExecutable {
     throw new Error('SwarmRuntime does not yet support HITL tool approval')
   }
 
-  async resume(): Promise<ExecutionResult> {
-    throw new Error('SwarmRuntime does not yet support HITL resume')
-  }
-
-  async resumeStream(
-    _config: ExecutionConfig,
-    _onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult> {
+  // eslint-disable-next-line require-yield
+  async *resumeStream(
+    _config?: ExecutionConfig
+  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
     throw new Error('SwarmRuntime does not yet support HITL resume')
   }
 

@@ -40,6 +40,7 @@ import type {
 import type { Model } from '@mariozechner/pi-ai'
 import { createStreamEmitter, type IStreamEmitter } from '../../streaming/StreamEmitter'
 import type { AgentRuntime } from '../AgentRuntime'
+import { ChunkQueue } from './ChunkQueue'
 import type {
   ExecutionConfig,
   ExecutionResult,
@@ -351,49 +352,68 @@ export class PiMonoAgentRuntime implements AgentRuntime {
   }
 
   /**
-   * 流式执行 Agent
+   * 流式执行 Agent（主方法 — AsyncGenerator）
    *
    * 通过 session.subscribe() 订阅 pi-SDK 事件，
-   * 双通道分发：onChunk 回调 + StreamEmitter EventBus 广播。
+   * 使用 ChunkQueue 桥接回调式推送到 AsyncGenerator 拉取。
+   *
+   * 双通道分发：
+   *   1. yield chunk — 拉取模式（供 SSE / 直接迭代）
+   *   2. StreamEmitter EventBus — 推送模式（广播到 WebSocket）
    *
    * 事件时序：
    *   run:start → turn:start → llm:start → { reasoning:*, text:*, tool:* } → llm:done → turn:done → run:done
    */
-  async runStream(
+  async *stream(
     input: string,
-    _config: ExecutionConfig,
-    onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult> {
+    _config?: ExecutionConfig
+  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
     const startTime = Date.now()
+    const queue = new ChunkQueue<StreamChunk>()
 
     log.info(`Running stream: ${this.name}`)
 
     try {
       // 1. run:start
       await this.streamEmitter.emitStart()
-      onChunk({ type: 'run:start', content: '' })
+      queue.push({ type: 'run:start', content: '' })
 
-      // 2. 设置事件订阅
+      // 2. 设置事件订阅 → push 到 queue
       let fullOutput = ''
       const toolCalls: ExecutionResult['toolCalls'] = []
 
       const unsubscribe = this.setupEventSubscription(
-        onChunk,
+        (chunk) => queue.push(chunk),
         (text) => {
           fullOutput += text
         },
         toolCalls
       )
 
-      // 3. 执行 prompt
-      await this.piSession.prompt(input)
+      // 3. SDK 执行，完成后结束 queue
+      this.piSession
+        .prompt(input)
+        .then(async () => {
+          unsubscribe()
+          await this.streamEmitter.emitDone()
+          queue.push({ type: 'run:done', content: '' })
+          queue.end()
+        })
+        .catch(async (err: unknown) => {
+          unsubscribe()
+          await this.streamEmitter.emitError(err instanceof Error ? err : new Error(String(err)))
+          queue.push({
+            type: 'run:error',
+            content: err instanceof Error ? err.message : String(err),
+            data: { message: err instanceof Error ? err.message : String(err) }
+          })
+          queue.end()
+        })
 
-      // 4. 取消订阅
-      unsubscribe()
-
-      // 5. run:done
-      await this.streamEmitter.emitDone()
-      onChunk({ type: 'run:done', content: '' })
+      // 4. 逐个 yield 队列中的 chunk
+      for await (const chunk of queue) {
+        yield chunk
+      }
 
       return {
         output: fullOutput,
@@ -406,14 +426,31 @@ export class PiMonoAgentRuntime implements AgentRuntime {
       }
     } catch (error: unknown) {
       await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
-      onChunk({
+      yield {
         type: 'run:error',
         content: error instanceof Error ? error.message : String(error),
         data: { message: error instanceof Error ? error.message : String(error) }
-      })
+      }
       log.error(`Stream execution failed:`, error)
       throw error
     }
+  }
+
+  /**
+   * 流式执行（回调模式 — stream() 的包装）
+   */
+  async runStream(
+    input: string,
+    _config: ExecutionConfig,
+    onChunk: (chunk: StreamChunk) => void
+  ): Promise<ExecutionResult> {
+    const gen = this.stream(input, _config)
+    let r = await gen.next()
+    while (!r.done) {
+      onChunk(r.value)
+      r = await gen.next()
+    }
+    return r.value
   }
 
   // ========== HITL 工具审批（pi-SDK 通过 Extension 处理） ==========
@@ -432,17 +469,10 @@ export class PiMonoAgentRuntime implements AgentRuntime {
     )
   }
 
-  async resume(): Promise<ExecutionResult> {
-    throw new Error(
-      'PiMonoAgentRuntime does not support resume. ' +
-        'Use pi-coding-agent Extensions for workflow control.'
-    )
-  }
-
-  async resumeStream(
-    _config: ExecutionConfig,
-    _onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult> {
+  // eslint-disable-next-line require-yield
+  async *resumeStream(
+    _config?: ExecutionConfig
+  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
     throw new Error(
       'PiMonoAgentRuntime does not support resumeStream. ' +
         'Use pi-coding-agent Extensions for workflow control.'

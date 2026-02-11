@@ -209,8 +209,9 @@ describe('TeamRuntime', () => {
       expect(() => team.rejectToolCall(0)).toThrow('does not yet support')
     })
 
-    it('resume 抛出不支持错误', async () => {
-      await expect(team.resume()).rejects.toThrow('does not yet support')
+    it('resumeStream 抛出不支持错误', async () => {
+      const gen = team.resumeStream()
+      await expect(gen.next()).rejects.toThrow('does not yet support')
     })
   })
 
