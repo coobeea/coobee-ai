@@ -16,6 +16,7 @@ import { run, Agent } from '@openai/agents'
 import type { StreamedRunResult, RunState, RunToolApprovalItem } from '@openai/agents'
 import { FileSession } from './FileSession'
 import { SessionCompressor } from './SessionCompressor'
+import { ThinkTagParser, stripThinkTags } from './ThinkTagParser'
 import { createStreamEmitter, type IStreamEmitter } from '../../streaming/StreamEmitter'
 import type { AgentRuntime } from '../AgentRuntime'
 import type {
@@ -195,9 +196,10 @@ export class OpenAIAgentRuntime implements AgentRuntime {
       }
 
       const duration = Date.now() - startTime
+      const rawOutput = (result.finalOutput as string) || ''
 
       return {
-        output: (result.finalOutput as string) || '',
+        output: stripThinkTags(rawOutput) || rawOutput,
         toolCalls: this.extractToolCalls(result.newItems),
         duration,
         metadata: {
@@ -280,7 +282,8 @@ export class OpenAIAgentRuntime implements AgentRuntime {
         return interruptResult
       }
 
-      const output = (streamResult.finalOutput as string) || fullOutput
+      const rawOutput = (streamResult.finalOutput as string) || fullOutput
+      const output = stripThinkTags(rawOutput) || rawOutput
 
       // 7. run:done
       await this.streamEmitter.emitDone()
@@ -371,8 +374,9 @@ export class OpenAIAgentRuntime implements AgentRuntime {
         return this.handleInterruptions(result.state, result.interruptions, startTime)
       }
 
+      const rawOutput = (result.finalOutput as string) || ''
       return {
-        output: (result.finalOutput as string) || '',
+        output: stripThinkTags(rawOutput) || rawOutput,
         toolCalls: this.extractToolCalls(result.newItems),
         duration: Date.now() - startTime,
         metadata: {
@@ -438,7 +442,8 @@ export class OpenAIAgentRuntime implements AgentRuntime {
         return interruptResult
       }
 
-      const output = (streamResult.finalOutput as string) || fullOutput
+      const rawOutput = (streamResult.finalOutput as string) || fullOutput
+      const output = stripThinkTags(rawOutput) || rawOutput
 
       await this.streamEmitter.emitDone()
       onChunk({ type: 'run:done', content: '' })
@@ -518,6 +523,14 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
   /**
    * 消费 SDK 流事件，映射到闭环 StreamChunk
+   *
+   * 嵌套关系：
+   *   run ⊃ turn ⊃ llm ⊃ { reasoning, text, tool } + hitl + handoff
+   *
+   * 关键改进（v2）：
+   *   通过 ThinkTagParser 将 <think>...</think> 标签实时拆分为
+   *   独立的 reasoning:start/delta/done 事件，text:delta 只包含纯净文本。
+   *   前端零解析负担。
    */
   private async consumeStreamEvents(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -528,6 +541,48 @@ export class OpenAIAgentRuntime implements AgentRuntime {
     let turnIndex = 0
     let turnOpen = false
     let textStartEmitted = false
+    let reasoningStartEmitted = false
+    let fullReasoningText = ''
+
+    // ---- ThinkTagParser：实时拆分 <think> 标签 ----
+    const thinkParser = new ThinkTagParser({
+      onText: (text) => {
+        // 纯文本内容（<think> 外部）→ text:start + text:delta
+        if (!textStartEmitted) {
+          textStartEmitted = true
+          onChunk({ type: 'text:start', content: '' })
+        }
+        onTextDelta(text)
+        this.streamEmitter.emitText(text)
+        onChunk({ type: 'text:delta', content: text, data: { delta: text } })
+      },
+
+      onReasoningStart: () => {
+        // 进入 <think> 块 → reasoning:start
+        if (!reasoningStartEmitted) {
+          reasoningStartEmitted = true
+          onChunk({ type: 'reasoning:start', content: '' })
+        }
+      },
+
+      onReasoning: (text) => {
+        // 推理内容（<think> 内部）→ reasoning:delta
+        fullReasoningText += text
+        this.streamEmitter.emitThinking(text)
+        onChunk({ type: 'reasoning:delta', content: text, data: { delta: text } })
+      },
+
+      onReasoningDone: () => {
+        // 退出 </think> 块 → reasoning:done
+        onChunk({
+          type: 'reasoning:done',
+          content: '',
+          data: { rawContent: fullReasoningText }
+        })
+        // 注意：不重置 reasoningStartEmitted，同一个 response 中不应有多个 reasoning 块
+        // 但 fullReasoningText 保留到 response_done 使用
+      }
+    })
 
     for await (const event of streamResult) {
       // ---- debug 日志：记录原始 SDK 事件 ----
@@ -558,37 +613,51 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
           // response_started → 关上一轮 + 开新一轮 + llm:start
           if (rawType === 'response_started') {
+            // flush 上一轮的解析器残余
+            thinkParser.flush()
+
             if (turnOpen) {
               onChunk({ type: 'turn:done', content: '', data: { turnIndex } })
             }
             turnIndex++
             turnOpen = true
+            // 重置每轮状态
             textStartEmitted = false
+            reasoningStartEmitted = false
+            fullReasoningText = ''
+            thinkParser.reset()
             onChunk({ type: 'turn:start', content: '', data: { turnIndex } })
             onChunk({ type: 'llm:start', content: '' })
           }
 
-          // output_text_delta → text:delta（首次自动补 text:start）
+          // output_text_delta → 通过 ThinkTagParser 分流
           if (rawType === 'output_text_delta') {
             const delta = (rawEvent as { delta?: string }).delta || ''
             if (delta) {
-              if (!textStartEmitted) {
-                textStartEmitted = true
-                onChunk({ type: 'text:start', content: '' })
-              }
-              onTextDelta(delta)
-              await this.streamEmitter.emitText(delta)
-              onChunk({ type: 'text:delta', content: delta, data: { delta } })
+              thinkParser.feed(delta)
             }
           }
 
-          // response_done → llm:done（携带 usage）
+          // response_done → 关闭 reasoning/text + llm:done（携带 usage）
           if (rawType === 'response_done') {
+            // flush 解析器残余（处理未关闭的 <think> 或缓冲中的标签片段）
+            thinkParser.flush()
+
             const response = (rawEvent as { response?: Record<string, unknown> }).response
             const usage = response?.usage as
               | { inputTokens?: number; outputTokens?: number; totalTokens?: number }
               | undefined
-            // text:done（从 response_done.output 提取完整文本）
+
+            // 如果 reasoning 已开始但未关闭（未匹配到 </think>），补发 reasoning:done
+            if (reasoningStartEmitted && thinkParser.isInThinking) {
+              onChunk({
+                type: 'reasoning:done',
+                content: '',
+                data: { rawContent: fullReasoningText }
+              })
+            }
+
+            // text:done（从 response_done.output 提取完整文本，strip <think> 标签）
             if (textStartEmitted) {
               const outputs = response?.output as
                 | Array<{
@@ -597,8 +666,10 @@ export class OpenAIAgentRuntime implements AgentRuntime {
                   }>
                 | undefined
               const msgOutput = outputs?.find((o) => o.type === 'message')
-              const fullText = msgOutput?.content?.map((c) => c.text || '').join('') || ''
-              onChunk({ type: 'text:done', content: fullText, data: { text: fullText } })
+              const rawFullText = msgOutput?.content?.map((c) => c.text || '').join('') || ''
+              // 清洗 <think>...</think> 标签，只保留纯净文本
+              const cleanText = stripThinkTags(rawFullText)
+              onChunk({ type: 'text:done', content: cleanText, data: { text: cleanText } })
             }
 
             onChunk({
@@ -716,6 +787,8 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
     // 关闭最后一轮
     if (turnOpen) {
+      // flush 最后一轮的解析器残余
+      thinkParser.flush()
       onChunk({ type: 'turn:done', content: '', data: { turnIndex } })
     }
   }

@@ -163,6 +163,12 @@ function formatChunkSummary(chunk: StreamChunk, index: number, elapsed: number):
   if (chunk.type === 'text:delta') {
     const text = chunk.content.length > 60 ? chunk.content.slice(0, 60) + '...' : chunk.content
     detail = `content: ${JSON.stringify(text)}`
+  } else if (chunk.type === 'reasoning:delta') {
+    const text = chunk.content.length > 60 ? chunk.content.slice(0, 60) + '...' : chunk.content
+    detail = `reasoning: ${JSON.stringify(text)}`
+  } else if (chunk.type === 'reasoning:start' || chunk.type === 'reasoning:done') {
+    const d = chunk.data as { rawContent?: string } | undefined
+    detail = d?.rawContent ? `rawContent: ${JSON.stringify(d.rawContent.slice(0, 60))}` : ''
   } else if (chunk.type === 'tool:done') {
     detail = `content: ${JSON.stringify((chunk.content || '').slice(0, 80))}`
   } else if (chunk.type === 'llm:done' && chunk.data) {
@@ -355,6 +361,36 @@ function assertOrdered(seq: string[], ...events: string[]): void {
   }
 }
 
+/**
+ * 验证推理事件拆分：
+ * 1. text:delta 不含 <think> 标签
+ * 2. text:done 内容不含 <think> 标签
+ * 3. result.output 不含 <think> 标签
+ * 4. 如果有 reasoning 事件，start/done 必须配对
+ */
+function assertReasoningSeparation(chunks: StreamChunk[], output: string, testName: string): void {
+  const textDeltas = ofType(chunks, 'text:delta')
+  for (const delta of textDeltas) {
+    expect(delta.content, `[${testName}] text:delta 不应包含 <think>`).not.toMatch(/<think>/i)
+    expect(delta.content, `[${testName}] text:delta 不应包含 </think>`).not.toMatch(/<\/think>/i)
+  }
+  const textDones = ofType(chunks, 'text:done')
+  for (const done of textDones) {
+    expect(done.content, `[${testName}] text:done 不应包含 <think>`).not.toMatch(/<think>/i)
+  }
+  expect(output, `[${testName}] output 不应包含 <think>`).not.toMatch(/<think>/i)
+
+  const reasoningStarts = ofType(chunks, 'reasoning:start').length
+  const reasoningDones = ofType(chunks, 'reasoning:done').length
+  if (reasoningStarts > 0 || reasoningDones > 0) {
+    expect(reasoningStarts, `[${testName}] reasoning 闭环`).toBe(reasoningDones)
+    expect(ofType(chunks, 'reasoning:delta').length).toBeGreaterThan(0)
+    testLog(
+      `${LOG_PREFIX}   [reasoning] ${reasoningStarts} 个推理块, ${ofType(chunks, 'reasoning:delta').length} 个 delta`
+    )
+  }
+}
+
 let counter = 0
 function uid(): string {
   return `integ-${Date.now()}-${++counter}`
@@ -491,6 +527,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       'run:done'
     )
     expect(ofType(chunks, 'tool:start')).toHaveLength(0)
+    assertReasoningSeparation(chunks, result.output, '简单问答')
   })
 
   // ===== 场景 2：单工具调用 =====
@@ -531,6 +568,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
     const seq = allTypes(chunks)
     expect(seq[0]).toBe('run:start')
     expect(seq[seq.length - 1]).toBe('run:done')
+    assertReasoningSeparation(chunks, result.output, '单工具调用')
   })
 
   // ===== 场景 3：多工具 =====
@@ -564,6 +602,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
     expect(result.output).toContain('olleh')
     expect(ofType(chunks, 'tool:done').length).toBeGreaterThanOrEqual(2)
     expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
+    assertReasoningSeparation(chunks, result.output, '多工具')
   })
 
   // ===== 场景 4：同步 run() =====
@@ -594,6 +633,8 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
     expect(result.toolCalls!.length).toBeGreaterThanOrEqual(1)
     expect(result.toolCalls![0].toolName).toBe('add_numbers')
     expect(result.duration).toBeGreaterThan(0)
+    // 同步模式 output 也应该干净
+    expect(result.output).not.toMatch(/<think>/i)
   })
 
   // ===== 场景 5：多轮对话 =====
@@ -652,6 +693,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
     expect(result.output.length).toBeGreaterThan(0)
     expect(ofType(chunks, 'tool:done').length).toBeGreaterThanOrEqual(1)
     expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
+    assertReasoningSeparation(chunks, result.output, '无参数工具')
   })
 
   // ===== 场景 7：事件闭环完整性 =====
@@ -695,6 +737,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
     expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
     expect(seq.indexOf('run:start')).toBeLessThan(seq.indexOf('turn:start'))
     expect(seq.indexOf('run:done')).toBeGreaterThan(seq.lastIndexOf('turn:done'))
+    assertReasoningSeparation(chunks, result.output, '事件闭环')
   })
 
   // ===== 场景 8：text:delta 拼接 =====
@@ -729,6 +772,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
     expect(deltas.length).toBeGreaterThan(0)
     expect(assembled.length).toBeGreaterThan(0)
     expect(assembled).toContain('北京')
+    assertReasoningSeparation(chunks, result.output, 'delta拼接')
   })
 
   // ===== 场景 9：Session 压缩（追加式） =====

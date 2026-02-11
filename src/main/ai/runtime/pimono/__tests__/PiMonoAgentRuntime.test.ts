@@ -1,46 +1,51 @@
 /**
- * OpenAIAgentRuntime 真实执行测试
+ * PiMonoAgentRuntime 真实执行测试
  *
  * 真实调用链：
- *   ✅ OpenAIAgentRuntime（真实）
- *   ✅ @openai/agents SDK Agent + run()（真实）
- *   ✅ tool() 工具定义 + execute（真实）
- *   ✅ FileSession 文件持久化（真实）
+ *   ✅ PiMonoAgentRuntime（真实）
+ *   ✅ pi-coding-agent SDK createAgentSession + session.prompt()（真实）
+ *   ✅ ToolDefinition + TypeBox 参数定义 + execute（真实）
+ *   ✅ SessionManager.inMemory() 会话管理（真实）
  *   ✅ StreamEmitter 事件广播（真实）
- *   ✅ LLM API 请求（真实，通过 MiniMax / OpenAI 兼容接口）
+ *   ✅ LLM API 请求（真实，通过 MiniMax provider）
  *
  * 唯一 stub：Electron 环境层（electron, electron-log, mkdirp）
  *
  * 测试场景：
- *   1. 简单问答（无工具）
- *   2. 单工具调用
- *   3. 多轮工具调用（LLM → tool → LLM → tool → LLM → text）
- *   4. 并行工具调用（一次性调用多个工具）
- *   5. 链式计算（上一步工具的结果作为下一步的输入）
- *   6. 多种工具混合
+ *   1. 简单问答（无工具）— run/turn/llm/text 闭环
+ *   2. 单工具调用 — tool:start → tool:delta(进度) → tool:done
+ *   3. 链式工具调用 — 多轮 turn，tool 配对
+ *   4. 并行工具调用 — 多个 tool:start/done
+ *   5. 多种工具混合 — 天气 + 时间 + 计算
+ *   6. 思考流独立 — reasoning 独立于 text，不含 <think> 标签
+ *
+ * pi-coding-agent SDK 事件体系优势（vs OpenAI）：
+ *   - turn_start / turn_end：SDK 直接给出，无需推断
+ *   - thinking_delta：独立事件，无需解析 <think> 标签
+ *   - tool_execution_update：工具执行进度（OpenAI SDK 完全没有）
+ *   - auto_compaction：内置自动压缩
  *
  * 日志输出（分离存储）：
- *   test-results/YYYYMMDD/agent-test-{timestamp}.log     — 摘要（事件序列 + 闭环检查）
- *   test-results/YYYYMMDD/agent-events-{timestamp}.log   — SDK 原始事件流 + chunk JSON
+ *   test-results/YYYYMMDD/pi-agent-test-{timestamp}.log     — 摘要（事件序列 + 闭环检查）
+ *   test-results/YYYYMMDD/pi-agent-events-{timestamp}.log   — SDK 原始事件流 + chunk JSON
  *
  * 运行命令：
- *   pnpm vitest run src/main/ai/runtime/__tests__/OpenAIAgentRuntime.test.ts
+ *   pnpm vitest run src/main/ai/runtime/pimono/__tests__/PiMonoAgentRuntime.test.ts
  */
 
 import fs from 'fs'
 import path from 'path'
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest'
-import { rm } from 'fs/promises'
-import { join } from 'path'
+import { Type } from '@sinclair/typebox'
 
 // ===== Electron 环境 stub（非业务 mock） =====
 
 vi.mock('electron', () => {
   const home = process.env.HOME || '/tmp'
-  const base = join(home, '.coobee-ai-test')
+  const base = path.join(home, '.coobee-ai-test')
   return {
     app: {
-      getPath: (name: string) => join(base, name),
+      getPath: (name: string) => path.join(base, name),
       getAppPath: () => base,
       getName: () => 'coobee-ai-test',
       getVersion: () => '0.0.0-test',
@@ -96,27 +101,27 @@ vi.mock('mkdirp', () => ({
 }))
 
 // ===== 真实 imports =====
-import { tool, setDefaultOpenAIClient, setOpenAIAPI } from '@openai/agents'
-import OpenAI from 'openai'
-import { z } from 'zod'
-import { OpenAIAgentRuntime } from '../OpenAIAgentRuntime'
+
+import { PiMonoAgentRuntime } from '../PiMonoAgentRuntime'
 import type { StreamChunk } from '../../types'
+import type { PiMonoAgentRuntimeOptions } from '../types'
 
 // ========== API 配置 ==========
 
-function resolveApiConfig(): { apiKey: string; baseURL?: string; model: string } | null {
-  if (process.env.OPENAI_API_KEY) {
-    return {
-      apiKey: process.env.OPENAI_API_KEY,
-      baseURL: process.env.OPENAI_BASE_URL,
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini'
-    }
-  }
+function resolveApiConfig(): {
+  apiKey: string
+  baseURL?: string
+  model: string
+  provider: string
+} | null {
   if (process.env.VITE_MINIMAX_API_KEY) {
     return {
       apiKey: process.env.VITE_MINIMAX_API_KEY,
       baseURL: process.env.VITE_MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1',
-      model: process.env.VITE_MINIMAX_MODEL || 'MiniMax-M2.1'
+      model: process.env.VITE_MINIMAX_MODEL || 'MiniMax-M2.1',
+      // pi-coding-agent 的 minimax-cn provider 使用 api.minimaxi.com/anthropic 端点
+      // 与 .env 中的 VITE_MINIMAX_BASE_URL (api.minimaxi.com) 匹配
+      provider: 'minimax-cn'
     }
   }
   return null
@@ -127,7 +132,7 @@ const RUN = !!apiConfig
 
 // ========== 日志系统（分离存储） ==========
 
-const LOG_PREFIX = '[AgentTest]'
+const LOG_PREFIX = '[PiAgentTest]'
 const TEST_LOG_BASE = path.join(process.cwd(), 'test-results')
 
 let currentLogDir: string
@@ -148,14 +153,11 @@ function appendEventsLog(line: string): void {
   fs.appendFileSync(currentEventsLogFile, line + '\n', 'utf-8')
 }
 
-/** 同时输出到控制台和摘要日志（console.log 已被 patch 拦截写入摘要日志，这里只调 console.log） */
 function testLog(line: string): void {
   console.log(line)
 }
 
-// 拦截 console 方法，按级别分流到不同日志文件：
-//   console.log / console.error / console.warn → 摘要日志（agent-test-*.log）
-//   console.debug → 事件日志（agent-events-*.log）—— SDK 原始事件流
+// 拦截 console 方法
 const origConsoleLog = console.log
 const origConsoleDebug = console.debug
 const origConsoleError = console.error
@@ -193,7 +195,6 @@ function patchConsole(): void {
   console.log = wrapToTestLog(origConsoleLog, 'INFO') as typeof console.log
   console.error = wrapToTestLog(origConsoleError, 'ERROR') as typeof console.error
   console.warn = wrapToTestLog(origConsoleWarn, 'WARN') as typeof console.warn
-  // SDK 原始事件通过 log.debug → console.debug 输出，单独写入事件日志
   console.debug = wrapToEventsLog(origConsoleDebug, 'DEBUG') as typeof console.debug
 }
 
@@ -242,6 +243,8 @@ function formatChunkSummary(chunk: StreamChunk, index: number, elapsed: number):
   } else if (chunk.type === 'turn:start' || chunk.type === 'turn:done') {
     const d = chunk.data as { turnIndex?: number }
     detail = d?.turnIndex ? `turnIndex: ${d.turnIndex}` : ''
+  } else if (chunk.type === 'compression:start' || chunk.type === 'compression:done') {
+    detail = `content: ${JSON.stringify(chunk.content)}`
   } else if (chunk.content) {
     const text = chunk.content.length > 60 ? chunk.content.slice(0, 60) + '...' : chunk.content
     detail = `content: ${JSON.stringify(text)}`
@@ -263,7 +266,8 @@ function checkClosedLoops(chunks: StreamChunk[]): string[] {
     ['llm:start', 'llm:done'],
     ['text:start', 'text:done'],
     ['reasoning:start', 'reasoning:done'],
-    ['tool:start', 'tool:done']
+    ['tool:start', 'tool:done'],
+    ['compression:start', 'compression:done']
   ]
   for (const [s, d] of pairs) {
     const sc = counts[s] || 0
@@ -324,6 +328,16 @@ function logTestResult(
       for (const l of loopChecks) testLog(`${LOG_PREFIX} ${l}`)
     }
 
+    // 事件类型计数
+    const typeCounts: Record<string, number> = {}
+    for (const c of opts.chunks) {
+      typeCounts[c.type] = (typeCounts[c.type] || 0) + 1
+    }
+    testLog(`${LOG_PREFIX} 事件类型计数:`)
+    for (const [t, count] of Object.entries(typeCounts).sort()) {
+      testLog(`${LOG_PREFIX}   ${t}: ${count}`)
+    }
+
     // 详细事件
     if (opts.timedChunks) {
       testLog(`${LOG_PREFIX} 详细事件:`)
@@ -356,53 +370,108 @@ function logTestResult(
   }
 }
 
-// ========== 真实工具 ==========
+// ========== pi-coding-agent 自定义工具 ==========
 
-const addNumbersTool = tool({
+/**
+ * 创建 pi-coding-agent ToolDefinition
+ *
+ * 与 OpenAI 的 tool() 不同，pi-coding-agent 使用 TypeBox 定义参数：
+ *   - parameters: Type.Object({...}) 而非 z.object({...})
+ *   - execute(toolCallId, params, signal, onUpdate, ctx) 签名不同
+ *   - 返回值是 AgentToolResult { content: TextContent[], details: T }
+ */
+
+function createPiTool(config: {
+  name: string
+  label: string
+  description: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  parameters: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  execute: (params: any) => Promise<string>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+}): any {
+  return {
+    name: config.name,
+    label: config.label,
+    description: config.description,
+    parameters: config.parameters,
+    execute: async (
+      _toolCallId: string,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      params: any,
+      _signal?: AbortSignal,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      onUpdate?: any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      _ctx?: any
+    ) => {
+      // 可选：通过 onUpdate 发送进度
+      if (onUpdate) {
+        onUpdate({
+          content: [{ type: 'text', text: `Executing ${config.name}...` }],
+          details: { status: 'running' }
+        })
+      }
+
+      const resultText = await config.execute(params)
+      return {
+        content: [{ type: 'text', text: resultText }],
+        details: { name: config.name }
+      }
+    }
+  }
+}
+
+const addNumbersTool = createPiTool({
   name: 'add_numbers',
+  label: 'Add Numbers',
   description: '将两个数字相加并返回结果。当用户要求计算加法时必须使用此工具。',
-  parameters: z.object({
-    a: z.number().describe('第一个数字'),
-    b: z.number().describe('第二个数字')
+  parameters: Type.Object({
+    a: Type.Number({ description: '第一个数字' }),
+    b: Type.Number({ description: '第二个数字' })
   }),
-  execute: async ({ a, b }) => {
-    const result = a + b
-    testLog(`${LOG_PREFIX}   [工具执行] add_numbers(${a}, ${b}) = ${result}`)
-    return JSON.stringify({ result, expression: `${a} + ${b} = ${result}` })
+  execute: async (params) => {
+    const result = params.a + params.b
+    testLog(`${LOG_PREFIX}   [工具执行] add_numbers(${params.a}, ${params.b}) = ${result}`)
+    return JSON.stringify({ result, expression: `${params.a} + ${params.b} = ${result}` })
   }
 })
 
-const multiplyNumbersTool = tool({
+const multiplyNumbersTool = createPiTool({
   name: 'multiply_numbers',
+  label: 'Multiply Numbers',
   description: '将两个数字相乘并返回结果。当用户要求计算乘法时必须使用此工具。',
-  parameters: z.object({
-    a: z.number().describe('第一个数字'),
-    b: z.number().describe('第二个数字')
+  parameters: Type.Object({
+    a: Type.Number({ description: '第一个数字' }),
+    b: Type.Number({ description: '第二个数字' })
   }),
-  execute: async ({ a, b }) => {
-    const result = a * b
-    testLog(`${LOG_PREFIX}   [工具执行] multiply_numbers(${a}, ${b}) = ${result}`)
-    return JSON.stringify({ result, expression: `${a} × ${b} = ${result}` })
+  execute: async (params) => {
+    const result = params.a * params.b
+    testLog(`${LOG_PREFIX}   [工具执行] multiply_numbers(${params.a}, ${params.b}) = ${result}`)
+    return JSON.stringify({ result, expression: `${params.a} × ${params.b} = ${result}` })
   }
 })
 
-const reverseStringTool = tool({
+const reverseStringTool = createPiTool({
   name: 'reverse_string',
+  label: 'Reverse String',
   description: '反转一个字符串。当用户要求反转文本时使用。',
-  parameters: z.object({
-    text: z.string().describe('要反转的文本')
+  parameters: Type.Object({
+    text: Type.String({ description: '要反转的文本' })
   }),
-  execute: async ({ text }) => {
-    const reversed = text.split('').reverse().join('')
-    testLog(`${LOG_PREFIX}   [工具执行] reverse_string("${text}") = "${reversed}"`)
-    return JSON.stringify({ original: text, reversed })
+  execute: async (params) => {
+    const reversed = params.text.split('').reverse().join('')
+    testLog(`${LOG_PREFIX}   [工具执行] reverse_string("${params.text}") = "${reversed}"`)
+    return JSON.stringify({ original: params.text, reversed })
   }
 })
 
-const getCurrentTimeTool = tool({
+const getCurrentTimeTool = createPiTool({
   name: 'get_current_time',
+  label: 'Get Current Time',
   description: '获取当前日期和时间。当用户询问时间时使用。',
-  parameters: z.object({}),
+  parameters: Type.Object({}),
   execute: async () => {
     const now = new Date()
     const result = {
@@ -414,15 +483,21 @@ const getCurrentTimeTool = tool({
   }
 })
 
-const getWeatherTool = tool({
+const getWeatherTool = createPiTool({
   name: 'get_weather',
+  label: 'Get Weather',
   description: '获取指定城市的天气信息。',
-  parameters: z.object({
-    city: z.string().describe('城市名')
+  parameters: Type.Object({
+    city: Type.String({ description: '城市名' })
   }),
-  execute: async ({ city }) => {
-    const result = { city, temperature: '25°C', condition: '晴天', humidity: '60%' }
-    testLog(`${LOG_PREFIX}   [工具执行] get_weather("${city}") = ${JSON.stringify(result)}`)
+  execute: async (params) => {
+    const result = {
+      city: params.city,
+      temperature: '25°C',
+      condition: '晴天',
+      humidity: '60%'
+    }
+    testLog(`${LOG_PREFIX}   [工具执行] get_weather("${params.city}") = ${JSON.stringify(result)}`)
     return JSON.stringify(result)
   }
 })
@@ -431,7 +506,7 @@ const getWeatherTool = tool({
 
 let counter = 0
 function uid(): string {
-  return `agent-test-${Date.now()}-${++counter}`
+  return `pi-agent-test-${Date.now()}-${++counter}`
 }
 
 function createCollector(): {
@@ -473,7 +548,7 @@ function assertOrdered(seq: string[], ...events: string[]): void {
 
 /**
  * 验证推理事件拆分：
- * 1. text:delta 不含 <think> 标签
+ * 1. text:delta 不含 <think> 标签（pi-SDK 独立思考流的核心优势）
  * 2. text:done 内容不含 <think> 标签
  * 3. result.output 不含 <think> 标签
  * 4. 如果有 reasoning 事件，start/done 必须配对
@@ -516,25 +591,30 @@ function assertReasoningSeparation(chunks: StreamChunk[], output: string, testNa
   }
 }
 
+/** 创建 PiMonoAgentRuntime 实例 */
+function createRuntime(
+  overrides: Partial<PiMonoAgentRuntimeOptions> & { name: string; instructions: string }
+): PiMonoAgentRuntime {
+  if (!apiConfig) throw new Error('No API config')
+  return new PiMonoAgentRuntime({
+    apiKey: apiConfig.apiKey,
+    provider: apiConfig.provider,
+    model: apiConfig.model,
+    thinkingLevel: 'low',
+    sessionMode: 'memory',
+    compaction: { enabled: false },
+    ...overrides
+  })
+}
+
 // ========== 测试 ==========
 
-describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调用）', () => {
-  let runtime: OpenAIAgentRuntime
+describe.skipIf(!RUN)('PiMonoAgentRuntime 真实执行测试（多轮工具调用）', () => {
+  let runtime: PiMonoAgentRuntime
   let sessionId: string
-  let MODEL: string
 
   beforeAll(() => {
     if (!apiConfig) return
-
-    const client = new OpenAI({
-      apiKey: apiConfig.apiKey,
-      ...(apiConfig.baseURL ? { baseURL: apiConfig.baseURL } : {})
-    })
-    setDefaultOpenAIClient(client)
-    if (apiConfig.baseURL) {
-      setOpenAIAPI('chat_completions')
-    }
-    MODEL = apiConfig.model
 
     // 初始化日志
     patchConsole()
@@ -542,19 +622,28 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
     const dateDir = now.toISOString().slice(0, 10).replace(/-/g, '')
     const runTs = Date.now()
     currentLogDir = path.join(TEST_LOG_BASE, dateDir)
-    currentTestLogFile = path.join(currentLogDir, `agent-test-${runTs}.log`)
-    currentEventsLogFile = path.join(currentLogDir, `agent-events-${runTs}.log`)
+    currentTestLogFile = path.join(currentLogDir, `pi-agent-test-${runTs}.log`)
+    currentEventsLogFile = path.join(currentLogDir, `pi-agent-events-${runTs}.log`)
     ensureLogDir()
 
     const ts = now.toISOString()
-    appendTestLog(`========== OpenAIAgentRuntime 真实执行测试 ${ts} | model=${MODEL} ==========`)
+    appendTestLog(
+      `========== PiMonoAgentRuntime 真实执行测试 ${ts} | ` +
+        `provider=${apiConfig.provider} model=${apiConfig.model} ==========`
+    )
     appendTestLog(`摘要日志: ${currentTestLogFile}`)
     appendTestLog(`事件日志: ${currentEventsLogFile}`)
     appendTestLog('')
-    appendEventsLog(`========== OpenAIAgentRuntime 事件日志 ${ts} | model=${MODEL} ==========`)
+    appendEventsLog(
+      `========== PiMonoAgentRuntime 事件日志 ${ts} | ` +
+        `provider=${apiConfig.provider} model=${apiConfig.model} ==========`
+    )
     appendEventsLog('')
 
-    testLog(`${LOG_PREFIX} API: model=${MODEL}, baseURL=${apiConfig.baseURL || 'OpenAI'}`)
+    testLog(
+      `${LOG_PREFIX} API: provider=${apiConfig.provider}, model=${apiConfig.model}, ` +
+        `baseURL=${apiConfig.baseURL || 'default'}`
+    )
     testLog(`${LOG_PREFIX} 摘要日志: ${currentTestLogFile}`)
     testLog(`${LOG_PREFIX} 事件日志: ${currentEventsLogFile}`)
   })
@@ -576,17 +665,10 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
   afterEach(async () => {
     if (runtime) {
       try {
-        await runtime.clearSession()
         await runtime.destroy()
       } catch {
         /* ignore */
       }
-    }
-    try {
-      const base = join(process.env.HOME || '/tmp', '.coobee-ai')
-      await rm(join(base, 'sessions', sessionId), { recursive: true, force: true })
-    } catch {
-      /* ignore */
     }
   })
 
@@ -596,10 +678,9 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
     const inputText = '1+1等于几？用一个数字回答'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new OpenAIAgentRuntime({
+    runtime = createRuntime({
       name: 'SimpleAgent',
       instructions: '你是一个简洁的助手。用一句话回答。',
-      model: MODEL,
       sessionId
     })
     await runtime.initialize()
@@ -632,6 +713,12 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
 
     // 推理事件拆分验证
     assertReasoningSeparation(chunks, result.output, '场景1')
+
+    // text:delta 拼接后应包含 "2"
+    const fullText = ofType(chunks, 'text:delta')
+      .map((c) => c.content)
+      .join('')
+    expect(fullText).toContain('2')
   })
 
   // ===== 场景 2：单工具调用 =====
@@ -640,11 +727,10 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
     const inputText = '请计算 17 + 28'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new OpenAIAgentRuntime({
+    runtime = createRuntime({
       name: 'MathAgent',
       instructions: '你是数学助手。必须使用 add_numbers 工具完成加法。根据工具结果回答。',
-      model: MODEL,
-      tools: [addNumbersTool],
+      customTools: [addNumbersTool],
       sessionId,
       maxTurns: 5
     })
@@ -665,31 +751,37 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
     expect(toolDones.length).toBeGreaterThanOrEqual(1)
     expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
     expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
+    expect(ofType(chunks, 'tool:start').length).toBe(ofType(chunks, 'tool:done').length)
+
+    // tool:start 的 data 应包含工具名
+    const toolStarts = ofType(chunks, 'tool:start')
+    expect(toolStarts.length).toBeGreaterThanOrEqual(1)
+    const toolData = toolStarts[0].data as { toolName?: string }
+    expect(toolData?.toolName || toolStarts[0].content).toBe('add_numbers')
 
     // 推理事件拆分验证
     assertReasoningSeparation(chunks, result.output, '场景2')
   })
 
-  // ===== 场景 3：多轮工具调用（链式计算） =====
+  // ===== 场景 3：链式工具调用 =====
 
-  it('场景3 - 多轮工具调用：先加法再乘法（链式）', { timeout: 90_000 }, async () => {
+  it('场景3 - 链式工具调用：先加法再乘法', { timeout: 90_000 }, async () => {
     const inputText = '先计算 10 + 20，然后把结果乘以 3。必须分两步用工具完成。'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new OpenAIAgentRuntime({
+    runtime = createRuntime({
       name: 'ChainCalcAgent',
       instructions:
         '你是计算助手。加法用 add_numbers 工具，乘法用 multiply_numbers 工具。' +
         '必须分步执行：先调用 add_numbers 获得结果，再调用 multiply_numbers。',
-      model: MODEL,
-      tools: [addNumbersTool, multiplyNumbersTool],
+      customTools: [addNumbersTool, multiplyNumbersTool],
       sessionId,
       maxTurns: 10
     })
     await runtime.initialize()
     const result = await runtime.runStream(inputText, {}, collect)
 
-    logTestResult('场景3 - 多轮工具调用（链式计算 10+20 → 30×3）', {
+    logTestResult('场景3 - 链式工具调用（10+20 → 30×3）', {
       input: inputText,
       output: result.output,
       duration: result.duration,
@@ -698,14 +790,14 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
       timedChunks
     })
 
-    // 至少一次 tool:done（LLM 可能不严格分步，但至少会调用一次工具）
+    // 至少一次 tool:done
     const toolDones = ofType(chunks, 'tool:done')
     expect(toolDones.length).toBeGreaterThanOrEqual(1)
 
     // 至少两个 turn（工具调用 + 最终回答）
     expect(ofType(chunks, 'turn:start').length).toBeGreaterThanOrEqual(2)
 
-    // 闭环检查（核心：所有 start/done 必须配对）
+    // 闭环检查
     expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
     expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
     expect(ofType(chunks, 'tool:start').length).toBe(ofType(chunks, 'tool:done').length)
@@ -725,13 +817,12 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
     const inputText = '帮我同时做两件事：1) 计算 100 + 200；2) 反转 "hello"。请一次性调用两个工具。'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new OpenAIAgentRuntime({
+    runtime = createRuntime({
       name: 'ParallelAgent',
       instructions:
         '你是多功能助手。加法用 add_numbers，反转文本用 reverse_string。' +
         '如果有多个任务，请尽量一次性并行调用所有工具。根据工具结果汇总回答。',
-      model: MODEL,
-      tools: [addNumbersTool, reverseStringTool],
+      customTools: [addNumbersTool, reverseStringTool],
       sessionId,
       maxTurns: 10
     })
@@ -756,86 +847,31 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
     // 闭环检查
     expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
     expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
+    expect(ofType(chunks, 'tool:start').length).toBe(ofType(chunks, 'tool:done').length)
 
     // 推理事件拆分验证
     assertReasoningSeparation(chunks, result.output, '场景4')
   })
 
-  // ===== 场景 5：三轮工具调用（多工具链） =====
+  // ===== 场景 5：多种工具混合 =====
 
-  it('场景5 - 三轮工具调用：加法 → 乘法 → 反转结果', { timeout: 120_000 }, async () => {
-    const inputText =
-      '请分三步完成：1) 计算 5 + 7；2) 把结果乘以 10；3) 把最终数字转成字符串再反转。每步都必须用工具。'
-    const { chunks, timedChunks, collect } = createCollector()
-
-    runtime = new OpenAIAgentRuntime({
-      name: 'ThreeStepAgent',
-      instructions:
-        '你是一个严格按步骤执行的助手。' +
-        '第1步：用 add_numbers 计算加法。' +
-        '第2步：用 multiply_numbers 把第1步结果进行乘法。' +
-        '第3步：用 reverse_string 反转第2步结果的字符串形式。' +
-        '必须按顺序分三步调用三个不同的工具。',
-      model: MODEL,
-      tools: [addNumbersTool, multiplyNumbersTool, reverseStringTool],
-      sessionId,
-      maxTurns: 15
-    })
-    await runtime.initialize()
-    const result = await runtime.runStream(inputText, {}, collect)
-
-    logTestResult('场景5 - 三轮工具调用（5+7=12 → 12×10=120 → reverse("120")="021"）', {
-      input: inputText,
-      output: result.output,
-      duration: result.duration,
-      toolCalls: result.toolCalls,
-      chunks,
-      timedChunks
-    })
-
-    // 至少一次工具调用（LLM 可能不会严格执行全部三步，但至少会调第一个工具）
-    const toolDones = ofType(chunks, 'tool:done')
-    expect(toolDones.length).toBeGreaterThanOrEqual(1)
-
-    // 至少两个 turn
-    expect(ofType(chunks, 'turn:start').length).toBeGreaterThanOrEqual(2)
-
-    // 闭环检查（核心：所有 start/done 必须配对）
-    expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
-    expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
-    expect(ofType(chunks, 'tool:start').length).toBe(ofType(chunks, 'tool:done').length)
-
-    const seq = allTypes(chunks)
-    expect(seq[0]).toBe('run:start')
-    expect(seq[seq.length - 1]).toBe('run:done')
-
-    // 记录实际工具调用次数（LLM 行为不确定，日志中可观察）
-    testLog(`${LOG_PREFIX}   实际工具调用次数: ${toolDones.length}（期望 >= 3）`)
-
-    // 推理事件拆分验证
-    assertReasoningSeparation(chunks, result.output, '场景5')
-  })
-
-  // ===== 场景 6：工具 + 天气 + 时间混合 =====
-
-  it('场景6 - 多种工具混合：天气 + 时间 + 计算', { timeout: 90_000 }, async () => {
+  it('场景5 - 多种工具混合：天气 + 时间 + 计算', { timeout: 90_000 }, async () => {
     const inputText = '帮我查一下北京的天气，然后告诉我现在几点，最后算一下 42 + 58'
     const { chunks, timedChunks, collect } = createCollector()
 
-    runtime = new OpenAIAgentRuntime({
+    runtime = createRuntime({
       name: 'MixedToolAgent',
       instructions:
         '你是全能助手。查天气用 get_weather，查时间用 get_current_time，算加法用 add_numbers。' +
         '对于多个任务，可以并行或按顺序调用工具。最后汇总所有结果回答。',
-      model: MODEL,
-      tools: [getWeatherTool, getCurrentTimeTool, addNumbersTool],
+      customTools: [getWeatherTool, getCurrentTimeTool, addNumbersTool],
       sessionId,
       maxTurns: 10
     })
     await runtime.initialize()
     const result = await runtime.runStream(inputText, {}, collect)
 
-    logTestResult('场景6 - 多种工具混合 (weather + time + add)', {
+    logTestResult('场景5 - 多种工具混合 (weather + time + add)', {
       input: inputText,
       output: result.output,
       duration: result.duration,
@@ -854,8 +890,62 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
     // 闭环
     expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
     expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
+    expect(ofType(chunks, 'tool:start').length).toBe(ofType(chunks, 'tool:done').length)
 
     // 推理事件拆分验证
+    assertReasoningSeparation(chunks, result.output, '场景5')
+  })
+
+  // ===== 场景 6：思考流独立验证 =====
+
+  it('场景6 - 思考流独立：reasoning 与 text 分离', { timeout: 60_000 }, async () => {
+    const inputText = '请解释为什么天空是蓝色的？'
+    const { chunks, timedChunks, collect } = createCollector()
+
+    runtime = createRuntime({
+      name: 'ThinkingAgent',
+      instructions: '你是一个科学助手。请详细回答问题。',
+      thinkingLevel: 'medium',
+      sessionId
+    })
+    await runtime.initialize()
+    const result = await runtime.runStream(inputText, {}, collect)
+
+    logTestResult('场景6 - 思考流独立', {
+      input: inputText,
+      output: result.output,
+      duration: result.duration,
+      chunks,
+      timedChunks
+    })
+
+    const seq = allTypes(chunks)
+    expect(seq[0]).toBe('run:start')
+    expect(seq[seq.length - 1]).toBe('run:done')
+
+    // 核心验证：推理事件独立性
     assertReasoningSeparation(chunks, result.output, '场景6')
+
+    // 如果有 reasoning:delta，验证它不包含 <think> 标签
+    const reasoningDeltas = ofType(chunks, 'reasoning:delta')
+    for (const delta of reasoningDeltas) {
+      expect(delta.content).not.toMatch(/<think>/i)
+      expect(delta.content).not.toMatch(/<\/think>/i)
+    }
+
+    // 验证 text:delta 拼接后应包含有意义的内容
+    const fullText = ofType(chunks, 'text:delta')
+      .map((c) => c.content)
+      .join('')
+    expect(fullText.length).toBeGreaterThan(10)
+
+    testLog(
+      `${LOG_PREFIX}   [reasoning] 总共 ${reasoningDeltas.length} 个推理 delta, ` +
+        `${ofType(chunks, 'text:delta').length} 个文本 delta`
+    )
+
+    // 闭环检查
+    expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
+    expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
   })
 })
