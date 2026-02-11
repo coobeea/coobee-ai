@@ -3,6 +3,10 @@
  *
  * 这些类型仅在 Pi-Mono 实现中使用，不暴露给外层接口。
  * 会话管理、压缩等由 SDK 内置，无需自定义类型。
+ *
+ * 设计原则：
+ *   统一使用 OpenAI Chat Completions 格式的后端 API（openai-completions），
+ *   通过 baseURL 指向不同的 OpenAI 兼容服务（MiniMax、DeepSeek 等）。
  */
 
 import type { AgentRuntimeOptions } from '../types'
@@ -22,33 +26,30 @@ import type { AgentRuntimeOptions } from '../types'
 export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
 /**
- * Provider 类型
- *
- * pi-coding-agent 内置支持多种 Provider。
- * 常用的有 anthropic（Claude）、minimax（MiniMax）、openai 等。
- */
-export type PiProvider =
-  | 'anthropic'
-  | 'openai'
-  | 'minimax'
-  | 'minimax-cn'
-  | 'google'
-  | 'mistral'
-  | 'xai'
-  | 'groq'
-  | string
-
-/**
  * PiMonoAgentRuntime 创建选项
  *
  * 扩展通用 AgentRuntimeOptions，添加 pi-coding-agent SDK 特有配置。
+ *
+ * API 格式统一：
+ *   所有后端 API 均使用 OpenAI Chat Completions 格式（openai-completions）。
+ *   通过 apiKey + baseURL 组合指向不同的 OpenAI 兼容服务端点。
  */
 export interface PiMonoAgentRuntimeOptions extends AgentRuntimeOptions {
-  /** API Key（运行时注入） */
+  /** API Key（运行时注入，OpenAI 格式的 Bearer token） */
   apiKey: string
 
-  /** Provider 类型（默认 'minimax'） */
-  provider?: PiProvider
+  /**
+   * OpenAI 兼容 API 的 Base URL
+   *
+   * 所有后端统一使用 OpenAI Chat Completions 格式。
+   * 通过 baseURL 指向不同的服务端点：
+   *   - MiniMax: https://api.minimaxi.com/v1
+   *   - DeepSeek: https://api.deepseek.com/v1
+   *   - OpenAI: https://api.openai.com/v1
+   *
+   * 默认：https://api.minimaxi.com/v1
+   */
+  baseURL?: string
 
   /** 思考级别（默认 'medium'） */
   thinkingLevel?: ThinkingLevel

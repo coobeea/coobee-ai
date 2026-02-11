@@ -11,6 +11,11 @@
  * - 内置压缩/重试：SDK 自动管理
  * - 双通道事件分发：onChunk 回调 + StreamEmitter EventBus 广播
  *
+ * API 格式：
+ * - 统一使用 OpenAI Chat Completions 格式（openai-completions）
+ * - 通过 baseURL 指向不同的 OpenAI 兼容服务端点
+ * - 不依赖 Anthropic SDK，不使用 ANTHROPIC_AUTH_TOKEN
+ *
  * 与 OpenAI 实现的关键差异：
  * - Turn 边界由 SDK 直接给出（无需从 response_started 推断）
  * - 思考内容通过 thinking_delta 独立传递（无需解析 <think> 标签）
@@ -27,7 +32,7 @@ import {
   SettingsManager
 } from '@mariozechner/pi-coding-agent'
 import type { AgentSession, AgentSessionEvent, ToolDefinition } from '@mariozechner/pi-coding-agent'
-import { getModel } from '@mariozechner/pi-ai'
+import type { Model } from '@mariozechner/pi-ai'
 import { createStreamEmitter, type IStreamEmitter } from '../../streaming/StreamEmitter'
 import type { AgentRuntime } from '../AgentRuntime'
 import type { ExecutionConfig, ExecutionResult, StreamChunk, SessionInfo } from '../types'
@@ -39,8 +44,16 @@ import type { PiMonoAgentRuntimeOptions } from './types'
 /** 默认模型 */
 const DEFAULT_MODEL = 'MiniMax-M2.1'
 
-/** 默认 Provider */
-const DEFAULT_PROVIDER = 'minimax-cn'
+/** 默认 Base URL（MiniMax OpenAI 兼容端点） */
+const DEFAULT_BASE_URL = 'https://api.minimaxi.com/v1'
+
+/**
+ * 自定义 Provider 名称
+ *
+ * 因为我们构造自定义 Model 对象，使用一个固定的 provider 名称
+ * 来注册 API key 到 AuthStorage 中。
+ */
+const CUSTOM_PROVIDER = 'openai-compat'
 
 // ========== Logger ==========
 
@@ -70,15 +83,51 @@ const createRuntimeLogger = (): RuntimeLogger => {
 const log = createRuntimeLogger()
 
 /**
+ * 构造 OpenAI Chat Completions 兼容的 Model 对象
+ *
+ * 不使用 SDK 内置的 getModel() 来获取 anthropic-messages 类型的模型，
+ * 而是手动构造一个 openai-completions 类型的 Model 对象，
+ * 指向 OpenAI 兼容的后端 API（MiniMax、DeepSeek 等）。
+ */
+function createOpenAICompatModel(modelName: string, baseURL: string): Model<'openai-completions'> {
+  return {
+    id: modelName,
+    name: modelName,
+    api: 'openai-completions',
+    provider: CUSTOM_PROVIDER,
+    baseUrl: baseURL,
+    reasoning: true,
+    input: ['text'],
+    cost: {
+      input: 0.3,
+      output: 1.2,
+      cacheRead: 0,
+      cacheWrite: 0
+    },
+    contextWindow: 204800,
+    maxTokens: 131072,
+    // MiniMax OpenAI 兼容端点的特性
+    compat: {
+      supportsStore: false,
+      supportsDeveloperRole: false,
+      supportsReasoningEffort: false,
+      supportsUsageInStreaming: true,
+      maxTokensField: 'max_tokens'
+    }
+  }
+}
+
+/**
  * Pi-Mono Agent 运行时
  *
  * 基于 pi-coding-agent SDK 实现 AgentRuntime 接口。
  *
  * 职责：
- * 1. 通过 createAgentSession() 创建 SDK AgentSession
- * 2. 通过 session.subscribe() 订阅事件，映射为 StreamChunk
- * 3. 通过 StreamEmitter 广播事件到 EventBus
- * 4. 管理会话生命周期
+ * 1. 构造 OpenAI 兼容的 Model 对象（openai-completions API）
+ * 2. 通过 createAgentSession() 创建 SDK AgentSession
+ * 3. 通过 session.subscribe() 订阅事件，映射为 StreamChunk
+ * 4. 通过 StreamEmitter 广播事件到 EventBus
+ * 5. 管理会话生命周期
  */
 export class PiMonoAgentRuntime implements AgentRuntime {
   readonly type = 'agent' as const
@@ -98,9 +147,6 @@ export class PiMonoAgentRuntime implements AgentRuntime {
   // 中断状态（pi-SDK 通过 Extension 处理，此处始终为 false）
   private _interrupted = false
 
-  // 保存的 ANTHROPIC_AUTH_TOKEN（destroy 时恢复）
-  private savedAuthToken?: string
-
   constructor(options: PiMonoAgentRuntimeOptions) {
     this.options = options
     this.id = `pi-agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -119,34 +165,18 @@ export class PiMonoAgentRuntime implements AgentRuntime {
   // ========== 生命周期 ==========
 
   async initialize(): Promise<void> {
-    const provider = this.options.provider || DEFAULT_PROVIDER
     const modelName = this.options.model || DEFAULT_MODEL
+    const baseURL = this.options.baseURL || DEFAULT_BASE_URL
     const thinkingLevel = this.options.thinkingLevel || 'medium'
 
-    // 1. 认证配置
-    // 清除可能冲突的环境变量（Anthropic SDK 0.73+ 会同时读取 ANTHROPIC_AUTH_TOKEN 和 apiKey，
-    // 导致 Authorization: Bearer 和 x-api-key 发送不同的 key）
-    this.savedAuthToken = process.env.ANTHROPIC_AUTH_TOKEN
-    delete process.env.ANTHROPIC_AUTH_TOKEN
+    // 1. 构造 OpenAI 兼容的 Model 对象
+    const model = createOpenAICompatModel(modelName, baseURL)
 
-    // 同时设置环境变量和 AuthStorage runtime override，确保 SDK 能找到 key
-    const envKeyMap: Record<string, string> = {
-      minimax: 'MINIMAX_API_KEY',
-      'minimax-cn': 'MINIMAX_CN_API_KEY',
-      anthropic: 'ANTHROPIC_API_KEY',
-      openai: 'OPENAI_API_KEY'
-    }
-    const envKey = envKeyMap[provider]
-    if (envKey && this.options.apiKey) {
-      process.env[envKey] = this.options.apiKey
-    }
+    // 2. 认证配置
+    //    通过 AuthStorage 注入 API key，使用自定义 provider 名称
     const authStorage = new AuthStorage()
-    authStorage.setRuntimeApiKey(provider, this.options.apiKey)
+    authStorage.setRuntimeApiKey(CUSTOM_PROVIDER, this.options.apiKey)
     const modelRegistry = new ModelRegistry(authStorage)
-
-    // 2. 获取模型
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const model = getModel(provider as any, modelName as any)
 
     // 3. Session 管理
     const sessionManager =
@@ -195,9 +225,6 @@ export class PiMonoAgentRuntime implements AgentRuntime {
 
     this.piSession = session
 
-    // NOTE: ANTHROPIC_AUTH_TOKEN 保持清除状态，因为 Anthropic SDK 的 client 是在 prompt() 时
-    // 延迟创建的。如果恢复该变量，client 创建时仍会读取到冲突的 authToken。
-
     // 7. 创建 StreamEmitter
     this.streamEmitter = createStreamEmitter(this.sessionId, {
       type: 'agent',
@@ -207,7 +234,8 @@ export class PiMonoAgentRuntime implements AgentRuntime {
 
     log.info(
       `Initialized: ${this.name} ` +
-        `(provider: ${provider}, model: ${modelName}, ` +
+        `(api: openai-completions, model: ${modelName}, ` +
+        `baseURL: ${baseURL}, ` +
         `thinking: ${thinkingLevel}, ` +
         `customTools: ${this.options.customTools?.length || 0}, ` +
         `session: ${this.sessionId})`
@@ -217,11 +245,6 @@ export class PiMonoAgentRuntime implements AgentRuntime {
   async destroy(): Promise<void> {
     if (this.piSession) {
       this.piSession.dispose()
-    }
-    // 恢复被清除的 ANTHROPIC_AUTH_TOKEN
-    if (this.savedAuthToken) {
-      process.env.ANTHROPIC_AUTH_TOKEN = this.savedAuthToken
-      this.savedAuthToken = undefined
     }
     this._interrupted = false
     log.info(`Destroyed: ${this.name}`)
@@ -265,6 +288,9 @@ export class PiMonoAgentRuntime implements AgentRuntime {
 
       await this.piSession.prompt(input)
       unsubscribe()
+
+      // 去除 <think> 标签（OpenAI 兼容模式下思考内容混在文本中）
+      fullOutput = this.stripThinkTags(fullOutput)
 
       return {
         output: fullOutput,
@@ -412,9 +438,18 @@ export class PiMonoAgentRuntime implements AgentRuntime {
    *   1. onChunk() — 细粒度 StreamChunk 直接回调给调用方
    *   2. streamEmitter.emitXxx() — 粗粒度广播到 EventBus
    *
+   * <think> 标签解析：
+   *   OpenAI Chat Completions 格式不原生支持思考块，部分 Provider（如 MiniMax）
+   *   会将思考内容以 <think>...</think> 标签包裹在文本中返回。
+   *   本方法自动检测并分离 <think> 标签，将思考内容作为 reasoning:* 事件发出，
+   *   确保无论底层 API 格式如何，上层都能获得一致的事件接口。
+   *
+   *   状态机：
+   *     NORMAL → (遇到 <think>) → IN_THINK → (遇到 </think>) → NORMAL
+   *
    * 与 OpenAI 实现的关键差异：
    *   - turn_start / turn_end 由 SDK 直接给出（无需推断）
-   *   - thinking_delta 是独立事件（无需解析 <think> 标签）
+   *   - thinking_delta 是独立事件（通过 SDK 原生或 <think> 解析）
    *   - tool_execution_update 提供工具执行进度
    *
    * @returns 取消订阅函数
@@ -427,6 +462,113 @@ export class PiMonoAgentRuntime implements AgentRuntime {
     let turnIndex = 0
     let textStartEmitted = false
     let reasoningStartEmitted = false
+
+    // <think> 标签解析状态
+    let inThinkBlock = false
+    let thinkingBuffer = ''
+    let realTextStartEmitted = false // 是否已发出去除 <think> 后的真正 text:start
+
+    /**
+     * 发出去除 <think> 后的纯文本 delta
+     */
+    const emitCleanText = (text: string): void => {
+      if (!text || text.length === 0) return
+
+      // 确保 text:start 已发出
+      if (!realTextStartEmitted) {
+        onChunk({ type: 'text:start', content: '' })
+        realTextStartEmitted = true
+      }
+
+      // 双通道分发
+      onTextDelta(text)
+      this.streamEmitter.emitText(text)
+      onChunk({ type: 'text:delta', content: text, data: { delta: text } })
+    }
+
+    /**
+     * 处理 text_delta 中的 <think> 标签
+     *
+     * 将包含 <think>...</think> 的文本流拆分为：
+     *   - <think> 内的内容 → reasoning:start/delta/done
+     *   - <think> 外的内容 → text:start/delta
+     */
+    const processTextDelta = (rawDelta: string): void => {
+      if (!rawDelta) return
+
+      let remaining = rawDelta
+
+      while (remaining.length > 0) {
+        if (!inThinkBlock) {
+          // 当前在普通文本模式，查找 <think> 开始标签
+          const thinkStart = remaining.indexOf('<think>')
+          if (thinkStart === -1) {
+            // 无 <think> 标签，整段都是普通文本
+            emitCleanText(remaining)
+            break
+          }
+
+          // <think> 之前的内容作为普通文本
+          if (thinkStart > 0) {
+            emitCleanText(remaining.slice(0, thinkStart))
+          }
+
+          // 进入思考模式
+          inThinkBlock = true
+          thinkingBuffer = ''
+          if (!reasoningStartEmitted) {
+            reasoningStartEmitted = true
+            onChunk({ type: 'reasoning:start', content: '' })
+          }
+
+          remaining = remaining.slice(thinkStart + '<think>'.length)
+        } else {
+          // 当前在思考模式，查找 </think> 结束标签
+          const thinkEnd = remaining.indexOf('</think>')
+          if (thinkEnd === -1) {
+            // 未找到结束标签，整段都是思考内容
+            thinkingBuffer += remaining
+            if (remaining.length > 0) {
+              this.streamEmitter.emitThinking(remaining)
+              onChunk({
+                type: 'reasoning:delta',
+                content: remaining,
+                data: { delta: remaining }
+              })
+            }
+            break
+          }
+
+          // </think> 之前的内容作为思考内容
+          const thinkContent = remaining.slice(0, thinkEnd)
+          if (thinkContent.length > 0) {
+            thinkingBuffer += thinkContent
+            this.streamEmitter.emitThinking(thinkContent)
+            onChunk({
+              type: 'reasoning:delta',
+              content: thinkContent,
+              data: { delta: thinkContent }
+            })
+          }
+
+          // 结束思考块
+          inThinkBlock = false
+          onChunk({
+            type: 'reasoning:done',
+            content: '',
+            data: { rawContent: thinkingBuffer }
+          })
+
+          remaining = remaining.slice(thinkEnd + '</think>'.length)
+
+          // 跳过 </think> 后的空白换行
+          const leadingWhitespace = remaining.match(/^\s*/)
+          if (leadingWhitespace) {
+            remaining = remaining.slice(leadingWhitespace[0].length)
+          }
+        }
+      }
+    }
 
     return this.piSession.subscribe((event: AgentSessionEvent) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -443,6 +585,9 @@ export class PiMonoAgentRuntime implements AgentRuntime {
           turnIndex++
           textStartEmitted = false
           reasoningStartEmitted = false
+          inThinkBlock = false
+          thinkingBuffer = ''
+          realTextStartEmitted = false
           onChunk({ type: 'turn:start', content: '', data: { turnIndex } })
           break
 
@@ -463,7 +608,7 @@ export class PiMonoAgentRuntime implements AgentRuntime {
           if (!msgEvent) break
 
           switch (msgEvent.type) {
-            // ===== 思考流（pi-SDK 独有优势：独立事件！）=====
+            // ===== 思考流（SDK 原生支持时直接转发）=====
             case 'thinking_start':
               reasoningStartEmitted = true
               onChunk({ type: 'reasoning:start', content: '' })
@@ -493,39 +638,56 @@ export class PiMonoAgentRuntime implements AgentRuntime {
               })
               break
 
-            // ===== 文本流 =====
+            // ===== 文本流（含 <think> 标签自动解析）=====
             case 'text_start':
               textStartEmitted = true
-              onChunk({ type: 'text:start', content: '' })
+              // 不立即发 text:start，等 processTextDelta 确认有真正文本后再发
               break
 
             case 'text_delta': {
               const delta = msgEvent.delta || ''
               if (delta) {
-                // 双通道分发
-                onTextDelta(delta)
-                this.streamEmitter.emitText(delta)
-                onChunk({ type: 'text:delta', content: delta, data: { delta } })
+                processTextDelta(delta)
               }
               break
             }
 
             case 'text_end': {
-              const fullText = msgEvent.content || this.extractFullText(evt.message)
-              onChunk({ type: 'text:done', content: fullText, data: { text: fullText } })
+              // 提取去除 <think> 后的纯文本
+              const rawFullText = msgEvent.content || this.extractFullText(evt.message)
+              const cleanText = this.stripThinkTags(rawFullText)
+
+              // 确保 text:start 已发出
+              if (!realTextStartEmitted && cleanText.length > 0) {
+                onChunk({ type: 'text:start', content: '' })
+                realTextStartEmitted = true
+              }
+
+              if (realTextStartEmitted) {
+                onChunk({ type: 'text:done', content: cleanText, data: { text: cleanText } })
+              }
               break
             }
 
             // ===== 停止信号（某些 SDK 版本可能发出）=====
             case 'stop': {
-              // 关闭文本流（如果未通过 text_end 关闭）
-              if (textStartEmitted) {
-                const fullText = this.extractFullText(evt.message)
+              // 关闭思考流（如果仍在 think 块中）
+              if (inThinkBlock) {
+                inThinkBlock = false
+                onChunk({
+                  type: 'reasoning:done',
+                  content: '',
+                  data: { rawContent: thinkingBuffer }
+                })
+              }
+              // 关闭文本流
+              if (textStartEmitted && realTextStartEmitted) {
+                const fullText = this.stripThinkTags(this.extractFullText(evt.message))
                 onChunk({ type: 'text:done', content: fullText, data: { text: fullText } })
               }
               // 关闭思考流（如果未通过 thinking_end 关闭）
-              if (reasoningStartEmitted) {
-                onChunk({ type: 'reasoning:done', content: '' })
+              if (reasoningStartEmitted && !inThinkBlock) {
+                // already closed
               }
               break
             }
@@ -648,6 +810,17 @@ export class PiMonoAgentRuntime implements AgentRuntime {
           break
       }
     })
+  }
+
+  /**
+   * 从文本中去除 <think>...</think> 标签及其内容
+   *
+   * OpenAI Chat Completions 格式下，部分 Provider（如 MiniMax）
+   * 会将思考内容以 <think>...</think> 标签包裹在文本中返回。
+   */
+  private stripThinkTags(text: string): string {
+    if (!text) return ''
+    return text.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim()
   }
 
   /**

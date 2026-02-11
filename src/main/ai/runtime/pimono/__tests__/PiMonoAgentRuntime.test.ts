@@ -7,7 +7,12 @@
  *   ✅ ToolDefinition + TypeBox 参数定义 + execute（真实）
  *   ✅ SessionManager.inMemory() 会话管理（真实）
  *   ✅ StreamEmitter 事件广播（真实）
- *   ✅ LLM API 请求（真实，通过 MiniMax provider）
+ *   ✅ LLM API 请求（真实，统一使用 OpenAI Chat Completions 格式）
+ *
+ * API 格式：
+ *   统一使用 OpenAI Chat Completions 格式（openai-completions）。
+ *   通过 baseURL 指向 OpenAI 兼容的后端 API（MiniMax、DeepSeek 等）。
+ *   不依赖 Anthropic SDK，不使用 ANTHROPIC_AUTH_TOKEN。
  *
  * 唯一 stub：Electron 环境层（electron, electron-log, mkdirp）
  *
@@ -108,20 +113,22 @@ import type { PiMonoAgentRuntimeOptions } from '../types'
 
 // ========== API 配置 ==========
 
+/**
+ * 解析 API 配置
+ *
+ * 统一使用 OpenAI Chat Completions 格式。
+ * 通过 apiKey + baseURL 组合指向不同的 OpenAI 兼容服务端点。
+ */
 function resolveApiConfig(): {
   apiKey: string
-  baseURL?: string
+  baseURL: string
   model: string
-  provider: string
 } | null {
   if (process.env.VITE_MINIMAX_API_KEY) {
     return {
       apiKey: process.env.VITE_MINIMAX_API_KEY,
       baseURL: process.env.VITE_MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1',
-      model: process.env.VITE_MINIMAX_MODEL || 'MiniMax-M2.1',
-      // pi-coding-agent 的 minimax-cn provider 使用 api.minimaxi.com/anthropic 端点
-      // 与 .env 中的 VITE_MINIMAX_BASE_URL (api.minimaxi.com) 匹配
-      provider: 'minimax-cn'
+      model: process.env.VITE_MINIMAX_MODEL || 'MiniMax-M2.1'
     }
   }
   return null
@@ -215,34 +222,39 @@ interface TimedChunk extends StreamChunk {
 function formatChunkSummary(chunk: StreamChunk, index: number, elapsed: number): string {
   const n = String(index + 1).padStart(3)
   const time = String(elapsed).padStart(6) + 'ms'
-  const type = chunk.type.padEnd(18)
+  const type = chunk.type.padEnd(20)
 
   let detail = ''
   if (chunk.type === 'text:delta') {
-    const text = chunk.content.length > 60 ? chunk.content.slice(0, 60) + '...' : chunk.content
+    const text = chunk.content.length > 80 ? chunk.content.slice(0, 80) + '...' : chunk.content
     detail = `content: ${JSON.stringify(text)}`
   } else if (chunk.type === 'reasoning:delta') {
-    const text = chunk.content.length > 60 ? chunk.content.slice(0, 60) + '...' : chunk.content
+    const text = chunk.content.length > 80 ? chunk.content.slice(0, 80) + '...' : chunk.content
     detail = `reasoning: ${JSON.stringify(text)}`
   } else if (chunk.type === 'reasoning:start' || chunk.type === 'reasoning:done') {
     const d = chunk.data as { rawContent?: string } | undefined
     detail = d?.rawContent ? `rawContent: ${JSON.stringify(d.rawContent.slice(0, 60))}` : ''
   } else if (chunk.type === 'tool:start') {
     const d = chunk.data as { toolName?: string; callId?: string }
-    detail = `toolName: ${d?.toolName || chunk.content}, callId: ${d?.callId || 'N/A'}`
+    detail = `tool=${d?.toolName || chunk.content}, callId=${d?.callId || 'N/A'}`
   } else if (chunk.type === 'tool:done') {
-    detail = `content: ${JSON.stringify((chunk.content || '').slice(0, 80))}`
+    const d = chunk.data as { toolName?: string; isError?: boolean }
+    detail = `tool=${d?.toolName || 'N/A'}, result=${JSON.stringify((chunk.content || '').slice(0, 80))}`
   } else if (chunk.type === 'tool:delta') {
     detail = `delta: ${JSON.stringify((chunk.content || '').slice(0, 60))}`
   } else if (chunk.type === 'tool:pending') {
     const d = chunk.data as { callId?: string; arguments?: string }
     detail = `callId: ${d?.callId}, args: ${d?.arguments?.slice(0, 60)}`
   } else if (chunk.type === 'llm:done' && chunk.data) {
-    const d = chunk.data as { usage?: { totalTokens?: number } }
-    detail = d.usage ? `tokens: ${d.usage.totalTokens}` : ''
+    const d = chunk.data as {
+      usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }
+    }
+    if (d.usage) {
+      detail = `tokens: in=${d.usage.inputTokens || 0}, out=${d.usage.outputTokens || 0}, total=${d.usage.totalTokens || 0}`
+    }
   } else if (chunk.type === 'turn:start' || chunk.type === 'turn:done') {
     const d = chunk.data as { turnIndex?: number }
-    detail = d?.turnIndex ? `turnIndex: ${d.turnIndex}` : ''
+    detail = d?.turnIndex ? `turn=#${d.turnIndex}` : ''
   } else if (chunk.type === 'compression:start' || chunk.type === 'compression:done') {
     detail = `content: ${JSON.stringify(chunk.content)}`
   } else if (chunk.content) {
@@ -250,7 +262,7 @@ function formatChunkSummary(chunk: StreamChunk, index: number, elapsed: number):
     detail = `content: ${JSON.stringify(text)}`
   }
 
-  return `  [${time}] #${n} ${type}${detail ? ' { ' + detail + ' }' : ''}`
+  return `  [${time}] #${n}  ${type}${detail ? '  { ' + detail + ' }' : ''}`
 }
 
 /** 闭环检查 */
@@ -274,7 +286,7 @@ function checkClosedLoops(chunks: StreamChunk[]): string[] {
     const dc = counts[d] || 0
     if (sc > 0 || dc > 0) {
       const ok = sc === dc ? '✓' : `✗ MISMATCH`
-      lines.push(`    ${s}/${d}: ${sc}/${dc} ${ok}`)
+      lines.push(`    ${s.padEnd(20)} / ${d.padEnd(20)} : ${sc}/${dc}  ${ok}`)
     }
   }
   return lines
@@ -288,7 +300,7 @@ function safeJsonStringify(x: unknown): string {
   }
 }
 
-/** 核心日志函数 */
+/** 核心日志函数 — 格式化输出测试结果 */
 function logTestResult(
   testName: string,
   opts: {
@@ -300,47 +312,55 @@ function logTestResult(
     timedChunks?: TimedChunk[]
   }
 ): void {
-  testLog('')
-  testLog(`${LOG_PREFIX} ========== 测试: ${testName} ==========`)
+  const separator = '━'.repeat(72)
+  const subSeparator = '─'.repeat(72)
 
-  if (opts.input) testLog(`${LOG_PREFIX} 输入: ${opts.input}`)
+  testLog('')
+  testLog(`${LOG_PREFIX} ${separator}`)
+  testLog(`${LOG_PREFIX}  测试: ${testName}`)
+  testLog(`${LOG_PREFIX} ${separator}`)
+
+  // 基本信息
+  if (opts.input) testLog(`${LOG_PREFIX}  输入: ${opts.input}`)
   if (opts.output) {
     const show = opts.output.length > 200 ? opts.output.slice(0, 200) + '...' : opts.output
-    testLog(`${LOG_PREFIX} 输出: ${show}`)
+    testLog(`${LOG_PREFIX}  输出: ${show}`)
   }
-  if (opts.duration) testLog(`${LOG_PREFIX} 耗时: ${opts.duration}ms`)
+  if (opts.duration) testLog(`${LOG_PREFIX}  耗时: ${opts.duration}ms`)
   if (opts.toolCalls && opts.toolCalls.length > 0) {
-    testLog(
-      `${LOG_PREFIX} 工具调用: ${opts.toolCalls.map((t) => `${t.toolName}(${JSON.stringify(t.arguments)})`).join(', ')}`
-    )
+    testLog(`${LOG_PREFIX}  工具调用 (${opts.toolCalls.length}):`)
+    for (const t of opts.toolCalls) {
+      testLog(`${LOG_PREFIX}    → ${t.toolName}(${JSON.stringify(t.arguments)})`)
+    }
   }
 
   // 事件序列
   if (opts.chunks && opts.chunks.length > 0) {
-    const types = opts.chunks.map((c) => c.type)
-    testLog(`${LOG_PREFIX} 事件序列 (${opts.chunks.length} 个):`)
-    testLog(`${LOG_PREFIX}   ${types.join(' → ')}`)
-
-    // 闭环检查
-    const loopChecks = checkClosedLoops(opts.chunks)
-    if (loopChecks.length > 0) {
-      testLog(`${LOG_PREFIX} 闭环检查:`)
-      for (const l of loopChecks) testLog(`${LOG_PREFIX} ${l}`)
-    }
+    testLog(`${LOG_PREFIX} ${subSeparator}`)
+    testLog(`${LOG_PREFIX}  事件流 (共 ${opts.chunks.length} 个事件):`)
+    testLog(`${LOG_PREFIX}`)
 
     // 事件类型计数
     const typeCounts: Record<string, number> = {}
     for (const c of opts.chunks) {
       typeCounts[c.type] = (typeCounts[c.type] || 0) + 1
     }
-    testLog(`${LOG_PREFIX} 事件类型计数:`)
-    for (const [t, count] of Object.entries(typeCounts).sort()) {
-      testLog(`${LOG_PREFIX}   ${t}: ${count}`)
+    const countEntries = Object.entries(typeCounts).sort()
+    testLog(`${LOG_PREFIX}  事件统计:`)
+    for (const [t, count] of countEntries) {
+      testLog(`${LOG_PREFIX}    ${t.padEnd(20)} : ${count}`)
     }
 
-    // 详细事件
+    // 闭环检查
+    testLog(`${LOG_PREFIX}`)
+    testLog(`${LOG_PREFIX}  闭环检查:`)
+    const loopChecks = checkClosedLoops(opts.chunks)
+    for (const l of loopChecks) testLog(`${LOG_PREFIX} ${l}`)
+
+    // 详细事件（每行一个事件，格式化时间戳和类型）
     if (opts.timedChunks) {
-      testLog(`${LOG_PREFIX} 详细事件:`)
+      testLog(`${LOG_PREFIX}`)
+      testLog(`${LOG_PREFIX}  详细事件流:`)
       for (const tc of opts.timedChunks) {
         testLog(
           `${LOG_PREFIX}${formatChunkSummary({ type: tc.type, content: tc.content, data: tc.data }, tc.seq - 1, tc.elapsed)}`
@@ -349,21 +369,25 @@ function logTestResult(
     }
   }
 
-  testLog(`${LOG_PREFIX} ${'='.repeat(50)}`)
+  testLog(`${LOG_PREFIX} ${separator}`)
 
   // 写入完整事件 JSON 到 events 日志
   if (opts.timedChunks && opts.timedChunks.length > 0) {
     try {
       appendEventsLog('')
       appendEventsLog(
-        `---------- 测试: ${testName} | 共 ${opts.timedChunks.length} 个事件 ----------`
+        `${'━'.repeat(60)}\n` +
+          `测试: ${testName} | 共 ${opts.timedChunks.length} 个事件\n` +
+          `${'━'.repeat(60)}`
       )
       for (const tc of opts.timedChunks) {
-        appendEventsLog(`#${tc.seq} ${tc.type}`)
+        appendEventsLog(
+          `#${String(tc.seq).padStart(3)} [${String(tc.elapsed).padStart(6)}ms] ${tc.type}`
+        )
         appendEventsLog(safeJsonStringify(tc))
         appendEventsLog('')
       }
-      appendEventsLog('='.repeat(60))
+      appendEventsLog('━'.repeat(60))
     } catch {
       // ignore
     }
@@ -598,7 +622,7 @@ function createRuntime(
   if (!apiConfig) throw new Error('No API config')
   return new PiMonoAgentRuntime({
     apiKey: apiConfig.apiKey,
-    provider: apiConfig.provider,
+    baseURL: apiConfig.baseURL,
     model: apiConfig.model,
     thinkingLevel: 'low',
     sessionMode: 'memory',
@@ -609,7 +633,7 @@ function createRuntime(
 
 // ========== 测试 ==========
 
-describe.skipIf(!RUN)('PiMonoAgentRuntime 真实执行测试（多轮工具调用）', () => {
+describe.skipIf(!RUN)('PiMonoAgentRuntime 真实执行测试（OpenAI 兼容格式）', () => {
   let runtime: PiMonoAgentRuntime
   let sessionId: string
 
@@ -628,21 +652,25 @@ describe.skipIf(!RUN)('PiMonoAgentRuntime 真实执行测试（多轮工具调�
 
     const ts = now.toISOString()
     appendTestLog(
-      `========== PiMonoAgentRuntime 真实执行测试 ${ts} | ` +
-        `provider=${apiConfig.provider} model=${apiConfig.model} ==========`
+      `========== PiMonoAgentRuntime 真实执行测试 ${ts} ==========\n` +
+        `  API 格式: openai-completions\n` +
+        `  Model:    ${apiConfig.model}\n` +
+        `  Base URL: ${apiConfig.baseURL}\n`
     )
     appendTestLog(`摘要日志: ${currentTestLogFile}`)
     appendTestLog(`事件日志: ${currentEventsLogFile}`)
     appendTestLog('')
     appendEventsLog(
-      `========== PiMonoAgentRuntime 事件日志 ${ts} | ` +
-        `provider=${apiConfig.provider} model=${apiConfig.model} ==========`
+      `========== PiMonoAgentRuntime 事件日志 ${ts} ==========\n` +
+        `  API 格式: openai-completions\n` +
+        `  Model:    ${apiConfig.model}\n` +
+        `  Base URL: ${apiConfig.baseURL}\n`
     )
     appendEventsLog('')
 
     testLog(
-      `${LOG_PREFIX} API: provider=${apiConfig.provider}, model=${apiConfig.model}, ` +
-        `baseURL=${apiConfig.baseURL || 'default'}`
+      `${LOG_PREFIX} API: openai-completions, model=${apiConfig.model}, ` +
+        `baseURL=${apiConfig.baseURL}`
     )
     testLog(`${LOG_PREFIX} 摘要日志: ${currentTestLogFile}`)
     testLog(`${LOG_PREFIX} 事件日志: ${currentEventsLogFile}`)
@@ -654,8 +682,8 @@ describe.skipIf(!RUN)('PiMonoAgentRuntime 真实执行测试（多轮工具调�
     appendTestLog(`\n========== 测试结束 ${ts} ==========`)
     appendEventsLog(`\n========== 事件日志结束 ${ts} ==========`)
     restoreConsole()
-    origConsoleLog(`\n📄 摘要日志: ${currentTestLogFile}`)
-    origConsoleLog(`📄 事件日志: ${currentEventsLogFile}`)
+    origConsoleLog(`\n摘要日志: ${currentTestLogFile}`)
+    origConsoleLog(`事件日志: ${currentEventsLogFile}`)
   })
 
   beforeEach(() => {

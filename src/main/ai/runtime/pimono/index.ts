@@ -5,4 +5,4 @@
  */
 
 export { PiMonoAgentRuntime } from './PiMonoAgentRuntime'
-export type { PiMonoAgentRuntimeOptions, ThinkingLevel, PiProvider } from './types'
+export type { PiMonoAgentRuntimeOptions, ThinkingLevel } from './types'
