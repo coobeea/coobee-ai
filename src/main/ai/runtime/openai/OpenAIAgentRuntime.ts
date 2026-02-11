@@ -19,13 +19,14 @@ import { SessionCompressor } from './SessionCompressor'
 import { ThinkTagParser, stripThinkTags } from './ThinkTagParser'
 import { createStreamEmitter, type IStreamEmitter } from '../../streaming/StreamEmitter'
 import type { AgentRuntime } from '../AgentRuntime'
-import type {
-  ExecutionConfig,
-  ExecutionResult,
-  StreamChunk,
-  SessionInfo,
-  ToolApprovalInfo,
-  ToolDefinition
+import {
+  buildInstructions,
+  type ExecutionConfig,
+  type ExecutionResult,
+  type StreamChunk,
+  type SessionInfo,
+  type ToolApprovalInfo,
+  type ToolDefinition
 } from '../types'
 import type { OpenAIAgentRuntimeOptions, ContextSnapshot, CompressionResult } from './types'
 
@@ -129,10 +130,17 @@ export class OpenAIAgentRuntime implements AgentRuntime {
       ...this.convertTools(this.options.tools || [])
     ]
 
-    // 2. 创建 SDK Agent（纯配置，成本极低）
+    // 2. 构建最终系统提示词：instructions + skills + appendInstructions
+    const finalInstructions = buildInstructions(
+      this.options.instructions,
+      this.options.skills,
+      this.options.appendInstructions
+    )
+
+    // 3. 创建 SDK Agent（纯配置，成本极低）
     this.agent = new Agent({
       name: this.options.name,
-      instructions: this.options.instructions,
+      instructions: finalInstructions,
       model: this.options.model || DEFAULT_MODEL,
       ...(this.options.modelSettings ? { modelSettings: this.options.modelSettings } : {}),
       ...(allTools.length > 0 ? { tools: allTools } : {}),
@@ -159,6 +167,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
     log.info(
       `Initialized: ${this.name} ` +
         `(tools: ${allTools.length}, ` +
+        `skills: ${this.options.skills?.length || 0}, ` +
         `handoffs: ${this.options.handoffs?.length || 0}, ` +
         `compression: ${this.options.compression?.enabled ? 'on' : 'off'}, ` +
         `session: ${this.sessionId})`

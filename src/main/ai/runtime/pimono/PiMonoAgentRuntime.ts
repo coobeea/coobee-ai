@@ -211,16 +211,35 @@ export class PiMonoAgentRuntime implements AgentRuntime {
       }
     })
 
-    // 5. 自定义 ResourceLoader（不发现文件系统资源）
+    // 5. 自定义 ResourceLoader（不发现文件系统资源，通过选项注入）
+    //    - getSystemPrompt: 返回基础 instructions
+    //    - getAppendSystemPrompt: 返回追加指令片段
+    //    - getSkills: 返回 SkillDefinition → pi-SDK Skill 的转换结果
     const stubRuntime = createExtensionRuntime()
+    const piSkills = (this.options.skills || []).map((s) => ({
+      name: s.name,
+      description: s.description,
+      filePath: '',
+      baseDir: '',
+      source: 'runtime-options',
+      disableModelInvocation: false
+    }))
+    // 如果有 skills，将内容拼接到 appendInstructions 中
+    // 因为 pi-SDK 的 Skill 只有 name/description（用于提示词标注），
+    // 实际内容需要通过 appendSystemPrompt 注入
+    const skillContentParts = (this.options.skills || []).map(
+      (s) => `<skill name="${s.name}">\n${s.content}\n</skill>`
+    )
+    const allAppendParts = [...skillContentParts, ...(this.options.appendInstructions || [])]
+
     const resourceLoader = {
       getExtensions: () => ({ extensions: [], errors: [], runtime: stubRuntime }),
-      getSkills: () => ({ skills: [], diagnostics: [] }),
+      getSkills: () => ({ skills: piSkills, diagnostics: [] }),
       getPrompts: () => ({ prompts: [], diagnostics: [] }),
       getThemes: () => ({ themes: [], diagnostics: [] }),
       getAgentsFiles: () => ({ agentsFiles: [] as Array<{ path: string; content: string }> }),
       getSystemPrompt: () => this.options.instructions,
-      getAppendSystemPrompt: () => [] as string[],
+      getAppendSystemPrompt: () => allAppendParts,
       getPathMetadata: () => new Map(),
       extendResources: () => {},
       reload: async () => {}
@@ -261,6 +280,7 @@ export class PiMonoAgentRuntime implements AgentRuntime {
         `baseURL: ${baseURL}, ` +
         `thinking: ${thinkingLevel}, ` +
         `tools: ${allCustomTools.length}, ` +
+        `skills: ${piSkills.length}, ` +
         `session: ${this.sessionId})`
     )
   }
@@ -450,6 +470,44 @@ export class PiMonoAgentRuntime implements AgentRuntime {
     log.info(`Clearing session: ${this.sessionId}`)
     // pi-SDK 的 SessionManager.inMemory() 在 dispose 后重建即可
     // 对于 file 模式，需要重新创建会话
+  }
+
+  // ========== 可观测性（Observability） ==========
+
+  /**
+   * 获取 session 文件路径（仅 file 模式有值）
+   */
+  getSessionFilePath(): string | undefined {
+    return this.piSession?.sessionFile
+  }
+
+  /**
+   * 获取 pi-SDK 的 session 上下文
+   *
+   * 返回 buildSessionContext() 的结果——即发送给 LLM 的完整消息列表。
+   * 含压缩摘要、用户消息、助手消息、工具结果等。
+   */
+  getSessionContext(): { messages: unknown[]; thinkingLevel: string; model: unknown } | null {
+    try {
+      return this.piSession?.sessionManager?.buildSessionContext() ?? null
+    } catch (e) {
+      log.warn('Failed to get session context:', e)
+      return null
+    }
+  }
+
+  /**
+   * 获取所有原始消息
+   */
+  getRawMessages(): unknown[] {
+    return this.piSession?.messages ?? []
+  }
+
+  /**
+   * 获取 session 管理器（高级用法，供测试/调试使用）
+   */
+  getSessionManager(): unknown {
+    return this.piSession?.sessionManager ?? null
   }
 
   // ========== 内部方法 ==========

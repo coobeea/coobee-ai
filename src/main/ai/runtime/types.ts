@@ -30,6 +30,25 @@ export interface ToolDefinition {
   execute: (params: Record<string, unknown>) => Promise<string>
 }
 
+// ========== 统一技能定义 ==========
+
+/**
+ * 统一技能定义（SDK 无关）
+ *
+ * 技能是注入到系统提示词中的领域知识/指令片段。
+ * 各 Runtime 根据自身 SDK 机制将技能内容注入 LLM 上下文：
+ *   - OpenAI：格式化后拼接到 Agent.instructions
+ *   - PiMono：通过 resourceLoader.getSkills() 返回，由 SDK 内部组装
+ */
+export interface SkillDefinition {
+  /** 技能名称（唯一标识） */
+  name: string
+  /** 技能描述（用于提示词中的标注） */
+  description: string
+  /** 技能内容（通常是 markdown 格式的指令/知识） */
+  content: string
+}
+
 // ========== Agent 运行时通用选项 ==========
 
 /**
@@ -41,8 +60,22 @@ export interface ToolDefinition {
 export interface AgentRuntimeOptions {
   /** Agent 名称 */
   name: string
-  /** Agent 系统指令 */
+  /** Agent 基础系统指令 */
   instructions: string
+  /**
+   * 追加指令片段
+   *
+   * 在基础 instructions 之后追加的额外指令。
+   * 适合动态注入上下文信息（如当前项目结构、用户偏好等）。
+   */
+  appendInstructions?: string[]
+  /**
+   * 技能列表
+   *
+   * 注入到系统提示词中的领域知识。
+   * 各 Runtime 自动格式化并整合到最终 LLM 上下文中。
+   */
+  skills?: SkillDefinition[]
   /** 模型名称 */
   model?: string
   /** 会话 ID（不传则自动生成） */
@@ -58,6 +91,55 @@ export interface AgentRuntimeOptions {
   tools?: ToolDefinition[]
   /** SDK 特有配置（各实现自定义） */
   [key: string]: unknown
+}
+
+// ========== 系统提示词构建 ==========
+
+/**
+ * 格式化技能列表为提示词文本
+ *
+ * 使用 XML 结构化格式，便于 LLM 解析：
+ *   <skills>
+ *     <skill name="xxx">
+ *       <description>...</description>
+ *       <content>...</content>
+ *     </skill>
+ *   </skills>
+ */
+export function formatSkills(skills: SkillDefinition[]): string {
+  if (!skills.length) return ''
+  const items = skills
+    .map(
+      (s) =>
+        `<skill name="${s.name}">\n<description>${s.description}</description>\n<content>\n${s.content}\n</content>\n</skill>`
+    )
+    .join('\n')
+  return `<skills>\n${items}\n</skills>`
+}
+
+/**
+ * 构建最终系统提示词
+ *
+ * 组装顺序：instructions → skills → appendInstructions
+ * 供不支持独立 skill 注入的 Runtime（如 OpenAI）使用。
+ * PiMono 通过 resourceLoader 各方法分别返回，由 SDK 内部组装。
+ */
+export function buildInstructions(
+  instructions: string,
+  skills?: SkillDefinition[],
+  appendInstructions?: string[]
+): string {
+  const parts: string[] = [instructions]
+
+  if (skills?.length) {
+    parts.push(formatSkills(skills))
+  }
+
+  if (appendInstructions?.length) {
+    parts.push(appendInstructions.join('\n\n'))
+  }
+
+  return parts.join('\n\n')
 }
 
 // ========== 执行配置和结果 ==========

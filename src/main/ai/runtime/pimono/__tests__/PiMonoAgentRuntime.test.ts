@@ -989,4 +989,82 @@ describe.skipIf(!RUN)('PiMonoAgentRuntime 真实执行测试（OpenAI 兼容格�
     expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
     expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
   })
+
+  // ===== 场景 7：Skill + AppendInstructions 注入验证 =====
+
+  it(
+    '场景7 - Skill 和 AppendInstructions 注入：LLM 能使用注入的领域知识',
+    { timeout: 60_000 },
+    async () => {
+      const inputText = 'Zyphor 框架的核心设计理念是什么？'
+      const { chunks, timedChunks, collect } = createCollector()
+
+      // 注入一个虚构的技能知识（Zyphor 框架）
+      // 如果 LLM 能回答关于 Zyphor 的问题，就证明 skill 内容被成功注入
+      runtime = createRuntime({
+        name: 'SkillAgent',
+        instructions: '你是一个技术助手。根据你掌握的知识回答用户问题。',
+        skills: [
+          {
+            name: 'zyphor-framework',
+            description: 'Zyphor 前端框架文档',
+            content: [
+              '# Zyphor Framework v3.0',
+              '',
+              'Zyphor 是一个基于信号驱动（Signal-Driven）架构的前端框架。',
+              '',
+              '## 核心设计理念',
+              '1. **信号优先（Signal-First）**：所有状态变更通过信号传播，无虚拟 DOM',
+              '2. **编译时优化（Compile-Time Optimization）**：模板在构建阶段编译为最小化指令集',
+              '3. **零运行时开销（Zero-Runtime Overhead）**：不需要框架运行时，编译后的代码直接操作 DOM',
+              '',
+              '## 核心 API',
+              '- `createSignal(initialValue)` — 创建响应式信号',
+              '- `createEffect(fn)` — 创建自动追踪依赖的副作用',
+              '- `createMemo(fn)` — 创建缓存计算值'
+            ].join('\n')
+          }
+        ],
+        appendInstructions: [
+          '回答时必须以"【Zyphor 专家解答】"作为开头。',
+          '必须提及 Zyphor 的三个核心理念关键词：信号优先、编译时优化、零运行时开销。'
+        ],
+        sessionId
+      })
+      await runtime.initialize()
+      const result = await runtime.runStream(inputText, {}, collect)
+
+      logTestResult('场景7 - Skill + AppendInstructions 注入', {
+        input: inputText,
+        output: result.output,
+        duration: result.duration,
+        chunks,
+        timedChunks
+      })
+
+      // 验证：LLM 能基于注入的 Skill 知识回答（Zyphor 是虚构的，只有注入才能回答）
+      expect(result.output.toLowerCase()).toContain('zyphor')
+      // 验证：LLM 提及了核心理念中的关键概念
+      expect(result.output).toMatch(/信号|signal/i)
+
+      // 验证：appendInstructions 生效（要求以特定格式开头）
+      expect(result.output).toContain('Zyphor 专家解答')
+
+      // 事件闭环
+      const seq = allTypes(chunks)
+      expect(seq[0]).toBe('run:start')
+      expect(seq[seq.length - 1]).toBe('run:done')
+      expect(ofType(chunks, 'turn:start').length).toBe(ofType(chunks, 'turn:done').length)
+      expect(ofType(chunks, 'llm:start').length).toBe(ofType(chunks, 'llm:done').length)
+
+      // 推理事件拆分验证
+      assertReasoningSeparation(chunks, result.output, '场景7')
+
+      testLog(
+        `${LOG_PREFIX}   [skill] Skill 注入验证: ` +
+          `output 包含 "Zyphor" = ${result.output.toLowerCase().includes('zyphor')}, ` +
+          `output 包含 "专家解答" = ${result.output.includes('专家解答')}`
+      )
+    }
+  )
 })
