@@ -30,9 +30,22 @@
  *   - tool_execution_update：工具执行进度（OpenAI SDK 完全没有）
  *   - auto_compaction：内置自动压缩
  *
- * 日志输出（分离存储）：
- *   test-results/YYYYMMDD/pi-agent-test-{timestamp}.log     — 摘要（事件序列 + 闭环检查）
- *   test-results/YYYYMMDD/pi-agent-events-{timestamp}.log   — SDK 原始事件流 + chunk JSON
+ * 日志输出（分离存储，每次运行生成独立文件）：
+ *
+ *   ┌─────────────────────────────────────────────────────────────────────────┐
+ *   │ 文件                                                  │ 内容           │
+ *   ├─────────────────────────────────────────────────────────────────────────┤
+ *   │ test-results/YYYYMMDD/pi-agent-test-{timestamp}.log   │ 摘要日志       │
+ *   │   → 每个场景的输入/输出/耗时                                            │
+ *   │   → 事件统计 + 闭环检查（start/done 配对）                               │
+ *   │   → 详细事件流（时间戳 + 序号 + 类型 + 摘要）                            │
+ *   ├─────────────────────────────────────────────────────────────────────────┤
+ *   │ test-results/YYYYMMDD/pi-agent-events-{timestamp}.log │ 原始事件日志   │
+ *   │   → 每个事件的完整 JSON（含 data 字段）                                  │
+ *   │   → SDK debug 级别的原始事件                                            │
+ *   └─────────────────────────────────────────────────────────────────────────┘
+ *
+ *   注意：集成测试的输出文件名不同，见 PiMonoAgentRuntime.integration.test.ts
  *
  * 运行命令：
  *   pnpm vitest run src/main/ai/runtime/pimono/__tests__/PiMonoAgentRuntime.test.ts
