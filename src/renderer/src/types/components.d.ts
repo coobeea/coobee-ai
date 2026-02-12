@@ -11,13 +11,16 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    ChatPanel: typeof import('./../components/agent/ChatPanel.vue')['default']
     IconMdiClose: typeof import('~icons/mdi/close')['default']
     IconMdiFire: typeof import('~icons/mdi/fire')['default']
     IconMdiThumbUp: typeof import('~icons/mdi/thumb-up')['default']
     IconMdiWeatherSunny: typeof import('~icons/mdi/weather-sunny')['default']
     LogViewer: typeof import('./../components/LogViewer.vue')['default']
+    ProjectPanel: typeof import('./../components/agent/ProjectPanel.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     Versions: typeof import('./../components/Versions.vue')['default']
+    WorkbenchPanel: typeof import('./../components/agent/WorkbenchPanel.vue')['default']
   }
 }

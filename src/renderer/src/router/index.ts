@@ -6,12 +6,17 @@ const router = createRouter({
     {
       path: '/',
       component: () => import('@/layout/index.vue'),
-      redirect: '/chat',
+      redirect: '/agent',
       children: [
         {
+          path: 'agent',
+          name: 'agent',
+          component: () => import('@/views/AgentView.vue')
+        },
+        {
+          // 兼容旧路由：/chat → /agent
           path: 'chat',
-          name: 'chat',
-          component: () => import('@/views/ChatView.vue')
+          redirect: '/agent'
         },
         {
           path: 'logs',

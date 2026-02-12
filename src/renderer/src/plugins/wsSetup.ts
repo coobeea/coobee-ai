@@ -265,9 +265,9 @@ function scheduleReconnect(): void {
 /**
  * WebSocket 服务单例
  *
- * 供 chatStore、ChatView 等模块导入使用：
+ * 供 chatStore、ChatPanel 等模块导入使用：
  * - wsService.subscribe(sessionId, handler)  — chatStore 发起订阅
- * - wsService.connectionState                — ChatView 绑定连接状态
+ * - wsService.connectionState                — ChatPanel 绑定连接状态
  */
 export const wsService = {
   /** 连接状态（响应式） */
