@@ -31,6 +31,7 @@ import type { PiMonoAgentRuntimeOptions, ThinkingLevel } from './runtime/pimono/
 import type { OpenAIAgentRuntimeOptions, SessionCompressionOptions } from './runtime/openai/types'
 import { createStreamEmitter, type IStreamEmitter } from './streaming/StreamEmitter'
 import type { StreamSource } from './streaming/types'
+import { hitlApprovalManager, DEFAULT_HITL_TIMEOUT_MS } from './hitl/HitlApprovalManager'
 
 // ==================== Builder ====================
 
@@ -551,12 +552,37 @@ class AgentExecutor {
   // ========== 内部执行 ==========
 
   /**
-   * 核心执行流程：创建 → 推理 → 销毁
+   * 消费 AsyncGenerator 并 forward 到 EventBus
+   *
+   * 返回 generator 的最终返回值（ExecutionResult）。
+   */
+  private async consumeAndForward(
+    gen: AsyncGenerator<StreamChunk, ExecutionResult, unknown>,
+    emitter: IStreamEmitter,
+    onChunk?: (chunk: StreamChunk) => void
+  ): Promise<ExecutionResult> {
+    let r = await gen.next()
+    while (!r.done) {
+      emitter.forward(r.value)
+      onChunk?.(r.value)
+      r = await gen.next()
+    }
+    return r.value
+  }
+
+  /**
+   * 核心执行流程：创建 → 推理 → [HITL 循环] → 销毁
    *
    * 每次调用都是一个完整的无状态生命周期：
    * 1. 通过 Builder 创建并初始化 Runtime
    * 2. 执行 stream()
-   * 3. 函数返回后 Runtime 由 GC 回收
+   * 3. 如果 HITL 中断，await Promise 等待前端决策，然后自动恢复
+   * 4. 函数返回后 Runtime 由 GC 回收
+   *
+   * HITL 循环（Promise 等待模式）：
+   *   当 runtime.stream() 返回 interrupted 结果时，执行循环不退出，
+   *   而是 await hitlApprovalManager.waitForDecisions()。
+   *   前端通过 API 提交决策后，Promise resolve，执行循环自动恢复。
    */
   private async execute(request: ExecuteRequest): Promise<ExecutionResult> {
     const { sessionId, message, builder, onChunk } = request
@@ -572,16 +598,53 @@ class AgentExecutor {
       runtime = await builder.sessionId(sessionId).build()
       const emitter = this.createEmitter(sessionId, runtime)
 
-      // 2. 流式执行 — 通过 stream() generator，同时 forward 到 EventBus
-      const chunkCallback = onChunk || (() => {})
+      // 2. 初始 stream
       const gen = runtime.stream(message)
-      let r = await gen.next()
-      while (!r.done) {
-        emitter.forward(r.value)
-        chunkCallback(r.value)
-        r = await gen.next()
+      let result = await this.consumeAndForward(gen, emitter, onChunk)
+
+      // 3. HITL 循环（可能多轮中断-恢复）
+      while (result.interrupted && result.interruptions?.length) {
+        log.info(
+          `[AgentExecutor] HITL interrupted: sessionId=${sessionId}, tools=${result.interruptions.length}`
+        )
+
+        // 3a. forward interrupted 事件
+        emitter.forward({ type: 'run:interrupted', content: '' })
+
+        // 3b. await Promise — 暂停在此处等待前端决策
+        const decisions = await hitlApprovalManager.waitForDecisions(
+          sessionId,
+          result.interruptions.length,
+          DEFAULT_HITL_TIMEOUT_MS
+        )
+
+        // 3c. 超时处理
+        if (!decisions) {
+          log.warn(`[AgentExecutor] HITL timeout: sessionId=${sessionId}`)
+          emitter.forward({ type: 'run:error', content: 'HITL approval timeout' })
+          return { ...result, output: 'HITL approval timeout' }
+        }
+
+        // 3d. Apply decisions to runtime
+        for (let i = 0; i < decisions.length; i++) {
+          if (decisions[i] === 'reject') {
+            runtime.rejectToolCall(i)
+          } else {
+            runtime.approveToolCall(i, {
+              alwaysApprove: decisions[i] === 'approve-always'
+            })
+          }
+        }
+
+        log.info(
+          `[AgentExecutor] HITL resumed: sessionId=${sessionId}, decisions=${JSON.stringify(decisions)}`
+        )
+
+        // 3e. Resume stream — 继续执行
+        const resumeGen = runtime.resumeStream()
+        result = await this.consumeAndForward(resumeGen, emitter, onChunk)
+        // 如果 result.interrupted 再次为 true，while 循环继续
       }
-      const result = r.value
 
       const duration = Date.now() - startTime
       log.info(
@@ -593,9 +656,11 @@ class AgentExecutor {
       const duration = Date.now() - startTime
       const msg = error instanceof Error ? error.message : String(error)
       log.error(`[AgentExecutor] Error: sessionId=${sessionId}, duration=${duration}ms, ${msg}`)
+      // 确保 HITL 等待也被清理
+      hitlApprovalManager.cleanup(sessionId)
       throw error
     } finally {
-      // 3. 销毁 Runtime（释放资源）
+      // 4. 销毁 Runtime（释放资源）
       if (runtime) {
         try {
           await runtime.destroy()

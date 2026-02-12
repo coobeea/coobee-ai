@@ -85,7 +85,10 @@ const CHUNK_TO_MESSAGE_MAP: Partial<Record<StreamChunkType, StreamMessageType>> 
   // 生命周期
   'run:start': 'start',
   'run:done': 'done',
-  'run:error': 'error'
+  'run:error': 'error',
+  // HITL 生命周期
+  'run:interrupted': 'interrupted',
+  'run:resumed': 'resumed'
 }
 
 /**

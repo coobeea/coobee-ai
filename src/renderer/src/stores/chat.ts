@@ -9,6 +9,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { invokeBackend } from '@/api/request'
 import { useAgentStream, type StreamMessage } from '@/composables/useAgentStream'
+import type { HitlApprovalDecision } from '@shared/stream-protocol'
 
 // ==================== 类型定义 ====================
 
@@ -18,6 +19,18 @@ export interface ToolCallInfo {
   arguments: string
   result?: string
   status: 'calling' | 'done' | 'error'
+}
+
+/** HITL 待审批工具信息 */
+export interface PendingApproval {
+  /** 审批项索引 */
+  index: number
+  /** 工具名称 */
+  toolName: string
+  /** 工具参数（JSON 字符串） */
+  arguments?: string
+  /** 用户决策（提交后填入） */
+  decision?: HitlApprovalDecision
 }
 
 /** 对话消息 */
@@ -32,8 +45,10 @@ export interface ChatMessage {
   thinking?: string
   /** 工具调用记录 */
   toolCalls?: ToolCallInfo[]
+  /** HITL 待审批工具列表 */
+  pendingApprovals?: PendingApproval[]
   /** 消息状态 */
-  status: 'sending' | 'streaming' | 'done' | 'error'
+  status: 'sending' | 'streaming' | 'done' | 'error' | 'interrupted'
   /** 错误信息 */
   error?: string
   /** 时间戳 */
@@ -164,8 +179,41 @@ export const useChatStore = defineStore('chat', () => {
         isStreaming.value = false
         break
 
+      case 'hitl':
+        // HITL 审批请求 —— 添加到 pendingApprovals
+        if (!assistantMsg) {
+          assistantMsg = createAssistantMessage()
+        }
+        if (msg.data?.action === 'required') {
+          if (!assistantMsg.pendingApprovals) {
+            assistantMsg.pendingApprovals = []
+          }
+          assistantMsg.pendingApprovals.push({
+            index: (msg.data.index as number) ?? assistantMsg.pendingApprovals.length,
+            toolName: (msg.data.toolName as string) || 'unknown',
+            arguments: msg.data.arguments as string | undefined
+          })
+        }
+        break
+
+      case 'interrupted':
+        // HITL 中断 —— 流暂停，等待审批
+        if (assistantMsg) {
+          assistantMsg.status = 'interrupted'
+        }
+        isStreaming.value = false
+        break
+
+      case 'resumed':
+        // HITL 恢复 —— 审批完成，流继续
+        if (assistantMsg) {
+          assistantMsg.status = 'streaming'
+        }
+        isStreaming.value = true
+        break
+
       default:
-        // handoff, hitl, agent_updated 等暂不处理
+        // handoff, agent_updated 等暂不处理
         console.log(`[chatStore] Unhandled stream message type: ${msg.type}`, msg)
         break
     }
@@ -244,6 +292,41 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
+   * 提交 HITL 审批决策
+   *
+   * 为指定工具提交决策。当所有工具都提交后，后台自动恢复执行。
+   */
+  async function submitDecision(
+    sid: string,
+    index: number,
+    decision: HitlApprovalDecision
+  ): Promise<void> {
+    try {
+      const result = await invokeBackend<{ ok: boolean; error?: string }>(
+        '/api/chat/approval/decide',
+        sid,
+        index,
+        decision
+      )
+
+      if (result.data?.ok) {
+        // 更新本地状态：记录已提交的决策
+        const lastMsg = messages.value[messages.value.length - 1]
+        if (lastMsg?.pendingApprovals) {
+          const approval = lastMsg.pendingApprovals.find((a) => a.index === index)
+          if (approval) {
+            approval.decision = decision
+          }
+        }
+      } else {
+        console.error('[chatStore] submitDecision failed:', result.data?.error || result.message)
+      }
+    } catch (err: unknown) {
+      console.error('[chatStore] submitDecision error:', err)
+    }
+  }
+
+  /**
    * 清空对话
    */
   function clearMessages(): void {
@@ -271,6 +354,7 @@ export const useChatStore = defineStore('chat', () => {
 
     // Actions
     sendMessage,
+    submitDecision,
     clearMessages,
     disconnect
   }

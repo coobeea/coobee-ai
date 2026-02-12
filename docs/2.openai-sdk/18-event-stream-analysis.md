@@ -1,6 +1,6 @@
 # OpenAI AgentRuntime 事件流分析报告
 
-> 自动生成于 2026-02-12T02:39:59.033Z
+> 自动生成于 2026-02-12T06:15:03.477Z
 >
 > 模型: `MiniMax-M2.1` | API: `https://api.minimaxi.com/v1`
 

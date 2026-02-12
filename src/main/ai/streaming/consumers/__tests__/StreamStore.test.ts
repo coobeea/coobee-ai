@@ -26,6 +26,11 @@ const { mockOn, mockExecute, mockQuery, mockQueryOne, mockTransaction } = vi.hoi
   }
 })
 
+// ===== Mock logger (避免 env → electron 依赖) =====
+vi.mock('@main/common/logger', () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+}))
+
 // ===== Mock eventBus =====
 vi.mock('@main/common/eventbus', () => ({
   eventBus: {
@@ -145,6 +150,7 @@ describe('StreamStore', () => {
 
   describe('getMessages', () => {
     it('按序号范围检索消息', async () => {
+      await store.initialize()
       mockQuery.mockResolvedValueOnce([
         {
           id: 'msg-1',
@@ -169,6 +175,7 @@ describe('StreamStore', () => {
     })
 
     it('使用默认参数', async () => {
+      await store.initialize()
       mockQuery.mockResolvedValueOnce([])
 
       await store.getMessages('s1')
@@ -181,6 +188,7 @@ describe('StreamStore', () => {
 
   describe('getLatestSequence', () => {
     it('返回最新序号', async () => {
+      await store.initialize()
       mockQueryOne.mockResolvedValueOnce({ max_seq: 42 })
 
       const seq = await store.getLatestSequence('s1')
@@ -189,6 +197,7 @@ describe('StreamStore', () => {
     })
 
     it('无消息时返回 0', async () => {
+      await store.initialize()
       mockQueryOne.mockResolvedValueOnce({ max_seq: null })
 
       const seq = await store.getLatestSequence('s1')
@@ -201,6 +210,7 @@ describe('StreamStore', () => {
 
   describe('cleanOldMessages', () => {
     it('清理旧消息', async () => {
+      await store.initialize()
       await store.cleanOldMessages('s1', 500)
 
       expect(mockExecute).toHaveBeenCalledWith(
@@ -212,6 +222,7 @@ describe('StreamStore', () => {
 
   describe('clearSession', () => {
     it('清理会话所有消息', async () => {
+      await store.initialize()
       await store.clearSession('s1')
 
       expect(mockExecute).toHaveBeenCalledWith(

@@ -11,6 +11,8 @@
  * - run:start → start（+ START 生命周期事件）
  * - run:done → done（+ END 生命周期事件）
  * - run:error → error（+ ERROR 生命周期事件）
+ * - run:interrupted → interrupted（HITL 中断）
+ * - run:resumed → resumed（HITL 恢复）
  * - 不需要广播的事件（如 turn:start）被跳过
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -210,6 +212,41 @@ describe('StreamEmitter.forward()', () => {
           error: 'something broke'
         })
       )
+    })
+  })
+
+  // ========== HITL 生命周期映射 ==========
+
+  describe('HITL 生命周期映射', () => {
+    it('run:interrupted → interrupted StreamMessage', () => {
+      emitter.forward({ type: 'run:interrupted', content: '' })
+
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        StreamEventType.MESSAGE,
+        expect.objectContaining({
+          message: expect.objectContaining({ type: 'interrupted', content: '' })
+        })
+      )
+    })
+
+    it('run:resumed → resumed StreamMessage', () => {
+      emitter.forward({ type: 'run:resumed', content: '' })
+
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        StreamEventType.MESSAGE,
+        expect.objectContaining({
+          message: expect.objectContaining({ type: 'resumed', content: '' })
+        })
+      )
+    })
+
+    it('run:interrupted 不触发额外的生命周期事件', () => {
+      emitter.forward({ type: 'run:interrupted', content: '' })
+
+      // 应只有 MESSAGE 事件，没有 START/END/ERROR 事件
+      const calls = mockEventBus.emit.mock.calls
+      expect(calls).toHaveLength(1)
+      expect(calls[0][0]).toBe(StreamEventType.MESSAGE)
     })
   })
 

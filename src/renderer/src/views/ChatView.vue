@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted, computed } from 'vue'
-import { useChatStore, type ChatMessage } from '@/stores/chat'
+import { useChatStore, type ChatMessage, type PendingApproval } from '@/stores/chat'
+import type { HitlApprovalDecision } from '@shared/stream-protocol'
 
 const chatStore = useChatStore()
 const inputText = ref('')
@@ -84,10 +85,30 @@ function getStatusIcon(msg: ChatMessage): string {
   switch (msg.status) {
     case 'streaming':
       return '正在生成...'
+    case 'interrupted':
+      return '等待审批...'
     case 'error':
       return '生成失败'
     default:
       return ''
+  }
+}
+
+// HITL 审批决策
+function handleApproval(approval: PendingApproval, decision: HitlApprovalDecision): void {
+  if (!chatStore.sessionId || approval.decision) return
+  chatStore.submitDecision(chatStore.sessionId, approval.index, decision)
+}
+
+// 获取决策标签
+function getDecisionLabel(decision: HitlApprovalDecision): string {
+  switch (decision) {
+    case 'approve-once':
+      return '已允许'
+    case 'approve-always':
+      return '始终允许'
+    case 'reject':
+      return '已拒绝'
   }
 }
 
@@ -251,6 +272,86 @@ onMounted(() => {
                     class="mt-1.5 max-h-24 overflow-y-auto rounded bg-gray-50 px-2 py-1.5 font-mono text-[11px] leading-relaxed text-gray-500"
                   >
                     {{ tool.result }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- HITL 审批卡片 -->
+              <div v-if="msg.pendingApprovals?.length" class="mt-3 space-y-2">
+                <div
+                  v-for="approval in msg.pendingApprovals"
+                  :key="approval.index"
+                  class="rounded-lg border px-3 py-2.5"
+                  :class="
+                    approval.decision
+                      ? approval.decision === 'reject'
+                        ? 'border-red-200/80 bg-red-50/50'
+                        : 'border-emerald-200/80 bg-emerald-50/50'
+                      : 'border-amber-300/80 bg-amber-50/60'
+                  "
+                >
+                  <!-- 标题行 -->
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="i-carbon-locked inline-block h-3.5 w-3.5"
+                      :class="
+                        approval.decision
+                          ? approval.decision === 'reject'
+                            ? 'text-red-500'
+                            : 'text-emerald-500'
+                          : 'text-amber-600'
+                      "
+                    ></span>
+                    <span class="text-xs font-medium text-gray-700">
+                      {{ approval.decision ? getDecisionLabel(approval.decision) : '需要审批' }}
+                    </span>
+                  </div>
+
+                  <!-- 工具信息 -->
+                  <div class="mt-1.5 flex items-center gap-2">
+                    <span class="i-carbon-tool-box inline-block h-3 w-3 text-gray-400"></span>
+                    <span class="font-mono text-[11px] font-medium text-gray-600">
+                      {{ approval.toolName }}
+                    </span>
+                  </div>
+
+                  <!-- 参数（可折叠） -->
+                  <details v-if="approval.arguments" class="mt-1.5">
+                    <summary
+                      class="cursor-pointer text-[10px] text-gray-400 select-none hover:text-gray-500"
+                    >
+                      查看参数
+                    </summary>
+                    <div
+                      class="mt-1 max-h-20 overflow-y-auto rounded bg-white/60 px-2 py-1 font-mono text-[10px] leading-relaxed text-gray-500 whitespace-pre-wrap"
+                    >
+                      {{ approval.arguments }}
+                    </div>
+                  </details>
+
+                  <!-- 决策按钮（未决策时显示） -->
+                  <div v-if="!approval.decision" class="mt-2.5 flex gap-2">
+                    <button
+                      class="flex items-center gap-1 rounded-md bg-emerald-500 px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-emerald-600"
+                      @click="handleApproval(approval, 'approve-once')"
+                    >
+                      <span class="i-carbon-checkmark inline-block h-3 w-3"></span>
+                      允许一次
+                    </button>
+                    <button
+                      class="flex items-center gap-1 rounded-md bg-blue-500 px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-blue-600"
+                      @click="handleApproval(approval, 'approve-always')"
+                    >
+                      <span class="i-carbon-checkmark-filled inline-block h-3 w-3"></span>
+                      始终允许
+                    </button>
+                    <button
+                      class="flex items-center gap-1 rounded-md bg-red-500 px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-red-600"
+                      @click="handleApproval(approval, 'reject')"
+                    >
+                      <span class="i-carbon-close inline-block h-3 w-3"></span>
+                      拒绝
+                    </button>
                   </div>
                 </div>
               </div>

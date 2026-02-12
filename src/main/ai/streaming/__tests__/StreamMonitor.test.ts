@@ -6,6 +6,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // 捕获注册的回调
 const eventHandlers = new Map<string, ((...args: unknown[]) => unknown)[]>()
 
+vi.mock('@main/common/logger', () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+}))
+
 vi.mock('@main/common/eventbus', () => ({
   eventBus: {
     on: vi.fn((event: string, handler: (...args: unknown[]) => unknown) => {

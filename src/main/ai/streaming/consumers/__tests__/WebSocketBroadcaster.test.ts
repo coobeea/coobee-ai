@@ -34,6 +34,18 @@ vi.mock('ws', () => {
   }
 })
 
+// ===== Mock logger (避免 logger → env → electron 依赖) =====
+vi.mock('@main/common/logger', () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+}))
+
+// ===== Mock env (避免 electron 依赖) =====
+vi.mock('@main/common/env', () => ({
+  Env: {
+    main: { wsPort: '9999' }
+  }
+}))
+
 // ===== Mock eventBus =====
 vi.mock('@main/common/eventbus', () => ({
   eventBus: {

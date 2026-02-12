@@ -18,9 +18,11 @@
  *   tool:done    → tool_result
  *   handoff:*    → handoff
  *   hitl:*       → hitl
- *   run:start    → start
- *   run:done     → done
- *   run:error    → error
+ *   run:start       → start
+ *   run:done        → done
+ *   run:error       → error
+ *   run:interrupted → interrupted
+ *   run:resumed     → resumed
  */
 export type StreamMessageType =
   | 'text'
@@ -33,6 +35,8 @@ export type StreamMessageType =
   | 'start'
   | 'done'
   | 'error'
+  | 'interrupted'
+  | 'resumed'
 
 /** 流式消息来源 */
 export interface StreamSource {
@@ -83,3 +87,34 @@ export type WsServerMessage =
 
 /** WebSocket 连接状态 */
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
+
+// ==================== HITL 审批 ====================
+
+/**
+ * HITL 审批决策
+ *
+ * 对应 OpenClaw 的三种决策：
+ *   - approve-once:   本次允许执行
+ *   - approve-always:  始终允许（白名单自学习，预留）
+ *   - reject:          拒绝执行
+ */
+export type HitlApprovalDecision = 'approve-once' | 'approve-always' | 'reject'
+
+/**
+ * HITL 消息数据（hitl 类型 StreamMessage 的 data 字段结构）
+ *
+ * 前端通过 action 区分事件阶段：
+ *   - required:  需要审批（展示审批卡片）
+ *   - approved:  已批准（更新卡片状态）
+ *   - rejected:  已拒绝（更新卡片状态）
+ */
+export interface HitlMessageData {
+  /** 审批项索引（一次中断可能有多个工具需要审批） */
+  index: number
+  /** 工具名称 */
+  toolName: string
+  /** 工具参数（JSON 字符串） */
+  arguments?: string
+  /** 事件阶段 */
+  action: 'required' | 'approved' | 'rejected'
+}
