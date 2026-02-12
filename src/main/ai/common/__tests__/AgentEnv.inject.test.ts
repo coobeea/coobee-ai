@@ -91,7 +91,7 @@ describe('AgentExecutor — 环境注入', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    process.env.VITE_MINIMAX_API_KEY = 'test-key'
+    process.env.VITE_LLM_API_KEY = 'test-key'
 
     const mod = await import('../../AgentExecutor')
     agentExecutor = mod.agentExecutor

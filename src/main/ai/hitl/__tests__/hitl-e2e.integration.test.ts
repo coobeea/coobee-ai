@@ -161,7 +161,7 @@ describe('HITL 全链路集成测试', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.useFakeTimers()
-    process.env.VITE_MINIMAX_API_KEY = 'test-key'
+    process.env.VITE_LLM_API_KEY = 'test-key'
 
     collectedMessages.length = 0
     collectedEventTypes.length = 0

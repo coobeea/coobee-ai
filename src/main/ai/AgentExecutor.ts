@@ -85,19 +85,19 @@ export class PiMonoBuilder {
     return this
   }
 
-  /** 模型名称（默认从 VITE_MINIMAX_MODEL 读取，兜底 MiniMax-M2.1） */
+  /** 模型名称（默认从 VITE_LLM_MODEL 读取，兜底 MiniMax-M2.1） */
   model(model: string): this {
     this._model = model
     return this
   }
 
-  /** API Key（默认从 VITE_MINIMAX_API_KEY 读取） */
+  /** API Key（默认从 VITE_LLM_API_KEY 读取） */
   apiKey(key: string): this {
     this._apiKey = key
     return this
   }
 
-  /** API Base URL（默认从 VITE_MINIMAX_BASE_URL 读取） */
+  /** API Base URL（默认从 VITE_LLM_BASE_URL 读取） */
   baseURL(url: string): this {
     this._baseURL = url
     return this
@@ -183,17 +183,17 @@ export class PiMonoBuilder {
 
   /** 构建并初始化 Runtime（内部方法，由 Executor 调用） */
   async build(): Promise<AgentRuntime> {
-    const apiKey = this._apiKey || process.env.VITE_MINIMAX_API_KEY
+    const apiKey = this._apiKey || process.env.VITE_LLM_API_KEY
     if (!apiKey) {
-      throw new Error('API Key 未配置：请通过 .apiKey() 或 VITE_MINIMAX_API_KEY 环境变量设置')
+      throw new Error('API Key 未配置：请通过 .apiKey() 或 VITE_LLM_API_KEY 环境变量设置')
     }
 
     const opts: PiMonoAgentRuntimeOptions = {
       name: this._name,
       instructions: this._instructions,
       apiKey,
-      model: this._model || process.env.VITE_MINIMAX_MODEL || 'MiniMax-M2.1',
-      baseURL: this._baseURL || process.env.VITE_MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1'
+      model: this._model || process.env.VITE_LLM_MODEL || 'MiniMax-M2.1',
+      baseURL: this._baseURL || process.env.VITE_LLM_BASE_URL || 'https://api.minimaxi.com/v1'
     }
 
     // 可选字段：仅在设置时传入，避免覆盖 Runtime 的默认值
@@ -335,7 +335,7 @@ export class OpenAIBuilder {
     const opts: OpenAIAgentRuntimeOptions = {
       name: this._name,
       instructions: this._instructions,
-      model: this._model || process.env.VITE_MINIMAX_MODEL || 'MiniMax-M2.1'
+      model: this._model || process.env.VITE_LLM_MODEL || 'MiniMax-M2.1'
     }
 
     if (this._appendInstructions.length > 0) opts.appendInstructions = this._appendInstructions

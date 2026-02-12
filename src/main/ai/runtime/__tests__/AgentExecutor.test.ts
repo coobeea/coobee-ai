@@ -131,7 +131,7 @@ describe('PiMonoBuilder', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // 设置必要的环境变量
-    process.env.VITE_MINIMAX_API_KEY = 'test-key'
+    process.env.VITE_LLM_API_KEY = 'test-key'
     builder = new PiMonoBuilder()
   })
 
@@ -195,7 +195,7 @@ describe('AgentExecutor — Executor 集成', () => {
       mockRuntime.initialize.mockResolvedValue(undefined)
       mockRuntime.destroy.mockResolvedValue(undefined)
 
-      process.env.VITE_MINIMAX_API_KEY = 'test-key'
+      process.env.VITE_LLM_API_KEY = 'test-key'
       const builder = agentExecutor.piMono().name('test').sessionId('session-test')
 
       const gen = agentExecutor.stream({

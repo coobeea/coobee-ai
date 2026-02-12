@@ -106,11 +106,11 @@ function resolveApiConfig(): { apiKey: string; baseURL?: string; model: string }
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini'
     }
   }
-  if (process.env.VITE_MINIMAX_API_KEY) {
+  if (process.env.VITE_LLM_API_KEY) {
     return {
-      apiKey: process.env.VITE_MINIMAX_API_KEY,
-      baseURL: process.env.VITE_MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1',
-      model: process.env.VITE_MINIMAX_MODEL || 'MiniMax-M2.1'
+      apiKey: process.env.VITE_LLM_API_KEY,
+      baseURL: process.env.VITE_LLM_BASE_URL || 'https://api.minimaxi.com/v1',
+      model: process.env.VITE_LLM_MODEL || 'MiniMax-M2.1'
     }
   }
   return null
