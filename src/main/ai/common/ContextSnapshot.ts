@@ -72,6 +72,8 @@ export interface ContextSnapshot {
   userMessage: string
   /** LLM 输出 */
   output: string
+  /** API 错误信息（仅在出错时有值） */
+  error?: string
   /** 工具调用记录 */
   toolCalls?: Array<{
     toolName: string
@@ -166,6 +168,7 @@ export async function saveContextSnapshot(
     },
     userMessage: input,
     output: result.output,
+    ...(result.error ? { error: result.error } : {}),
     toolCalls: result.toolCalls,
     duration: result.duration
   }

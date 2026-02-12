@@ -196,6 +196,8 @@ export interface ToolApprovalInfo {
 export interface ExecutionResult {
   /** 最终输出文本 */
   output: string
+  /** API 错误信息（SDK 内部错误，非 throw 类型） */
+  error?: string
   /** 是否被中断（HITL 工具审批） */
   interrupted?: boolean
   /** 待审批的工具调用列表（仅 interrupted=true 时有值） */

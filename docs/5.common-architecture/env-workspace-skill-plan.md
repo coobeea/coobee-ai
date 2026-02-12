@@ -39,6 +39,8 @@
     │   ├── contexts/                    # LLM 请求上下文快照
     │   │   ├── 2026-02-12T10-00-05-123.json
     │   │   └── ...                      # 每次 LLM 调用一个文件，时间戳命名
+    │   ├── events/                      # 流式事件记录（完整时间线）
+    │   │   └── events.jsonl             # 单文件 JSONL，所有执行的事件按时间累积
     │   ├── skills/                      # Agent 自生成的 Skill
     │   ├── output/                      # Agent 输出文件
     │   └── logs/                        # Agent 运行日志

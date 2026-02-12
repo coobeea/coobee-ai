@@ -320,6 +320,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
 
       // 2. 设置事件订阅 → push 到 queue
       let fullOutput = ''
+      let apiError: string | null = null
       const toolCalls: ExecutionResult['toolCalls'] = []
 
       const unsubscribe = this.setupEventSubscription(
@@ -327,19 +328,36 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
         (text) => {
           fullOutput += text
         },
-        toolCalls
+        toolCalls,
+        (errorMessage) => {
+          apiError = errorMessage
+        }
       )
 
       // 3. SDK 执行，完成后结束 queue
       this.piSession
         .prompt(input)
-        .then(() => {
+        .then(async () => {
           unsubscribe()
-          queue.push({ type: 'run:done', content: '' })
+          // 等待一个微任务周期，确保 SDK 已排队的事件回调有机会执行完毕
+          // （pi-SDK 内部可能通过 Promise/microtask 分发最后的 delta 事件）
+          await Promise.resolve()
+
+          if (apiError) {
+            // API 返回了错误（如 usage limit exceeded）但 SDK 没有 throw
+            queue.push({
+              type: 'run:error',
+              content: apiError,
+              data: { message: apiError }
+            })
+          } else {
+            queue.push({ type: 'run:done', content: '' })
+          }
           queue.end()
         })
-        .catch((err: unknown) => {
+        .catch(async (err: unknown) => {
           unsubscribe()
+          await Promise.resolve()
           queue.push({
             type: 'run:error',
             content: err instanceof Error ? err.message : String(err),
@@ -355,6 +373,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
 
       return {
         output: fullOutput,
+        ...(apiError ? { error: apiError } : {}),
         toolCalls,
         duration: Date.now() - startTime,
         metadata: {
@@ -464,7 +483,8 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
   private setupEventSubscription(
     onChunk: (chunk: StreamChunk) => void,
     onTextDelta: (text: string) => void,
-    toolCalls: ExecutionResult['toolCalls']
+    toolCalls: ExecutionResult['toolCalls'],
+    onApiError?: (errorMessage: string) => void
   ): () => void {
     let turnIndex = 0
     let textStartEmitted = false
@@ -699,6 +719,13 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
         case 'message_end': {
           // 只为 assistant 消息发出 llm:done
           if (evt.message?.role === 'assistant') {
+            // 检测 API 错误（pi-SDK 不 throw，而是将错误记录在 message 中）
+            if (evt.message?.stopReason === 'error' || evt.message?.errorMessage) {
+              const errorMsg = evt.message.errorMessage || 'Unknown API error'
+              log.error(`API error detected: ${errorMsg}`)
+              onApiError?.(errorMsg)
+            }
+
             const usage = evt.message?.usage
             onChunk({
               type: 'llm:done',

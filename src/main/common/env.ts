@@ -171,6 +171,7 @@ export const Env = {
    *   {workspacesDir}/{id}/
    *   ├── sessions/     会话持久化
    *   ├── contexts/     LLM 请求上下文快照
+   *   ├── events/       流式事件记录（完整时间线）
    *   ├── skills/       Agent 自生成的 Skill
    *   ├── output/       Agent 输出文件
    *   └── logs/         Agent 运行日志
@@ -184,6 +185,7 @@ export const Env = {
       workspace,
       path.join(workspace, 'sessions'),
       path.join(workspace, 'contexts'),
+      path.join(workspace, 'events'),
       path.join(workspace, 'skills'),
       path.join(workspace, 'output'),
       path.join(workspace, 'logs')

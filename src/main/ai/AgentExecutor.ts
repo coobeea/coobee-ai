@@ -23,8 +23,12 @@
  *   })
  */
 
+import fs from 'node:fs'
 import path from 'node:path'
-import { log } from '@main/common/logger'
+import { createLogger } from '@main/common/logger'
+
+/** AI 专属日志 — 写入 logs/ai.log，便于 AI 相关问题排查 */
+const log = createLogger('ai')
 import type { AgentRuntime } from './runtime/AgentRuntime'
 import type { ExecutionResult, StreamChunk, ToolDefinition, SkillDefinition } from './runtime/types'
 import type { PiMonoAgentRuntimeOptions, ThinkingLevel } from './runtime/pimono/types'
@@ -502,7 +506,7 @@ class AgentExecutor {
    * @param sessionId 会话 ID（用于生成工作空间）
    * @param builder   Builder 实例（PiMono 或 OpenAI）
    */
-  private async injectEnv(sessionId: string, builder: AgentBuilder): Promise<void> {
+  private async injectEnv(sessionId: string, builder: AgentBuilder): Promise<string | undefined> {
     try {
       // 延迟导入 Env，避免测试环境问题
       const { Env } = await import('@main/common/env')
@@ -523,19 +527,62 @@ class AgentExecutor {
       const runtimePathsBlock = formatRuntimePaths(agentEnv)
       builder.appendInstructions(runtimePathsBlock)
 
-      // 5. 设置工作目录（PiMono Builder 支持 cwd）
+      // 5. 设置会话存储目录（指向 workspace 内的 sessions/）
+      builder.sessionDir(path.join(workspace, 'sessions'))
+
+      // 6. 设置工作目录（PiMono Builder 支持 cwd）
       if (builder instanceof PiMonoBuilder) {
         builder.cwd(workspace)
       }
 
-      // 6. 设置上下文快照目录（Runtime 层写入）
+      // 7. 设置上下文快照目录（Runtime 层写入）
       builder.contextDir(path.join(workspace, 'contexts'))
 
       log.info(`[AgentExecutor] Env injected: sessionId=${sessionId}, workspace=${workspace}`)
+      return workspace
     } catch (error) {
       // 环境注入失败不阻断执行，仅记录警告
       log.warn(`[AgentExecutor] Env injection failed, continuing without env:`, error)
+      return undefined
     }
+  }
+
+  // ========== 事件记录 ==========
+
+  /**
+   * 将 StreamChunk 追加写入 events.jsonl
+   *
+   * 每个 session 一个文件，所有执行的事件按时间线累积。
+   * JSONL 格式：每行一个 JSON 对象，便于 grep/分析。
+   *
+   * @param eventsFile 事件文件路径（null 则跳过）
+   * @param chunk      流式事件
+   * @param seq        本次执行内的序号
+   */
+  private appendEvent(eventsFile: string | null, chunk: StreamChunk, seq: number): void {
+    if (!eventsFile) return
+    try {
+      const line = JSON.stringify({
+        ts: new Date().toISOString(),
+        seq,
+        type: chunk.type,
+        content: chunk.content,
+        ...(chunk.data ? { data: chunk.data } : {})
+      })
+      fs.appendFileSync(eventsFile, line + '\n')
+    } catch {
+      // 写入失败不阻断流式执行
+    }
+  }
+
+  /**
+   * 获取事件文件路径
+   *
+   * @param workspace 工作空间路径（undefined 则返回 null）
+   * @returns events/events.jsonl 的完整路径，或 null
+   */
+  private getEventsFile(workspace: string | undefined): string | null {
+    return workspace ? path.join(workspace, 'events', 'events.jsonl') : null
   }
 
   // ========== 流式执行（SSE 透传） ==========
@@ -580,24 +627,40 @@ class AgentExecutor {
 
     try {
       // 0. 注入运行时环境（含 contextDir，Runtime 层自行写入快照）
-      await this.injectEnv(sessionId, builder)
+      const workspace = await this.injectEnv(sessionId, builder)
+      const eventsFile = this.getEventsFile(workspace)
 
       // 1. 创建 Runtime
       runtime = await builder.sessionId(sessionId).build()
       const emitter = this.createEmitter(sessionId, runtime)
 
-      // 2. 透传 stream()，同时 forward 到 EventBus
+      // 2. 透传 stream()，同时 forward 到 EventBus + 写入 events.jsonl
       const gen = runtime.stream(message)
+      let eventSeq = 0
       let r = await gen.next()
       while (!r.done) {
         emitter.forward(r.value)
+        this.appendEvent(eventsFile, r.value, ++eventSeq)
+        // 记录 API 错误（SDK 内部错误不 throw，通过 run:error chunk 传递）
+        if (r.value.type === 'run:error') {
+          log.error(`[AgentExecutor] API error: sessionId=${sessionId}, error=${r.value.content}`)
+        }
         yield r.value
         r = await gen.next()
       }
 
-      log.info(
-        `[AgentExecutor] Stream completed: sessionId=${sessionId}, output=${r.value.output.slice(0, 100)}...`
-      )
+      // 完成日志：区分成功与错误
+      if (r.value.error) {
+        log.error(
+          `[AgentExecutor] Stream failed: sessionId=${sessionId}, ` +
+            `duration=${Date.now() - (this.busySessions.get(sessionId)?.startedAt || Date.now())}ms, ` +
+            `error=${r.value.error}`
+        )
+      } else {
+        log.info(
+          `[AgentExecutor] Stream completed: sessionId=${sessionId}, output=${r.value.output.slice(0, 100)}...`
+        )
+      }
 
       return r.value
     } catch (error: unknown) {
@@ -621,18 +684,25 @@ class AgentExecutor {
   // ========== 内部执行 ==========
 
   /**
-   * 消费 AsyncGenerator 并 forward 到 EventBus
+   * 消费 AsyncGenerator 并 forward 到 EventBus + 写入 events.jsonl
    *
    * 返回 generator 的最终返回值（ExecutionResult）。
    */
   private async consumeAndForward(
     gen: AsyncGenerator<StreamChunk, ExecutionResult, unknown>,
     emitter: IStreamEmitter,
-    onChunk?: (chunk: StreamChunk) => void
+    onChunk?: (chunk: StreamChunk) => void,
+    eventsFile?: string | null
   ): Promise<ExecutionResult> {
+    let eventSeq = 0
     let r = await gen.next()
     while (!r.done) {
       emitter.forward(r.value)
+      this.appendEvent(eventsFile || null, r.value, ++eventSeq)
+      // 记录 API 错误事件
+      if (r.value.type === 'run:error') {
+        log.error(`[AgentExecutor] API error in execute: error=${r.value.content}`)
+      }
       onChunk?.(r.value)
       r = await gen.next()
     }
@@ -664,7 +734,8 @@ class AgentExecutor {
 
     try {
       // 0. 注入运行时环境（含 contextDir，Runtime 层自行写入快照）
-      await this.injectEnv(sessionId, builder)
+      const workspace = await this.injectEnv(sessionId, builder)
+      const eventsFile = this.getEventsFile(workspace)
 
       // 1. 创建 Runtime（Builder 内部调用 initialize）
       runtime = await builder.sessionId(sessionId).build()
@@ -672,7 +743,7 @@ class AgentExecutor {
 
       // 2. 初始 stream
       const gen = runtime.stream(message)
-      let result = await this.consumeAndForward(gen, emitter, onChunk)
+      let result = await this.consumeAndForward(gen, emitter, onChunk, eventsFile)
 
       // 3. HITL 循环（可能多轮中断-恢复）
       while (result.interrupted && result.interruptions?.length) {
@@ -714,14 +785,20 @@ class AgentExecutor {
 
         // 3e. Resume stream — 继续执行
         const resumeGen = runtime.resumeStream()
-        result = await this.consumeAndForward(resumeGen, emitter, onChunk)
+        result = await this.consumeAndForward(resumeGen, emitter, onChunk, eventsFile)
         // 如果 result.interrupted 再次为 true，while 循环继续
       }
 
       const duration = Date.now() - startTime
-      log.info(
-        `[AgentExecutor] Completed: sessionId=${sessionId}, duration=${duration}ms, output=${result.output.slice(0, 100)}...`
-      )
+      if (result.error) {
+        log.error(
+          `[AgentExecutor] Failed: sessionId=${sessionId}, duration=${duration}ms, error=${result.error}`
+        )
+      } else {
+        log.info(
+          `[AgentExecutor] Completed: sessionId=${sessionId}, duration=${duration}ms, output=${result.output.slice(0, 100)}...`
+        )
+      }
 
       return result
     } catch (error: unknown) {
