@@ -31,35 +31,100 @@ export const Env = {
     locale: app.getLocale()
   },
 
-  paths: {
-    // === 应用路径（Application Paths）===
-    /** 应用根目录 (如: /Applications/coobee-ai.app/Contents/Resources/app.asar) */
-    root: app.getAppPath(),
-    /** 应用数据目录 - 存储数据库、配置等 (如: ~/Library/Application Support/coobee-ai) */
-    userData: app.getPath('userData'),
-    /** 应用数据目录(系统级) (如: ~/Library/Application Support) */
-    appData: app.getPath('appData'),
-    /** 日志目录 (如: /path/to/app) */
-    logPath: !is.dev && app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath(),
-    /** 安装目录 (如: /Applications/coobee-ai.app/Contents/MacOS) */
-    installDir: !is.dev && app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath(),
-    /** 用户主目录 (开发: <项目>/.home | 生产: ~/coobee-ai) */
-    userHome: is.dev
+  paths: (() => {
+    // === 基础路径计算 ===
+    const _userHome = is.dev
       ? path.join(app.getAppPath(), '.home')
-      : path.join(app.getPath('home'), '.' + app.getName()),
+      : path.join(app.getPath('home'), '.' + app.getName())
 
-    // === 系统路径（System Paths）===
-    /** 系统用户目录 (如: /Users/username) */
-    home: app.getPath('home'),
-    /** 系统临时目录 (如: /var/folders/xxx) */
-    temp: app.getPath('temp'),
-    /** 系统下载目录 (如: ~/Downloads) */
-    downloads: app.getPath('downloads'),
-    /** 系统文档目录 (如: ~/Documents) */
-    documents: app.getPath('documents'),
-    /** 系统桌面目录 (如: ~/Desktop) */
-    desktop: app.getPath('desktop')
-  },
+    return {
+      // === 应用路径（Application Paths）===
+      /** 应用根目录 (如: /Applications/coobee-ai.app/Contents/Resources/app.asar) */
+      root: app.getAppPath(),
+      /** 应用数据目录 - 存储数据库、配置等 (如: ~/Library/Application Support/coobee-ai) */
+      userData: app.getPath('userData'),
+      /** 应用数据目录(系统级) (如: ~/Library/Application Support) */
+      appData: app.getPath('appData'),
+      /** 日志目录 (如: /path/to/app) */
+      logPath: !is.dev && app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath(),
+      /** 安装目录 (如: /Applications/coobee-ai.app/Contents/MacOS) */
+      installDir: !is.dev && app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath(),
+      /** 用户主目录 (开发: <项目>/.home | 生产: ~/.coobee-ai) */
+      userHome: _userHome,
+
+      // === 配置目录（Config）===
+      /** 用户配置目录 @example 开发: <项目>/.home/config | 生产: ~/.coobee-ai/config */
+      configDir: path.join(_userHome, 'config'),
+
+      // === 记忆目录（Memory）===
+      /**
+       * 记忆总根目录，与 workspaces 同级
+       *
+       * 结构：
+       *   memory/
+       *   ├── user/      用户级记忆（跨 Agent 共享，如偏好、长期记忆）
+       *   └── agent/     Agent 级记忆（按 Agent 隔离，如经验、学习成果）
+       *
+       * @example 开发: <项目>/.home/memory | 生产: ~/.coobee-ai/memory
+       */
+      memoryDir: path.join(_userHome, 'memory'),
+      /** 用户级记忆（跨 Agent 共享） */
+      userMemoryDir: path.join(_userHome, 'memory', 'user'),
+      /** Agent 级记忆（按 Agent 隔离） */
+      agentMemoryDir: path.join(_userHome, 'memory', 'agent'),
+
+      // === Agent 工作空间（Workspaces）===
+      /**
+       * Agent 工作空间总根目录
+       *
+       * 每次会话/Agent 通过 getWorkspaceDir(id) 获取独立子目录：
+       *   workspaces/{id}/
+       *   ├── sessions/     会话持久化
+       *   ├── skills/       Agent 自生成的 Skill
+       *   └── output/       Agent 输出文件
+       *
+       * @example 开发: <项目>/.home/workspaces | 生产: ~/.coobee-ai/workspaces
+       */
+      workspacesDir: path.join(_userHome, 'workspaces'),
+
+      // === Skill 目录（Skills）===
+      /**
+       * 内置 Skill 目录（只读，随应用分发）
+       *
+       * 开发模式：项目根目录 skills/
+       * 生产模式：resources/skills
+       *
+       * @example 开发: <项目>/skills
+       */
+      builtinSkillsDir: is.dev
+        ? path.join(app.getAppPath(), 'skills')
+        : path.join(process.resourcesPath, 'skills'),
+
+      /**
+       * 用户 Skill 目录（可读写，用户自行安装/编写）
+       *
+       * Skill 多级合并优先级（后者覆盖前者同名）：
+       *   1. builtinSkillsDir  — 内置（最低）
+       *   2. userSkillsDir     — 用户级
+       *   3. {workspace}/skills — Agent 自生成（最高，仅当前 Agent 可见）
+       *
+       * @example 开发: <项目>/.home/skills | 生产: ~/.coobee-ai/skills
+       */
+      userSkillsDir: path.join(_userHome, 'skills'),
+
+      // === 系统路径（System Paths）===
+      /** 系统用户目录 (如: /Users/username) */
+      home: app.getPath('home'),
+      /** 系统临时目录 (如: /var/folders/xxx) */
+      temp: app.getPath('temp'),
+      /** 系统下载目录 (如: ~/Downloads) */
+      downloads: app.getPath('downloads'),
+      /** 系统文档目录 (如: ~/Documents) */
+      documents: app.getPath('documents'),
+      /** 系统桌面目录 (如: ~/Desktop) */
+      desktop: app.getPath('desktop')
+    }
+  })(),
 
   isRendererProcess(): boolean {
     return typeof process === 'undefined' || !process || process.type === 'renderer'
@@ -93,6 +158,78 @@ export const Env = {
     }
     return upgradeDir
   },
+
+  // ==================== 工作空间与 Skill ====================
+
+  /**
+   * 获取指定 ID 的 Agent 工作空间目录，自动确保目录结构存在
+   *
+   * 返回 {workspacesDir}/{id}，id 通常为 sessionId。
+   *
+   * 结构：
+   *   {workspacesDir}/{id}/
+   *   ├── sessions/     会话持久化
+   *   ├── skills/       Agent 自生成的 Skill
+   *   ├── output/       Agent 输出文件
+   *   └── logs/         Agent 运行日志
+   *
+   * @param id 工作空间标识（通常为 sessionId）
+   * @returns 工作空间根路径
+   */
+  async getAgentWorkspaceDir(id: string): Promise<string> {
+    const workspace = path.join(this.paths.workspacesDir, id)
+    const subDirs = [
+      workspace,
+      path.join(workspace, 'sessions'),
+      path.join(workspace, 'skills'),
+      path.join(workspace, 'output'),
+      path.join(workspace, 'logs')
+    ]
+    for (const dir of subDirs) {
+      if (!fs.existsSync(dir)) {
+        await mkdirp(dir)
+      }
+    }
+    return workspace
+  },
+
+  /**
+   * 获取 Skill 搜索路径列表（按优先级从低到高）
+   *
+   * 合并策略：同名 Skill 后者覆盖前者
+   *   1. builtinSkillsDir  — 内置（最低优先级）
+   *   2. userSkillsDir     — 用户级
+   *   3. {workspace}/skills — Agent 自生成（最高优先级，仅当前 Agent 可见）
+   *
+   * 同时确保所有 Skill 目录存在（含核心目录 userHome、dbDir、workspacesDir）。
+   *
+   * @param workspace 当前工作空间路径（可选，由 getWorkspaceDir 返回）
+   */
+  async getSkillSearchPaths(workspace?: string): Promise<string[]> {
+    const coreDirs = [
+      this.paths.userHome,
+      this.paths.configDir,
+      this.paths.memoryDir,
+      this.paths.userMemoryDir,
+      this.paths.agentMemoryDir,
+      this.paths.workspacesDir,
+      this.paths.userSkillsDir
+    ]
+    const skillPaths = [this.paths.builtinSkillsDir, this.paths.userSkillsDir]
+    if (workspace) {
+      const wsSkills = path.join(workspace, 'skills')
+      coreDirs.push(wsSkills)
+      skillPaths.push(wsSkills)
+    }
+    for (const dir of coreDirs) {
+      if (!fs.existsSync(dir)) {
+        await mkdirp(dir)
+      }
+    }
+    return skillPaths
+  },
+
+  // ==================== 应用运行时 ====================
 
   /**
    * 获取应用运行时目录（runtime/）
