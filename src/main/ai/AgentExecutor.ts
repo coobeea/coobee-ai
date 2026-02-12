@@ -28,6 +28,9 @@ import { log } from '@main/common/logger'
 import type { AgentRuntime } from './runtime/AgentRuntime'
 import type { ExecutionResult, StreamChunk, ToolDefinition, SkillDefinition } from './runtime/types'
 import type { PiMonoAgentRuntimeOptions, ThinkingLevel } from './runtime/pimono/types'
+import type { OpenAIAgentRuntimeOptions, SessionCompressionOptions } from './runtime/openai/types'
+import { createStreamEmitter, type IStreamEmitter } from './streaming/StreamEmitter'
+import type { StreamSource } from './streaming/types'
 
 // ==================== Builder ====================
 
@@ -205,7 +208,139 @@ export class PiMonoBuilder {
   }
 }
 
+// ==================== OpenAI Builder ====================
+
+/**
+ * OpenAI Agent Builder
+ *
+ * 链式 API 构建 OpenAIAgentRuntime。
+ * 不直接暴露，通过 agentExecutor.openai() 获取。
+ */
+export class OpenAIBuilder {
+  private _name = 'agent'
+  private _instructions = '你是一个 AI 助手。'
+  private _appendInstructions: string[] = []
+  private _model?: string
+  private _sessionId?: string
+  private _sessionDir?: string
+  private _tools?: ToolDefinition[]
+  private _skills?: SkillDefinition[]
+  private _maxTurns?: number
+  private _sdkTools?: unknown[]
+  private _handoffs?: unknown[]
+  private _modelSettings?: Record<string, unknown>
+  private _compression?: SessionCompressionOptions
+
+  /** Agent 名称 */
+  name(name: string): this {
+    this._name = name
+    return this
+  }
+
+  /** 系统指令 */
+  instructions(text: string): this {
+    this._instructions = text
+    return this
+  }
+
+  /** 追加指令片段 */
+  appendInstructions(...texts: string[]): this {
+    this._appendInstructions.push(...texts)
+    return this
+  }
+
+  /** 模型名称 */
+  model(model: string): this {
+    this._model = model
+    return this
+  }
+
+  /** 会话 ID（由 Executor 自动设置） */
+  sessionId(id: string): this {
+    this._sessionId = id
+    return this
+  }
+
+  /** 会话存储根目录 */
+  sessionDir(dir: string): this {
+    this._sessionDir = dir
+    return this
+  }
+
+  /** 统一工具列表 */
+  tools(tools: ToolDefinition[]): this {
+    this._tools = tools
+    return this
+  }
+
+  /** 技能列表 */
+  skills(skills: SkillDefinition[]): this {
+    this._skills = skills
+    return this
+  }
+
+  /** 最大执行轮次 */
+  maxTurns(n: number): this {
+    this._maxTurns = n
+    return this
+  }
+
+  /** SDK 原生工具 */
+  sdkTools(tools: unknown[]): this {
+    this._sdkTools = tools
+    return this
+  }
+
+  /** Handoff 配置 */
+  handoffs(handoffs: unknown[]): this {
+    this._handoffs = handoffs
+    return this
+  }
+
+  /** 模型参数 */
+  modelSettings(settings: Record<string, unknown>): this {
+    this._modelSettings = settings
+    return this
+  }
+
+  /** Session 压缩配置 */
+  compression(config: SessionCompressionOptions): this {
+    this._compression = config
+    return this
+  }
+
+  /** 构建并初始化 Runtime */
+  async build(): Promise<AgentRuntime> {
+    const opts: OpenAIAgentRuntimeOptions = {
+      name: this._name,
+      instructions: this._instructions,
+      model: this._model || process.env.VITE_MINIMAX_MODEL || 'MiniMax-M2.1'
+    }
+
+    if (this._appendInstructions.length > 0) opts.appendInstructions = this._appendInstructions
+    if (this._sessionId) opts.sessionId = this._sessionId
+    opts.sessionDir = this._sessionDir || AgentExecutor.getDefaultSessionDir()
+    if (this._tools) opts.tools = this._tools
+    if (this._skills) opts.skills = this._skills
+    if (this._maxTurns !== undefined) opts.maxTurns = this._maxTurns
+    if (this._sdkTools) opts.sdkTools = this._sdkTools as OpenAIAgentRuntimeOptions['sdkTools']
+    if (this._handoffs) opts.handoffs = this._handoffs as OpenAIAgentRuntimeOptions['handoffs']
+    if (this._modelSettings)
+      opts.modelSettings = this._modelSettings as OpenAIAgentRuntimeOptions['modelSettings']
+    if (this._compression) opts.compression = this._compression
+
+    const { OpenAIAgentRuntime } = await import('./runtime/openai')
+    const runtime = new OpenAIAgentRuntime(opts)
+    await runtime.initialize()
+
+    return runtime
+  }
+}
+
 // ==================== 类型定义 ====================
+
+/** 支持的 Builder 类型 */
+export type AgentBuilder = PiMonoBuilder | OpenAIBuilder
 
 /** 执行请求 */
 export interface ExecuteRequest {
@@ -213,8 +348,8 @@ export interface ExecuteRequest {
   sessionId: string
   /** 用户消息 */
   message: string
-  /** Builder 实例（通过 agentExecutor.piMono() 创建） */
-  builder: PiMonoBuilder
+  /** Builder 实例（通过 agentExecutor.piMono() 或 agentExecutor.openai() 创建） */
+  builder: AgentBuilder
   /** 流式事件回调（可选） */
   onChunk?: (chunk: StreamChunk) => void
 }
@@ -241,9 +376,10 @@ class AgentExecutor {
    */
   static getDefaultSessionDir(): string {
     try {
+      // 延迟导入 Env：避免测试环境中 Electron app 未初始化的问题
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { Env } = require('@main/common/env')
-      return path.join(Env.paths.userData, 'sessions')
+      const env = require('@main/common/env') as { Env: { paths: { userData: string } } }
+      return path.join(env.Env.paths.userData, 'sessions')
     } catch {
       const home = process.env.HOME || '/tmp'
       return path.join(home, '.coobee-ai', 'sessions')
@@ -257,8 +393,12 @@ class AgentExecutor {
     return new PiMonoBuilder()
   }
 
+  /** 创建 OpenAI Agent Builder */
+  openai(): OpenAIBuilder {
+    return new OpenAIBuilder()
+  }
+
   // 后续扩展：
-  // openai(): OpenAIBuilder { return new OpenAIBuilder() }
   // team(): TeamBuilder { return new TeamBuilder() }
   // swarm(): SwarmBuilder { return new SwarmBuilder() }
 
@@ -334,6 +474,18 @@ class AgentExecutor {
   // ========== 流式执行（SSE 透传） ==========
 
   /**
+   * 创建 StreamEmitter 用于将 StreamChunk 广播到 EventBus
+   */
+  private createEmitter(sessionId: string, runtime: AgentRuntime): IStreamEmitter {
+    const source: StreamSource = {
+      type: runtime.type,
+      id: runtime.id,
+      name: runtime.name
+    }
+    return createStreamEmitter(sessionId, source)
+  }
+
+  /**
    * 流式执行 — AsyncGenerator 透传
    *
    * 供 SSE 端点直接 yield* 使用：
@@ -343,6 +495,7 @@ class AgentExecutor {
    *   }
    *
    * 内部管理完整的 busy 锁 + 创建 → stream() → 销毁 生命周期。
+   * 每个 chunk 同时通过 StreamEmitter.forward() 广播到 EventBus。
    */
   async *stream(
     request: Omit<ExecuteRequest, 'onChunk'>
@@ -361,11 +514,13 @@ class AgentExecutor {
     try {
       // 1. 创建 Runtime
       runtime = await builder.sessionId(sessionId).build()
+      const emitter = this.createEmitter(sessionId, runtime)
 
-      // 2. 透传 stream()
+      // 2. 透传 stream()，同时 forward 到 EventBus
       const gen = runtime.stream(message)
       let r = await gen.next()
       while (!r.done) {
+        emitter.forward(r.value)
         yield r.value
         r = await gen.next()
       }
@@ -415,12 +570,14 @@ class AgentExecutor {
     try {
       // 1. 创建 Runtime（Builder 内部调用 initialize）
       runtime = await builder.sessionId(sessionId).build()
+      const emitter = this.createEmitter(sessionId, runtime)
 
-      // 2. 流式执行 — 通过 stream() generator
+      // 2. 流式执行 — 通过 stream() generator，同时 forward 到 EventBus
       const chunkCallback = onChunk || (() => {})
       const gen = runtime.stream(message)
       let r = await gen.next()
       while (!r.done) {
+        emitter.forward(r.value)
         chunkCallback(r.value)
         r = await gen.next()
       }

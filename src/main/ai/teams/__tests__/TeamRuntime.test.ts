@@ -1,32 +1,20 @@
 /**
  * TeamRuntime 测试
  *
- * 测试参数驱动的 TeamRuntime：
+ * 测试 AbstractAgentRuntime 基类继承后的 TeamRuntime：
  * - 初始化（成员 Agent 创建）
- * - 顺序执行
+ * - 属性（supportsHITL、type、name 等）
+ * - 顺序执行（run + stream 增量流式）
  * - 并行执行
- * - 流式执行（8 层闭环事件）
- * - HITL 接口（预留，抛出 not supported）
+ * - 流式执行（闭环事件）
+ * - HITL 接口（继承自基类，抛出 not support）
  * - 会话管理
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ===== Hoisted mocks =====
-const { mockRun, mockStreamEmitter } = vi.hoisted(() => ({
-  mockRun: vi.fn(),
-  mockStreamEmitter: {
-    emitStart: vi.fn().mockResolvedValue(undefined),
-    emitDone: vi.fn().mockResolvedValue(undefined),
-    emitError: vi.fn().mockResolvedValue(undefined),
-    emitText: vi.fn().mockResolvedValue(undefined),
-    emitThinking: vi.fn().mockResolvedValue(undefined),
-    emitToolCall: vi.fn().mockResolvedValue(undefined),
-    emitToolResult: vi.fn().mockResolvedValue(undefined),
-    emitHandoff: vi.fn().mockResolvedValue(undefined),
-    emitToolApproval: vi.fn().mockResolvedValue(undefined),
-    emitAgentUpdated: vi.fn().mockResolvedValue(undefined),
-    emit: vi.fn().mockResolvedValue(undefined)
-  }
+const { mockRun } = vi.hoisted(() => ({
+  mockRun: vi.fn()
 }))
 
 // ===== Mock @openai/agents =====
@@ -37,12 +25,23 @@ vi.mock('@openai/agents', () => ({
   run: (...args: unknown[]) => mockRun(...args)
 }))
 
-// ===== Mock StreamEmitter =====
-vi.mock('../../streaming/StreamEmitter', () => ({
-  createStreamEmitter: vi.fn().mockReturnValue(mockStreamEmitter)
+// ===== Mock logger =====
+vi.mock('@main/common/logger', () => ({
+  log: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  },
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  }))
 }))
 
-import { TeamRuntime, type TeamRuntimeOptions } from './TeamRuntime'
+import { TeamRuntime, type TeamRuntimeOptions } from '../TeamRuntime'
 
 function createTeamOptions(overrides?: Partial<TeamRuntimeOptions>): TeamRuntimeOptions {
   return {
@@ -102,6 +101,14 @@ describe('TeamRuntime', () => {
     it('interrupted 初始为 false', () => {
       expect(team.interrupted).toBe(false)
     })
+
+    it('supportsHITL 返回 false', () => {
+      expect(team.supportsHITL).toBe(false)
+    })
+
+    it('id 以 team- 为前缀', () => {
+      expect(team.id).toMatch(/^team-/)
+    })
   })
 
   // ===== 顺序执行 =====
@@ -154,17 +161,17 @@ describe('TeamRuntime', () => {
     })
   })
 
-  // ===== 流式执行 =====
+  // ===== Sequential 流式执行（增量模式） =====
 
-  describe('runStream', () => {
+  describe('stream (sequential — 增量流式)', () => {
     beforeEach(async () => {
       await team.initialize()
     })
 
-    it('发送完整闭环事件：run:start → turn/llm/text 闭环 → run:done', async () => {
+    it('每个成员产生独立的 turn，实现增量输出', async () => {
       mockRun
-        .mockResolvedValueOnce({ finalOutput: 'output1' })
-        .mockResolvedValueOnce({ finalOutput: 'output2' })
+        .mockResolvedValueOnce({ finalOutput: 'writer output' })
+        .mockResolvedValueOnce({ finalOutput: 'editor output' })
 
       const chunks: Array<{ type: string; content?: string }> = []
       await team.runStream('test', {}, (chunk) => chunks.push(chunk))
@@ -173,45 +180,75 @@ describe('TeamRuntime', () => {
       expect(chunks[0].type).toBe('run:start')
       expect(chunks[chunks.length - 1].type).toBe('run:done')
 
-      // turn 闭环
-      const turnStart = chunks.filter((c) => c.type === 'turn:start')
-      expect(turnStart).toHaveLength(1)
-      const turnDone = chunks.filter((c) => c.type === 'turn:done')
-      expect(turnDone).toHaveLength(1)
+      // sequential 模式：每个成员一个 turn → 2 个成员 = 2 个 turn
+      const turnStarts = chunks.filter((c) => c.type === 'turn:start')
+      const turnDones = chunks.filter((c) => c.type === 'turn:done')
+      expect(turnStarts).toHaveLength(2)
+      expect(turnDones).toHaveLength(2)
 
-      // llm 闭环
-      const llmStart = chunks.filter((c) => c.type === 'llm:start')
-      expect(llmStart).toHaveLength(1)
-      const llmDone = chunks.filter((c) => c.type === 'llm:done')
-      expect(llmDone).toHaveLength(1)
+      // 每个 turn 都有 llm/text 闭环
+      const llmStarts = chunks.filter((c) => c.type === 'llm:start')
+      const textDeltas = chunks.filter((c) => c.type === 'text:delta')
+      expect(llmStarts).toHaveLength(2)
+      expect(textDeltas).toHaveLength(2)
 
-      // text 闭环
-      const textStart = chunks.filter((c) => c.type === 'text:start')
-      expect(textStart).toHaveLength(1)
-      const textDelta = chunks.filter((c) => c.type === 'text:delta')
-      expect(textDelta).toHaveLength(1)
-      const textDone = chunks.filter((c) => c.type === 'text:done')
-      expect(textDone).toHaveLength(1)
+      // handoff 事件：每个成员切换时产生
+      const handoffs = chunks.filter((c) => c.type === 'handoff:start')
+      expect(handoffs).toHaveLength(2)
+    })
 
-      expect(mockStreamEmitter.emitStart).toHaveBeenCalled()
-      expect(mockStreamEmitter.emitDone).toHaveBeenCalled()
+    it('最终输出是最后一个成员的输出', async () => {
+      mockRun
+        .mockResolvedValueOnce({ finalOutput: 'draft' })
+        .mockResolvedValueOnce({ finalOutput: 'final edited' })
+
+      const gen = team.stream('test')
+      let r = await gen.next()
+      while (!r.done) {
+        r = await gen.next()
+      }
+
+      expect(r.value.output).toBe('final edited')
     })
   })
 
-  // ===== HITL =====
+  // ===== Parallel 流式执行（阻塞模式） =====
+
+  describe('stream (parallel — 阻塞后输出)', () => {
+    beforeEach(async () => {
+      team = new TeamRuntime(createTeamOptions({ orchestrationType: 'parallel' }))
+      await team.initialize()
+    })
+
+    it('run:start → 单 turn → run:done', async () => {
+      mockRun.mockResolvedValue({ finalOutput: 'result' })
+
+      const chunks: Array<{ type: string }> = []
+      await team.runStream('test', {}, (chunk) => chunks.push(chunk))
+
+      expect(chunks[0].type).toBe('run:start')
+      expect(chunks[chunks.length - 1].type).toBe('run:done')
+
+      // parallel 只有 1 个 turn（汇总输出）
+      const turnStarts = chunks.filter((c) => c.type === 'turn:start')
+      expect(turnStarts).toHaveLength(1)
+    })
+  })
+
+  // ===== HITL（继承自 AbstractAgentRuntime） =====
 
   describe('HITL', () => {
     it('approveToolCall 抛出不支持错误', () => {
-      expect(() => team.approveToolCall(0)).toThrow('does not yet support')
+      expect(() => team.approveToolCall(0)).toThrow('does not support')
     })
 
     it('rejectToolCall 抛出不支持错误', () => {
-      expect(() => team.rejectToolCall(0)).toThrow('does not yet support')
+      expect(() => team.rejectToolCall(0)).toThrow('does not support')
     })
 
     it('resumeStream 抛出不支持错误', async () => {
       const gen = team.resumeStream()
-      await expect(gen.next()).rejects.toThrow('does not yet support')
+      await expect(gen.next()).rejects.toThrow('does not support')
     })
   })
 

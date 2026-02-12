@@ -7,51 +7,16 @@
 
 import { ref, onUnmounted, type Ref } from 'vue'
 import configManager from '@/config'
+import type {
+  StreamMessage,
+  StreamMessageType,
+  StreamSource,
+  WsServerMessage,
+  ConnectionState
+} from '@shared/stream-protocol'
 
-// ==================== 类型定义 ====================
-
-/** 流式消息类型（与后端 StreamMessageType 对齐） */
-export type StreamMessageType =
-  | 'text'
-  | 'thinking'
-  | 'tool_call'
-  | 'tool_result'
-  | 'handoff'
-  | 'hitl'
-  | 'agent_updated'
-  | 'start'
-  | 'done'
-  | 'error'
-
-/** 流式消息来源 */
-export interface StreamSource {
-  type: 'agent' | 'team' | 'swarm'
-  id: string
-  name: string
-}
-
-/** 流式消息（与后端 StreamMessage 对齐） */
-export interface StreamMessage {
-  id: string
-  sessionId: string
-  sequence: number
-  type: StreamMessageType
-  content: string
-  data?: Record<string, unknown>
-  timestamp: number
-  source: StreamSource
-}
-
-/** 服务端消息格式 */
-type ServerMessage =
-  | { type: 'message'; data: StreamMessage }
-  | { type: 'resend_batch'; data: StreamMessage[] }
-  | { type: 'pong'; data?: Record<string, never> }
-  | { type: 'error'; data: { error: string } }
-  | { type: 'latest_sequence'; data: { sequence: number } }
-
-/** 连接状态 */
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
+// 重新导出，供 chatStore 等消费方使用
+export type { StreamMessage, StreamMessageType, StreamSource, ConnectionState }
 
 // ==================== Composable ====================
 
@@ -106,7 +71,7 @@ export function useAgentStream(): AgentStreamReturn {
 
       ws.onmessage = (event) => {
         try {
-          const serverMsg: ServerMessage = JSON.parse(event.data as string)
+          const serverMsg: WsServerMessage = JSON.parse(event.data as string)
           handleServerMessage(serverMsg)
         } catch (err) {
           console.error('[useAgentStream] Failed to parse message:', err)
@@ -136,7 +101,7 @@ export function useAgentStream(): AgentStreamReturn {
   /**
    * 处理服务端消息
    */
-  function handleServerMessage(msg: ServerMessage): void {
+  function handleServerMessage(msg: WsServerMessage): void {
     switch (msg.type) {
       case 'message':
         if (messageHandler && msg.data) {

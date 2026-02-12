@@ -4,6 +4,7 @@
  */
 
 import { eventBus } from '@main/common/eventbus'
+import { log } from '@main/common/logger'
 import { SQLiteService } from '@main/common/database'
 import { StreamEventType, type StreamEvent, type StreamMessage } from '../types'
 import { readFile } from 'fs/promises'
@@ -21,6 +22,8 @@ export class StreamStore {
   private flushInterval = 1000 // 1秒刷新一次
   private maxBatchSize = 100 // 最大批量大小
   private flushTimer: NodeJS.Timeout | null = null
+  private flushRetryCount = 0 // 连续失败计数
+  private readonly maxFlushRetries = 5 // 最大连续失败次数
 
   /**
    * 初始化（创建表结构 + 注册事件监听）
@@ -41,19 +44,19 @@ export class StreamStore {
     this.startFlushTimer()
 
     this.initialized = true
-    console.log('[StreamStore] Initialized with batch writing')
+    log.info('[StreamStore] Initialized with batch writing')
   }
 
   /**
    * 创建数据库 Schema
    */
   private async createSchema(): Promise<void> {
-    const schemaPath = join(__dirname, '../schemas', 'stream_messages.sql')
+    const schemaPath = join(__dirname, '../../storage/schemas', 'stream_messages.sql')
     try {
       const schema = await readFile(schemaPath, 'utf-8')
       await this.db.execute(schema)
     } catch (_error) {
-      console.warn('[StreamStore] Schema file not found, creating inline')
+      log.warn('[StreamStore] Schema file not found, creating inline')
       await this.db.execute(`
         CREATE TABLE IF NOT EXISTS stream_messages (
           id TEXT PRIMARY KEY,
@@ -87,7 +90,7 @@ export class StreamStore {
   private startFlushTimer(): void {
     this.flushTimer = setInterval(() => {
       this.flushQueue().catch((error) => {
-        console.error('[StreamStore] Failed to flush queue:', error)
+        log.error('[StreamStore] Failed to flush queue:', error)
       })
     }, this.flushInterval)
   }
@@ -103,7 +106,7 @@ export class StreamStore {
       }
     })
 
-    console.log('[StreamStore] Event listeners registered')
+    log.info('[StreamStore] Event listeners registered')
   }
 
   /**
@@ -115,7 +118,7 @@ export class StreamStore {
     // 队列满时立即刷新
     if (this.messageQueue.length >= this.maxBatchSize) {
       this.flushQueue().catch((error) => {
-        console.error('[StreamStore] Failed to flush full queue:', error)
+        log.error('[StreamStore] Failed to flush full queue:', error)
       })
     }
   }
@@ -139,11 +142,23 @@ export class StreamStore {
         }
       })
 
-      console.log(`[StreamStore] Flushed ${batch.length} messages`)
+      this.flushRetryCount = 0 // 成功后重置
+      log.info(`[StreamStore] Flushed ${batch.length} messages`)
     } catch (error) {
-      console.error('[StreamStore] Batch write failed:', error)
-      // 写入失败时，将消息重新入队（简化实现，实际可能需要死信队列）
-      this.messageQueue.unshift(...batch)
+      this.flushRetryCount++
+      log.error(
+        `[StreamStore] Batch write failed (retry ${this.flushRetryCount}/${this.maxFlushRetries}):`,
+        error
+      )
+
+      if (this.flushRetryCount < this.maxFlushRetries) {
+        // 重新入队等待下次重试
+        this.messageQueue.unshift(...batch)
+      } else {
+        // 达到上限，丢弃消息（死信）并重置计数器
+        log.error(`[StreamStore] Max flush retries reached, dropping ${batch.length} messages`)
+        this.flushRetryCount = 0
+      }
     }
   }
 
@@ -171,7 +186,7 @@ export class StreamStore {
       ]
     )
 
-    console.log(`[StreamStore] Saved message: ${message.sessionId}#${message.sequence}`)
+    log.info(`[StreamStore] Saved message: ${message.sessionId}#${message.sequence}`)
   }
 
   /**
@@ -218,7 +233,7 @@ export class StreamStore {
       [sessionId, keepLast, sessionId]
     )
 
-    console.log(`[StreamStore] Cleaned old messages for session: ${sessionId}`)
+    log.info(`[StreamStore] Cleaned old messages for session: ${sessionId}`)
   }
 
   /**
@@ -226,7 +241,7 @@ export class StreamStore {
    */
   async clearSession(sessionId: string): Promise<void> {
     await this.db.execute(`DELETE FROM stream_messages WHERE session_id = ?`, [sessionId])
-    console.log(`[StreamStore] Cleared all messages for session: ${sessionId}`)
+    log.info(`[StreamStore] Cleared all messages for session: ${sessionId}`)
   }
 
   /**
@@ -277,7 +292,7 @@ export class StreamStore {
     // 刷新剩余消息
     await this.flushQueue()
 
-    console.log('[StreamStore] Destroyed')
+    log.info('[StreamStore] Destroyed')
   }
 }
 

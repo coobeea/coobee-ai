@@ -14,6 +14,25 @@ import { Post, SSE } from '@main/common/server'
 import { agentExecutor } from '@main/ai/AgentExecutor'
 import type { StreamChunk } from '@main/ai/runtime/types'
 
+// ==================== 内部辅助 ====================
+
+/** 默认 Chat Agent 指令 */
+const CHAT_INSTRUCTIONS = '你是一个友好、专业的 AI 助手。请用中文回答用户的问题。'
+
+/** 生成 session ID */
+function generateSessionId(): string {
+  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** 创建 Chat Agent Builder（chat / chatStream 共享配置） */
+function createChatBuilder(): ReturnType<typeof agentExecutor.piMono> {
+  return agentExecutor
+    .piMono()
+    .name('chat-agent')
+    .instructions(CHAT_INSTRUCTIONS)
+    .sessionMode('file')
+}
+
 // ==================== API 端点 ====================
 
 export default class AgentChatApi {
@@ -31,7 +50,7 @@ export default class AgentChatApi {
     status: 'streaming' | 'busy' | 'error'
     error?: string
   }> {
-    const sid = sessionId || `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const sid = sessionId || generateSessionId()
 
     log.info(`[AgentChatApi] Chat request: sessionId=${sid}`)
 
@@ -39,11 +58,7 @@ export default class AgentChatApi {
       const result = agentExecutor.submit({
         sessionId: sid,
         message,
-        builder: agentExecutor
-          .piMono()
-          .name('chat-agent')
-          .instructions('你是一个友好、专业的 AI 助手。请用中文回答用户的问题。')
-          .sessionMode('file')
+        builder: createChatBuilder()
       })
 
       if (result.status === 'busy') {
@@ -63,28 +78,26 @@ export default class AgentChatApi {
    *
    * 客户端通过 EventSource 连接此端点，直接接收 StreamChunk 事件。
    * 内部透传 agentExecutor.stream() 的 AsyncGenerator。
-   *
-   * 用法：
-   *   const es = new EventSource('/api/chat/agent/chatStream?message=hello&sessionId=abc')
-   *   es.onmessage = (e) => { const chunk = JSON.parse(e.data); ... }
    */
   @SSE()
   async *chatStream(
     message: string,
     sessionId?: string
   ): AsyncGenerator<StreamChunk, void, unknown> {
-    const sid = sessionId || `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const sid = sessionId || generateSessionId()
 
     log.info(`[AgentChatApi] SSE stream request: sessionId=${sid}`)
 
-    yield* agentExecutor.stream({
-      sessionId: sid,
-      message,
-      builder: agentExecutor
-        .piMono()
-        .name('chat-agent')
-        .instructions('你是一个友好、专业的 AI 助手。请用中文回答用户的问题。')
-        .sessionMode('file')
-    })
+    try {
+      yield* agentExecutor.stream({
+        sessionId: sid,
+        message,
+        builder: createChatBuilder()
+      })
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error)
+      log.error(`[AgentChatApi] SSE stream failed: sessionId=${sid}, ${msg}`)
+      yield { type: 'run:error' as const, content: msg, data: { message: msg } }
+    }
   }
 }

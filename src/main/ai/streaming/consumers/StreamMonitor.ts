@@ -4,6 +4,7 @@
  */
 
 import { eventBus } from '@main/common/eventbus'
+import { log } from '@main/common/logger'
 import { StreamEventType, type StreamEvent } from '../types'
 
 /**
@@ -38,7 +39,7 @@ export class StreamMonitor {
     this.registerEventListeners()
 
     this.initialized = true
-    console.log('[StreamMonitor] Initialized')
+    log.info('[StreamMonitor] Initialized')
   }
 
   /**
@@ -58,7 +59,7 @@ export class StreamMonitor {
         lastSequence: 0
       }
       this.sessionStats.set(event.sessionId, stats)
-      console.log(`[StreamMonitor] Stream started: ${event.sessionId}`)
+      log.info(`[StreamMonitor] Stream started: ${event.sessionId}`)
     })
 
     // 监听消息
@@ -95,17 +96,17 @@ export class StreamMonitor {
         stats.endTime = Date.now()
         stats.duration = stats.endTime - stats.startTime
       }
-      console.log(`[StreamMonitor] Stream ended: ${event.sessionId}`, stats)
+      log.info(`[StreamMonitor] Stream ended: ${event.sessionId}`, stats)
     })
 
     // 监听错误
     eventBus.on(StreamEventType.ERROR, (event: StreamEvent) => {
       const stats = this.getOrCreateStats(event.sessionId)
       stats.errorCount++
-      console.error(`[StreamMonitor] Stream error: ${event.sessionId}`, event.error)
+      log.error(`[StreamMonitor] Stream error: ${event.sessionId}`, event.error)
     })
 
-    console.log('[StreamMonitor] Event listeners registered')
+    log.info('[StreamMonitor] Event listeners registered')
   }
 
   /**

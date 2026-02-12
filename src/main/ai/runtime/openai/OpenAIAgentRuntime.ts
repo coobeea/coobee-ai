@@ -121,6 +121,10 @@ export class OpenAIAgentRuntime implements AgentRuntime {
     return this._interrupted
   }
 
+  get supportsHITL(): boolean {
+    return true
+  }
+
   // ========== 生命周期 ==========
 
   async initialize(): Promise<void> {

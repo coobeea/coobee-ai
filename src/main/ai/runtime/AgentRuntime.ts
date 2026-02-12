@@ -47,6 +47,8 @@ export interface AgentRuntime {
   readonly options: AgentRuntimeOptions
   /** 是否处于中断状态（HITL 工具审批等待中） */
   readonly interrupted: boolean
+  /** 是否支持 HITL 工具审批（调用方可据此判断，避免 try-catch） */
+  readonly supportsHITL: boolean
 
   // ========== 生命周期 ==========
 

@@ -174,6 +174,10 @@ export class PiMonoAgentRuntime implements AgentRuntime {
     return this._interrupted
   }
 
+  get supportsHITL(): boolean {
+    return false
+  }
+
   // ========== 生命周期 ==========
 
   async initialize(): Promise<void> {

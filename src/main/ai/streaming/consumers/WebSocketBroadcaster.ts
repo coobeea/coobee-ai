@@ -10,27 +10,15 @@ import { Env } from '@main/common/env'
 import { eventBus } from '@main/common/eventbus'
 import { WsServer, type WsClientMeta } from '@main/common/server/wsServer'
 import { StreamEventType, type StreamEvent, type StreamMessage } from '../types'
+import type { WsClientMessage, WsServerMessage } from '@shared/stream-protocol'
 import { streamStore } from './StreamStore'
 
 /** 广播器端口，可通过 VITE_WS_PORT 环境变量配置，默认 8765 */
 const WS_BROADCASTER_PORT = Env.main.wsPort ? parseInt(Env.main.wsPort, 10) : 8765
 
-// ==================== 协议类型 ====================
-
-/** 客户端消息（客户端 → 服务端） */
-export interface ClientMessage {
-  type: 'subscribe' | 'unsubscribe' | 'resend' | 'ping' | 'get_latest_sequence'
-  sessionId?: string
-  fromSequence?: number
-}
-
-/** 服务端消息（服务端 → 客户端） */
-export type ServerMessage =
-  | { type: 'message'; data: StreamMessage }
-  | { type: 'resend_batch'; data: StreamMessage[] }
-  | { type: 'pong'; data?: Record<string, never> }
-  | { type: 'error'; data: { error: string } }
-  | { type: 'latest_sequence'; data: { sequence: number } }
+// 协议类型从 shared 导入，为向后兼容保留别名导出
+export type ClientMessage = WsClientMessage
+export type ServerMessage = WsServerMessage
 
 /** 扩展客户端元数据：添加 sessionIds */
 interface BroadcasterClientMeta extends WsClientMeta {
