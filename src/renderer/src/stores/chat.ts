@@ -1,14 +1,15 @@
 /**
  * Chat Store
  *
- * 统一管理对话数据和流式事件。
- * 无论传输通道（WebSocket / IPC），前端都通过此 Store 消费数据。
+ * 职责：纯聊天数据管理（消息列表、流式消息映射、HITL 审批状态）。
+ * WebSocket 连接由 plugins/wsSetup 管理，本 Store 不持有连接。
  */
 
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { invokeBackend } from '@/api/request'
-import { useAgentStream, type StreamMessage } from '@/composables/useAgentStream'
+import { wsService } from '@/plugins/wsSetup'
+import type { StreamMessage } from '@shared/stream-protocol'
 import type { HitlApprovalDecision } from '@shared/stream-protocol'
 
 // ==================== 类型定义 ====================
@@ -62,13 +63,6 @@ export const useChatStore = defineStore('chat', () => {
   const sessionId = ref<string | null>(null)
   const messages = ref<ChatMessage[]>([])
   const isStreaming = ref(false)
-
-  // ---- WebSocket 流管理 ----
-  const agentStream = useAgentStream()
-
-  // ---- 计算属性 ----
-  const connectionState = computed(() => agentStream.connectionState.value)
-  const lastError = computed(() => agentStream.lastError.value)
 
   // ---- 内部辅助 ----
 
@@ -225,7 +219,7 @@ export const useChatStore = defineStore('chat', () => {
    * 发送消息
    * 1. 添加用户消息到列表
    * 2. 调用后端 API 启动 Agent
-   * 3. 订阅 WebSocket 流式事件
+   * 3. 通过 wsService 订阅流式事件
    */
   async function sendMessage(text: string): Promise<void> {
     if (!text.trim() || isStreaming.value) return
@@ -265,8 +259,8 @@ export const useChatStore = defineStore('chat', () => {
         // 更新 sessionId
         sessionId.value = sid
 
-        // 订阅流式事件
-        agentStream.subscribe(sid, handleStreamMessage)
+        // 通过 wsService 订阅流式事件（连接管理由 wsSetup 负责）
+        wsService.subscribe(sid, handleStreamMessage)
       } else {
         // API 调用失败
         messages.value.push({
@@ -333,15 +327,7 @@ export const useChatStore = defineStore('chat', () => {
     messages.value = []
     sessionId.value = null
     isStreaming.value = false
-    agentStream.unsubscribe()
-  }
-
-  /**
-   * 断开流式连接
-   */
-  function disconnect(): void {
-    agentStream.disconnect()
-    isStreaming.value = false
+    wsService.unsubscribe()
   }
 
   return {
@@ -349,13 +335,10 @@ export const useChatStore = defineStore('chat', () => {
     sessionId,
     messages,
     isStreaming,
-    connectionState,
-    lastError,
 
     // Actions
     sendMessage,
     submitDecision,
-    clearMessages,
-    disconnect
+    clearMessages
   }
 })

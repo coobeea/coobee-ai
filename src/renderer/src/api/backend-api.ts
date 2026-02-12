@@ -2,13 +2,21 @@
 // Do not modify this file directly.
 /* eslint-disable */
 
-import { invokeBackend } from '@/api/request'
+import { createSSEConnection, invokeBackend } from '@/api/request'
 
 export default {
   chat: {
     agent: {
       chat: (...args: any[]) => {
         return invokeBackend('/api/chat/agent/chat', ...args)
+      },
+      chatStream: (...args: any[]) => {
+        return createSSEConnection('/api/chat/agent/chat-stream', args)
+      }
+    },
+    approval: {
+      decide: (...args: any[]) => {
+        return invokeBackend('/api/chat/approval/decide', ...args)
       }
     }
   }
