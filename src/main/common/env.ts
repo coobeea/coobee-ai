@@ -80,6 +80,7 @@ export const Env = {
        * 每次会话/Agent 通过 getWorkspaceDir(id) 获取独立子目录：
        *   workspaces/{id}/
        *   ├── sessions/     会话持久化
+       *   ├── contexts/     LLM 请求上下文快照
        *   ├── skills/       Agent 自生成的 Skill
        *   └── output/       Agent 输出文件
        *
@@ -169,6 +170,7 @@ export const Env = {
    * 结构：
    *   {workspacesDir}/{id}/
    *   ├── sessions/     会话持久化
+   *   ├── contexts/     LLM 请求上下文快照
    *   ├── skills/       Agent 自生成的 Skill
    *   ├── output/       Agent 输出文件
    *   └── logs/         Agent 运行日志
@@ -181,6 +183,7 @@ export const Env = {
     const subDirs = [
       workspace,
       path.join(workspace, 'sessions'),
+      path.join(workspace, 'contexts'),
       path.join(workspace, 'skills'),
       path.join(workspace, 'output'),
       path.join(workspace, 'logs')

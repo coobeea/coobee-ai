@@ -35,30 +35,7 @@ export interface IStreamEmitter {
    */
   forward(chunk: StreamChunk): void
 
-  // ---- 保留的便捷方法（向后兼容，内部实现委托给 emit） ----
-
-  /** @deprecated 使用 forward() 代替 */
-  emitText(content: string, data?: Record<string, unknown>): Promise<void>
-  /** @deprecated 使用 forward() 代替 */
-  emitThinking(content: string): Promise<void>
-  /** @deprecated 使用 forward() 代替 */
-  emitToolCall(toolName: string, args: Record<string, unknown>): Promise<void>
-  /** @deprecated 使用 forward() 代替 */
-  emitToolResult(toolName: string, result: unknown): Promise<void>
-  /** @deprecated 使用 forward() 代替 */
-  emitHandoff(agentName: string, data?: Record<string, unknown>): Promise<void>
-  /** @deprecated 使用 forward() 代替 */
-  emitToolApproval(toolName: string, data?: Record<string, unknown>): Promise<void>
-  /** @deprecated 使用 forward() 代替 */
-  emitAgentUpdated(agentName: string): Promise<void>
-  /** @deprecated 使用 forward() 代替 */
-  emitStart(): Promise<void>
-  /** @deprecated 使用 forward() 代替 */
-  emitDone(): Promise<void>
-  /** @deprecated 使用 forward() 代替 */
-  emitError(error: string | Error): Promise<void>
-
-  /** 通用发送方法 */
+  /** 通用发送方法（按 StreamMessageType 直接广播到 EventBus） */
   emit(type: StreamMessageType, content: string, data?: Record<string, unknown>): Promise<void>
 }
 
@@ -147,74 +124,6 @@ export class StreamEmitter implements IStreamEmitter {
       }
       eventBus.emit(lifecycleType, lifecycleEvent)
     }
-  }
-
-  // ========== 向后兼容方法 ==========
-
-  async emitText(content: string, data?: Record<string, unknown>): Promise<void> {
-    await this.emit('text', content, data)
-  }
-
-  async emitThinking(content: string): Promise<void> {
-    await this.emit('thinking', content)
-  }
-
-  async emitToolCall(toolName: string, args: Record<string, unknown>): Promise<void> {
-    await this.emit('tool_call', `Calling tool: ${toolName}`, { toolName, args })
-  }
-
-  async emitToolResult(toolName: string, result: unknown): Promise<void> {
-    await this.emit('tool_result', `Tool result: ${toolName}`, { toolName, result })
-  }
-
-  async emitHandoff(agentName: string, data?: Record<string, unknown>): Promise<void> {
-    await this.emit('handoff', `Handoff: ${agentName}`, { agentName, ...data })
-  }
-
-  async emitToolApproval(toolName: string, data?: Record<string, unknown>): Promise<void> {
-    await this.emit('hitl', `Approval: ${toolName}`, { toolName, ...data })
-  }
-
-  async emitAgentUpdated(agentName: string): Promise<void> {
-    await this.emit('agent_updated', `Agent updated: ${agentName}`, { agentName })
-  }
-
-  async emitStart(): Promise<void> {
-    await this.emit('start', '[Stream Started]')
-
-    const event: StreamEvent = {
-      type: StreamEventType.START,
-      sessionId: this.sessionId,
-      source: this.source,
-      timestamp: Date.now()
-    }
-    eventBus.emit(StreamEventType.START, event)
-  }
-
-  async emitDone(): Promise<void> {
-    await this.emit('done', '[Stream Ended]')
-
-    const event: StreamEvent = {
-      type: StreamEventType.END,
-      sessionId: this.sessionId,
-      source: this.source,
-      timestamp: Date.now()
-    }
-    eventBus.emit(StreamEventType.END, event)
-  }
-
-  async emitError(error: string | Error): Promise<void> {
-    const errorMessage = error instanceof Error ? error.message : error
-    await this.emit('error', errorMessage)
-
-    const event: StreamEvent = {
-      type: StreamEventType.ERROR,
-      sessionId: this.sessionId,
-      source: this.source,
-      error: errorMessage,
-      timestamp: Date.now()
-    }
-    eventBus.emit(StreamEventType.ERROR, event)
   }
 
   // ========== 通用方法 ==========

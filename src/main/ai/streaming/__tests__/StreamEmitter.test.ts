@@ -34,9 +34,9 @@ describe('StreamEmitter', () => {
     emitter = new StreamEmitter('session-1', source)
   })
 
-  describe('emitText', () => {
-    it('发射文本消息', async () => {
-      await emitter.emitText('hello world')
+  describe('forward', () => {
+    it('将 text:delta 转发为 text 消息', () => {
+      emitter.forward({ type: 'text:delta', content: 'hello', data: { delta: 'hello' } })
 
       expect(mockEventBus.emit).toHaveBeenCalledWith(
         StreamEventType.MESSAGE,
@@ -45,18 +45,20 @@ describe('StreamEmitter', () => {
           sessionId: 'session-1',
           message: expect.objectContaining({
             type: 'text',
-            content: 'hello world',
+            content: 'hello',
             sequence: 1,
             source
           })
         })
       )
     })
-  })
 
-  describe('emitThinking', () => {
-    it('发射思考消息', async () => {
-      await emitter.emitThinking('processing...')
+    it('将 reasoning:delta 转发为 thinking 消息', () => {
+      emitter.forward({
+        type: 'reasoning:delta',
+        content: 'processing...',
+        data: { delta: 'processing...' }
+      })
 
       expect(mockEventBus.emit).toHaveBeenCalledWith(
         StreamEventType.MESSAGE,
@@ -65,27 +67,43 @@ describe('StreamEmitter', () => {
         })
       )
     })
-  })
 
-  describe('emitToolCall', () => {
-    it('发射工具调用事件', async () => {
-      await emitter.emitToolCall('search', { query: 'test' })
+    it('将 tool:start 转发为 tool_call 消息', () => {
+      emitter.forward({
+        type: 'tool:start',
+        content: 'search',
+        data: { toolName: 'search', callId: 'call-1' }
+      })
 
       expect(mockEventBus.emit).toHaveBeenCalledWith(
         StreamEventType.MESSAGE,
         expect.objectContaining({
           message: expect.objectContaining({
             type: 'tool_call',
-            data: { toolName: 'search', args: { query: 'test' } }
+            content: 'search',
+            data: { toolName: 'search', callId: 'call-1' }
           })
         })
       )
     })
-  })
 
-  describe('emitStart / emitDone', () => {
-    it('emitStart 发送 START 和 MESSAGE 事件', async () => {
-      await emitter.emitStart()
+    it('将 tool:done 转发为 tool_result 消息', () => {
+      emitter.forward({
+        type: 'tool:done',
+        content: '{"result": "ok"}',
+        data: { toolName: 'search', output: '{"result": "ok"}' }
+      })
+
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        StreamEventType.MESSAGE,
+        expect.objectContaining({
+          message: expect.objectContaining({ type: 'tool_result' })
+        })
+      )
+    })
+
+    it('run:start 同时触发 MESSAGE 和 START 生命周期事件', () => {
+      emitter.forward({ type: 'run:start', content: '' })
 
       expect(mockEventBus.emit).toHaveBeenCalledWith(
         StreamEventType.MESSAGE,
@@ -99,16 +117,14 @@ describe('StreamEmitter', () => {
       )
     })
 
-    it('emitDone 发送 END 和 MESSAGE 事件', async () => {
-      await emitter.emitDone()
+    it('run:done 同时触发 MESSAGE 和 END 生命周期事件', () => {
+      emitter.forward({ type: 'run:done', content: '' })
 
       expect(mockEventBus.emit).toHaveBeenCalledWith(StreamEventType.END, expect.anything())
     })
-  })
 
-  describe('emitError', () => {
-    it('发送 ERROR 事件', async () => {
-      await emitter.emitError('something failed')
+    it('run:error 同时触发 MESSAGE 和 ERROR 生命周期事件', () => {
+      emitter.forward({ type: 'run:error', content: 'something failed' })
 
       expect(mockEventBus.emit).toHaveBeenCalledWith(
         StreamEventType.ERROR,
@@ -116,21 +132,35 @@ describe('StreamEmitter', () => {
       )
     })
 
-    it('接受 Error 对象', async () => {
-      await emitter.emitError(new Error('boom'))
+    it('跳过无 EventBus 映射的事件（如 turn:start）', () => {
+      emitter.forward({ type: 'turn:start', content: '' })
+
+      expect(mockEventBus.emit).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('emit', () => {
+    it('直接按 StreamMessageType 发送消息', async () => {
+      await emitter.emit('agent_updated', 'Agent updated: TestAgent', { agentName: 'TestAgent' })
 
       expect(mockEventBus.emit).toHaveBeenCalledWith(
-        StreamEventType.ERROR,
-        expect.objectContaining({ error: 'boom' })
+        StreamEventType.MESSAGE,
+        expect.objectContaining({
+          message: expect.objectContaining({
+            type: 'agent_updated',
+            content: 'Agent updated: TestAgent',
+            data: { agentName: 'TestAgent' }
+          })
+        })
       )
     })
   })
 
   describe('序号递增', () => {
-    it('消息序号单调递增', async () => {
-      await emitter.emitText('1')
-      await emitter.emitText('2')
-      await emitter.emitText('3')
+    it('消息序号单调递增', () => {
+      emitter.forward({ type: 'text:delta', content: '1', data: { delta: '1' } })
+      emitter.forward({ type: 'text:delta', content: '2', data: { delta: '2' } })
+      emitter.forward({ type: 'text:delta', content: '3', data: { delta: '3' } })
 
       const calls = mockEventBus.emit.mock.calls.filter(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -146,7 +176,8 @@ describe('StreamEmitter', () => {
     it('创建 IStreamEmitter 实例', () => {
       const e = createStreamEmitter('s1', source)
       expect(e).toBeDefined()
-      expect(typeof e.emitText).toBe('function')
+      expect(typeof e.forward).toBe('function')
+      expect(typeof e.emit).toBe('function')
     })
   })
 })

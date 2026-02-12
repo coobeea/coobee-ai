@@ -123,6 +123,8 @@ const RUN = !!apiConfig
 
 const LOG_PREFIX = '[集成测试]'
 const TEST_LOG_BASE = path.join(process.cwd(), 'test-results')
+/** Session 存储目录（测试用固定路径，与 readSessionFile 保持一致） */
+const TEST_SESSION_DIR = path.join(process.cwd(), 'test-results', 'userData', 'sessions')
 
 let currentLogDir: string
 let currentTestLogFile: string
@@ -496,7 +498,8 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       name: 'SimpleAgent',
       instructions: '你是一个简洁的助手。用一句话回答，不超过20个字。',
       model: MODEL,
-      sessionId
+      sessionId,
+      sessionDir: TEST_SESSION_DIR
     })
     await runtime.initialize()
     const result = await runtime.runStream(inputText, {}, collect)
@@ -541,6 +544,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       model: MODEL,
       sdkTools: [addNumbersTool],
       sessionId,
+      sessionDir: TEST_SESSION_DIR,
       maxTurns: 5
     })
     await runtime.initialize()
@@ -583,6 +587,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       model: MODEL,
       sdkTools: [addNumbersTool, reverseStringTool],
       sessionId,
+      sessionDir: TEST_SESSION_DIR,
       maxTurns: 10
     })
     await runtime.initialize()
@@ -615,6 +620,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       model: MODEL,
       sdkTools: [addNumbersTool],
       sessionId,
+      sessionDir: TEST_SESSION_DIR,
       maxTurns: 5
     })
     await runtime.initialize()
@@ -644,6 +650,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       instructions: '你是简洁的助手。请记住用户告诉你的所有个人信息，并在后续对话中准确复述。',
       model: MODEL,
       sessionId,
+      sessionDir: TEST_SESSION_DIR,
       maxTurns: 3
     })
     await runtime.initialize()
@@ -676,6 +683,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       model: MODEL,
       sdkTools: [getCurrentTimeTool],
       sessionId,
+      sessionDir: TEST_SESSION_DIR,
       maxTurns: 5
     })
     await runtime.initialize()
@@ -707,6 +715,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       model: MODEL,
       sdkTools: [addNumbersTool],
       sessionId,
+      sessionDir: TEST_SESSION_DIR,
       maxTurns: 5
     })
     await runtime.initialize()
@@ -749,7 +758,8 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       name: 'DeltaAgent',
       instructions: '用一句简短的话回答。',
       model: MODEL,
-      sessionId
+      sessionId,
+      sessionDir: TEST_SESSION_DIR
     })
     await runtime.initialize()
     const result = await runtime.runStream(inputText, {}, collect)
@@ -783,6 +793,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
       instructions: '你是一个简洁的助手。请记住用户告知的所有信息。',
       model: MODEL,
       sessionId,
+      sessionDir: TEST_SESSION_DIR,
       maxTurns: 3
     })
     await runtime.initialize()
@@ -904,7 +915,7 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 集成测试（真实 API）', () => {
     testLog(`${LOG_PREFIX} Summary 项数: ${summaryCount}`)
 
     // 7. 验证 getItems() 智能上下文构建：应只返回总结上下文 + 后续消息
-    const session = new FileSession(sessionId)
+    const session = new FileSession(sessionId, TEST_SESSION_DIR)
     const contextItems = await session.getItems()
     testLog(`${LOG_PREFIX} getItems() 返回 ${contextItems.length} 条上下文消息`)
 
@@ -1058,9 +1069,13 @@ describe('SessionCompressor 单元验证', () => {
     const firstContent = (afterItems[0] as Record<string, unknown>).content as string
     expect(firstContent).toContain('之前对话的总结')
 
-    // 第二条应包含总结文本
+    // 第一条（user）应包含总结文本（buildSummaryContext 生成的 user 引导消息包含 summaryText）
+    const firstContentStr = (afterItems[0] as Record<string, unknown>).content as string
+    expect(firstContentStr).toContain('用户发了 msg1')
+
+    // 第二条（assistant）是确认消息
     const secondContent = (afterItems[1] as Record<string, unknown>).content as string
-    expect(secondContent).toContain('用户发了 msg1')
+    expect(secondContent).toContain('已仔细阅读')
 
     // 后面两条是 seq > endSeq 的原始消息
     expect((afterItems[2] as Record<string, unknown>).content).toBe('msg2')

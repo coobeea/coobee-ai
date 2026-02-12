@@ -64,9 +64,42 @@ vi.mock('../../runtime/pimono', () => ({
 }))
 
 // mock Electron env
-vi.mock('@main/common/env', () => {
-  throw new Error('Env not available in test')
-})
+vi.mock('@main/common/env', () => ({
+  Env: {
+    isDev: true,
+    paths: {
+      userHome: '/tmp/test-home',
+      temp: '/tmp',
+      builtinSkillsDir: '/tmp/test-skills',
+      userSkillsDir: '/tmp/test-home/skills',
+      memoryDir: '/tmp/test-home/memory',
+      userMemoryDir: '/tmp/test-home/memory/user',
+      agentMemoryDir: '/tmp/test-home/memory/agent',
+      workspacesDir: '/tmp/test-home/workspaces',
+      configDir: '/tmp/test-home/config',
+      userData: '/tmp/test-userData'
+    },
+    getAgentWorkspaceDir: async () => '/tmp/test-home/workspaces/test-session',
+    getSkillSearchPaths: async () => ['/tmp/test-skills', '/tmp/test-home/skills']
+  }
+}))
+
+// mock AgentEnv helpers（避免文件系统操作）
+vi.mock('../../common/AgentEnv', () => ({
+  buildAgentEnv: async () => ({
+    workspace: '/tmp/test-workspace',
+    userHome: '/tmp/test-home',
+    temp: '/tmp',
+    platform: 'darwin',
+    isDev: true,
+    skillPaths: [],
+    builtinSkillsDir: '/tmp/test-skills',
+    userSkillsDir: '/tmp/test-home/skills',
+    memoryDir: '/tmp/test-home/memory'
+  }),
+  formatRuntimePaths: () => '<runtime_paths>mock</runtime_paths>',
+  loadRuntimeEnvSkill: async () => null
+}))
 
 // mock server decorators（避免 Electron 依赖）
 vi.mock('@main/common/server', () => ({
@@ -117,9 +150,10 @@ describe('HITL 全链路集成测试', () => {
    *
    * submit() 启动的 detached promise 需要多轮微任务刷新才能执行到 HITL 等待点。
    * 原因：build() 内部 await import() 和 await initialize() 各产生一轮微任务。
+   * injectEnv() 额外引入 dynamic import + buildAgentEnv 等异步操作。
    */
   async function flushAsync(): Promise<void> {
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 20; i++) {
       await vi.advanceTimersByTimeAsync(1)
     }
   }
@@ -143,6 +177,8 @@ describe('HITL 全链路集成测试', () => {
 
     // 预热动态 import 缓存（避免首次 import 的额外微任务延迟）
     await import('../../runtime/pimono')
+    await import('../../common/AgentEnv')
+    await import('@main/common/env')
 
     approvalApi = new ApprovalApi()
   })

@@ -178,7 +178,7 @@ export class TeamRuntime extends AbstractAgentRuntime {
    * 对于 parallel / planner 模式，仍是阻塞等待后一次性输出
    * （因为并行执行的中间结果无法线性化为流式事件）。
    */
-  async *stream(
+  protected async *doStream(
     input: string,
     config?: ExecutionConfig
   ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {

@@ -23,6 +23,7 @@ import type {
   StreamChunk,
   SessionInfo
 } from './types'
+import { saveContextSnapshot } from '../common/ContextSnapshot'
 
 // ==================== Logger 工具 ====================
 
@@ -99,20 +100,56 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
   abstract initialize(): Promise<void>
   abstract destroy(): Promise<void>
 
-  // ========== 核心流式方法（子类必须实现） ==========
+  // ========== 核心流式方法 ==========
 
-  abstract stream(
+  /**
+   * 子类实现此方法 — 核心流式逻辑
+   *
+   * 不直接暴露给调用方，由 stream() 模板方法包装。
+   * 子类只需关注 SDK 特定的流式执行逻辑。
+   */
+  protected abstract doStream(
     input: string,
     config?: ExecutionConfig
   ): AsyncGenerator<StreamChunk, ExecutionResult, unknown>
+
+  /**
+   * 流式执行 — 模板方法（最终暴露给调用方）
+   *
+   * 包装 doStream()，在执行完成后自动写入上下文快照。
+   * 子类不需要覆盖此方法，实现 doStream() 即可。
+   *
+   * 自动行为：
+   *   - 透传 doStream() 的所有 StreamChunk
+   *   - 执行完成后自动调用 saveContextSnapshot()
+   *   - 快照写入失败不阻断主流程
+   */
+  async *stream(
+    input: string,
+    config?: ExecutionConfig
+  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
+    const gen = this.doStream(input, config)
+    let r = await gen.next()
+    while (!r.done) {
+      yield r.value
+      r = await gen.next()
+    }
+
+    const result = r.value
+
+    // 自动写入上下文快照（异步，不阻塞返回）
+    saveContextSnapshot(this.options, this.type, input, result).catch(() => {})
+
+    return result
+  }
 
   // ========== 默认实现：run ==========
 
   /**
    * 同步执行 — 消费 stream() 收集结果
    *
+   * 通过 stream() 模板方法执行，自动继承上下文快照功能。
    * 子类一般不需要覆盖此方法。
-   * 如果子类有特殊的非流式执行路径，可以覆盖。
    */
   async run(input: string, config?: ExecutionConfig): Promise<ExecutionResult> {
     const gen = this.stream(input, config)

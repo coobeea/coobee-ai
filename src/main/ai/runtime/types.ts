@@ -95,6 +95,16 @@ export interface AgentRuntimeOptions {
   /** 最大执行轮次，防止无限工具调用循环（默认 25） */
   maxTurns?: number
   /**
+   * 上下文快照目录
+   *
+   * 如果设置，Runtime 在每次 LLM 调用完成后会将输入配置和输出结果
+   * 以 JSON 文件写入此目录，用于调试和 Prompt 优化。
+   *
+   * 文件命名格式：{ISO 时间戳}.json（自然排序 = 时间顺序）
+   * 由 AgentExecutor.injectEnv() 自动设置为 {workspace}/contexts/
+   */
+  contextDir?: string
+  /**
    * 统一工具列表（SDK 无关）
    *
    * 使用 ToolDefinition 格式定义工具，Runtime 内部自动转换为 SDK 原生格式。

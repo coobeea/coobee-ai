@@ -18,7 +18,7 @@ import { FileSession } from './FileSession'
 import { SessionCompressor } from './SessionCompressor'
 import { ThinkTagParser, stripThinkTags } from './ThinkTagParser'
 import { createStreamEmitter, type IStreamEmitter } from '../../streaming/StreamEmitter'
-import type { AgentRuntime } from '../AgentRuntime'
+import { AbstractAgentRuntime } from '../AbstractAgentRuntime'
 import {
   buildInstructions,
   type ExecutionConfig,
@@ -77,7 +77,7 @@ const log = createRuntimeLogger()
  * 3. 执行 Agent（同步/流式），输出完整的流式事件
  * 4. 处理 HITL 工具审批的暂停/恢复
  */
-export class OpenAIAgentRuntime implements AgentRuntime {
+export class OpenAIAgentRuntime extends AbstractAgentRuntime {
   readonly type = 'agent' as const
   readonly id: string
 
@@ -107,6 +107,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
   private createdAt: number
 
   constructor(options: OpenAIAgentRuntimeOptions) {
+    super()
     this.options = options
     this.id = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     this.sessionId = options.sessionId || `session-${Date.now()}`
@@ -187,61 +188,17 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
   // ========== 执行方法 ==========
 
-  /**
-   * 同步执行 Agent
-   *
-   * SDK 特性：
-   * - session：自动管理对话历史读写（FileSession JSONL 持久化）
-   * - maxTurns：防止无限工具调用循环
-   * - interruptions：HITL 工具审批
-   */
-  async run(input: string, config?: ExecutionConfig): Promise<ExecutionResult> {
-    const startTime = Date.now()
-    const maxTurns = config?.maxTurns ?? this.options.maxTurns ?? DEFAULT_MAX_TURNS
-
-    log.info(`Running: ${this.name}, input: "${input.slice(0, 100)}"`)
-
-    try {
-      // 执行前检查 session 压缩
-      await this.compressSessionWithChunks()
-
-      const result = await run(this.agent, input, {
-        session: this.session,
-        maxTurns
-      })
-
-      // 检查 HITL 中断
-      if (result.interruptions && result.interruptions.length > 0) {
-        return this.handleInterruptions(result.state, result.interruptions, startTime)
-      }
-
-      const duration = Date.now() - startTime
-      const rawOutput = (result.finalOutput as string) || ''
-
-      return {
-        output: stripThinkTags(rawOutput) || rawOutput,
-        toolCalls: this.extractToolCalls(result.newItems),
-        duration,
-        metadata: {
-          agentId: this.id,
-          sessionId: this.sessionId
-        }
-      }
-    } catch (error: unknown) {
-      log.error(`Execution failed:`, error)
-      throw error
-    }
-  }
+  // run() 由基类 AbstractAgentRuntime 提供（消费 stream()，自动继承快照功能）
 
   /**
-   * 流式执行 Agent（主方法 — AsyncGenerator）
+   * 流式执行 Agent（核心实现 — 由基类 stream() 模板方法包装）
    *
    * 8 层闭环事件输出：
    *   run:start → turn:start → llm:start → { text:*, reasoning:*, tool:* } → llm:done → turn:done → run:done
    *
    * SDK 的 StreamedRunResult 本身是 AsyncIterable，直接 for await + yield。
    */
-  async *stream(
+  protected async *doStream(
     input: string,
     config?: ExecutionConfig
   ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
@@ -252,7 +209,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
     try {
       // 1. run:start
-      await this.streamEmitter.emitStart()
       yield { type: 'run:start', content: '' }
 
       // 1.5 执行前检查 session 压缩
@@ -304,7 +260,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
         }
         // run:interrupted
         yield { type: 'run:interrupted', content: '' }
-        await this.streamEmitter.emitDone()
         return interruptResult
       }
 
@@ -312,7 +267,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
       const output = stripThinkTags(rawOutput) || rawOutput
 
       // 7. run:done
-      await this.streamEmitter.emitDone()
       yield { type: 'run:done', content: '' }
 
       const duration = Date.now() - startTime
@@ -327,7 +281,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
         }
       }
     } catch (error: unknown) {
-      await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
       yield {
         type: 'run:error',
         content: error instanceof Error ? error.message : String(error),
@@ -338,22 +291,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
     }
   }
 
-  /**
-   * 流式执行（回调模式 — stream() 的包装）
-   */
-  async runStream(
-    input: string,
-    config: ExecutionConfig,
-    onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult> {
-    const gen = this.stream(input, config)
-    let r = await gen.next()
-    while (!r.done) {
-      onChunk(r.value)
-      r = await gen.next()
-    }
-    return r.value
-  }
+  // runStream() 由基类 AbstractAgentRuntime 提供
 
   // ========== HITL 工具审批 ==========
 
@@ -449,7 +387,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
     log.info(`Resuming stream execution: ${this.name}`)
 
     try {
-      await this.streamEmitter.emitStart()
       yield { type: 'run:resumed', content: '' }
 
       const streamRunResult = await run(this.agent, this.pendingState, {
@@ -482,14 +419,12 @@ export class OpenAIAgentRuntime implements AgentRuntime {
           startTime
         )
         yield { type: 'run:interrupted', content: '' }
-        await this.streamEmitter.emitDone()
         return interruptResult
       }
 
       const rawOutput = (streamResult.finalOutput as string) || fullOutput
       const output = stripThinkTags(rawOutput) || rawOutput
 
-      await this.streamEmitter.emitDone()
       yield { type: 'run:done', content: '' }
 
       return {
@@ -502,7 +437,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
         }
       }
     } catch (error: unknown) {
-      await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
       yield {
         type: 'run:error',
         content: error instanceof Error ? error.message : String(error),
@@ -604,7 +538,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
           emit({ type: 'text:start', content: '' })
         }
         onTextDelta(text)
-        this.streamEmitter.emitText(text)
         emit({ type: 'text:delta', content: text, data: { delta: text } })
       },
 
@@ -617,7 +550,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
 
       onReasoning: (text) => {
         fullReasoningText += text
-        this.streamEmitter.emitThinking(text)
         emit({ type: 'reasoning:delta', content: text, data: { delta: text } })
       },
 
@@ -745,16 +677,7 @@ export class OpenAIAgentRuntime implements AgentRuntime {
             const rawItem = item.rawItem
             const toolName = (rawItem as { name?: string }).name || 'unknown'
             const callId = (rawItem as { call_id?: string }).call_id
-            let parsedArgs: Record<string, unknown> = {}
-            try {
-              parsedArgs = JSON.parse(
-                (rawItem as { arguments?: string }).arguments || '{}'
-              ) as Record<string, unknown>
-            } catch {
-              // 参数解析失败
-            }
             emit({ type: 'tool:start', content: toolName, data: { toolName, callId } })
-            await this.streamEmitter.emitToolCall(toolName, parsedArgs)
           }
 
           // tool_output → tool:done
@@ -766,7 +689,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
               (rawItem as { call_id?: string }).call_id
             const output =
               (item as { output?: string }).output || (rawItem as { output?: string }).output || ''
-            await this.streamEmitter.emitToolResult(toolName, output)
             emit({
               type: 'tool:done',
               content: typeof output === 'string' ? output : JSON.stringify(output),
@@ -778,7 +700,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
           if (eventName === 'handoff_requested') {
             const agentName =
               (item as unknown as { agent?: { name?: string } }).agent?.name || 'unknown'
-            await this.streamEmitter.emitHandoff(agentName)
             emit({
               type: 'handoff:start',
               content: `Handoff to ${agentName}`,
@@ -792,7 +713,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
               (item as unknown as { targetAgent?: { name?: string } }).targetAgent?.name ||
               (item as unknown as { agent?: { name?: string } }).agent?.name ||
               'unknown'
-            await this.streamEmitter.emitHandoff(targetAgent)
             emit({
               type: 'handoff:done',
               content: `Switched to ${targetAgent}`,
@@ -803,7 +723,6 @@ export class OpenAIAgentRuntime implements AgentRuntime {
           // hitl: 审批请求
           if (eventName === 'tool_approval_requested' && item.type === 'tool_approval_item') {
             const approvalItem = item as RunToolApprovalItem
-            await this.streamEmitter.emitToolApproval(approvalItem.name || 'unknown')
             emit({
               type: 'hitl:required',
               content: `Approval required: ${approvalItem.name || 'unknown'}`,
@@ -822,7 +741,9 @@ export class OpenAIAgentRuntime implements AgentRuntime {
         // ===== agent_updated_stream_event =====
         case 'agent_updated_stream_event': {
           const agentName = event.agent?.name || 'unknown'
-          await this.streamEmitter.emitAgentUpdated(agentName)
+          await this.streamEmitter.emit('agent_updated', `Agent updated: ${agentName}`, {
+            agentName
+          })
           break
         }
       }

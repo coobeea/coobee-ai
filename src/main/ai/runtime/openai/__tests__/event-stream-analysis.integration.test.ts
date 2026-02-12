@@ -117,6 +117,8 @@ const RUN = !!apiConfig
 const LOG_PREFIX = '[事件分析]'
 const TEST_LOG_BASE = path.join(process.cwd(), 'test-results')
 const DOCS_DIR = path.join(process.cwd(), 'docs', '2.openai-sdk')
+/** Session 存储目录（测试用固定路径，与 readSessionFile 保持一致） */
+const TEST_SESSION_DIR = path.join(process.cwd(), 'test-results', 'userData', 'sessions')
 
 let currentLogDir: string
 let currentTestLogFile: string
@@ -490,7 +492,8 @@ describe.skipIf(!RUN)('事件流 + Session 完整分析', () => {
       name: 'SimpleAgent',
       instructions: '你是一个简洁的助手。用一句话回答。',
       model: MODEL,
-      sessionId
+      sessionId,
+      sessionDir: TEST_SESSION_DIR
     })
     await runtime.initialize()
     const result = await runtime.runStream(inputText, {}, collect)
@@ -631,6 +634,7 @@ describe.skipIf(!RUN)('事件流 + Session 完整分析', () => {
       model: MODEL,
       sdkTools: [addNumbersTool, reverseStringTool],
       sessionId,
+      sessionDir: TEST_SESSION_DIR,
       maxTurns: 10
     })
     await runtime.initialize()
@@ -788,6 +792,7 @@ describe.skipIf(!RUN)('事件流 + Session 完整分析', () => {
       model: MODEL,
       sdkTools: [addNumbersTool],
       sessionId,
+      sessionDir: TEST_SESSION_DIR,
       maxTurns: 5
     })
     await runtime.initialize()

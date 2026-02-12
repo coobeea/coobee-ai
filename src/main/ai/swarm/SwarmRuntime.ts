@@ -162,7 +162,7 @@ export class SwarmRuntime extends AbstractAgentRuntime {
    *
    * 未来计划：让各角色 Agent 的执行输出通过 generator 实时透传。
    */
-  async *stream(
+  protected async *doStream(
     input: string,
     config?: ExecutionConfig
   ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {

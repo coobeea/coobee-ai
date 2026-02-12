@@ -60,7 +60,7 @@ class MockRuntime extends AbstractAgentRuntime {
     // no-op for mock
   }
 
-  async *stream(
+  protected async *doStream(
     _input: string,
     _config?: ExecutionConfig
   ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {

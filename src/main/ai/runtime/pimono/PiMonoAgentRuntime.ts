@@ -9,7 +9,7 @@
  * - 独立思考流：thinking_delta 独立于 text_delta，无需解析 <think> 标签
  * - 工具执行进度：tool_execution_update 提供实时进度
  * - 内置压缩/重试：SDK 自动管理
- * - 双通道事件分发：onChunk 回调 + StreamEmitter EventBus 广播
+ * - 单通道事件分发：onChunk → yield → AgentExecutor.forward() 统一广播
  *
  * API 格式：
  * - 统一使用 OpenAI Chat Completions 格式（openai-completions）
@@ -38,8 +38,7 @@ import type {
   ToolDefinition as PiToolDefinition
 } from '@mariozechner/pi-coding-agent'
 import type { Model } from '@mariozechner/pi-ai'
-import { createStreamEmitter, type IStreamEmitter } from '../../streaming/StreamEmitter'
-import type { AgentRuntime } from '../AgentRuntime'
+import { AbstractAgentRuntime } from '../AbstractAgentRuntime'
 import { ChunkQueue } from './ChunkQueue'
 import type {
   ExecutionConfig,
@@ -141,16 +140,13 @@ function createOpenAICompatModel(modelName: string, baseURL: string): Model<'ope
  * 4. 通过 StreamEmitter 广播事件到 EventBus
  * 5. 管理会话生命周期
  */
-export class PiMonoAgentRuntime implements AgentRuntime {
+export class PiMonoAgentRuntime extends AbstractAgentRuntime {
   readonly type = 'agent' as const
   readonly id: string
   readonly options: PiMonoAgentRuntimeOptions
 
   // pi-SDK 会话（initialize 后可用）
   private piSession!: AgentSession
-
-  // StreamEmitter — 通过 EventBus 广播事件
-  private streamEmitter!: IStreamEmitter
 
   // 会话
   private readonly sessionId: string
@@ -160,6 +156,7 @@ export class PiMonoAgentRuntime implements AgentRuntime {
   private _interrupted = false
 
   constructor(options: PiMonoAgentRuntimeOptions) {
+    super()
     this.options = options
     this.id = `pi-agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     this.sessionId = options.sessionId || `pi-session-${Date.now()}`
@@ -272,13 +269,6 @@ export class PiMonoAgentRuntime implements AgentRuntime {
 
     this.piSession = session
 
-    // 7. 创建 StreamEmitter
-    this.streamEmitter = createStreamEmitter(this.sessionId, {
-      type: 'agent',
-      id: this.id,
-      name: this.name
-    })
-
     log.info(
       `Initialized: ${this.name} ` +
         `(api: openai-completions, model: ${modelName}, ` +
@@ -300,63 +290,10 @@ export class PiMonoAgentRuntime implements AgentRuntime {
 
   // ========== 执行方法 ==========
 
-  /**
-   * 同步执行 Agent
-   *
-   * 通过 session.prompt() 执行，收集完整输出后返回。
-   */
-  async run(input: string, _config?: ExecutionConfig): Promise<ExecutionResult> {
-    const startTime = Date.now()
-
-    log.info(`Running: ${this.name}, input: "${input.slice(0, 100)}"`)
-
-    try {
-      let fullOutput = ''
-      const toolCalls: ExecutionResult['toolCalls'] = []
-
-      // 订阅事件收集结果
-      const unsubscribe = this.piSession.subscribe((event: AgentSessionEvent) => {
-        if (event.type === 'message_update') {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const msgEvent = (event as any).assistantMessageEvent
-          if (msgEvent?.type === 'text_delta') {
-            fullOutput += msgEvent.delta || ''
-          }
-        }
-        if (event.type === 'tool_execution_end') {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const evt = event as any
-          toolCalls.push({
-            toolName: evt.toolName || 'unknown',
-            arguments: typeof evt.args === 'object' ? evt.args : {},
-            result: evt.result
-          })
-        }
-      })
-
-      await this.piSession.prompt(input)
-      unsubscribe()
-
-      // 去除 <think> 标签（OpenAI 兼容模式下思考内容混在文本中）
-      fullOutput = this.stripThinkTags(fullOutput)
-
-      return {
-        output: fullOutput,
-        toolCalls,
-        duration: Date.now() - startTime,
-        metadata: {
-          agentId: this.id,
-          sessionId: this.sessionId
-        }
-      }
-    } catch (error: unknown) {
-      log.error(`Execution failed:`, error)
-      throw error
-    }
-  }
+  // run() 由基类 AbstractAgentRuntime 提供（消费 stream()，自动继承快照功能）
 
   /**
-   * 流式执行 Agent（主方法 — AsyncGenerator）
+   * 流式执行 Agent（核心实现 — 由基类 stream() 模板方法包装）
    *
    * 通过 session.subscribe() 订阅 pi-SDK 事件，
    * 使用 ChunkQueue 桥接回调式推送到 AsyncGenerator 拉取。
@@ -368,7 +305,7 @@ export class PiMonoAgentRuntime implements AgentRuntime {
    * 事件时序：
    *   run:start → turn:start → llm:start → { reasoning:*, text:*, tool:* } → llm:done → turn:done → run:done
    */
-  async *stream(
+  protected async *doStream(
     input: string,
     _config?: ExecutionConfig
   ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
@@ -379,7 +316,6 @@ export class PiMonoAgentRuntime implements AgentRuntime {
 
     try {
       // 1. run:start
-      await this.streamEmitter.emitStart()
       queue.push({ type: 'run:start', content: '' })
 
       // 2. 设置事件订阅 → push 到 queue
@@ -397,15 +333,13 @@ export class PiMonoAgentRuntime implements AgentRuntime {
       // 3. SDK 执行，完成后结束 queue
       this.piSession
         .prompt(input)
-        .then(async () => {
+        .then(() => {
           unsubscribe()
-          await this.streamEmitter.emitDone()
           queue.push({ type: 'run:done', content: '' })
           queue.end()
         })
-        .catch(async (err: unknown) => {
+        .catch((err: unknown) => {
           unsubscribe()
-          await this.streamEmitter.emitError(err instanceof Error ? err : new Error(String(err)))
           queue.push({
             type: 'run:error',
             content: err instanceof Error ? err.message : String(err),
@@ -429,7 +363,6 @@ export class PiMonoAgentRuntime implements AgentRuntime {
         }
       }
     } catch (error: unknown) {
-      await this.streamEmitter.emitError(error instanceof Error ? error : new Error(String(error)))
       yield {
         type: 'run:error',
         content: error instanceof Error ? error.message : String(error),
@@ -440,48 +373,8 @@ export class PiMonoAgentRuntime implements AgentRuntime {
     }
   }
 
-  /**
-   * 流式执行（回调模式 — stream() 的包装）
-   */
-  async runStream(
-    input: string,
-    _config: ExecutionConfig,
-    onChunk: (chunk: StreamChunk) => void
-  ): Promise<ExecutionResult> {
-    const gen = this.stream(input, _config)
-    let r = await gen.next()
-    while (!r.done) {
-      onChunk(r.value)
-      r = await gen.next()
-    }
-    return r.value
-  }
-
-  // ========== HITL 工具审批（pi-SDK 通过 Extension 处理） ==========
-
-  approveToolCall(_index: number, _options?: { alwaysApprove?: boolean }): void {
-    throw new Error(
-      'PiMonoAgentRuntime does not support HITL tool approval. ' +
-        'Use pi-coding-agent Extensions (tool_call event interception) instead.'
-    )
-  }
-
-  rejectToolCall(_index: number, _options?: { alwaysReject?: boolean }): void {
-    throw new Error(
-      'PiMonoAgentRuntime does not support HITL tool rejection. ' +
-        'Use pi-coding-agent Extensions (tool_call event interception) instead.'
-    )
-  }
-
-  // eslint-disable-next-line require-yield
-  async *resumeStream(
-    _config?: ExecutionConfig
-  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
-    throw new Error(
-      'PiMonoAgentRuntime does not support resumeStream. ' +
-        'Use pi-coding-agent Extensions for workflow control.'
-    )
-  }
+  // runStream() 由基类 AbstractAgentRuntime 提供
+  // HITL 方法（approveToolCall, rejectToolCall, resumeStream）由基类提供默认 throw 实现
 
   // ========== 会话管理 ==========
 
@@ -549,9 +442,8 @@ export class PiMonoAgentRuntime implements AgentRuntime {
   /**
    * 设置 pi-SDK 事件订阅
    *
-   * 双通道分发：
-   *   1. onChunk() — 细粒度 StreamChunk 直接回调给调用方
-   *   2. streamEmitter.emitXxx() — 粗粒度广播到 EventBus
+   * 事件分发：
+   *   onChunk() → queue → yield → AgentExecutor.forward() 统一广播到 EventBus
    *
    * <think> 标签解析：
    *   OpenAI Chat Completions 格式不原生支持思考块，部分 Provider（如 MiniMax）
@@ -595,9 +487,7 @@ export class PiMonoAgentRuntime implements AgentRuntime {
         realTextStartEmitted = true
       }
 
-      // 双通道分发
       onTextDelta(text)
-      this.streamEmitter.emitText(text)
       onChunk({ type: 'text:delta', content: text, data: { delta: text } })
     }
 
@@ -644,7 +534,6 @@ export class PiMonoAgentRuntime implements AgentRuntime {
             // 未找到结束标签，整段都是思考内容
             thinkingBuffer += remaining
             if (remaining.length > 0) {
-              this.streamEmitter.emitThinking(remaining)
               onChunk({
                 type: 'reasoning:delta',
                 content: remaining,
@@ -658,7 +547,6 @@ export class PiMonoAgentRuntime implements AgentRuntime {
           const thinkContent = remaining.slice(0, thinkEnd)
           if (thinkContent.length > 0) {
             thinkingBuffer += thinkContent
-            this.streamEmitter.emitThinking(thinkContent)
             onChunk({
               type: 'reasoning:delta',
               content: thinkContent,
@@ -729,8 +617,6 @@ export class PiMonoAgentRuntime implements AgentRuntime {
             case 'thinking_delta': {
               const delta = msgEvent.delta || ''
               if (delta) {
-                // 双通道分发
-                this.streamEmitter.emitThinking(delta)
                 onChunk({
                   type: 'reasoning:delta',
                   content: delta,
@@ -834,9 +720,6 @@ export class PiMonoAgentRuntime implements AgentRuntime {
         // ===== Tool（含执行进度！）=====
         case 'tool_execution_start': {
           const toolName = evt.toolName || 'unknown'
-          const args = evt.args || {}
-          // 双通道分发
-          this.streamEmitter.emitToolCall(toolName, typeof args === 'object' ? args : {})
           onChunk({
             type: 'tool:start',
             content: toolName,
@@ -872,8 +755,6 @@ export class PiMonoAgentRuntime implements AgentRuntime {
             })
           }
 
-          // 双通道分发
-          this.streamEmitter.emitToolResult(toolName, output)
           onChunk({
             type: 'tool:done',
             content: output,

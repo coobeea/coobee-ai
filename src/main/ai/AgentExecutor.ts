@@ -32,6 +32,7 @@ import type { OpenAIAgentRuntimeOptions, SessionCompressionOptions } from './run
 import { createStreamEmitter, type IStreamEmitter } from './streaming/StreamEmitter'
 import type { StreamSource } from './streaming/types'
 import { hitlApprovalManager, DEFAULT_HITL_TIMEOUT_MS } from './hitl/HitlApprovalManager'
+import { buildAgentEnv, formatRuntimePaths, loadRuntimeEnvSkill } from './common/AgentEnv'
 
 // ==================== Builder ====================
 
@@ -51,7 +52,7 @@ export class PiMonoBuilder {
   private _sessionId?: string
   private _sessionMode?: 'memory' | 'file'
   private _tools?: ToolDefinition[]
-  private _skills?: SkillDefinition[]
+  private _skills: SkillDefinition[] = []
   private _maxTurns?: number
   private _useCodingTools?: boolean
   private _cwd?: string
@@ -60,6 +61,7 @@ export class PiMonoBuilder {
   private _sessionDir?: string
   private _compaction?: { enabled?: boolean }
   private _retry?: { enabled?: boolean; maxRetries?: number; baseDelayMs?: number }
+  private _contextDir?: string
 
   /** Agent 名称 */
   name(name: string): this {
@@ -121,9 +123,9 @@ export class PiMonoBuilder {
     return this
   }
 
-  /** 技能列表 */
+  /** 技能列表（累加模式，多次调用会合并） */
   skills(skills: SkillDefinition[]): this {
-    this._skills = skills
+    this._skills.push(...skills)
     return this
   }
 
@@ -169,6 +171,12 @@ export class PiMonoBuilder {
     return this
   }
 
+  /** 上下文快照目录（由 injectEnv 自动设置） */
+  contextDir(dir: string): this {
+    this._contextDir = dir
+    return this
+  }
+
   /** 构建并初始化 Runtime（内部方法，由 Executor 调用） */
   async build(): Promise<AgentRuntime> {
     const apiKey = this._apiKey || process.env.VITE_MINIMAX_API_KEY
@@ -191,7 +199,7 @@ export class PiMonoBuilder {
     // sessionDir: 显式传入 > Executor 默认值
     opts.sessionDir = this._sessionDir || AgentExecutor.getDefaultSessionDir()
     if (this._tools) opts.tools = this._tools
-    if (this._skills) opts.skills = this._skills
+    if (this._skills.length) opts.skills = this._skills
     if (this._maxTurns !== undefined) opts.maxTurns = this._maxTurns
     if (this._useCodingTools !== undefined) opts.useCodingTools = this._useCodingTools
     if (this._cwd) opts.cwd = this._cwd
@@ -199,6 +207,7 @@ export class PiMonoBuilder {
     if (this._customTools) opts.customTools = this._customTools
     if (this._compaction) opts.compaction = this._compaction
     if (this._retry) opts.retry = this._retry
+    if (this._contextDir) opts.contextDir = this._contextDir
 
     // 动态导入，避免顶层加载 SDK
     const { PiMonoAgentRuntime } = await import('./runtime/pimono')
@@ -225,12 +234,13 @@ export class OpenAIBuilder {
   private _sessionId?: string
   private _sessionDir?: string
   private _tools?: ToolDefinition[]
-  private _skills?: SkillDefinition[]
+  private _skills: SkillDefinition[] = []
   private _maxTurns?: number
   private _sdkTools?: unknown[]
   private _handoffs?: unknown[]
   private _modelSettings?: Record<string, unknown>
   private _compression?: SessionCompressionOptions
+  private _contextDir?: string
 
   /** Agent 名称 */
   name(name: string): this {
@@ -274,9 +284,9 @@ export class OpenAIBuilder {
     return this
   }
 
-  /** 技能列表 */
+  /** 技能列表（累加模式，多次调用会合并） */
   skills(skills: SkillDefinition[]): this {
-    this._skills = skills
+    this._skills.push(...skills)
     return this
   }
 
@@ -310,6 +320,12 @@ export class OpenAIBuilder {
     return this
   }
 
+  /** 上下文快照目录（由 injectEnv 自动设置） */
+  contextDir(dir: string): this {
+    this._contextDir = dir
+    return this
+  }
+
   /** 构建并初始化 Runtime */
   async build(): Promise<AgentRuntime> {
     const opts: OpenAIAgentRuntimeOptions = {
@@ -322,13 +338,14 @@ export class OpenAIBuilder {
     if (this._sessionId) opts.sessionId = this._sessionId
     opts.sessionDir = this._sessionDir || AgentExecutor.getDefaultSessionDir()
     if (this._tools) opts.tools = this._tools
-    if (this._skills) opts.skills = this._skills
+    if (this._skills.length) opts.skills = this._skills
     if (this._maxTurns !== undefined) opts.maxTurns = this._maxTurns
     if (this._sdkTools) opts.sdkTools = this._sdkTools as OpenAIAgentRuntimeOptions['sdkTools']
     if (this._handoffs) opts.handoffs = this._handoffs as OpenAIAgentRuntimeOptions['handoffs']
     if (this._modelSettings)
       opts.modelSettings = this._modelSettings as OpenAIAgentRuntimeOptions['modelSettings']
     if (this._compression) opts.compression = this._compression
+    if (this._contextDir) opts.contextDir = this._contextDir
 
     const { OpenAIAgentRuntime } = await import('./runtime/openai')
     const runtime = new OpenAIAgentRuntime(opts)
@@ -472,6 +489,55 @@ class AgentExecutor {
     }))
   }
 
+  // ========== 环境注入 ==========
+
+  /**
+   * 在 Builder 构建前注入运行时环境
+   *
+   * 自动完成：
+   *   1. 获取/创建 Agent 工作空间
+   *   2. 加载 runtime-env Skill 注入到 Builder
+   *   3. 注入 <runtime_paths> 到 appendInstructions
+   *
+   * @param sessionId 会话 ID（用于生成工作空间）
+   * @param builder   Builder 实例（PiMono 或 OpenAI）
+   */
+  private async injectEnv(sessionId: string, builder: AgentBuilder): Promise<void> {
+    try {
+      // 延迟导入 Env，避免测试环境问题
+      const { Env } = await import('@main/common/env')
+
+      // 1. 获取/创建工作空间
+      const workspace = await Env.getAgentWorkspaceDir(sessionId)
+
+      // 2. 构建 AgentEnv
+      const agentEnv = await buildAgentEnv(workspace)
+
+      // 3. 加载 runtime-env Skill
+      const envSkill = await loadRuntimeEnvSkill(Env.paths.builtinSkillsDir)
+      if (envSkill) {
+        builder.skills([envSkill])
+      }
+
+      // 4. 注入 <runtime_paths> 到 appendInstructions
+      const runtimePathsBlock = formatRuntimePaths(agentEnv)
+      builder.appendInstructions(runtimePathsBlock)
+
+      // 5. 设置工作目录（PiMono Builder 支持 cwd）
+      if (builder instanceof PiMonoBuilder) {
+        builder.cwd(workspace)
+      }
+
+      // 6. 设置上下文快照目录（Runtime 层写入）
+      builder.contextDir(path.join(workspace, 'contexts'))
+
+      log.info(`[AgentExecutor] Env injected: sessionId=${sessionId}, workspace=${workspace}`)
+    } catch (error) {
+      // 环境注入失败不阻断执行，仅记录警告
+      log.warn(`[AgentExecutor] Env injection failed, continuing without env:`, error)
+    }
+  }
+
   // ========== 流式执行（SSE 透传） ==========
 
   /**
@@ -513,6 +579,9 @@ class AgentExecutor {
     log.info(`[AgentExecutor] Stream: sessionId=${sessionId}, message="${message.slice(0, 50)}..."`)
 
     try {
+      // 0. 注入运行时环境（含 contextDir，Runtime 层自行写入快照）
+      await this.injectEnv(sessionId, builder)
+
       // 1. 创建 Runtime
       runtime = await builder.sessionId(sessionId).build()
       const emitter = this.createEmitter(sessionId, runtime)
@@ -594,6 +663,9 @@ class AgentExecutor {
     const startTime = Date.now()
 
     try {
+      // 0. 注入运行时环境（含 contextDir，Runtime 层自行写入快照）
+      await this.injectEnv(sessionId, builder)
+
       // 1. 创建 Runtime（Builder 内部调用 initialize）
       runtime = await builder.sessionId(sessionId).build()
       const emitter = this.createEmitter(sessionId, runtime)
