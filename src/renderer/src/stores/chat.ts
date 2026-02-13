@@ -2,12 +2,12 @@
  * Chat Store
  *
  * 职责：纯聊天数据管理（消息列表、流式消息映射、HITL 审批状态）。
- * WebSocket 连接由 plugins/wsSetup 管理，本 Store 不持有连接。
+ * 通过 GatewayClient RPC 与后端通信，事件流由 useStreamWs 桥接。
  */
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { invokeBackend } from '@/api/request'
+import { gateway } from '@/plugins/gatewaySetup'
 import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs'
 import type { StreamMessage } from '@shared/stream-protocol'
 import type { HitlApprovalDecision } from '@shared/stream-protocol'
@@ -218,8 +218,8 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * 发送消息
    * 1. 添加用户消息到列表
-   * 2. 调用后端 API 启动 Agent
-   * 3. 通过 wsService 订阅流式事件
+   * 2. 通过 Gateway RPC 调用 chat.send 启动 Agent
+   * 3. 通过 useStreamWs 订阅流式事件
    */
   async function sendMessage(text: string): Promise<void> {
     if (!text.trim() || isStreaming.value) return
@@ -234,15 +234,15 @@ export const useChatStore = defineStore('chat', () => {
     })
 
     try {
-      // 调用后端 API
-      const result = await invokeBackend<{
+      // 通过 Gateway RPC 调用 chat.send
+      const result = await gateway.request<{
         sessionId: string
         status: 'streaming' | 'error'
         error?: string
-      }>('/api/chat/agent/chat', text, sessionId.value)
+      }>('chat.send', { message: text, sessionId: sessionId.value })
 
-      if (result.data) {
-        const { sessionId: sid, status, error } = result.data
+      if (result) {
+        const { sessionId: sid, status, error } = result
 
         if (status === 'error') {
           messages.value.push({
@@ -259,18 +259,8 @@ export const useChatStore = defineStore('chat', () => {
         // 更新 sessionId
         sessionId.value = sid
 
-        // 通过 useStreamWs 订阅流式事件（连接管理由 wsSetup 负责）
+        // 通过 useStreamWs 订阅流式事件
         streamSubscribe(sid, handleStreamMessage)
-      } else {
-        // API 调用失败
-        messages.value.push({
-          id: `error-${Date.now()}`,
-          role: 'assistant',
-          content: '',
-          status: 'error',
-          error: result.message || '请求失败',
-          timestamp: Date.now()
-        })
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err)
@@ -296,14 +286,13 @@ export const useChatStore = defineStore('chat', () => {
     decision: HitlApprovalDecision
   ): Promise<void> {
     try {
-      const result = await invokeBackend<{ ok: boolean; error?: string }>(
-        '/api/chat/approval/decide',
-        sid,
+      const result = await gateway.request<{ ok: boolean; error?: string }>('hitl.decide', {
+        sessionId: sid,
         index,
         decision
-      )
+      })
 
-      if (result.data?.ok) {
+      if (result?.ok) {
         // 更新本地状态：记录已提交的决策
         const lastMsg = messages.value[messages.value.length - 1]
         if (lastMsg?.pendingApprovals) {
@@ -313,7 +302,7 @@ export const useChatStore = defineStore('chat', () => {
           }
         }
       } else {
-        console.error('[chatStore] submitDecision failed:', result.data?.error || result.message)
+        console.error('[chatStore] submitDecision failed:', result)
       }
     } catch (err: unknown) {
       console.error('[chatStore] submitDecision error:', err)

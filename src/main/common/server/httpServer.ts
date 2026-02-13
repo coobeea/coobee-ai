@@ -74,9 +74,14 @@ export class HttpServer {
     return HttpServer._instance
   }
 
-  /** 获取底层 http.Server（供 WsServer 挂载 WebSocket） */
+  /** 获取底层 http.Server（供 GatewayServer 挂载 WebSocket） */
   getHttpServer(): http.Server {
     return this.httpServer
+  }
+
+  /** 获取 Koa 应用实例（供 GatewayServer 挂载额外路由） */
+  getApp(): Koa {
+    return this.app
   }
 
   private _setupMiddleware(): void {
@@ -669,7 +674,7 @@ export class HttpServer {
       log.error('[HttpServer] Server error:', err, ctx)
     })
 
-    // 显式创建 http.Server，供 WsServer 挂载 WebSocket（共享端口）
+    // 显式创建 http.Server，供 GatewayServer 挂载 WebSocket（共享端口）
     this.httpServer = http.createServer(this.app.callback())
     this.httpServer.listen(SERVER_PORT, '127.0.0.1', () => {
       log.info(`[HttpServer] Listening on http://127.0.0.1:${SERVER_PORT} (HTTP + WebSocket)`)

@@ -147,6 +147,55 @@ export function scanWsChannels(): DiscoveredModule[] {
 }
 
 /**
+ * 扫描 Gateway 方法组文件
+ * 扫描 @main/gateway/methods 目录下所有 *.ts 文件
+ *
+ * 方法组命名规范：
+ * - 文件名为业务领域（如 chat.ts、stream.ts、worker.ts）
+ * - 必须导出实现 MethodGroup 接口的对象
+ * - namespace 字段用于方法路由（如 'chat' → 'chat.send'）
+ */
+export function scanGatewayMethods(): DiscoveredModule[] {
+  log.info('[Scan] 开始扫描 Gateway 方法组文件...')
+
+  const modules = import.meta.glob('@main/gateway/methods/**/*.ts', { eager: true })
+  const totalFound = Object.keys(modules).length
+
+  const filteredModules = filterModules(modules)
+  const filteredCount = filteredModules.length
+
+  log.info(
+    `[Scan] Gateway 方法组扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`
+  )
+
+  return filteredModules
+}
+
+/**
+ * 扫描 Gateway 事件桥接文件
+ * 扫描 @main/gateway/events 目录下所有 *.ts 文件
+ *
+ * 事件桥接命名规范：
+ * - 文件名以 Bridge.ts 结尾（如 StreamBridge.ts）
+ * - 必须导出 EventBridgeInit 类型的函数
+ */
+export function scanGatewayEventBridges(): DiscoveredModule[] {
+  log.info('[Scan] 开始扫描 Gateway 事件桥接文件...')
+
+  const modules = import.meta.glob('@main/gateway/events/**/*.ts', { eager: true })
+  const totalFound = Object.keys(modules).length
+
+  const filteredModules = filterModules(modules)
+  const filteredCount = filteredModules.length
+
+  log.info(
+    `[Scan] Gateway 事件桥接扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`
+  )
+
+  return filteredModules
+}
+
+/**
  * 通用过滤函数 - 过滤掉指定的文件
  * @param modules 扫描结果对象 (使用 eager: true 时，值直接是模块内容)
  * @param excludePatterns 要排除的文件名模式数组

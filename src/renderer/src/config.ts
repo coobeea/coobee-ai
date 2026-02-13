@@ -9,6 +9,7 @@ class ConfigManager {
   private port: string
   private baseUrl: string
   private wsUrl: string
+  private gatewayWsUrl: string
   private timeout: number
 
   constructor() {
@@ -17,6 +18,7 @@ class ConfigManager {
     const customBaseURL = import.meta.env.VITE_API_BASE_URL
     this.baseUrl = customBaseURL || `http://127.0.0.1:${this.port}`
     this.wsUrl = `ws://localhost:${this.port}`
+    this.gatewayWsUrl = `ws://localhost:${this.port}/gateway/ws`
     this.timeout = parseInt(import.meta.env.VITE_REQUEST_TIMEOUT || '5000', 10)
   }
 
@@ -29,11 +31,20 @@ class ConfigManager {
   }
 
   /**
-   * 获取 WebSocket 连接地址
+   * 获取 WebSocket 连接地址（旧协议，即将弃用）
    * @example "ws://localhost:8765"
+   * @deprecated 请使用 getGatewayWsUrl()
    */
   public getWsUrl(): string {
     return this.wsUrl
+  }
+
+  /**
+   * 获取 Gateway WebSocket 连接地址
+   * @example "ws://localhost:8765/gateway/ws"
+   */
+  public getGatewayWsUrl(): string {
+    return this.gatewayWsUrl
   }
 
   /**

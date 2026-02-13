@@ -1,65 +1,64 @@
 /**
  * Worker 领域 WebSocket 组合式
  *
- * 封装 Worker 管理频道的所有 WebSocket 交互逻辑：
- *   - 监听 Worker 状态变更（worker:status）
- *   - 获取 Worker 列表（worker:list）
- *   - 启动/停止 Worker（worker:start / worker:stop）
+ * 封装 Worker 管理的所有交互逻辑：
+ *   - 监听 Worker 状态变更（worker.status 事件）
+ *   - 获取 Worker 列表（worker.list RPC）
+ *   - 启动/停止 Worker（worker.start / worker.stop RPC）
  *   - 重连后自动请求 Worker 状态
  *
- * 消息类型：
- *   发送：worker:list, worker:start, worker:stop
- *   接收：worker:status, worker:list
+ * RPC 方法：
+ *   worker.list   — 获取 Worker 列表
+ *   worker.start  — 启动指定 Worker
+ *   worker.stop   — 停止指定 Worker
+ *
+ * 事件：
+ *   worker.status — Worker 状态变更推送
  */
 
-import { wsService } from '@/plugins/wsSetup'
+import { gateway } from '@/plugins/gatewaySetup'
 import type { WorkerStatusInfo } from '@shared/stream-protocol'
 
 // ==================== 内部状态 ====================
 
 /** Worker 状态回调列表（多个消费方可同时监听） */
 let statusHandlers: ((info: WorkerStatusInfo) => void)[] = []
-let unregisterPrefix: (() => void) | null = null
+let unregisterStatus: (() => void) | null = null
 let unregisterConnect: (() => void) | null = null
 
 // ==================== 初始化 ====================
 
 /**
- * 初始化 worker 前缀处理器
+ * 初始化 worker 事件监听
  */
 function init(): void {
-  if (unregisterPrefix) return
+  if (unregisterStatus) return
 
-  // 注册 worker:* 消息处理器
-  unregisterPrefix = wsService.onPrefix('worker', (action, data) => {
-    switch (action) {
-      case 'status':
-        // 单个 Worker 状态变更
-        if (data) {
-          const info = data as WorkerStatusInfo
-          for (const handler of statusHandlers) {
-            handler(info)
-          }
-        }
-        break
-
-      case 'list':
-        // Worker 列表（连接后一次性返回所有状态）
-        if (Array.isArray(data)) {
-          for (const info of data) {
-            for (const handler of statusHandlers) {
-              handler(info as WorkerStatusInfo)
-            }
-          }
-        }
-        break
+  // 监听 worker.status 事件
+  unregisterStatus = gateway.on('worker.status', (payload) => {
+    if (payload) {
+      const info = payload as WorkerStatusInfo
+      for (const handler of statusHandlers) {
+        handler(info)
+      }
     }
   })
 
   // 注册连接回调：重连后自动请求 Worker 列表
-  unregisterConnect = wsService.onConnect(() => {
-    wsService.send({ type: 'worker:list' })
-    console.log('[useWorkerWs] 重连后请求 Worker 列表')
+  unregisterConnect = gateway.onConnect(() => {
+    gateway
+      .request<WorkerStatusInfo[]>('worker.list')
+      .then((list) => {
+        if (Array.isArray(list)) {
+          for (const info of list) {
+            for (const handler of statusHandlers) {
+              handler(info)
+            }
+          }
+        }
+        console.log('[useWorkerWs] 重连后获取 Worker 列表成功')
+      })
+      .catch((err) => console.error('[useWorkerWs] 获取 Worker 列表失败:', err))
   })
 }
 
@@ -85,21 +84,36 @@ export function onWorkerStatus(handler: (info: WorkerStatusInfo) => void): () =>
  * 启动指定 Worker
  */
 export function startWorker(name: string): void {
-  wsService.send({ type: 'worker:start', workerName: name })
+  gateway
+    .request('worker.start', { workerName: name })
+    .catch((err) => console.error(`[useWorkerWs] 启动 Worker ${name} 失败:`, err))
 }
 
 /**
  * 停止指定 Worker
  */
 export function stopWorker(name: string): void {
-  wsService.send({ type: 'worker:stop', workerName: name })
+  gateway
+    .request('worker.stop', { workerName: name })
+    .catch((err) => console.error(`[useWorkerWs] 停止 Worker ${name} 失败:`, err))
 }
 
 /**
  * 主动请求 Worker 状态列表
  */
 export function requestWorkers(): void {
-  wsService.send({ type: 'worker:list' })
+  gateway
+    .request<WorkerStatusInfo[]>('worker.list')
+    .then((list) => {
+      if (Array.isArray(list)) {
+        for (const info of list) {
+          for (const handler of statusHandlers) {
+            handler(info)
+          }
+        }
+      }
+    })
+    .catch((err) => console.error('[useWorkerWs] 请求 Worker 列表失败:', err))
 }
 
 /**
@@ -107,8 +121,8 @@ export function requestWorkers(): void {
  */
 export function workerCleanup(): void {
   statusHandlers = []
-  unregisterPrefix?.()
+  unregisterStatus?.()
   unregisterConnect?.()
-  unregisterPrefix = null
+  unregisterStatus = null
   unregisterConnect = null
 }

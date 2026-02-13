@@ -5,9 +5,9 @@
  * 使 src/main/api/ 下的模块被 loader 自动发现和注册。
  *
  * 执行顺序：
- *   ReadyApiRegistrationHook (35) → ReadyWsHubHook (40) → 窗口创建 (100)
+ *   ReadyApiRegistrationHook (35) → ReadyGatewayHook (45) → 窗口创建 (100)
  *
- * 必须在 WsHub 之前执行，因为 WsHub 需要挂载到 HttpServer 的 http.Server 上。
+ * 必须在 Gateway 之前执行，因为 GatewayServer 需要挂载到 HttpServer 的 http.Server 上。
  */
 
 import { LifecyclePhase, LifecycleContext, LifecycleHook } from '@main/common/types'
@@ -16,7 +16,7 @@ import { log } from '@main/common/logger'
 export const ReadyApiRegistrationHook: LifecycleHook = {
   name: 'ready-api-registration',
   phase: LifecyclePhase.READY,
-  priority: 35, // 在 WsHub(40) 之前，确保 HttpServer 已就绪
+  priority: 35, // 在 Gateway(45) 之前，确保 HttpServer 已就绪
   critical: false,
 
   async execute(_context: LifecycleContext): Promise<void> {

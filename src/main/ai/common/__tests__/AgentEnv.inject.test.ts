@@ -9,13 +9,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ===== Mock logger =====
+const mockLog = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+  verbose: vi.fn(),
+  setLevel: vi.fn(),
+  setConsoleLevel: vi.fn()
+}))
 vi.mock('@main/common/logger', () => ({
-  log: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn()
-  }
+  log: mockLog,
+  createLogger: () => mockLog
 }))
 
 // ===== Mock env =====

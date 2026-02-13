@@ -53,6 +53,10 @@ let committedText = ''
 let mediaRecorder: MediaRecorder | null = null
 const asrWs = ref<WebSocket | null>(null)
 
+/** 连续静音计数，超过一定次数清空已有文本 */
+let silenceCount = 0
+const SILENCE_CLEAR_COUNT = 4 // 连续 4 次（~6 秒）静音后清空显示
+
 /** ASR Worker ready → 自动开始监听 */
 watch(
   () => workerStore.asrReady,
@@ -195,10 +199,6 @@ function isHallucination(text: string): boolean {
   // 匹配已知幻觉模式
   return HALLUCINATION_PATTERNS.some((p) => p.test(t))
 }
-
-/** 连续静音计数，超过一定次数清空已有文本 */
-let silenceCount = 0
-const SILENCE_CLEAR_COUNT = 4 // 连续 4 次（~6 秒）静音后清空显示
 
 // ==================== HTTP 模式（whisper-server） ====================
 

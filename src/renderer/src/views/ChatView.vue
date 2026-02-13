@@ -2,7 +2,7 @@
 import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore, type PendingApproval } from '@/stores/chat'
-import { wsService } from '@/plugins/wsSetup'
+import { gateway } from '@/plugins/gatewaySetup'
 import type { HitlApprovalDecision } from '@shared/stream-protocol'
 
 const router = useRouter()
@@ -70,9 +70,9 @@ function resetTextareaHeight(): void {
   el.style.height = 'auto'
 }
 
-// 连接状态文字（从 wsService 读取，连接管理不属于 chatStore）
+// 连接状态文字（从 Gateway 读取）
 const connectionLabel = computed(() => {
-  switch (wsService.connectionState.value) {
+  switch (gateway.connectionState.value) {
     case 'connected':
       return '已连接'
     case 'connecting':
@@ -132,10 +132,10 @@ onMounted(() => {
           <span
             class="inline-block h-1.5 w-1.5 rounded-full"
             :class="{
-              'bg-emerald-500': wsService.connectionState.value === 'connected',
-              'bg-amber-400': wsService.connectionState.value === 'connecting',
-              'bg-red-400': wsService.connectionState.value === 'error',
-              'bg-gray-300': wsService.connectionState.value === 'disconnected'
+              'bg-emerald-500': gateway.connectionState.value === 'connected',
+              'bg-amber-400': gateway.connectionState.value === 'connecting',
+              'bg-red-400': gateway.connectionState.value === 'error',
+              'bg-gray-300': gateway.connectionState.value === 'disconnected'
             }"
           ></span>
           <span class="text-[11px] text-gray-400">{{ connectionLabel }}</span>
@@ -624,12 +624,9 @@ onMounted(() => {
           </button>
         </div>
         <!-- 错误提示 -->
-        <p
-          v-if="wsService.lastError.value"
-          class="mt-2 flex items-center gap-1 text-xs text-red-500"
-        >
+        <p v-if="gateway.lastError.value" class="mt-2 flex items-center gap-1 text-xs text-red-500">
           <span class="i-carbon-warning inline-block h-3 w-3"></span>
-          {{ wsService.lastError.value }}
+          {{ gateway.lastError.value }}
         </p>
       </div>
     </footer>

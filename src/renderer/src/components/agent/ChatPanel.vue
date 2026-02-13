@@ -8,7 +8,7 @@
 
 import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import { useChatStore, type PendingApproval } from '@/stores/chat'
-import { wsService } from '@/plugins/wsSetup'
+import { gateway } from '@/plugins/gatewaySetup'
 import type { HitlApprovalDecision } from '@shared/stream-protocol'
 
 const chatStore = useChatStore()
@@ -70,7 +70,7 @@ function resetTextareaHeight(): void {
 }
 
 const connectionLabel = computed(() => {
-  switch (wsService.connectionState.value) {
+  switch (gateway.connectionState.value) {
     case 'connected':
       return '已连接'
     case 'connecting':
@@ -121,10 +121,10 @@ onMounted(() => {
           <span
             class="inline-block h-1.5 w-1.5 rounded-full"
             :class="{
-              'bg-emerald-500': wsService.connectionState.value === 'connected',
-              'bg-amber-400': wsService.connectionState.value === 'connecting',
-              'bg-red-400': wsService.connectionState.value === 'error',
-              'bg-gray-300': wsService.connectionState.value === 'disconnected'
+              'bg-emerald-500': gateway.connectionState.value === 'connected',
+              'bg-amber-400': gateway.connectionState.value === 'connecting',
+              'bg-red-400': gateway.connectionState.value === 'error',
+              'bg-gray-300': gateway.connectionState.value === 'disconnected'
             }"
           ></span>
           <span class="text-[10px] text-gray-400">{{ connectionLabel }}</span>
@@ -448,11 +448,11 @@ onMounted(() => {
         </button>
       </div>
       <p
-        v-if="wsService.lastError.value"
+        v-if="gateway.lastError.value"
         class="mt-1 flex items-center gap-1 text-[10px] text-red-500"
       >
         <span class="i-carbon-warning inline-block h-2.5 w-2.5"></span>
-        {{ wsService.lastError.value }}
+        {{ gateway.lastError.value }}
       </p>
     </div>
   </aside>

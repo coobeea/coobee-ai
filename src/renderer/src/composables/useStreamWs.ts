@@ -1,65 +1,65 @@
 /**
  * Stream 领域 WebSocket 组合式
  *
- * 封装 AI 流式频道的所有 WebSocket 交互逻辑：
- *   - 订阅/取消订阅会话的流式事件
+ * 封装 AI 流式频道的所有交互逻辑：
+ *   - 订阅/取消订阅会话的流式事件（通过 Gateway RPC）
  *   - 重连后自动恢复订阅
  *   - 消息分发给消费方（如 chatStore）
  *
- * 消息类型：
- *   发送：stream:subscribe, stream:unsubscribe, stream:resend, stream:latest_sequence
- *   接收：stream:message, stream:resend_batch, stream:latest_sequence
+ * RPC 方法：
+ *   stream.subscribe   — 订阅会话
+ *   stream.unsubscribe — 取消订阅
+ *   stream.resend      — 请求重发历史消息
+ *   stream.latestSeq   — 请求最新序号
+ *
+ * 事件：
+ *   stream.message       — 单条流式消息
+ *   stream.resend_batch  — 历史消息批量重发
  */
 
-import { wsService } from '@/plugins/wsSetup'
+import { gateway } from '@/plugins/gatewaySetup'
 import type { StreamMessage } from '@shared/stream-protocol'
 
 // ==================== 内部状态 ====================
 
 let subscribedSessionId: string | null = null
 let messageHandler: ((msg: StreamMessage) => void) | null = null
-let unregisterPrefix: (() => void) | null = null
+let unregisterMessage: (() => void) | null = null
+let unregisterBatch: (() => void) | null = null
 let unregisterConnect: (() => void) | null = null
 
 // ==================== 初始化 ====================
 
 /**
- * 初始化 stream 前缀处理器
+ * 初始化 stream 事件监听
  *
- * 在模块加载时自动注册，确保在 wsSetup 连接后即可接收 stream:* 消息。
+ * 在模块加载时自动注册，确保 Gateway 连接后即可接收 stream.* 事件。
  */
 function init(): void {
-  if (unregisterPrefix) return // 已注册
+  if (unregisterMessage) return // 已注册
 
-  // 注册 stream:* 消息处理器
-  unregisterPrefix = wsService.onPrefix('stream', (action, data) => {
-    switch (action) {
-      case 'message':
-        // 单条流式消息
-        if (messageHandler && data) {
-          messageHandler(data as StreamMessage)
-        }
-        break
+  // 监听 stream.message 事件
+  unregisterMessage = gateway.on('stream.message', (payload) => {
+    if (messageHandler && payload) {
+      messageHandler(payload as StreamMessage)
+    }
+  })
 
-      case 'resend_batch':
-        // 历史消息批量重发
-        if (messageHandler && Array.isArray(data)) {
-          for (const m of data) {
-            messageHandler(m as StreamMessage)
-          }
-        }
-        break
-
-      case 'latest_sequence':
-        // 可选：用于断线重连对齐
-        break
+  // 监听 stream.resend_batch 事件
+  unregisterBatch = gateway.on('stream.resend_batch', (payload) => {
+    if (messageHandler && Array.isArray(payload)) {
+      for (const m of payload) {
+        messageHandler(m as StreamMessage)
+      }
     }
   })
 
   // 注册连接回调：重连后自动恢复订阅
-  unregisterConnect = wsService.onConnect(() => {
+  unregisterConnect = gateway.onConnect(() => {
     if (subscribedSessionId) {
-      wsService.send({ type: 'stream:subscribe', sessionId: subscribedSessionId })
+      gateway
+        .request('stream.subscribe', { sessionId: subscribedSessionId })
+        .catch((err) => console.error('[useStreamWs] 重连后恢复订阅失败:', err))
       console.log(`[useStreamWs] 重连后恢复订阅: ${subscribedSessionId}`)
     }
   })
@@ -79,16 +79,20 @@ init()
 export function streamSubscribe(sessionId: string, handler: (msg: StreamMessage) => void): void {
   // 取消之前的订阅
   if (subscribedSessionId && subscribedSessionId !== sessionId) {
-    wsService.send({ type: 'stream:unsubscribe', sessionId: subscribedSessionId })
+    gateway
+      .request('stream.unsubscribe', { sessionId: subscribedSessionId })
+      .catch((err) => console.error('[useStreamWs] 取消订阅失败:', err))
   }
 
   subscribedSessionId = sessionId
   messageHandler = handler
 
   // 已连接则立即发送订阅
-  if (wsService.connectionState.value === 'connected') {
-    wsService.send({ type: 'stream:subscribe', sessionId })
-    console.log(`[useStreamWs] 订阅会话: ${sessionId}`)
+  if (gateway.connectionState.value === 'connected') {
+    gateway
+      .request('stream.subscribe', { sessionId })
+      .then(() => console.log(`[useStreamWs] 订阅会话: ${sessionId}`))
+      .catch((err) => console.error('[useStreamWs] 订阅失败:', err))
   }
   // 未连接时，onConnect 回调会在连接后自动恢复
 }
@@ -98,7 +102,9 @@ export function streamSubscribe(sessionId: string, handler: (msg: StreamMessage)
  */
 export function streamUnsubscribe(): void {
   if (subscribedSessionId) {
-    wsService.send({ type: 'stream:unsubscribe', sessionId: subscribedSessionId })
+    gateway
+      .request('stream.unsubscribe', { sessionId: subscribedSessionId })
+      .catch((err) => console.error('[useStreamWs] 取消订阅失败:', err))
     subscribedSessionId = null
   }
   messageHandler = null
@@ -108,14 +114,18 @@ export function streamUnsubscribe(): void {
  * 请求重发历史消息
  */
 export function streamResend(sessionId: string, fromSequence: number): void {
-  wsService.send({ type: 'stream:resend', sessionId, fromSequence })
+  gateway
+    .request('stream.resend', { sessionId, fromSequence })
+    .catch((err) => console.error('[useStreamWs] 重发请求失败:', err))
 }
 
 /**
  * 请求最新序号
  */
 export function streamLatestSequence(sessionId: string): void {
-  wsService.send({ type: 'stream:latest_sequence', sessionId })
+  gateway
+    .request('stream.latestSeq', { sessionId })
+    .catch((err) => console.error('[useStreamWs] 获取最新序号失败:', err))
 }
 
 /**
@@ -123,8 +133,10 @@ export function streamLatestSequence(sessionId: string): void {
  */
 export function streamCleanup(): void {
   streamUnsubscribe()
-  unregisterPrefix?.()
+  unregisterMessage?.()
+  unregisterBatch?.()
   unregisterConnect?.()
-  unregisterPrefix = null
+  unregisterMessage = null
+  unregisterBatch = null
   unregisterConnect = null
 }

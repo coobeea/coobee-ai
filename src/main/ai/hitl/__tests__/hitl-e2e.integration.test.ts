@@ -7,7 +7,7 @@
  *     → runtime.stream() 产生 hitl:required
  *     → StreamEmitter.forward() 广播到 EventBus
  *     → AgentExecutor 进入 HITL 等待
- *     → [模拟前端] 通过 ApprovalApi.decide() 提交决策
+ *     → [模拟前端] 通过 Gateway hitl.decide 提交决策
  *     → HitlApprovalManager resolve Promise
  *     → AgentExecutor 恢复 → runtime.resumeStream()
  *     → StreamEmitter.forward() 继续广播
@@ -15,7 +15,7 @@
  *
  * 验证内容：
  *   1. EventBus 收到正确的事件序列（start, hitl, interrupted, resumed, done）
- *   2. ApprovalApi 参数校验和决策转发
+ *   2. Gateway hitl.decide 参数校验和决策转发
  *   3. 多工具审批（需全部审批后才恢复）
  *   4. 超时场景
  *   5. onChunk 回调收到正确的 chunk 序列
@@ -45,13 +45,18 @@ const mockRuntime = vi.hoisted(() => ({
 }))
 
 // mock logger（防止日志输出影响测试）
+const mockLog = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+  verbose: vi.fn(),
+  setLevel: vi.fn(),
+  setConsoleLevel: vi.fn()
+}))
 vi.mock('@main/common/logger', () => ({
-  log: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn()
-  }
+  log: mockLog,
+  createLogger: () => mockLog
 }))
 
 // mock PiMono runtime 工厂
@@ -101,27 +106,37 @@ vi.mock('../../common/AgentEnv', () => ({
   loadRuntimeEnvSkill: async () => null
 }))
 
-// mock server decorators（避免 Electron 依赖）
-vi.mock('@main/common/server', () => ({
-  Post: () => (_target: unknown, _key: string) => {
-    // no-op decorator for test
-  },
-  Get: () => (_target: unknown, _key: string) => {
-    // no-op decorator for test
-  },
-  SSE: () => (_target: unknown, _key: string) => {
-    // no-op decorator for test
-  }
-}))
-
 // ===== 导入真实模块 =====
 import { eventBus } from '@main/common/eventbus'
 import { hitlApprovalManager } from '../HitlApprovalManager'
-import ApprovalApi from '@main/api/chat/approval'
+import { approvalMethods } from '@main/gateway/methods/approval'
+import type { HitlApprovalDecision } from '@shared/stream-protocol'
+
+/**
+ * 辅助函数：模拟通过 Gateway 调用 hitl.decide
+ * 封装 Gateway MethodHandler 的调用格式，返回兼容旧 ApprovalApi 的结果格式。
+ */
+async function callDecide(
+  sessionId: string,
+  index: number,
+  decision: HitlApprovalDecision | string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const result = await approvalMethods.methods.decide(
+      { sessionId, index, decision } as Record<string, unknown>,
+      // ctx 在 hitl.decide 中未使用，传 null 安全
+      null as never
+    )
+    return result as { ok: boolean; error?: string }
+  } catch (err: unknown) {
+    // GatewayMethodError → { ok: false, error: message }
+    const message = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: message }
+  }
+}
 
 describe('HITL 全链路集成测试', () => {
   let agentExecutor: typeof import('../../AgentExecutor').agentExecutor
-  let approvalApi: ApprovalApi
 
   /** 收集 EventBus 上的 StreamMessage 事件 */
   const collectedMessages: StreamMessage[] = []
@@ -179,8 +194,6 @@ describe('HITL 全链路集成测试', () => {
     await import('../../runtime/pimono')
     await import('../../common/AgentEnv')
     await import('@main/common/env')
-
-    approvalApi = new ApprovalApi()
   })
 
   afterEach(() => {
@@ -283,8 +296,8 @@ describe('HITL 全链路集成测试', () => {
     // 验证 HITL 等待中
     expect(hitlApprovalManager.hasPending(sessionId)).toBe(true)
 
-    // === Step 3: 通过 ApprovalApi 提交审批决策（模拟前端调用） ===
-    const apiResult = await approvalApi.decide(sessionId, 0, 'approve-once')
+    // === Step 3: 通过 Gateway hitl.decide 提交审批决策（模拟前端调用） ===
+    const apiResult = await callDecide(sessionId, 0, 'approve-once')
     expect(apiResult).toEqual({ ok: true })
 
     // 让异步任务继续（resume 执行）
@@ -311,28 +324,27 @@ describe('HITL 全链路集成测试', () => {
   })
 
   // ================================================================
-  // 场景 2: ApprovalApi 参数校验
+  // 场景 2: Gateway hitl.decide 参数校验
   // ================================================================
 
-  describe('ApprovalApi 参数校验', () => {
+  describe('Gateway hitl.decide 参数校验', () => {
     it('缺少 sessionId 返回错误', async () => {
-      const result = await approvalApi.decide('', 0, 'approve-once')
+      const result = await callDecide('', 0, 'approve-once')
       expect(result).toEqual({ ok: false, error: 'sessionId is required' })
     })
 
     it('无效 index 返回错误', async () => {
-      const result = await approvalApi.decide('session-1', -1, 'approve-once')
+      const result = await callDecide('session-1', -1, 'approve-once')
       expect(result).toEqual({ ok: false, error: 'index must be a non-negative number' })
     })
 
     it('无效 decision 返回错误', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await approvalApi.decide('session-1', 0, 'invalid' as any)
+      const result = await callDecide('session-1', 0, 'invalid')
       expect(result).toEqual({ ok: false, error: 'Invalid decision: invalid' })
     })
 
     it('无 pending 时返回错误', async () => {
-      const result = await approvalApi.decide('no-such-session', 0, 'reject')
+      const result = await callDecide('no-such-session', 0, 'reject')
       expect(result).toEqual({
         ok: false,
         error: 'No pending approval for this session or invalid index'
@@ -410,7 +422,7 @@ describe('HITL 全链路集成测试', () => {
     expect(hitlMessages).toHaveLength(2)
 
     // 提交第一个决策
-    const r1 = await approvalApi.decide(sessionId, 0, 'approve-once')
+    const r1 = await callDecide(sessionId, 0, 'approve-once')
     expect(r1.ok).toBe(true)
 
     // 还没有全部审批，应该仍在等待
@@ -419,7 +431,7 @@ describe('HITL 全链路集成测试', () => {
     expect(mockRuntime.resumeStream).not.toHaveBeenCalled()
 
     // 提交第二个决策
-    const r2 = await approvalApi.decide(sessionId, 1, 'approve-always')
+    const r2 = await callDecide(sessionId, 1, 'approve-always')
     expect(r2.ok).toBe(true)
 
     await flushAsync()
@@ -478,8 +490,8 @@ describe('HITL 全链路集成测试', () => {
     await flushAsync()
 
     // tool_a approve, tool_b reject
-    await approvalApi.decide(sessionId, 0, 'approve-once')
-    await approvalApi.decide(sessionId, 1, 'reject')
+    await callDecide(sessionId, 0, 'approve-once')
+    await callDecide(sessionId, 1, 'reject')
     await flushAsync()
 
     expect(mockRuntime.approveToolCall).toHaveBeenCalledWith(0, { alwaysApprove: false })

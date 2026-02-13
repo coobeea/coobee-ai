@@ -10,12 +10,12 @@ import { IpcServer } from './ipcServer'
  * 初始化服务器模块
  *
  * 创建 HttpServer（统一端口，HTTP + WebSocket 共享）和 IpcServer（Electron IPC）。
- * HttpServer 必须在 WsHub 之前初始化，因为 WsHub 需要挂载到 HttpServer 的 http.Server 上。
+ * HttpServer 必须在 Gateway 之前初始化，因为 GatewayServer 需要挂载到 HttpServer 的 http.Server 上。
  */
 export function initializeServerModules(): void {
   log.info('[ServerCore] Initializing server modules...')
   try {
-    // HTTP 服务器（统一端口，供 WsHub 挂载 WebSocket）
+    // HTTP 服务器（统一端口，供 Gateway 挂载 WebSocket）
     new HttpServer()
     log.info('[ServerCore] HttpServer instance created (unified port).')
 
@@ -38,11 +38,3 @@ export type { ChannelConfig } from './streamChannelManager'
 export { SSE, Get, Post, Stream, DecoratorType } from './decorators'
 export { type RouteMetadata } from './decorators'
 export { default as handlerAdapter, setServerMiddlewareManager } from './handlerAdapter'
-export { WsServer } from './wsServer'
-export type {
-  WsServerOptions,
-  WsClientMeta,
-  WsMessageHandler,
-  WsConnectionHandler
-} from './wsServer'
-export { WsHub, wsHub } from './WsHub'
