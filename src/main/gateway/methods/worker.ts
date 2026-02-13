@@ -11,7 +11,7 @@
  */
 
 import { log } from '@main/common/logger'
-import { RuntimeManager } from '@main/runtime'
+import { WorkerManager } from '@main/common/worker'
 import { GatewayErrorCode, GatewayMethodError } from '../protocol'
 import type { MethodGroup } from '../protocol'
 
@@ -19,7 +19,7 @@ export const workerMethods: MethodGroup = {
   namespace: 'worker',
   methods: {
     list: async () => {
-      const allWorkers = RuntimeManager.getInstance().getAllWorkerInfo()
+      const allWorkers = WorkerManager.getInstance().getAllWorkerInfo()
       return { workers: allWorkers }
     },
 
@@ -31,7 +31,7 @@ export const workerMethods: MethodGroup = {
 
       log.info(`[worker.start] Starting worker: ${name}`)
       try {
-        await RuntimeManager.getInstance().start(name)
+        await WorkerManager.getInstance().start(name)
         return { ok: true, name }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
@@ -48,7 +48,7 @@ export const workerMethods: MethodGroup = {
 
       log.info(`[worker.stop] Stopping worker: ${name}`)
       try {
-        await RuntimeManager.getInstance().stop(name)
+        await WorkerManager.getInstance().stop(name)
         return { ok: true, name }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)

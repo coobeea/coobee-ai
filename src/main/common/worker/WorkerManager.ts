@@ -1,5 +1,5 @@
 /**
- * RuntimeManager — Worker 子进程生命周期管理器
+ * WorkerManager — Worker 子进程生命周期管理器
  *
  * 职责：
  *   1. 虚拟环境初始化（使用 uv 创建 venv + 安装依赖）
@@ -22,7 +22,7 @@ import { createLogger } from '@main/common/logger'
 import { Env } from '@main/common/env'
 import type { WorkerConfig, WorkerInfo, WorkerStatus } from './types'
 
-const log = createLogger('runtime')
+const log = createLogger('worker-manager')
 
 /** 内部 Worker 实例状态 */
 interface ManagedWorker {
@@ -38,14 +38,14 @@ interface ManagedWorker {
 }
 
 /**
- * RuntimeManager 单例
+ * WorkerManager 单例
  *
  * 事件：
  *   - 'worker:status' → WorkerInfo  状态变更
  *   - 'worker:log'    → { name, level, message }  日志输出
  */
-export class RuntimeManager extends EventEmitter {
-  private static instance: RuntimeManager | null = null
+export class WorkerManager extends EventEmitter {
+  private static instance: WorkerManager | null = null
 
   private workers = new Map<string, ManagedWorker>()
   private configs = new Map<string, WorkerConfig>()
@@ -56,11 +56,11 @@ export class RuntimeManager extends EventEmitter {
     super()
   }
 
-  static getInstance(): RuntimeManager {
-    if (!RuntimeManager.instance) {
-      RuntimeManager.instance = new RuntimeManager()
+  static getInstance(): WorkerManager {
+    if (!WorkerManager.instance) {
+      WorkerManager.instance = new WorkerManager()
     }
-    return RuntimeManager.instance
+    return WorkerManager.instance
   }
 
   // ==================== 配置注册 ====================
@@ -86,7 +86,7 @@ export class RuntimeManager extends EventEmitter {
       this.updateStatus(worker, 'stopped')
     }
 
-    log.info(`[RuntimeManager] 已注册 Worker: ${config.name} (${config.label})`)
+    log.info(`[WorkerManager] 已注册 Worker: ${config.name} (${config.label})`)
   }
 
   /**
@@ -109,7 +109,7 @@ export class RuntimeManager extends EventEmitter {
     const workersDir = Env.paths.workersDir
 
     if (!fs.existsSync(workersDir)) {
-      log.warn(`[RuntimeManager] Workers 目录不存在: ${workersDir}`)
+      log.warn(`[WorkerManager] Workers 目录不存在: ${workersDir}`)
       return 0
     }
 
@@ -121,7 +121,7 @@ export class RuntimeManager extends EventEmitter {
 
       const configPath = path.join(workersDir, entry.name, 'worker.json')
       if (!fs.existsSync(configPath)) {
-        log.debug(`[RuntimeManager] 跳过 ${entry.name}/（无 worker.json）`)
+        log.debug(`[WorkerManager] 跳过 ${entry.name}/（无 worker.json）`)
         continue
       }
 
@@ -136,7 +136,7 @@ export class RuntimeManager extends EventEmitter {
 
         // enable 默认 true；显式 false 时跳过
         if (config.enable === false) {
-          log.info(`[RuntimeManager] 跳过已禁用的 Worker: ${config.name}`)
+          log.info(`[WorkerManager] 跳过已禁用的 Worker: ${config.name}`)
           continue
         }
 
@@ -144,13 +144,13 @@ export class RuntimeManager extends EventEmitter {
         count++
       } catch (err) {
         log.error(
-          `[RuntimeManager] 解析 ${configPath} 失败:`,
+          `[WorkerManager] 解析 ${configPath} 失败:`,
           err instanceof Error ? err.message : err
         )
       }
     }
 
-    log.info(`[RuntimeManager] 扫描完成，共发现 ${count} 个 Worker`)
+    log.info(`[WorkerManager] 扫描完成，共发现 ${count} 个 Worker`)
     return count
   }
 
@@ -179,7 +179,7 @@ export class RuntimeManager extends EventEmitter {
 
     const existing = this.workers.get(name)
     if (existing && (existing.status === 'ready' || existing.status === 'starting')) {
-      log.info(`[RuntimeManager] Worker "${name}" 已在运行`)
+      log.info(`[WorkerManager] Worker "${name}" 已在运行`)
       return
     }
 
@@ -212,12 +212,12 @@ export class RuntimeManager extends EventEmitter {
       await this.waitForHealth(worker)
       this.updateStatus(worker, 'ready')
 
-      log.info(`[RuntimeManager] Worker "${name}" 启动成功 (PID: ${worker.process?.pid})`)
+      log.info(`[WorkerManager] Worker "${name}" 启动成功 (PID: ${worker.process?.pid})`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       worker.error = msg
       this.updateStatus(worker, 'error')
-      log.error(`[RuntimeManager] Worker "${name}" 启动失败: ${msg}`)
+      log.error(`[WorkerManager] Worker "${name}" 启动失败: ${msg}`)
     }
   }
 
@@ -242,7 +242,7 @@ export class RuntimeManager extends EventEmitter {
       const killTimeout = setTimeout(() => {
         // 超时强制杀
         if (proc.pid && !proc.killed) {
-          log.warn(`[RuntimeManager] Worker "${name}" (PID: ${pid}) SIGTERM 超时，强制 SIGKILL`)
+          log.warn(`[WorkerManager] Worker "${name}" (PID: ${pid}) SIGTERM 超时，强制 SIGKILL`)
           proc.kill('SIGKILL')
         }
       }, 5000)
@@ -252,7 +252,7 @@ export class RuntimeManager extends EventEmitter {
         worker.process = null
         worker.stopping = false
         this.updateStatus(worker, 'stopped')
-        log.info(`[RuntimeManager] Worker "${name}" (PID: ${pid}) 已停止`)
+        log.info(`[WorkerManager] Worker "${name}" (PID: ${pid}) 已停止`)
         resolve()
       })
 
@@ -266,12 +266,12 @@ export class RuntimeManager extends EventEmitter {
    */
   async stopAll(): Promise<void> {
     this.shuttingDown = true
-    log.info(`[RuntimeManager] 正在停止所有 Worker (${this.workers.size} 个)...`)
+    log.info(`[WorkerManager] 正在停止所有 Worker (${this.workers.size} 个)...`)
 
     const stopPromises = Array.from(this.workers.keys()).map((name) => this.stop(name))
     await Promise.allSettled(stopPromises)
 
-    log.info('[RuntimeManager] 所有 Worker 已停止')
+    log.info('[WorkerManager] 所有 Worker 已停止')
   }
 
   /**
@@ -282,7 +282,7 @@ export class RuntimeManager extends EventEmitter {
       if (worker.process && !worker.process.killed) {
         try {
           worker.process.kill('SIGKILL')
-          log.warn(`[RuntimeManager] 强制杀死 Worker "${name}" (PID: ${worker.process.pid})`)
+          log.warn(`[WorkerManager] 强制杀死 Worker "${name}" (PID: ${worker.process.pid})`)
         } catch {
           // 忽略
         }
@@ -333,7 +333,7 @@ export class RuntimeManager extends EventEmitter {
 
     // 检查 venv 是否存在
     if (!fs.existsSync(pythonBin)) {
-      log.info(`[RuntimeManager] 创建虚拟环境: ${venvDir}`)
+      log.info(`[WorkerManager] 创建虚拟环境: ${venvDir}`)
       await this.exec(uvBin, ['venv', venvDir, '--python', '3.11'], {
         cwd: this.getWorkerScriptsDir(config.name)
       })
@@ -344,7 +344,7 @@ export class RuntimeManager extends EventEmitter {
     const requirementsPath = path.join(this.getWorkerScriptsDir(config.name), requirementsFile)
 
     if (fs.existsSync(requirementsPath)) {
-      log.info(`[RuntimeManager] 安装依赖: ${requirementsPath}`)
+      log.info(`[WorkerManager] 安装依赖: ${requirementsPath}`)
       await this.exec(uvBin, ['pip', 'install', '-r', requirementsPath, '--python', pythonBin], {
         cwd: this.getWorkerScriptsDir(config.name)
       })
@@ -421,7 +421,7 @@ export class RuntimeManager extends EventEmitter {
       ...(config.env || {})
     }
 
-    log.info(`[RuntimeManager] 启动 Native Worker: ${binaryPath} ${args.join(' ')}`)
+    log.info(`[WorkerManager] 启动 Native Worker: ${binaryPath} ${args.join(' ')}`)
 
     const child = spawn(binaryPath, args, {
       cwd: scriptsDir,
@@ -440,7 +440,7 @@ export class RuntimeManager extends EventEmitter {
    *
    * 日志策略：
    *   - stdout/stderr → Worker 专属日志文件（logs/worker-{name}.log），控制台仅 warn+
-   *   - exit/error    → RuntimeManager 日志（logs/runtime.log），控制台可见
+   *   - exit/error    → WorkerManager 日志（logs/worker-manager.log），控制台可见
    *   - worker:log 事件正常 emit（供前端消费）
    */
   private bindChildProcessEvents(worker: ManagedWorker, child: ChildProcess): void {
@@ -477,9 +477,9 @@ export class RuntimeManager extends EventEmitter {
       }
     })
 
-    // 进程退出 → RuntimeManager 日志（控制台可见，重要事件）
+    // 进程退出 → WorkerManager 日志（控制台可见，重要事件）
     child.on('exit', (code, signal) => {
-      log.info(`[RuntimeManager] Worker "${config.name}" 退出 (code=${code}, signal=${signal})`)
+      log.info(`[WorkerManager] Worker "${config.name}" 退出 (code=${code}, signal=${signal})`)
       worker.process = null
 
       if (!worker.stopping && !this.shuttingDown) {
@@ -490,7 +490,7 @@ export class RuntimeManager extends EventEmitter {
           worker.restartCount++
           const delay = Math.min(1000 * Math.pow(2, worker.restartCount - 1), 30000)
           log.info(
-            `[RuntimeManager] Worker "${config.name}" 将在 ${delay}ms 后重启 (第 ${worker.restartCount} 次)`
+            `[WorkerManager] Worker "${config.name}" 将在 ${delay}ms 后重启 (第 ${worker.restartCount} 次)`
           )
           worker.error = `进程异常退出 (code=${code})，${delay}ms 后重启...`
           this.updateStatus(worker, 'error')
@@ -498,7 +498,7 @@ export class RuntimeManager extends EventEmitter {
           setTimeout(() => {
             if (!this.shuttingDown && !worker.stopping) {
               this.start(config.name).catch((err) => {
-                log.error(`[RuntimeManager] Worker "${config.name}" 重启失败:`, err)
+                log.error(`[WorkerManager] Worker "${config.name}" 重启失败:`, err)
               })
             }
           }, delay)
@@ -509,9 +509,9 @@ export class RuntimeManager extends EventEmitter {
       }
     })
 
-    // 进程错误 → RuntimeManager 日志（控制台可见，重要事件）
+    // 进程错误 → WorkerManager 日志（控制台可见，重要事件）
     child.on('error', (err) => {
-      log.error(`[RuntimeManager] Worker "${config.name}" 进程错误:`, err)
+      log.error(`[WorkerManager] Worker "${config.name}" 进程错误:`, err)
       worker.error = err.message
       worker.process = null
       this.updateStatus(worker, 'error')

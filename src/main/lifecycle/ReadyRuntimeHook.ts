@@ -11,7 +11,7 @@
  */
 
 import { log } from '@main/common/logger'
-import { RuntimeManager } from '@main/runtime'
+import { WorkerManager } from '@main/common/worker'
 import { LifecyclePhase, LifecycleContext, LifecycleHook } from '@main/common/types'
 
 /**
@@ -24,7 +24,7 @@ export const ReadyRuntimeHook: LifecycleHook = {
   critical: false, // 非关键，Worker 启动失败不阻断 app
 
   async execute(_context: LifecycleContext): Promise<void> {
-    const manager = RuntimeManager.getInstance()
+    const manager = WorkerManager.getInstance()
 
     // 自动扫描 workers/ 目录，发现并注册所有 Worker
     const count = manager.scanAndRegister()
@@ -65,7 +65,7 @@ export const BeforeQuitRuntimeHook: LifecycleHook = {
 
   async execute(_context: LifecycleContext): Promise<void> {
     log.info('[BeforeQuitRuntimeHook] 正在关闭所有 Worker...')
-    const manager = RuntimeManager.getInstance()
+    const manager = WorkerManager.getInstance()
     await manager.stopAll()
     log.info('[BeforeQuitRuntimeHook] 所有 Worker 已关闭')
   }

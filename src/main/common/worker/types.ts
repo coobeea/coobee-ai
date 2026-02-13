@@ -1,7 +1,7 @@
 /**
- * Runtime Worker 类型定义
+ * Worker 类型定义
  *
- * 定义 Worker 配置、状态和事件，供 RuntimeManager 和前端使用。
+ * 定义 Worker 配置、状态和事件，供 WorkerManager 和前端使用。
  */
 
 // ==================== Worker 配置 ====================
