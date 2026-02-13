@@ -93,6 +93,11 @@ class Log {
     this.logger.transports.file.level = level
   }
 
+  /** 单独设置控制台输出级别（不影响文件日志） */
+  setConsoleLevel(level: 'error' | 'warn' | 'info' | 'debug' | 'verbose' | false): void {
+    this.logger.transports.console.level = level
+  }
+
   getLogPath(): string {
     return this.logger.transports.file.getFile().path
   }
@@ -105,11 +110,25 @@ class Log {
   }
 }
 
-export const createLogger = (name: string): Log => {
+/**
+ * 创建命名日志实例
+ *
+ * @param name 日志名称（对应 logs/{name}.log）
+ * @param options 可选配置
+ * @param options.consoleLevel 控制台输出级别（默认跟随全局设置，设 false 禁用控制台输出）
+ */
+export const createLogger = (
+  name: string,
+  options?: { consoleLevel?: 'error' | 'warn' | 'info' | 'debug' | 'verbose' | false }
+): Log => {
   if (!name) {
     throw new Error('Logger name is required')
   }
-  return new Log(name)
+  const logger = new Log(name)
+  if (options?.consoleLevel !== undefined) {
+    logger.setConsoleLevel(options.consoleLevel)
+  }
+  return logger
 }
 
 export const log = new Log()

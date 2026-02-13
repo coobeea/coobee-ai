@@ -33,6 +33,8 @@ interface ManagedWorker {
   error?: string
   /** 标记是否正在主动停止（区分崩溃） */
   stopping: boolean
+  /** Worker 专属日志（写入 logs/worker-{name}.log，控制台仅 warn+） */
+  log: ReturnType<typeof createLogger>
 }
 
 /**
@@ -76,7 +78,9 @@ export class RuntimeManager extends EventEmitter {
         process: null,
         status: 'stopped',
         restartCount: 0,
-        stopping: false
+        stopping: false,
+        // 每个 Worker 独立日志文件（logs/worker-{name}.log），控制台仅 warn+
+        log: createLogger(`worker-${config.name}`, { consoleLevel: 'warn' })
       }
       this.workers.set(config.name, worker)
       this.updateStatus(worker, 'stopped')
@@ -184,7 +188,8 @@ export class RuntimeManager extends EventEmitter {
       process: null,
       status: 'stopped',
       restartCount: existing?.restartCount ?? 0,
-      stopping: false
+      stopping: false,
+      log: existing?.log ?? createLogger(`worker-${name}`, { consoleLevel: 'warn' })
     }
     this.workers.set(name, worker)
 
@@ -384,76 +389,7 @@ export class RuntimeManager extends EventEmitter {
     })
 
     worker.process = child
-
-    // stdout → 日志
-    child.stdout?.on('data', (data: Buffer) => {
-      const msg = data.toString().trim()
-      if (msg) {
-        log.info(`[Worker:${config.name}] ${msg}`)
-        this.emit('worker:log', {
-          type: 'worker:log',
-          name: config.name,
-          level: 'info',
-          message: msg,
-          timestamp: Date.now()
-        })
-      }
-    })
-
-    // stderr → 警告日志
-    child.stderr?.on('data', (data: Buffer) => {
-      const msg = data.toString().trim()
-      if (msg) {
-        log.warn(`[Worker:${config.name}] ${msg}`)
-        this.emit('worker:log', {
-          type: 'worker:log',
-          name: config.name,
-          level: 'warn',
-          message: msg,
-          timestamp: Date.now()
-        })
-      }
-    })
-
-    // 进程退出处理
-    child.on('exit', (code, signal) => {
-      log.info(`[RuntimeManager] Worker "${config.name}" 退出 (code=${code}, signal=${signal})`)
-      worker.process = null
-
-      // 非主动停止 + 非全局关闭 → 可能需要自动重启
-      if (!worker.stopping && !this.shuttingDown) {
-        const maxRestarts = config.maxRestarts ?? 3
-        const autoRestart = config.autoRestart !== false
-
-        if (autoRestart && (maxRestarts === 0 || worker.restartCount < maxRestarts)) {
-          worker.restartCount++
-          const delay = Math.min(1000 * Math.pow(2, worker.restartCount - 1), 30000)
-          log.info(
-            `[RuntimeManager] Worker "${config.name}" 将在 ${delay}ms 后重启 (第 ${worker.restartCount} 次)`
-          )
-          worker.error = `进程异常退出 (code=${code})，${delay}ms 后重启...`
-          this.updateStatus(worker, 'error')
-
-          setTimeout(() => {
-            if (!this.shuttingDown && !worker.stopping) {
-              this.start(config.name).catch((err) => {
-                log.error(`[RuntimeManager] Worker "${config.name}" 重启失败:`, err)
-              })
-            }
-          }, delay)
-        } else {
-          worker.error = `进程异常退出 (code=${code})，已达重启上限`
-          this.updateStatus(worker, 'error')
-        }
-      }
-    })
-
-    child.on('error', (err) => {
-      log.error(`[RuntimeManager] Worker "${config.name}" 进程错误:`, err)
-      worker.error = err.message
-      worker.process = null
-      this.updateStatus(worker, 'error')
-    })
+    this.bindChildProcessEvents(worker, child)
   }
 
   /**
@@ -494,12 +430,28 @@ export class RuntimeManager extends EventEmitter {
     })
 
     worker.process = child
+    this.bindChildProcessEvents(worker, child)
+  }
 
-    // stdout → 日志
+  // ==================== 子进程事件绑定（公共） ====================
+
+  /**
+   * 绑定子进程的 stdout/stderr/exit/error 事件
+   *
+   * 日志策略：
+   *   - stdout/stderr → Worker 专属日志文件（logs/worker-{name}.log），控制台仅 warn+
+   *   - exit/error    → RuntimeManager 日志（logs/runtime.log），控制台可见
+   *   - worker:log 事件正常 emit（供前端消费）
+   */
+  private bindChildProcessEvents(worker: ManagedWorker, child: ChildProcess): void {
+    const { config } = worker
+    const workerLog = worker.log
+
+    // stdout → Worker 专属日志文件（不刷屏控制台）
     child.stdout?.on('data', (data: Buffer) => {
       const msg = data.toString().trim()
       if (msg) {
-        log.info(`[Worker:${config.name}] ${msg}`)
+        workerLog.info(msg)
         this.emit('worker:log', {
           type: 'worker:log',
           name: config.name,
@@ -510,23 +462,22 @@ export class RuntimeManager extends EventEmitter {
       }
     })
 
-    // stderr → 警告日志
+    // stderr → Worker 专属日志文件（不刷屏控制台）
     child.stderr?.on('data', (data: Buffer) => {
       const msg = data.toString().trim()
       if (msg) {
-        // whisper.cpp 输出日志到 stderr，不全是错误
-        log.info(`[Worker:${config.name}] ${msg}`)
+        workerLog.warn(msg)
         this.emit('worker:log', {
           type: 'worker:log',
           name: config.name,
-          level: 'info',
+          level: 'warn',
           message: msg,
           timestamp: Date.now()
         })
       }
     })
 
-    // 进程退出处理（复用与 Python Worker 相同的重启逻辑）
+    // 进程退出 → RuntimeManager 日志（控制台可见，重要事件）
     child.on('exit', (code, signal) => {
       log.info(`[RuntimeManager] Worker "${config.name}" 退出 (code=${code}, signal=${signal})`)
       worker.process = null
@@ -558,6 +509,7 @@ export class RuntimeManager extends EventEmitter {
       }
     })
 
+    // 进程错误 → RuntimeManager 日志（控制台可见，重要事件）
     child.on('error', (err) => {
       log.error(`[RuntimeManager] Worker "${config.name}" 进程错误:`, err)
       worker.error = err.message
