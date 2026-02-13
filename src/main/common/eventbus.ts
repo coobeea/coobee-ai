@@ -22,13 +22,19 @@ class EventBus extends EventEmitter {
     log.debug('[EventBus] EventBus 实例已创建')
   }
 
+  /** 高频事件前缀，仅记录事件名不打印 payload，避免刷屏 */
+  private static readonly QUIET_PREFIXES = ['stream:', 'window:']
+
   /**
    * 发送事件
-   * 覆盖父类方法以添加日志记录
+   * 覆盖父类方法以添加日志记录（高频事件静默处理）
    */
   emit(eventName: string, ...args: unknown[]): boolean {
-    const listenerCount = this.listenerCount(eventName)
-    log.debug(`[EventBus] 发送事件: ${eventName} (${listenerCount} 个监听器)`, args)
+    const quiet = EventBus.QUIET_PREFIXES.some((p) => eventName.startsWith(p))
+    if (!quiet) {
+      const listenerCount = this.listenerCount(eventName)
+      log.debug(`[EventBus] 发送事件: ${eventName} (${listenerCount} 个监听器)`, args)
+    }
     return super.emit(eventName, ...args)
   }
 }

@@ -39,9 +39,12 @@ function init(): void {
   if (unregisterMessage) return // 已注册
 
   // 监听 stream.message 事件
+  // Gateway 事件 payload 结构: { sessionId, message: StreamMessage }
   unregisterMessage = gateway.on('stream.message', (payload) => {
-    if (messageHandler && payload) {
-      messageHandler(payload as StreamMessage)
+    if (!messageHandler || !payload) return
+    const data = payload as { sessionId?: string; message?: StreamMessage }
+    if (data.message) {
+      messageHandler(data.message)
     }
   })
 
