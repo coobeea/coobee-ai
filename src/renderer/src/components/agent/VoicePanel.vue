@@ -15,24 +15,17 @@
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useWorkerStore } from '@/stores/worker'
 import { useChatStore } from '@/stores/chat'
-import { wsService } from '@/plugins/wsSetup'
 
 const workerStore = useWorkerStore()
 const chatStore = useChatStore()
 
-// ---- Worker 状态监听 ----
-
-let unregisterWorkerStatus: (() => void) | null = null
+// ---- 初始化 ----
 
 onMounted(() => {
-  unregisterWorkerStatus = wsService.onWorkerStatus((info) => {
-    workerStore.handleWorkerStatus(info)
-  })
-  wsService.requestWorkers()
+  workerStore.requestWorkers()
 })
 
 onUnmounted(() => {
-  unregisterWorkerStatus?.()
   stopListening()
   disconnectTTS()
 })
@@ -611,14 +604,14 @@ function getStatusLabel(status: string): string {
         <button
           v-if="w.status === 'stopped' || w.status === 'error'"
           class="rounded bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary transition hover:bg-primary/20"
-          @click="wsService.startWorker(w.name)"
+          @click="workerStore.startWorker(w.name)"
         >
           启动{{ w.label }}
         </button>
         <button
           v-else-if="w.status === 'ready'"
           class="rounded bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500 transition hover:bg-red-50 hover:text-red-500"
-          @click="wsService.stopWorker(w.name)"
+          @click="workerStore.stopWorker(w.name)"
         >
           停止{{ w.label }}
         </button>

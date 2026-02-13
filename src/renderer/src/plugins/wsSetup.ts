@@ -1,30 +1,25 @@
 /**
- * WebSocket 连接管理插件
+ * WebSocket 通用传输层（wsSetup）
  *
- * 职责：管理 WebSocket 连接生命周期（连接、重连、订阅、断开）。
- * 不负责业务数据处理 —— 收到的消息通过 handler 回调分发给消费方（如 chatStore）。
+ * 职责：管理 WebSocket 连接生命周期（连接、重连、心跳、断开）。
+ * 不包含任何业务逻辑 —— 收到的消息按前缀路由到注册的处理器。
  *
- * 消息类型采用 prefix:action 前缀约定：
- *   - stream:*  — AI 流式频道
- *   - worker:*  — Worker 管理频道
- *   - 无前缀    — 内置（ping/pong/error）
+ * 消息路由机制（镜像后端 WsHub 设计）：
+ *   - 业务模块通过 wsService.onPrefix('stream', handler) 注册处理器
+ *   - 收到 stream:message 时，自动路由到 'stream' 处理器，action='message'
+ *   - 无前缀消息（pong/error）由 wsSetup 自身处理
  *
- * 参照 ipcSetup 的模式：
- * - 幂等（重复调用不会创建多余连接）
- * - 通过 Vue Plugin API 在应用启动时自动初始化
- * - 导出单例 wsService 供其他模块按需调用
+ * 设计原则：
+ *   - 约定大于配置：前缀路由自动分发
+ *   - 领域隔离：业务逻辑封装在各自的 composable 中（useStreamWs、useWorkerWs）
+ *   - 通用层不依赖任何业务类型
  */
 
 import type { App } from 'vue'
 import { ref, type Ref } from 'vue'
 import configManager from '@/config'
 import { useLogStore } from '@/stores/log'
-import type {
-  StreamMessage,
-  WsServerMessage,
-  ConnectionState,
-  WorkerStatusInfo
-} from '@shared/stream-protocol'
+import type { ConnectionState } from '@shared/stream-protocol'
 
 // ==================== 配置 ====================
 
@@ -34,22 +29,36 @@ const RECONNECT_MAX_DELAY = 30000 // 最大重连间隔 30s
 /** 不限重连次数：后端启动可能较慢，前端应持续尝试 */
 const MAX_RECONNECT_ATTEMPTS = Infinity
 
-// ==================== WebSocket 服务单例 ====================
+// ==================== 类型定义 ====================
+
+/**
+ * 前缀消息处理器
+ *
+ * @param action  去除前缀后的动作（如 'message'、'status'）
+ * @param data    消息的 data 字段（原始 JSON）
+ * @param rawMsg  完整原始消息（备用）
+ */
+export type PrefixHandler = (action: string, data: unknown, rawMsg: Record<string, unknown>) => void
+
+/** 连接事件处理器 */
+export type ConnectHandler = () => void
+
+// ==================== 内部状态 ====================
 
 /** 连接状态（响应式，供 UI 层绑定） */
 const connectionState = ref<ConnectionState>('disconnected')
 /** 最近一次错误信息 */
 const lastError = ref<string | null>(null)
 
-// ---- 内部状态 ----
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let reconnectAttempts = 0
-let subscribedSessionId: string | null = null
-let messageHandler: ((msg: StreamMessage) => void) | null = null
-/** Worker 状态回调列表（多个消费方可同时监听） */
-let workerStatusHandlers: ((info: WorkerStatusInfo) => void)[] = []
 let isInitialized = false
+
+/** 前缀路由表：prefix → handler[] */
+const prefixHandlers = new Map<string, PrefixHandler[]>()
+/** 连接成功回调列表 */
+const connectHandlers: ConnectHandler[] = []
 
 // ---- 日志（惰性获取，install 之后才可用） ----
 let _logStore: ReturnType<typeof useLogStore> | null = null
@@ -93,19 +102,20 @@ function connect(): void {
         reconnectAttempts: attempts
       })
 
-      // 重连后恢复订阅
-      if (subscribedSessionId) {
-        sendSubscribe(subscribedSessionId)
+      // 通知所有连接回调（业务模块可在此恢复订阅等状态）
+      for (const handler of connectHandlers) {
+        try {
+          handler()
+        } catch (err) {
+          console.error('[wsSetup] Connect handler error:', err)
+        }
       }
-
-      // 连接后请求 Worker 状态列表
-      sendRaw({ type: 'worker:list' })
     }
 
     ws.onmessage = (event) => {
       try {
-        const serverMsg: WsServerMessage = JSON.parse(event.data as string)
-        handleServerMessage(serverMsg)
+        const msg = JSON.parse(event.data as string) as Record<string, unknown>
+        handleServerMessage(msg)
       } catch (err) {
         console.error('[wsSetup] Failed to parse message:', err)
         getLog()?.error('system', `WebSocket 消息解析失败: ${err}`)
@@ -113,12 +123,9 @@ function connect(): void {
     }
 
     ws.onerror = () => {
-      // onerror 后一定会触发 onclose，由 onclose 统一处理重连
-      // 此处仅记录错误信息供 UI 显示
       const attempt = reconnectAttempts + 1
       console.warn(`[wsSetup] Connection error (${WS_URL}), attempt ${attempt}`)
       lastError.value = `无法连接 ${WS_URL}（第 ${attempt} 次）`
-
       getLog()?.warn('system', `WebSocket 连接失败 ${WS_URL}（第 ${attempt} 次）`)
     }
 
@@ -138,9 +145,7 @@ function connect(): void {
     console.error('[wsSetup] Failed to create WebSocket:', err)
     lastError.value = err instanceof Error ? err.message : String(err)
     connectionState.value = 'error'
-
     getLog()?.error('system', `WebSocket 创建失败: ${err}`)
-
     scheduleReconnect()
   }
 }
@@ -160,124 +165,98 @@ function disconnect(): void {
     ws = null
   }
 
-  subscribedSessionId = null
-  messageHandler = null
   connectionState.value = 'disconnected'
   reconnectAttempts = 0
 }
 
 /**
- * 订阅指定 session 的流式事件
+ * 发送原始消息（通用）
  *
- * @param sessionId 会话 ID
- * @param handler   消息回调（由消费方如 chatStore 提供）
+ * 业务模块通过此方法向后端发送消息。
+ * 格式：{ type: 'prefix:action', ...payload }
  */
-function subscribe(sessionId: string, handler: (msg: StreamMessage) => void): void {
-  // 取消之前的订阅
-  if (subscribedSessionId && subscribedSessionId !== sessionId) {
-    sendUnsubscribe(subscribedSessionId)
-  }
-
-  subscribedSessionId = sessionId
-  messageHandler = handler
-
-  // 确保已连接
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    connect()
-  } else {
-    sendSubscribe(sessionId)
-  }
-}
-
-/**
- * 取消订阅
- */
-function unsubscribe(): void {
-  if (subscribedSessionId) {
-    sendUnsubscribe(subscribedSessionId)
-    subscribedSessionId = null
-  }
-  messageHandler = null
-}
-
-// ==================== 内部辅助 ====================
-
-function handleServerMessage(msg: WsServerMessage): void {
-  switch (msg.type) {
-    // ---- stream 频道 ----
-    case 'stream:message':
-      if (messageHandler && msg.data) {
-        messageHandler(msg.data)
-      }
-      break
-
-    case 'stream:resend_batch':
-      if (messageHandler && Array.isArray(msg.data)) {
-        for (const m of msg.data) {
-          messageHandler(m)
-        }
-      }
-      break
-
-    case 'stream:latest_sequence':
-      // 可选：用于断线重连对齐
-      break
-
-    // ---- worker 频道 ----
-    case 'worker:status':
-      // 单个 Worker 状态变更
-      if (msg.data) {
-        for (const handler of workerStatusHandlers) {
-          handler(msg.data)
-        }
-      }
-      break
-
-    case 'worker:list':
-      // Worker 列表（连接后一次性返回所有 Worker 状态）
-      if (Array.isArray(msg.data)) {
-        for (const info of msg.data) {
-          for (const handler of workerStatusHandlers) {
-            handler(info)
-          }
-        }
-      }
-      break
-
-    // ---- 内置 ----
-    case 'error':
-      console.error('[wsSetup] Server error:', msg.data?.error)
-      lastError.value = msg.data?.error || '未知服务端错误'
-      getLog()?.error('system', `WebSocket 服务端错误: ${msg.data?.error || '未知'}`)
-      break
-
-    case 'pong':
-      // 心跳响应，忽略
-      break
-  }
-}
-
-function sendRaw(msg: Record<string, unknown>): void {
+function send(msg: Record<string, unknown>): void {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(msg))
   }
 }
 
-function sendSubscribe(sessionId: string): void {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'stream:subscribe', sessionId }))
-    console.log(`[wsSetup] Subscribed to session: ${sessionId}`)
-    getLog()?.info('system', `WebSocket 订阅会话: ${sessionId}`)
+// ==================== 消息路由 ====================
+
+/**
+ * 处理服务端消息
+ *
+ * 路由逻辑（镜像后端 WsHub）：
+ * 1. 解析 msg.type，提取 prefix 和 action
+ * 2. 无前缀（pong/error）由 wsSetup 自身处理
+ * 3. 有前缀（stream:message）路由到注册的 PrefixHandler
+ */
+function handleServerMessage(msg: Record<string, unknown>): void {
+  const type = msg.type as string
+  if (!type) return
+
+  const { prefix, action } = parseType(type)
+
+  // 无前缀 → 内置处理
+  if (!prefix) {
+    handleBuiltinMessage(action, msg)
+    return
+  }
+
+  // 按前缀路由到注册的处理器
+  const handlers = prefixHandlers.get(prefix)
+  if (handlers && handlers.length > 0) {
+    for (const handler of handlers) {
+      try {
+        handler(action, msg.data, msg)
+      } catch (err) {
+        console.error(`[wsSetup] Handler error for ${type}:`, err)
+      }
+    }
+  } else {
+    console.warn(`[wsSetup] No handler registered for prefix: ${prefix} (type: ${type})`)
   }
 }
 
-function sendUnsubscribe(sessionId: string): void {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'stream:unsubscribe', sessionId }))
-    console.log(`[wsSetup] Unsubscribed from session: ${sessionId}`)
-    getLog()?.info('system', `WebSocket 取消订阅: ${sessionId}`)
+/**
+ * 处理内置消息（无前缀）
+ */
+function handleBuiltinMessage(action: string, msg: Record<string, unknown>): void {
+  switch (action) {
+    case 'pong':
+      // 心跳响应，忽略
+      break
+    case 'error': {
+      const data = msg.data as { error?: string } | undefined
+      const errorMsg = data?.error || '未知服务端错误'
+      console.error('[wsSetup] Server error:', errorMsg)
+      lastError.value = errorMsg
+      getLog()?.error('system', `WebSocket 服务端错误: ${errorMsg}`)
+      break
+    }
+    default:
+      console.warn(`[wsSetup] Unknown builtin message: ${action}`)
   }
 }
+
+/**
+ * 解析消息类型：提取 prefix 和 action
+ *
+ * 'stream:message' → { prefix: 'stream', action: 'message' }
+ * 'pong'           → { prefix: null, action: 'pong' }
+ */
+function parseType(type: string): { prefix: string | null; action: string } {
+  const colonIndex = type.indexOf(':')
+  if (colonIndex === -1) {
+    return { prefix: null, action: type }
+  }
+  return {
+    prefix: type.substring(0, colonIndex),
+    action: type.substring(colonIndex + 1)
+  }
+}
+
+// ==================== 重连 ====================
 
 function scheduleReconnect(): void {
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -290,7 +269,6 @@ function scheduleReconnect(): void {
   if (reconnectTimer) return
 
   reconnectAttempts++
-  // 指数退避：2s → 4s → 8s → 16s → 30s(cap)
   const delay = Math.min(
     RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1),
     RECONNECT_MAX_DELAY
@@ -307,24 +285,11 @@ function scheduleReconnect(): void {
 // ==================== 导出单例服务 ====================
 
 /**
- * WebSocket 服务单例
+ * WebSocket 通用传输服务
  *
- * 供 chatStore、ChatPanel 等模块导入使用：
- * - wsService.subscribe(sessionId, handler)  — chatStore 发起订阅
- * - wsService.connectionState                — ChatPanel 绑定连接状态
+ * 仅提供连接管理和消息路由，不包含任何业务逻辑。
+ * 业务逻辑请使用对应的领域模块（useStreamWs、useWorkerWs）。
  */
-/**
- * 注册 Worker 状态变更回调
- *
- * @returns 取消注册的函数
- */
-function onWorkerStatus(handler: (info: WorkerStatusInfo) => void): () => void {
-  workerStatusHandlers.push(handler)
-  return () => {
-    workerStatusHandlers = workerStatusHandlers.filter((h) => h !== handler)
-  }
-}
-
 export const wsService = {
   /** 连接状态（响应式） */
   connectionState: connectionState as Ref<ConnectionState>,
@@ -334,18 +299,48 @@ export const wsService = {
   connect,
   /** 断开连接 */
   disconnect,
-  /** 订阅 session 流式事件 */
-  subscribe,
-  /** 取消订阅 */
-  unsubscribe,
-  /** 注册 Worker 状态监听 */
-  onWorkerStatus,
-  /** 启动指定 Worker */
-  startWorker: (name: string) => sendRaw({ type: 'worker:start', workerName: name }),
-  /** 停止指定 Worker */
-  stopWorker: (name: string) => sendRaw({ type: 'worker:stop', workerName: name }),
-  /** 主动请求 Worker 状态列表 */
-  requestWorkers: () => sendRaw({ type: 'worker:list' })
+  /** 发送消息（通用） */
+  send,
+
+  /**
+   * 注册前缀消息处理器
+   *
+   * 业务模块通过此方法注册对特定前缀消息的处理。
+   * 如：onPrefix('stream', handler) 将处理所有 stream:* 消息。
+   *
+   * @param prefix  消息前缀（如 'stream'、'worker'）
+   * @param handler 处理器
+   * @returns 取消注册的函数
+   */
+  onPrefix(prefix: string, handler: PrefixHandler): () => void {
+    if (!prefixHandlers.has(prefix)) {
+      prefixHandlers.set(prefix, [])
+    }
+    prefixHandlers.get(prefix)!.push(handler)
+
+    return () => {
+      const handlers = prefixHandlers.get(prefix)
+      if (handlers) {
+        const idx = handlers.indexOf(handler)
+        if (idx >= 0) handlers.splice(idx, 1)
+      }
+    }
+  },
+
+  /**
+   * 注册连接成功回调
+   *
+   * 业务模块可在连接成功（包括重连）时恢复状态（如重新订阅）。
+   *
+   * @returns 取消注册的函数
+   */
+  onConnect(handler: ConnectHandler): () => void {
+    connectHandlers.push(handler)
+    return () => {
+      const idx = connectHandlers.indexOf(handler)
+      if (idx >= 0) connectHandlers.splice(idx, 1)
+    }
+  }
 }
 
 // ==================== Vue Plugin ====================
@@ -353,7 +348,7 @@ export const wsService = {
 /**
  * WebSocket 初始化插件
  *
- * 应用启动时自动建立连接，确保流式通道就绪。
+ * 应用启动时自动建立连接，确保通道就绪。
  */
 export default {
   install(_app: App): void {

@@ -7,7 +7,8 @@ export default defineConfig({
     environment: 'node',
     include: [
       'src/main/ai/**/__tests__/**/*.test.ts',
-      'src/main/common/server/__tests__/**/*.test.ts'
+      'src/main/common/server/__tests__/**/*.test.ts',
+      'src/main/channels/__tests__/**/*.test.ts'
     ],
     // 自动加载 .env 文件中的环境变量
     env: {
@@ -15,7 +16,11 @@ export default defineConfig({
     },
     coverage: {
       provider: 'v8',
-      include: ['src/main/ai/**/*.ts', 'src/main/common/server/**/*.ts'],
+      include: [
+        'src/main/ai/**/*.ts',
+        'src/main/common/server/**/*.ts',
+        'src/main/channels/**/*.ts'
+      ],
       exclude: [
         'src/main/ai/**/__tests__/**',
         'src/main/ai/**/index.ts',

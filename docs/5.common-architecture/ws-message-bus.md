@@ -1,0 +1,489 @@
+# WebSocket 消息总线架构
+
+> 本文档描述 coobee-ai 项目的 WebSocket 消息系统架构，涵盖后端 WsHub 消息总线、Channel 频道机制、前端通用传输层与领域组合式，以及前后端之间的完整消息流转。
+
+---
+
+## 一、架构总览
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                        前端（Renderer）                           │
+│                                                                  │
+│  ┌──────────┐    ┌──────────┐    ┌───────────┐                  │
+│  │ chatStore │    │VoicePanel│    │ ChatPanel  │                 │
+│  └────┬─────┘    └────┬─────┘    └─────┬─────┘                 │
+│       │               │               │                         │
+│  ┌────▼─────┐   ┌─────▼──────┐        │                        │
+│  │useStreamWs│   │useWorkerWs │        │                        │
+│  │(stream域) │   │(worker域)  │        │                        │
+│  └────┬─────┘   └─────┬──────┘        │                        │
+│       │ onPrefix      │ onPrefix      │ connectionState        │
+│       ▼               ▼               ▼                         │
+│  ┌──────────────────────────────────────────┐                   │
+│  │  wsService（通用传输层·前缀路由·重连）     │                   │
+│  └─────────────────────┬────────────────────┘                   │
+│                        │                                        │
+│              ┌─────────▼──────────────┐                         │
+│              │  浏览器原生 WebSocket    │                         │
+│              └─────────┬──────────────┘                         │
+└────────────────────────┼────────────────────────────────────────┘
+                             │ ws://localhost:8765
+                             │
+┌────────────────────────────┼─────────────────────────────────────┐
+│                        后端（Main Process）                       │
+│                             │                                    │
+│              ┌──────────────▼───────────────┐                   │
+│              │         WsServer             │                   │
+│              │   (连接管理·心跳·收发)         │                   │
+│              └──────────────┬───────────────┘                   │
+│                             │                                    │
+│              ┌──────────────▼───────────────┐                   │
+│              │          WsHub               │                   │
+│              │   (消息总线·前缀路由)          │                   │
+│              │                              │                   │
+│              │  parseType("stream:subscribe")│                   │
+│              │  → prefix="stream"           │                   │
+│              │  → action="subscribe"        │                   │
+│              └──┬─────────────┬─────────────┘                   │
+│                 │             │                                   │
+│         ┌──────▼──────┐ ┌───▼────────────┐                     │
+│         │StreamChannel│ │WorkerChannel   │                     │
+│         │前缀: stream │ │前缀: worker    │                     │
+│         └──────┬──────┘ └───┬────────────┘                     │
+│                │            │                                    │
+│         EventBus          RuntimeManager                         │
+│                │            │                                    │
+│     ┌──────────▼──────┐ ┌──▼───────────────┐                   │
+│     │  StreamEmitter   │ │ Worker 子进程管理  │                   │
+│     │  (AI 事件映射)   │ │ (TTS/ASR 等)     │                   │
+│     └─────────────────┘ └──────────────────┘                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 二、后端架构
+
+### 2.1 分层结构
+
+| 层级       | 模块                               | 位置                                 | 职责                                   |
+| ---------- | ---------------------------------- | ------------------------------------ | -------------------------------------- |
+| **传输层** | `WsServer`                         | `src/main/common/server/wsServer.ts` | WebSocket 连接管理、心跳检测、消息收发 |
+| **路由层** | `WsHub`                            | `src/main/common/server/WsHub.ts`    | 消息总线，按前缀路由到 Channel         |
+| **频道层** | `*Channel`                         | `src/main/channels/`                 | 具体业务消息处理                       |
+| **业务层** | `StreamEmitter` / `RuntimeManager` | `src/main/ai/` / `src/main/runtime/` | 产生事件，通过 EventBus 传递           |
+
+### 2.2 WsServer — 传输层
+
+```
+src/main/common/server/wsServer.ts
+```
+
+底层 WebSocket 服务，基于 `ws` 库。纯粹负责：
+
+- 管理客户端连接（连接 / 断开 / 心跳）
+- 维护 `WsClientMeta`（每个客户端的元数据，业务层可扩展）
+- 提供 `send` / `broadcast` / `broadcastIf` / `forEachClient` API
+- 通过 `onMessage` / `onConnect` / `onDisconnect` 回调将事件上报
+
+**不包含任何业务逻辑**，可被任何上层模块复用。
+
+### 2.3 WsHub — 消息总线（路由层）
+
+```
+src/main/common/server/WsHub.ts
+```
+
+核心设计原则：**约定大于配置**。
+
+#### 前缀路由
+
+所有 WebSocket 消息的 `type` 字段采用 `prefix:action` 格式：
+
+```
+stream:subscribe   →  prefix = "stream",  action = "subscribe"
+worker:list        →  prefix = "worker",  action = "list"
+ping               →  prefix = null,      action = "ping"（内置）
+```
+
+WsHub 通过 `parseType()` 提取前缀，查找注册的 Channel 进行分发：
+
+```typescript
+private parseType(type: string): { prefix: string | null; action: string } {
+  const colonIndex = type.indexOf(':')
+  if (colonIndex === -1) return { prefix: null, action: type }
+  return {
+    prefix: type.substring(0, colonIndex),
+    action: type.substring(colonIndex + 1)
+  }
+}
+```
+
+#### Channel 自动发现
+
+WsHub 初始化时通过 `scanWsChannels()` 扫描 `src/main/channels/*Channel.ts`：
+
+```
+src/main/channels/
+├── StreamChannel.ts   →  自动发现，注册 prefix="stream"
+└── WorkerChannel.ts   →  自动发现，注册 prefix="worker"
+```
+
+添加新频道只需在 `src/main/channels/` 下新建 `XxxChannel.ts` 并实现 `WsChannel` 接口，无需任何手动注册。
+
+#### WsHubApi
+
+WsHub 实现 `WsHubApi` 接口，供 Channel 调用：
+
+| 方法                              | 作用                              |
+| --------------------------------- | --------------------------------- |
+| `send(ws, payload)`               | 向单个客户端发送                  |
+| `broadcast(payload)`              | 向所有客户端广播                  |
+| `broadcastIf(payload, predicate)` | 按条件广播（如按 sessionId 过滤） |
+| `forEachClient(callback)`         | 遍历所有客户端                    |
+| `clientCount`                     | 当前连接数                        |
+
+#### 内置消息
+
+无前缀的消息由 WsHub 自身处理：
+
+| 消息    | 方向            | 说明     |
+| ------- | --------------- | -------- |
+| `ping`  | 客户端 → 服务端 | 心跳探测 |
+| `pong`  | 服务端 → 客户端 | 心跳响应 |
+| `error` | 服务端 → 客户端 | 错误通知 |
+
+### 2.4 WsChannel 接口
+
+```typescript
+export interface WsChannel {
+  /** 频道前缀 */
+  prefix: string
+  /** 频道显示名称 */
+  label: string
+  /** 初始化：获取 WsHubApi 引用 */
+  onInit(hub: WsHubApi): void
+  /** 处理客户端消息（action 是去除前缀后的部分） */
+  onMessage(ws, action, msg, meta): Promise<void>
+  /** 新连接（可选） */
+  onConnect?(ws, meta): void
+  /** 连接断开（可选） */
+  onDisconnect?(ws, meta): void
+}
+```
+
+### 2.5 StreamChannel — AI 流式频道
+
+```
+src/main/channels/StreamChannel.ts     前缀: stream
+```
+
+**入方向（客户端 → 服务端）：**
+
+| action            | 说明                   | 参数                        |
+| ----------------- | ---------------------- | --------------------------- |
+| `subscribe`       | 订阅某个会话的流式事件 | `sessionId`                 |
+| `unsubscribe`     | 取消订阅               | `sessionId`                 |
+| `resend`          | 请求重发历史消息       | `sessionId`, `fromSequence` |
+| `latest_sequence` | 获取最新序号           | `sessionId`                 |
+
+**出方向（服务端 → 客户端）：**
+
+| type                     | 说明             | data                   |
+| ------------------------ | ---------------- | ---------------------- |
+| `stream:message`         | 实时流式消息     | `StreamMessage`        |
+| `stream:resend_batch`    | 历史消息批量重发 | `StreamMessage[]`      |
+| `stream:latest_sequence` | 最新序号         | `{ sequence: number }` |
+
+**内部工作流：**
+
+```
+AgentExecutor  →  StreamEmitter  →  EventBus(stream:message)  →  StreamChannel  →  WsHub  →  WsServer  →  客户端
+```
+
+StreamChannel 通过 `broadcastIf()` 只推送给订阅了对应 `sessionId` 的客户端：
+
+```typescript
+hub.broadcastIf({ type: 'stream:message', data: message }, (_ws, meta) =>
+  meta.sessionIds.has(message.sessionId)
+)
+```
+
+### 2.6 WorkerChannel — Worker 管理频道
+
+```
+src/main/channels/WorkerChannel.ts     前缀: worker
+```
+
+**入方向（客户端 → 服务端）：**
+
+| action  | 说明                 | 参数         |
+| ------- | -------------------- | ------------ |
+| `list`  | 获取所有 Worker 状态 | 无           |
+| `start` | 启动指定 Worker      | `workerName` |
+| `stop`  | 停止指定 Worker      | `workerName` |
+
+**出方向（服务端 → 客户端）：**
+
+| type            | 说明                 | data                 |
+| --------------- | -------------------- | -------------------- |
+| `worker:status` | 单个 Worker 状态变更 | `WorkerStatusInfo`   |
+| `worker:list`   | 所有 Worker 状态列表 | `WorkerStatusInfo[]` |
+
+**内部工作流：**
+
+```
+RuntimeManager(worker:status事件)  →  WorkerChannel  →  WsHub  →  WsServer  →  所有客户端
+```
+
+Worker 状态变更时广播给所有客户端（不限 session）。
+
+### 2.7 生命周期
+
+```
+应用启动
+  │
+  ├── LifecyclePhase.READY
+  │     │
+  │     ├── ReadyWsHubHook (priority: 40)
+  │     │     └── wsHub.initialize()
+  │     │           ├── 创建 WsServer (port 8765)
+  │     │           ├── WsServer.start()
+  │     │           └── discoverChannels()
+  │     │                 ├── scanWsChannels()
+  │     │                 ├── StreamChannel.onInit(hub)
+  │     │                 │     └── 注册 EventBus stream:* 监听
+  │     │                 └── WorkerChannel.onInit(hub)
+  │     │                       └── 注册 RuntimeManager worker:status 监听
+  │     │
+  │     ├── IPC 注册 (priority: 50)
+  │     └── ...
+  │
+应用运行中 → 接收/分发 WebSocket 消息
+  │
+应用关闭
+  └── wsHub.close()
+        ├── WsServer.close()
+        └── channels.clear()
+```
+
+---
+
+## 三、前端架构
+
+前端采用与后端相同的分层解耦设计：通用传输层 + 领域组合式。
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  chatStore   │    │  VoicePanel  │    │  ChatPanel   │
+│ (消息消费)   │    │ (Worker 消费) │    │ (UI 状态)    │
+└──────┬───────┘    └──────┬───────┘    └──────┬───────┘
+       │                   │                   │
+       ▼                   ▼                   │
+┌──────────────┐    ┌──────────────┐           │
+│ useStreamWs  │    │ useWorkerWs  │           │
+│ (stream 领域) │    │ (worker 领域) │           │
+└──────┬───────┘    └──────┬───────┘           │
+       │ onPrefix('stream')│ onPrefix('worker') │
+       ▼                   ▼                   ▼
+┌──────────────────────────────────────────────────┐
+│              wsService（通用传输层）                │
+│  连接管理 · 重连 · 前缀路由 · send · 状态         │
+└──────────────────────────────────────────────────┘
+                       │
+                 WebSocket 连接
+                       │
+                  ws://localhost:8765
+```
+
+### 3.1 wsSetup — 通用传输层
+
+```
+src/renderer/src/plugins/wsSetup.ts
+```
+
+以 Vue Plugin 形式在应用启动时自动建立 WebSocket 连接。**不包含任何业务逻辑**。
+
+**核心能力：**
+
+| 功能       | 说明                                           |
+| ---------- | ---------------------------------------------- |
+| 自动连接   | `install()` 时立即连接 `ws://localhost:8765`   |
+| 自动重连   | 指数退避（2s → 4s → 8s → 16s → 30s），无限重试 |
+| 前缀路由   | `onPrefix(prefix, handler)` 注册领域消息处理器 |
+| 连接回调   | `onConnect(handler)` 连接/重连成功时通知       |
+| 通用发送   | `send(msg)` 发送任意消息                       |
+| 响应式状态 | `connectionState`（Vue ref）供 UI 层绑定       |
+
+**导出 API（仅通用方法）：**
+
+```typescript
+export const wsService = {
+  connectionState, // Ref<ConnectionState>
+  lastError, // Ref<string | null>
+  connect, // 建立连接
+  disconnect, // 断开连接
+  send, // 发送消息（通用）
+  onPrefix, // 注册前缀消息处理器
+  onConnect // 注册连接成功回调
+}
+```
+
+**消息路由（镜像后端 WsHub）：**
+
+```typescript
+// 收到消息后自动按前缀路由
+handleServerMessage(msg) {
+  const { prefix, action } = parseType(msg.type)
+  if (!prefix) → handleBuiltinMessage(action, msg)  // pong, error
+  else         → prefixHandlers.get(prefix)(action, msg.data, msg)
+}
+```
+
+### 3.2 useStreamWs — Stream 领域组合式
+
+```
+src/renderer/src/composables/useStreamWs.ts
+```
+
+封装 AI 流式频道的 WebSocket 业务：
+
+| 导出函数                                | 说明             |
+| --------------------------------------- | ---------------- |
+| `streamSubscribe(sessionId, handler)`   | 订阅会话流式事件 |
+| `streamUnsubscribe()`                   | 取消订阅         |
+| `streamResend(sessionId, fromSequence)` | 请求重发历史消息 |
+| `streamLatestSequence(sessionId)`       | 获取最新序号     |
+
+内部自动注册 `wsService.onPrefix('stream', ...)` 和 `wsService.onConnect(...)` 处理重连恢复。
+
+### 3.3 useWorkerWs — Worker 领域组合式
+
+```
+src/renderer/src/composables/useWorkerWs.ts
+```
+
+封装 Worker 管理频道的 WebSocket 业务：
+
+| 导出函数                  | 说明                               |
+| ------------------------- | ---------------------------------- |
+| `onWorkerStatus(handler)` | 注册 Worker 状态监听，返回取消函数 |
+| `startWorker(name)`       | 启动指定 Worker                    |
+| `stopWorker(name)`        | 停止指定 Worker                    |
+| `requestWorkers()`        | 请求 Worker 状态列表               |
+
+内部自动注册 `wsService.onPrefix('worker', ...)` 和 `wsService.onConnect(...)` 处理重连自动拉取状态。
+
+### 3.4 消费方
+
+| 消费方       | 使用模块            | 消费内容                                 |
+| ------------ | ------------------- | ---------------------------------------- |
+| `chatStore`  | `useStreamWs`       | `streamSubscribe(sid, handler)` 流式消息 |
+| `VoicePanel` | `useWorkerWs`       | `onWorkerStatus(handler)` Worker 状态    |
+| `ChatPanel`  | `wsService`（通用） | `connectionState` / `lastError` 连接状态 |
+| `ChatView`   | `wsService`（通用） | `connectionState` / `lastError` 连接状态 |
+
+---
+
+## 四、协议定义
+
+所有协议类型定义在前后端共享模块中：
+
+```
+src/shared/stream-protocol.ts
+```
+
+### 4.1 客户端 → 服务端
+
+```typescript
+interface WsClientMessage {
+  type: // stream 频道
+    | 'stream:subscribe'
+    | 'stream:unsubscribe'
+    | 'stream:resend'
+    | 'stream:latest_sequence'
+    // worker 频道
+    | 'worker:list'
+    | 'worker:start'
+    | 'worker:stop'
+    // 内置
+    | 'ping'
+  workerName?: string
+  sessionId?: string
+  fromSequence?: number
+}
+```
+
+### 4.2 服务端 → 客户端
+
+```typescript
+type WsServerMessage =
+  // stream 频道
+  | { type: 'stream:message'; data: StreamMessage }
+  | { type: 'stream:resend_batch'; data: StreamMessage[] }
+  | { type: 'stream:latest_sequence'; data: { sequence: number } }
+  // worker 频道
+  | { type: 'worker:status'; data: WorkerStatusInfo }
+  | { type: 'worker:list'; data: WorkerStatusInfo[] }
+  // 内置
+  | { type: 'pong'; data?: {} }
+  | { type: 'error'; data: { error: string } }
+```
+
+---
+
+## 五、解耦设计
+
+### 5.1 模块间通信
+
+```
+┌────────────┐   EventBus    ┌──────────────┐   WsHub API   ┌──────────┐
+│ AI/Runtime │ ────────────► │   Channel    │ ────────────► │ WsServer │
+│  (生产者)   │ stream:message│  (消费+广播)  │ broadcast()   │ (传输层)  │
+└────────────┘              └──────────────┘              └──────────┘
+```
+
+- **AI 模块 ↔ WsHub**：通过 `EventBus` 解耦。`StreamEmitter` 发出 `stream:message` 事件，`StreamChannel` 监听并广播。
+- **Runtime 模块 ↔ WsHub**：通过 `RuntimeManager.on('worker:status')` 事件解耦。
+- **Channel ↔ WsServer**：通过 `WsHubApi` 接口解耦，Channel 不直接操作 WebSocket 对象。
+
+### 5.2 扩展指南
+
+**添加新频道（如 `plan` 频道）：**
+
+1. 创建 `src/main/channels/PlanChannel.ts`
+2. 实现 `WsChannel` 接口，设置 `prefix = 'plan'`
+3. 在 `stream-protocol.ts` 中添加对应的 `WsClientMessage` 和 `WsServerMessage` 类型
+4. 在前端 `wsSetup.ts` 的 `handleServerMessage()` 中添加对应 case
+
+无需修改 WsHub 或 WsServer 的任何代码。
+
+---
+
+## 六、文件索引
+
+| 文件                                          | 层级     | 说明                                     |
+| --------------------------------------------- | -------- | ---------------------------------------- |
+| `src/shared/stream-protocol.ts`               | 共享     | 前后端共享的协议类型定义                 |
+| `src/main/common/server/wsServer.ts`          | 传输层   | WebSocket 底层连接管理                   |
+| `src/main/common/server/WsHub.ts`             | 路由层   | 消息总线，前缀路由                       |
+| `src/main/channels/StreamChannel.ts`          | 频道层   | AI 流式消息频道                          |
+| `src/main/channels/WorkerChannel.ts`          | 频道层   | Worker 管理频道                          |
+| `src/main/common/scan.ts`                     | 基础设施 | Channel 自动扫描                         |
+| `src/main/common/eventbus.ts`                 | 基础设施 | 进程内事件总线                           |
+| `src/main/lifecycle/ReadyWsHubHook.ts`        | 生命周期 | WsHub 初始化钩子                         |
+| `src/renderer/src/plugins/wsSetup.ts`         | 前端     | WebSocket 通用传输层（连接、路由、send） |
+| `src/renderer/src/composables/useStreamWs.ts` | 前端     | Stream 领域 WS 组合式                    |
+| `src/renderer/src/composables/useWorkerWs.ts` | 前端     | Worker 领域 WS 组合式                    |
+
+---
+
+## 七、测试覆盖
+
+| 测试文件                                               | 测试范围                                     | 用例数 |
+| ------------------------------------------------------ | -------------------------------------------- | ------ |
+| `src/main/channels/__tests__/WsHub.test.ts`            | WsHub 路由、Channel 注册、内置消息、API 代理 | 16     |
+| `src/main/channels/__tests__/StreamChannel.test.ts`    | 订阅/取消、消息广播、EventBus 集成           | 10     |
+| `src/main/channels/__tests__/WorkerChannel.test.ts`    | list/start/stop、RuntimeManager 集成         | 10     |
+| `src/main/ai/streaming/__tests__/shared-types.test.ts` | 协议类型结构验证                             | —      |

@@ -8,7 +8,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invokeBackend } from '@/api/request'
-import { wsService } from '@/plugins/wsSetup'
+import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs'
 import type { StreamMessage } from '@shared/stream-protocol'
 import type { HitlApprovalDecision } from '@shared/stream-protocol'
 
@@ -259,8 +259,8 @@ export const useChatStore = defineStore('chat', () => {
         // 更新 sessionId
         sessionId.value = sid
 
-        // 通过 wsService 订阅流式事件（连接管理由 wsSetup 负责）
-        wsService.subscribe(sid, handleStreamMessage)
+        // 通过 useStreamWs 订阅流式事件（连接管理由 wsSetup 负责）
+        streamSubscribe(sid, handleStreamMessage)
       } else {
         // API 调用失败
         messages.value.push({
@@ -327,7 +327,7 @@ export const useChatStore = defineStore('chat', () => {
     messages.value = []
     sessionId.value = null
     isStreaming.value = false
-    wsService.unsubscribe()
+    streamUnsubscribe()
   }
 
   return {
