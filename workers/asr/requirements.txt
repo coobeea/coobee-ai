@@ -1,0 +1,23 @@
+# ASR Worker 依赖
+# 由 RuntimeManager 通过 uv pip install 安装到独立 venv
+
+# HTTP + WebSocket 服务
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+websockets>=14.0
+
+# ASR 模型
+torch>=2.0.0
+torchaudio>=2.0.0
+funasr>=1.0.0
+modelscope>=1.9.0
+transformers>=4.30.0
+soundfile>=0.12.0
+numpy>=1.21.0
+
+# Whisper tokenizer（funasr 的 SenseVoice tokenizer 需要）
+openai-whisper
+
+# 版本修正（funasr 的依赖链中 numba/llvmlite 需要兼容 Python 3.11+）
+numba>=0.60.0
+llvmlite>=0.43.0

@@ -20,6 +20,7 @@ import { useRouter } from 'vue-router'
 import ProjectPanel from '@/components/agent/ProjectPanel.vue'
 import WorkbenchPanel from '@/components/agent/WorkbenchPanel.vue'
 import ChatPanel from '@/components/agent/ChatPanel.vue'
+import VoicePanel from '@/components/agent/VoicePanel.vue'
 
 const router = useRouter()
 
@@ -85,5 +86,8 @@ const rightCollapsed = ref(false)
       <!-- 右栏：对话 -->
       <ChatPanel v-model:collapsed="rightCollapsed" />
     </div>
+
+    <!-- ========== 底部语音栏 ========== -->
+    <VoicePanel />
   </div>
 </template>

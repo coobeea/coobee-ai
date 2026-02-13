@@ -14,7 +14,12 @@ import type { App } from 'vue'
 import { ref, type Ref } from 'vue'
 import configManager from '@/config'
 import { useLogStore } from '@/stores/log'
-import type { StreamMessage, WsServerMessage, ConnectionState } from '@shared/stream-protocol'
+import type {
+  StreamMessage,
+  WsServerMessage,
+  ConnectionState,
+  WorkerStatusInfo
+} from '@shared/stream-protocol'
 
 // ==================== 配置 ====================
 
@@ -37,6 +42,8 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let reconnectAttempts = 0
 let subscribedSessionId: string | null = null
 let messageHandler: ((msg: StreamMessage) => void) | null = null
+/** Worker 状态回调列表（多个消费方可同时监听） */
+let workerStatusHandlers: ((info: WorkerStatusInfo) => void)[] = []
 let isInitialized = false
 
 // ---- 日志（惰性获取，install 之后才可用） ----
@@ -85,6 +92,9 @@ function connect(): void {
       if (subscribedSessionId) {
         sendSubscribe(subscribedSessionId)
       }
+
+      // 连接后请求 Worker 状态列表
+      sendRaw({ type: 'get_workers' })
     }
 
     ws.onmessage = (event) => {
@@ -209,6 +219,26 @@ function handleServerMessage(msg: WsServerMessage): void {
       getLog()?.error('system', `WebSocket 服务端错误: ${msg.data?.error || '未知'}`)
       break
 
+    case 'worker_status':
+      // 单个 Worker 状态变更
+      if (msg.data) {
+        for (const handler of workerStatusHandlers) {
+          handler(msg.data)
+        }
+      }
+      break
+
+    case 'workers_list':
+      // Worker 列表（连接后一次性返回所有 Worker 状态）
+      if (Array.isArray(msg.data)) {
+        for (const info of msg.data) {
+          for (const handler of workerStatusHandlers) {
+            handler(info)
+          }
+        }
+      }
+      break
+
     case 'pong':
       // 心跳响应，忽略
       break
@@ -216,6 +246,12 @@ function handleServerMessage(msg: WsServerMessage): void {
     case 'latest_sequence':
       // 可选：用于断线重连对齐
       break
+  }
+}
+
+function sendRaw(msg: Record<string, unknown>): void {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(msg))
   }
 }
 
@@ -269,6 +305,18 @@ function scheduleReconnect(): void {
  * - wsService.subscribe(sessionId, handler)  — chatStore 发起订阅
  * - wsService.connectionState                — ChatPanel 绑定连接状态
  */
+/**
+ * 注册 Worker 状态变更回调
+ *
+ * @returns 取消注册的函数
+ */
+function onWorkerStatus(handler: (info: WorkerStatusInfo) => void): () => void {
+  workerStatusHandlers.push(handler)
+  return () => {
+    workerStatusHandlers = workerStatusHandlers.filter((h) => h !== handler)
+  }
+}
+
 export const wsService = {
   /** 连接状态（响应式） */
   connectionState: connectionState as Ref<ConnectionState>,
@@ -281,7 +329,15 @@ export const wsService = {
   /** 订阅 session 流式事件 */
   subscribe,
   /** 取消订阅 */
-  unsubscribe
+  unsubscribe,
+  /** 注册 Worker 状态监听 */
+  onWorkerStatus,
+  /** 启动指定 Worker */
+  startWorker: (name: string) => sendRaw({ type: 'start_worker', workerName: name }),
+  /** 停止指定 Worker */
+  stopWorker: (name: string) => sendRaw({ type: 'stop_worker', workerName: name }),
+  /** 主动请求 Worker 状态列表 */
+  requestWorkers: () => sendRaw({ type: 'get_workers' })
 }
 
 // ==================== Vue Plugin ====================

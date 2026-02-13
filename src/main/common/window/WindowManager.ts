@@ -1582,6 +1582,20 @@ export class WindowManager implements IWindowManager {
     const tabId = tabInfo.id
     log.debug(`[WindowManager] 绑定 Tab 事件: tabId=${tabId}`)
 
+    // console-message: 转发渲染进程日志到主进程（便于调试）
+    if (Env.isDev) {
+      webContents.on(
+        WebContentsEvents.CONSOLE_MESSAGE,
+        (_event, level, message, _line, _source) => {
+          const prefix = `[Renderer:${tabId}]`
+          if (level === 0) log.debug(`${prefix} ${message}`)
+          else if (level === 1) log.info(`${prefix} ${message}`)
+          else if (level === 2) log.warn(`${prefix} ${message}`)
+          else log.error(`${prefix} ${message}`)
+        }
+      )
+    }
+
     // page-title-updated: 页面标题更新
     webContents.on(WebContentsEvents.PAGE_TITLE_UPDATED, (_event, title) => {
       const oldTitle = tabInfo.title

@@ -167,6 +167,10 @@ export class AppManager implements IAppManager {
 
       // 1. 应用基础配置
       electronApp.setAppUserModelId('com.coobee')
+
+      // 允许 AudioContext 在无用户手势时自动播放（语音识别需要）
+      app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+
       log.info('[App] 应用基础配置完成')
 
       // 2. 触发 INIT 阶段生命周期（供其他模块使用）

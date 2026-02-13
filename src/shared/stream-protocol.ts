@@ -72,9 +72,40 @@ export interface StreamMessage {
 
 /** 客户端消息（客户端 → 服务端） */
 export interface WsClientMessage {
-  type: 'subscribe' | 'unsubscribe' | 'resend' | 'ping' | 'get_latest_sequence'
+  type:
+    | 'subscribe'
+    | 'unsubscribe'
+    | 'resend'
+    | 'ping'
+    | 'get_latest_sequence'
+    | 'get_workers'
+    | 'start_worker'
+    | 'stop_worker'
+  /** Worker 名称（start_worker/stop_worker 时使用） */
+  workerName?: string
   sessionId?: string
   fromSequence?: number
+}
+
+// ==================== Worker 状态（Runtime → 前端）====================
+
+/** Worker 运行状态 */
+export type WorkerStatus = 'stopped' | 'initializing' | 'starting' | 'ready' | 'error' | 'stopping'
+
+/** Worker 状态信息（推送给前端） */
+export interface WorkerStatusInfo {
+  /** Worker 名称 */
+  name: string
+  /** 显示名称 */
+  label: string
+  /** 当前状态 */
+  status: WorkerStatus
+  /** 服务端口（ready 时有效，前端据此直连 Worker） */
+  port?: number
+  /** 错误信息 */
+  error?: string
+  /** 重启次数 */
+  restartCount: number
 }
 
 /** 服务端消息（服务端 → 客户端） */
@@ -84,6 +115,8 @@ export type WsServerMessage =
   | { type: 'pong'; data?: Record<string, never> }
   | { type: 'error'; data: { error: string } }
   | { type: 'latest_sequence'; data: { sequence: number } }
+  | { type: 'worker_status'; data: WorkerStatusInfo }
+  | { type: 'workers_list'; data: WorkerStatusInfo[] }
 
 /** WebSocket 连接状态 */
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'

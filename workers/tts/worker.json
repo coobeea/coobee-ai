@@ -1,0 +1,11 @@
+{
+  "name": "tts",
+  "label": "语音合成",
+  "enable": false,
+  "entry": "server.py",
+  "port": 18101,
+  "autoStart": false,
+  "autoRestart": true,
+  "maxRestarts": 3,
+  "healthCheckTimeout": 120000
+}

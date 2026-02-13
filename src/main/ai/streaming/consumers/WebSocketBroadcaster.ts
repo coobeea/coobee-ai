@@ -10,8 +10,9 @@ import { Env } from '@main/common/env'
 import { eventBus } from '@main/common/eventbus'
 import { WsServer, type WsClientMeta } from '@main/common/server/wsServer'
 import { StreamEventType, type StreamEvent, type StreamMessage } from '../types'
-import type { WsClientMessage, WsServerMessage } from '@shared/stream-protocol'
+import type { WsClientMessage, WsServerMessage, WorkerStatusInfo } from '@shared/stream-protocol'
 import { streamStore } from './StreamStore'
+import { RuntimeManager } from '@main/runtime'
 
 /** 广播器端口，可通过 VITE_WS_PORT 环境变量配置，默认 8765 */
 const WS_BROADCASTER_PORT = Env.main.wsPort ? parseInt(Env.main.wsPort, 10) : 8765
@@ -51,6 +52,7 @@ export class WebSocketBroadcaster {
 
     this.server.start()
     this.registerEventListeners()
+    this.registerRuntimeListeners()
   }
 
   /**
@@ -76,6 +78,35 @@ export class WebSocketBroadcaster {
     })
 
     console.log('[WebSocketBroadcaster] Event listeners registered')
+  }
+
+  /**
+   * 注册 RuntimeManager Worker 状态监听
+   *
+   * Worker 状态变更时，向所有 WebSocket 客户端广播 worker_status 消息。
+   * 前端收到 ready + port 后，可直连 Worker 的 WebSocket 端口。
+   */
+  private registerRuntimeListeners(): void {
+    const runtime = RuntimeManager.getInstance()
+
+    runtime.on('worker:status', (event: { worker: WorkerStatusInfo }) => {
+      if (!this.server) return
+
+      const msg: WsServerMessage = {
+        type: 'worker_status',
+        data: event.worker
+      }
+
+      // 广播给所有连接的客户端（不限 session）
+      this.server.broadcast(msg)
+
+      console.log(
+        `[WebSocketBroadcaster] Worker status: ${event.worker.name} → ${event.worker.status}` +
+          (event.worker.port ? ` (port: ${event.worker.port})` : '')
+      )
+    })
+
+    console.log('[WebSocketBroadcaster] Runtime listeners registered')
   }
 
   /**
@@ -134,6 +165,42 @@ export class WebSocketBroadcaster {
             } satisfies ServerMessage)
           }
           break
+
+        case 'get_workers': {
+          // 返回所有 Worker 当前状态
+          const allWorkers = RuntimeManager.getInstance().getAllWorkerInfo()
+          this.server!.send(ws, {
+            type: 'workers_list',
+            data: allWorkers
+          } satisfies ServerMessage)
+          break
+        }
+
+        case 'start_worker': {
+          const name = msg.workerName
+          if (name) {
+            console.log(`[WebSocketBroadcaster] 启动 Worker: ${name}`)
+            RuntimeManager.getInstance()
+              .start(name)
+              .catch((err) => {
+                console.error(`[WebSocketBroadcaster] Worker "${name}" 启动失败:`, err)
+              })
+          }
+          break
+        }
+
+        case 'stop_worker': {
+          const stopName = msg.workerName
+          if (stopName) {
+            console.log(`[WebSocketBroadcaster] 停止 Worker: ${stopName}`)
+            RuntimeManager.getInstance()
+              .stop(stopName)
+              .catch((err) => {
+                console.error(`[WebSocketBroadcaster] Worker "${stopName}" 停止失败:`, err)
+              })
+          }
+          break
+        }
 
         case 'ping':
           this.server!.send(ws, { type: 'pong', data: {} } satisfies ServerMessage)

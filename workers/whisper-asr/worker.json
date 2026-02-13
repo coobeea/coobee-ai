@@ -1,0 +1,14 @@
+{
+  "name": "whisper-asr",
+  "label": "语音识别(Whisper)",
+  "type": "native",
+  "enable": false,
+  "entry": "whisper-server",
+  "port": 18200,
+  "args": ["-m", "${MODEL_DIR}/whisper/ggml-base.bin", "-l", "zh", "-t", "4"],
+  "autoStart": true,
+  "autoRestart": true,
+  "maxRestarts": 3,
+  "healthCheckPath": "/",
+  "healthCheckTimeout": 15000
+}
