@@ -5,7 +5,7 @@
  * 自动发现方法组和事件桥接。
  *
  * 执行顺序：
- *   ReadyApiRegistrationHook (35) → ReadyGatewayHook (45) → ReadyRuntimeHook (80)
+ *   ReadyApiRegistrationHook (35) → ReadyGatewayHook (45) → ReadyWorkerHook (80)
  *
  * 前置条件：HttpServer 已初始化（由 ReadyApiRegistrationHook 完成）
  */

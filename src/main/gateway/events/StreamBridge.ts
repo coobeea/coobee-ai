@@ -1,26 +1,21 @@
 /**
- * Gateway 事件桥接 — Stream + Worker
+ * Gateway 事件桥接 — Stream
  *
- * 将内部 EventBus / WorkerManager 事件转换为 Gateway 事件推送。
+ * 将内部 EventBus 的 Stream 事件转换为 Gateway 事件推送。
  *
  * 桥接映射：
  *   EventBus stream:message → Gateway event 'stream.message'（按 sessionId 过滤）
  *   EventBus stream:start   → Gateway event 'stream.start'
  *   EventBus stream:end     → Gateway event 'stream.end'
  *   EventBus stream:error   → Gateway event 'stream.error'
- *   WorkerManager worker:status → Gateway event 'worker.status'（广播所有客户端）
  */
 
 import { eventBus } from '@main/common/eventbus'
 import { log } from '@main/common/logger'
-import { WorkerManager } from '@main/common/worker'
 import { StreamEventType, type StreamEvent } from '@main/ai/streaming/types'
-import type { WorkerStatusInfo } from '@shared/stream-protocol'
 import type { EventBridgeInit } from '../protocol'
 
 export const initStreamBridge: EventBridgeInit = (gateway) => {
-  // ==================== Stream 事件 ====================
-
   eventBus.on(StreamEventType.MESSAGE, (event: StreamEvent) => {
     if (!event.message) return
 
@@ -50,14 +45,5 @@ export const initStreamBridge: EventBridgeInit = (gateway) => {
     )
   })
 
-  // ==================== Worker 事件 ====================
-
-  const runtime = WorkerManager.getInstance()
-  runtime.on('worker:status', (event: { worker: WorkerStatusInfo }) => {
-    gateway.broadcastEvent('worker.status', event.worker)
-
-    log.debug(`[StreamBridge] Worker 状态推送: ${event.worker.name} → ${event.worker.status}`)
-  })
-
-  log.info('[StreamBridge] 事件桥接初始化完成')
+  log.info('[StreamBridge] Stream 事件桥接初始化完成')
 }

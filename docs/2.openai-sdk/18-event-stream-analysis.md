@@ -1,6 +1,6 @@
 # OpenAI AgentRuntime 事件流分析报告
 
-> 自动生成于 2026-02-13T14:20:25.227Z
+> 自动生成于 2026-02-13T14:31:03.279Z
 >
 > 模型: `qwen-plus` | API: `https://dashscope.aliyuncs.com/compatible-mode/v1`
 
@@ -15,7 +15,7 @@
 
 - **输入**: `1+1等于几？用一个数字回答`
 - **输出**: `2`
-- **耗时**: 1127ms
+- **耗时**: 550ms
 - **事件总数**: 9
 - **模型**: `qwen-plus`
 - **有推理事件**: 否
@@ -25,14 +25,14 @@
 | #   | 时间(ms) | 事件类型     | 内容摘要                       |
 | --- | -------- | ------------ | ------------------------------ |
 | 1   | 1        | `run:start`  |                                |
-| 2   | 1075     | `turn:start` | turnIndex: 1                   |
-| 3   | 1075     | `llm:start`  |                                |
-| 4   | 1075     | `text:start` |                                |
-| 5   | 1075     | `text:delta` | `2`                            |
-| 6   | 1126     | `text:done`  | 2                              |
-| 7   | 1127     | `llm:done`   | tokens: in=33, out=1, total=34 |
-| 8   | 1128     | `turn:done`  | turnIndex: 1                   |
-| 9   | 1128     | `run:done`   |                                |
+| 2   | 508      | `turn:start` | turnIndex: 1                   |
+| 3   | 508      | `llm:start`  |                                |
+| 4   | 509      | `text:start` |                                |
+| 5   | 509      | `text:delta` | `2`                            |
+| 6   | 550      | `text:done`  | 2                              |
+| 7   | 550      | `llm:done`   | tokens: in=33, out=1, total=34 |
+| 8   | 551      | `turn:done`  | turnIndex: 1                   |
+| 9   | 551      | `run:done`   |                                |
 
 ### 1.2 事件闭环检查
 
@@ -49,14 +49,14 @@
 
 | seq | type    | role      | 内容摘要                  | 时间         |
 | --- | ------- | --------- | ------------------------- | ------------ |
-| 1   | message | user      | 1+1等于几？用一个数字回答 | 14:20:25.238 |
-| 2   | message | assistant | [多段内容]                | 14:20:26.357 |
+| 1   | message | user      | 1+1等于几？用一个数字回答 | 14:31:03.291 |
+| 2   | message | assistant | [多段内容]                | 14:31:03.832 |
 
 ### 1.4 Session 文件原始内容
 
 ```json
-{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"1+1等于几？用一个数字回答"},"ts":1770992425238}
-{"seq":2,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"2"}]},"ts":1770992426357}
+{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"1+1等于几？用一个数字回答"},"ts":1770993063291}
+{"seq":2,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"2"}]},"ts":1770993063832}
 ```
 
 ### 1.5 Context Snapshot（下次 LLM 调用的上下文）
@@ -80,7 +80,7 @@
 
 - **输入**: `请计算 17 + 28，然后反转 "hello" 这个字符串`
 - **输出**: `17 + 28 = 45，"hello" 反转后是 "olleh"。`
-- **耗时**: 2331ms
+- **耗时**: 2433ms
 - **事件总数**: 23
 - **Turn 数**: 2
 - **工具调用**: add_numbers({"a":17,"b":28}), reverse_string({"text":"hello"})
@@ -91,28 +91,28 @@
 | #   | 时间(ms) | 事件类型     | 内容摘要                                  |
 | --- | -------- | ------------ | ----------------------------------------- |
 | 1   | 0        | `run:start`  |                                           |
-| 2   | 601      | `turn:start` | turnIndex: 1                              |
-| 3   | 601      | `llm:start`  |                                           |
-| 4   | 1352     | `llm:done`   | tokens: in=351, out=47, total=398         |
-| 5   | 1352     | `tool:start` | add_numbers (callId: N/A)                 |
-| 6   | 1352     | `tool:start` | reverse_string (callId: N/A)              |
-| 7   | 1353     | `tool:done`  | {"result":45,"expression":"17 + 28 = 45"} |
-| 8   | 1353     | `tool:done`  | {"original":"hello","reversed":"olleh"}   |
-| 9   | 1784     | `turn:done`  | turnIndex: 1                              |
-| 10  | 1784     | `turn:start` | turnIndex: 2                              |
-| 11  | 1784     | `llm:start`  |                                           |
-| 12  | 1784     | `text:start` |                                           |
-| 13  | 1784     | `text:delta` | `1`                                       |
-| 14  | 1804     | `text:delta` | `7 + `                                    |
-| 15  | 1870     | `text:delta` | `28 =`                                    |
-| 16  | 1936     | `text:delta` | ` 4`                                      |
-| 17  | 2064     | `text:delta` | `5，\"hello\"`                            |
-| 18  | 2179     | `text:delta` | ` 反转后是 \"olle`                        |
-| 19  | 2310     | `text:delta` | `h\"。`                                   |
-| 20  | 2330     | `text:done`  | 17 + 28 = 45，"hello" 反转后是 "olleh"。  |
-| 21  | 2330     | `llm:done`   | tokens: in=445, out=24, total=469         |
-| 22  | 2331     | `turn:done`  | turnIndex: 2                              |
-| 23  | 2331     | `run:done`   |                                           |
+| 2   | 613      | `turn:start` | turnIndex: 1                              |
+| 3   | 613      | `llm:start`  |                                           |
+| 4   | 1394     | `llm:done`   | tokens: in=351, out=47, total=398         |
+| 5   | 1396     | `tool:start` | add_numbers (callId: N/A)                 |
+| 6   | 1397     | `tool:start` | reverse_string (callId: N/A)              |
+| 7   | 1397     | `tool:done`  | {"result":45,"expression":"17 + 28 = 45"} |
+| 8   | 1398     | `tool:done`  | {"original":"hello","reversed":"olleh"}   |
+| 9   | 1888     | `turn:done`  | turnIndex: 1                              |
+| 10  | 1888     | `turn:start` | turnIndex: 2                              |
+| 11  | 1888     | `llm:start`  |                                           |
+| 12  | 1888     | `text:start` |                                           |
+| 13  | 1888     | `text:delta` | `1`                                       |
+| 14  | 1907     | `text:delta` | `7 + `                                    |
+| 15  | 1973     | `text:delta` | `28 =`                                    |
+| 16  | 2040     | `text:delta` | ` 4`                                      |
+| 17  | 2168     | `text:delta` | `5，\"hello\"`                            |
+| 18  | 2282     | `text:delta` | ` 反转后是 \"olle`                        |
+| 19  | 2413     | `text:delta` | `h\"。`                                   |
+| 20  | 2432     | `text:done`  | 17 + 28 = 45，"hello" 反转后是 "olleh"。  |
+| 21  | 2433     | `llm:done`   | tokens: in=445, out=24, total=469         |
+| 22  | 2433     | `turn:done`  | turnIndex: 2                              |
+| 23  | 2433     | `run:done`   |                                           |
 
 ### 2.2 事件闭环检查
 
@@ -151,22 +151,22 @@ run:done
 
 | seq | type    | role                 | 内容摘要                                    | 时间         |
 | --- | ------- | -------------------- | ------------------------------------------- | ------------ |
-| 1   | message | user                 | 请计算 17 + 28，然后反转 "hello" 这个字符串 | 14:20:26.361 |
-| 2   | message | function_call        |                                             | 14:20:28.691 |
-| 3   | message | function_call        |                                             | 14:20:28.691 |
-| 4   | message | function_call_result |                                             | 14:20:28.691 |
-| 5   | message | function_call_result |                                             | 14:20:28.691 |
-| 6   | message | assistant            | [多段内容]                                  | 14:20:28.691 |
+| 1   | message | user                 | 请计算 17 + 28，然后反转 "hello" 这个字符串 | 14:31:03.836 |
+| 2   | message | function_call        |                                             | 14:31:06.268 |
+| 3   | message | function_call        |                                             | 14:31:06.268 |
+| 4   | message | function_call_result |                                             | 14:31:06.268 |
+| 5   | message | function_call_result |                                             | 14:31:06.268 |
+| 6   | message | assistant            | [多段内容]                                  | 14:31:06.268 |
 
 ### 2.5 Session 文件原始内容
 
 ```json
-{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"请计算 17 + 28，然后反转 \"hello\" 这个字符串"},"ts":1770992426361}
-{"seq":2,"type":"message","item":{"type":"function_call","callId":"call_063ea4ffcf6c4c40b461f4","name":"add_numbers","arguments":"{\"a\": 17, \"b\": 28}"},"ts":1770992428691}
-{"seq":3,"type":"message","item":{"type":"function_call","callId":"call_b8b70a2db8c041108a839e","name":"reverse_string","arguments":"{\"text\": \"hello\"}"},"ts":1770992428691}
-{"seq":4,"type":"message","item":{"type":"function_call_result","name":"add_numbers","callId":"call_063ea4ffcf6c4c40b461f4","status":"completed","output":{"type":"text","text":"{\"result\":45,\"expression\":\"17 + 28 = 45\"}"}},"ts":1770992428691}
-{"seq":5,"type":"message","item":{"type":"function_call_result","name":"reverse_string","callId":"call_b8b70a2db8c041108a839e","status":"completed","output":{"type":"text","text":"{\"original\":\"hello\",\"reversed\":\"olleh\"}"}},"ts":1770992428691}
-{"seq":6,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"17 + 28 = 45，\"hello\" 反转后是 \"olleh\"。"}]},"ts":1770992428691}
+{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"请计算 17 + 28，然后反转 \"hello\" 这个字符串"},"ts":1770993063836}
+{"seq":2,"type":"message","item":{"type":"function_call","callId":"call_e2b10d6c89af4a0fa249cb","name":"add_numbers","arguments":"{\"a\": 17, \"b\": 28}"},"ts":1770993066268}
+{"seq":3,"type":"message","item":{"type":"function_call","callId":"call_642b58ec240140d69645fb","name":"reverse_string","arguments":"{\"text\": \"hello\"}"},"ts":1770993066268}
+{"seq":4,"type":"message","item":{"type":"function_call_result","name":"add_numbers","callId":"call_e2b10d6c89af4a0fa249cb","status":"completed","output":{"type":"text","text":"{\"result\":45,\"expression\":\"17 + 28 = 45\"}"}},"ts":1770993066268}
+{"seq":5,"type":"message","item":{"type":"function_call_result","name":"reverse_string","callId":"call_642b58ec240140d69645fb","status":"completed","output":{"type":"text","text":"{\"original\":\"hello\",\"reversed\":\"olleh\"}"}},"ts":1770993066268}
+{"seq":6,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"17 + 28 = 45，\"hello\" 反转后是 \"olleh\"。"}]},"ts":1770993066268}
 ```
 
 ### 2.6 Context Snapshot
@@ -197,7 +197,7 @@ run:done
 | 轮次 | 输入                        | 输出                                         | Session行数 | Context消息数 |
 | ---- | --------------------------- | -------------------------------------------- | ----------- | ------------- |
 | 1    | 我叫小明，最喜欢的数字是 42 | 好的，小明！我记住了你最喜欢的数字是 42。... | 2           | 2             |
-| 2    | 帮我算一下 42 + 58          | 42 + 58 = 100。...                           | 6           | 6             |
+| 2    | 帮我算一下 42 + 58          | 42 + 58 = 100。小明，结果是 100！...         | 6           | 6             |
 | 3    | 我叫什么名字？              | 你叫小明。...                                | 8           | 8             |
 
 ### 3.2 Session 文件最终内容
@@ -206,26 +206,26 @@ run:done
 
 | seq | type    | role                 | 内容摘要                    | 时间         |
 | --- | ------- | -------------------- | --------------------------- | ------------ |
-| 1   | message | user                 | 我叫小明，最喜欢的数字是 42 | 14:20:28.695 |
-| 2   | message | assistant            | [多段内容]                  | 14:20:29.325 |
-| 3   | message | user                 | 帮我算一下 42 + 58          | 14:20:29.326 |
-| 4   | message | function_call        |                             | 14:20:30.798 |
-| 5   | message | function_call_result |                             | 14:20:30.798 |
-| 6   | message | assistant            | [多段内容]                  | 14:20:30.798 |
-| 7   | message | user                 | 我叫什么名字？              | 14:20:30.799 |
-| 8   | message | assistant            | [多段内容]                  | 14:20:31.176 |
+| 1   | message | user                 | 我叫小明，最喜欢的数字是 42 | 14:31:06.273 |
+| 2   | message | assistant            | [多段内容]                  | 14:31:06.912 |
+| 3   | message | user                 | 帮我算一下 42 + 58          | 14:31:06.915 |
+| 4   | message | function_call        |                             | 14:31:08.629 |
+| 5   | message | function_call_result |                             | 14:31:08.629 |
+| 6   | message | assistant            | [多段内容]                  | 14:31:08.629 |
+| 7   | message | user                 | 我叫什么名字？              | 14:31:08.631 |
+| 8   | message | assistant            | [多段内容]                  | 14:31:09.047 |
 
 ### 3.3 Session 文件原始内容
 
 ```json
-{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"我叫小明，最喜欢的数字是 42"},"ts":1770992428695}
-{"seq":2,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"好的，小明！我记住了你最喜欢的数字是 42。"}]},"ts":1770992429325}
-{"seq":3,"type":"message","item":{"type":"message","role":"user","content":"帮我算一下 42 + 58"},"ts":1770992429326}
-{"seq":4,"type":"message","item":{"type":"function_call","callId":"call_7d9327305ed74d01b03739","name":"add_numbers","arguments":"{\"a\": 42, \"b\": 58}"},"ts":1770992430798}
-{"seq":5,"type":"message","item":{"type":"function_call_result","name":"add_numbers","callId":"call_7d9327305ed74d01b03739","status":"completed","output":{"type":"text","text":"{\"result\":100,\"expression\":\"42 + 58 = 100\"}"}},"ts":1770992430798}
-{"seq":6,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"42 + 58 = 100。"}]},"ts":1770992430798}
-{"seq":7,"type":"message","item":{"type":"message","role":"user","content":"我叫什么名字？"},"ts":1770992430799}
-{"seq":8,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"你叫小明。"}]},"ts":1770992431176}
+{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"我叫小明，最喜欢的数字是 42"},"ts":1770993066273}
+{"seq":2,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"好的，小明！我记住了你最喜欢的数字是 42。"}]},"ts":1770993066912}
+{"seq":3,"type":"message","item":{"type":"message","role":"user","content":"帮我算一下 42 + 58"},"ts":1770993066915}
+{"seq":4,"type":"message","item":{"type":"function_call","callId":"call_47ce7dcd882a4b628cb857","name":"add_numbers","arguments":"{\"a\": 42, \"b\": 58}"},"ts":1770993068629}
+{"seq":5,"type":"message","item":{"type":"function_call_result","name":"add_numbers","callId":"call_47ce7dcd882a4b628cb857","status":"completed","output":{"type":"text","text":"{\"result\":100,\"expression\":\"42 + 58 = 100\"}"}},"ts":1770993068629}
+{"seq":6,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"42 + 58 = 100。小明，结果是 100！"}]},"ts":1770993068629}
+{"seq":7,"type":"message","item":{"type":"message","role":"user","content":"我叫什么名字？"},"ts":1770993068631}
+{"seq":8,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"你叫小明。"}]},"ts":1770993069047}
 ```
 
 ### 3.4 各轮 Context Snapshot 对比
@@ -265,7 +265,7 @@ run:done
 // [user] 帮我算一下 42 + 58
 // [unknown]
 // [unknown]
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"42 + 58 = 100。"}]
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"42 + 58 = 100。小明，结果是 100！"}]
 ```
 
 #### 第3轮后
@@ -286,59 +286,61 @@ run:done
 // [user] 帮我算一下 42 + 58
 // [unknown]
 // [unknown]
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"42 + 58 = 100。"}]
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"42 + 58 = 100。小明，结果是 100！"}]
 // [user] 我叫什么名字？
 // [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"你叫小明。"}]
 ```
 
-### 3.5 完整事件流（3轮合计 44 个事件）
+### 3.5 完整事件流（3轮合计 46 个事件）
 
 | #   | 时间(ms) | 事件类型     | 内容摘要                                    |
 | --- | -------- | ------------ | ------------------------------------------- |
 | 1   | 0        | `run:start`  |                                             |
-| 2   | 262      | `turn:start` | turnIndex: 1                                |
-| 3   | 262      | `llm:start`  |                                             |
-| 4   | 262      | `text:start` |                                             |
-| 5   | 262      | `text:delta` | `好的`                                      |
-| 6   | 283      | `text:delta` | `，小`                                      |
-| 7   | 326      | `text:delta` | `明！`                                      |
-| 8   | 371      | `text:delta` | `我记住了`                                  |
-| 9   | 502      | `text:delta` | `你最喜欢的数字是 `                         |
-| 10  | 613      | `text:delta` | `42。`                                      |
-| 11  | 630      | `text:done`  | 好的，小明！我记住了你最喜欢的数字是 42。   |
-| 12  | 630      | `llm:done`   | tokens: in=240, out=16, total=256           |
-| 13  | 631      | `turn:done`  | turnIndex: 1                                |
-| 14  | 631      | `run:done`   |                                             |
-| 15  | 632      | `run:start`  |                                             |
-| 16  | 1262     | `turn:start` | turnIndex: 1                                |
-| 17  | 1262     | `llm:start`  |                                             |
-| 18  | 1546     | `llm:done`   | tokens: in=276, out=27, total=303           |
-| 19  | 1547     | `tool:start` | add_numbers (callId: N/A)                   |
-| 20  | 1547     | `tool:done`  | {"result":100,"expression":"42 + 58 = 100"} |
-| 21  | 1819     | `turn:done`  | turnIndex: 1                                |
-| 22  | 1819     | `turn:start` | turnIndex: 2                                |
-| 23  | 1819     | `llm:start`  |                                             |
+| 2   | 267      | `turn:start` | turnIndex: 1                                |
+| 3   | 267      | `llm:start`  |                                             |
+| 4   | 267      | `text:start` |                                             |
+| 5   | 267      | `text:delta` | `好的`                                      |
+| 6   | 287      | `text:delta` | `，小`                                      |
+| 7   | 332      | `text:delta` | `明！`                                      |
+| 8   | 386      | `text:delta` | `我记`                                      |
+| 9   | 499      | `text:delta` | `住了你最喜欢的数字是 `                     |
+| 10  | 616      | `text:delta` | `42。`                                      |
+| 11  | 640      | `text:done`  | 好的，小明！我记住了你最喜欢的数字是 42。   |
+| 12  | 640      | `llm:done`   | tokens: in=240, out=16, total=256           |
+| 13  | 641      | `turn:done`  | turnIndex: 1                                |
+| 14  | 641      | `run:done`   |                                             |
+| 15  | 642      | `run:start`  |                                             |
+| 16  | 1237     | `turn:start` | turnIndex: 1                                |
+| 17  | 1237     | `llm:start`  |                                             |
+| 18  | 1522     | `llm:done`   | tokens: in=276, out=27, total=303           |
+| 19  | 1522     | `tool:start` | add_numbers (callId: N/A)                   |
+| 20  | 1522     | `tool:done`  | {"result":100,"expression":"42 + 58 = 100"} |
+| 21  | 1820     | `turn:done`  | turnIndex: 1                                |
+| 22  | 1820     | `turn:start` | turnIndex: 2                                |
+| 23  | 1820     | `llm:start`  |                                             |
 | 24  | 1820     | `text:start` |                                             |
 | 25  | 1820     | `text:delta` | `4`                                         |
-| 26  | 1843     | `text:delta` | `2 + `                                      |
-| 27  | 1910     | `text:delta` | `58 =`                                      |
+| 26  | 1842     | `text:delta` | `2 + `                                      |
+| 27  | 1908     | `text:delta` | `58 =`                                      |
 | 28  | 1974     | `text:delta` | ` 10`                                       |
-| 29  | 2083     | `text:delta` | `0。`                                       |
-| 30  | 2103     | `text:done`  | 42 + 58 = 100。                             |
-| 31  | 2103     | `llm:done`   | tokens: in=337, out=12, total=349           |
-| 32  | 2104     | `turn:done`  | turnIndex: 2                                |
-| 33  | 2104     | `run:done`   |                                             |
-| 34  | 2105     | `run:start`  |                                             |
-| 35  | 2376     | `turn:start` | turnIndex: 1                                |
-| 36  | 2376     | `llm:start`  |                                             |
-| 37  | 2377     | `text:start` |                                             |
-| 38  | 2377     | `text:delta` | `你`                                        |
-| 39  | 2401     | `text:delta` | `叫小明`                                    |
-| 40  | 2465     | `text:delta` | `。`                                        |
-| 41  | 2482     | `text:done`  | 你叫小明。                                  |
-| 42  | 2482     | `llm:done`   | tokens: in=364, out=5, total=369            |
-| 43  | 2482     | `turn:done`  | turnIndex: 1                                |
-| 44  | 2482     | `run:done`   |                                             |
+| 29  | 2121     | `text:delta` | `0。小明，`                                 |
+| 30  | 2172     | `text:delta` | `结果是 1`                                  |
+| 31  | 2304     | `text:delta` | `00！`                                      |
+| 32  | 2357     | `text:done`  | 42 + 58 = 100。小明，结果是 100！           |
+| 33  | 2357     | `llm:done`   | tokens: in=337, out=22, total=359           |
+| 34  | 2357     | `turn:done`  | turnIndex: 2                                |
+| 35  | 2357     | `run:done`   |                                             |
+| 36  | 2358     | `run:start`  |                                             |
+| 37  | 2666     | `turn:start` | turnIndex: 1                                |
+| 38  | 2666     | `llm:start`  |                                             |
+| 39  | 2666     | `text:start` |                                             |
+| 40  | 2666     | `text:delta` | `你`                                        |
+| 41  | 2691     | `text:delta` | `叫小明`                                    |
+| 42  | 2755     | `text:delta` | `。`                                        |
+| 43  | 2774     | `text:done`  | 你叫小明。                                  |
+| 44  | 2775     | `llm:done`   | tokens: in=374, out=5, total=379            |
+| 45  | 2775     | `turn:done`  | turnIndex: 1                                |
+| 46  | 2775     | `run:done`   |                                             |
 
 ### 3.6 事件闭环检查
 
