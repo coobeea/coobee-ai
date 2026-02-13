@@ -143,7 +143,6 @@ describe('PiMonoBuilder', () => {
         .model('MiniMax-M2.1')
         .sessionMode('file')
         .sessionDir('/tmp')
-        .useCodingTools(true)
         .thinkingLevel('medium')
         .compaction({ enabled: true })
         .retry({ enabled: true, maxRetries: 3 })

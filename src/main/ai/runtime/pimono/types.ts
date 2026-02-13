@@ -58,21 +58,13 @@ export interface PiMonoAgentRuntimeOptions extends AgentRuntimeOptions {
   cwd?: string
 
   /**
-   * SDK 原生工具定义列表（高级用法）
+   * SDK 原生工具定义列表
    *
    * 直接传入 pi-coding-agent 的 ToolDefinition 实例（TypeBox 参数 + SDK execute 签名）。
-   * 优先于 AgentRuntimeOptions.tools 中的统一格式工具。
-   * 一般场景推荐使用 tools（ToolDefinition[]）。
+   * 与 AgentRuntimeOptions.tools（统一格式）共存，SDK 原生工具优先。
+   * 命名与 OpenAI Runtime 的 sdkTools 统一。
    */
-  customTools?: unknown[]
-
-  /**
-   * 是否使用内置代码工具（read, bash, edit, write）
-   *
-   * 默认 false（测试场景不需要文件系统工具）。
-   * 设为 true 时加载 codingTools。
-   */
-  useCodingTools?: boolean
+  sdkTools?: unknown[]
 
   /**
    * Session 持久化模式

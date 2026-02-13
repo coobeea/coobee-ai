@@ -465,7 +465,7 @@ describe.skipIf(!RUN)('PiMonoAgentRuntime Session 分析 + 评估集成测试', 
     runtime = createRuntime({
       name: 'SessionAnalysisAgent',
       instructions: '你是一个简洁的助手。用简短的语言回答。',
-      customTools: [addNumbersTool, getWeatherTool],
+      sdkTools: [addNumbersTool, getWeatherTool],
       sessionId,
       maxTurns: 10
     })
@@ -581,7 +581,7 @@ describe.skipIf(!RUN)('PiMonoAgentRuntime Session 分析 + 评估集成测试', 
       instructions:
         '你是一个全能助手。查天气用 get_weather，算加法用 add_numbers。' +
         '对于多个任务，尽量一次性调用所有工具。最后汇总结果。',
-      customTools: [addNumbersTool, getWeatherTool],
+      sdkTools: [addNumbersTool, getWeatherTool],
       sessionId: localSessionId,
       maxTurns: 10
     })

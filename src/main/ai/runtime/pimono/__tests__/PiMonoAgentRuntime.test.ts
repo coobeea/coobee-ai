@@ -770,7 +770,7 @@ describe.skipIf(!RUN)('PiMonoAgentRuntime 真实执行测试（OpenAI 兼容格�
     runtime = createRuntime({
       name: 'MathAgent',
       instructions: '你是数学助手。必须使用 add_numbers 工具完成加法。根据工具结果回答。',
-      customTools: [addNumbersTool],
+      sdkTools: [addNumbersTool],
       sessionId,
       maxTurns: 5
     })
@@ -814,7 +814,7 @@ describe.skipIf(!RUN)('PiMonoAgentRuntime 真实执行测试（OpenAI 兼容格�
       instructions:
         '你是计算助手。加法用 add_numbers 工具，乘法用 multiply_numbers 工具。' +
         '必须分步执行：先调用 add_numbers 获得结果，再调用 multiply_numbers。',
-      customTools: [addNumbersTool, multiplyNumbersTool],
+      sdkTools: [addNumbersTool, multiplyNumbersTool],
       sessionId,
       maxTurns: 10
     })
@@ -862,7 +862,7 @@ describe.skipIf(!RUN)('PiMonoAgentRuntime 真实执行测试（OpenAI 兼容格�
       instructions:
         '你是多功能助手。加法用 add_numbers，反转文本用 reverse_string。' +
         '如果有多个任务，请尽量一次性并行调用所有工具。根据工具结果汇总回答。',
-      customTools: [addNumbersTool, reverseStringTool],
+      sdkTools: [addNumbersTool, reverseStringTool],
       sessionId,
       maxTurns: 10
     })
@@ -904,7 +904,7 @@ describe.skipIf(!RUN)('PiMonoAgentRuntime 真实执行测试（OpenAI 兼容格�
       instructions:
         '你是全能助手。查天气用 get_weather，查时间用 get_current_time，算加法用 add_numbers。' +
         '对于多个任务，可以并行或按顺序调用工具。最后汇总所有结果回答。',
-      customTools: [getWeatherTool, getCurrentTimeTool, addNumbersTool],
+      sdkTools: [getWeatherTool, getCurrentTimeTool, addNumbersTool],
       sessionId,
       maxTurns: 10
     })

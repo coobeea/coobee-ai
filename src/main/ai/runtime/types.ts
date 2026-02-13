@@ -17,7 +17,7 @@
  *   - execute 返回纯 string，各 SDK 适配层自行包装为原生返回值
  *
  * 各 Runtime 内部通过 convertTools() 将 ToolDefinition 转为 SDK 原生格式。
- * 高级用户仍可使用 SDK 特有的工具入口（如 OpenAI 的 Tool[]、PiMono 的 customTools）。
+ * 高级用户仍可使用 SDK 原生的工具入口（各 Runtime 的 sdkTools）。
  */
 export interface ToolDefinition {
   /** 工具名称（唯一标识） */
@@ -108,7 +108,7 @@ export interface AgentRuntimeOptions {
    * 统一工具列表（SDK 无关）
    *
    * 使用 ToolDefinition 格式定义工具，Runtime 内部自动转换为 SDK 原生格式。
-   * 与 SDK 特有工具（如 OpenAI 的 Tool[]）共存，SDK 特有工具优先。
+   * 与 SDK 原生工具（各 Runtime 的 sdkTools）共存，SDK 原生工具优先。
    */
   tools?: ToolDefinition[]
   /** SDK 特有配置（各实现自定义） */

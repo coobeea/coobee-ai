@@ -669,7 +669,7 @@ describe.skipIf(!RUN)('PiMonoAgentRuntime 集成测试（OpenAI 兼容格式）'
     runtime = createRuntime({
       name: 'LoopAgent',
       instructions: '你是数学助手。必须使用 add_numbers 工具完成加法。',
-      customTools: [addNumbersTool],
+      sdkTools: [addNumbersTool],
       sessionId,
       maxTurns: 10
     })
@@ -721,7 +721,7 @@ describe.skipIf(!RUN)('PiMonoAgentRuntime 集成测试（OpenAI 兼容格式）'
     runtime = createRuntime({
       name: 'TimeAgent',
       instructions: '你是时间助手。使用 get_current_time 工具获取时间，然后告诉用户。',
-      customTools: [getCurrentTimeTool],
+      sdkTools: [getCurrentTimeTool],
       sessionId,
       maxTurns: 5
     })

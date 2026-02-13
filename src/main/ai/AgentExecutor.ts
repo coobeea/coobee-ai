@@ -58,10 +58,9 @@ export class PiMonoBuilder {
   private _tools?: ToolDefinition[]
   private _skills: SkillDefinition[] = []
   private _maxTurns?: number
-  private _useCodingTools?: boolean
   private _cwd?: string
   private _thinkingLevel?: ThinkingLevel
-  private _customTools?: unknown[]
+  private _sdkTools?: unknown[]
   private _sessionDir?: string
   private _compaction?: { enabled?: boolean }
   private _retry?: { enabled?: boolean; maxRetries?: number; baseDelayMs?: number }
@@ -139,12 +138,6 @@ export class PiMonoBuilder {
     return this
   }
 
-  /** 是否使用内置代码工具 */
-  useCodingTools(enabled: boolean): this {
-    this._useCodingTools = enabled
-    return this
-  }
-
   /** 工作目录 */
   cwd(dir: string): this {
     this._cwd = dir
@@ -157,9 +150,9 @@ export class PiMonoBuilder {
     return this
   }
 
-  /** SDK 原生工具（高级用法） */
-  customTools(tools: unknown[]): this {
-    this._customTools = tools
+  /** SDK 原生工具（与 OpenAI Builder 的 sdkTools 命名统一） */
+  sdkTools(tools: unknown[]): this {
+    this._sdkTools = tools
     return this
   }
 
@@ -205,10 +198,9 @@ export class PiMonoBuilder {
     if (this._tools) opts.tools = this._tools
     if (this._skills.length) opts.skills = this._skills
     if (this._maxTurns !== undefined) opts.maxTurns = this._maxTurns
-    if (this._useCodingTools !== undefined) opts.useCodingTools = this._useCodingTools
     if (this._cwd) opts.cwd = this._cwd
     if (this._thinkingLevel) opts.thinkingLevel = this._thinkingLevel
-    if (this._customTools) opts.customTools = this._customTools
+    if (this._sdkTools) opts.sdkTools = this._sdkTools
     if (this._compaction) opts.compaction = this._compaction
     if (this._retry) opts.retry = this._retry
     if (this._contextDir) opts.contextDir = this._contextDir

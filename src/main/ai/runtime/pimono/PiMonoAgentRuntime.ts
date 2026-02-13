@@ -247,13 +247,14 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
       reload: async () => {}
     }
 
-    // 6. 合并工具：customTools（SDK 原生）+ tools（统一 ToolDefinition 转换后）
-    const allCustomTools: PiToolDefinition[] = [
-      ...((this.options.customTools as PiToolDefinition[]) || []),
+    // 6. 合并工具：sdkTools（SDK 原生）+ tools（统一 ToolDefinition 转换后）
+    const allSdkTools: PiToolDefinition[] = [
+      ...((this.options.sdkTools as PiToolDefinition[]) || []),
       ...this.convertTools(this.options.tools || [])
     ]
 
     // 7. 创建 AgentSession
+    //    内置 codingTools 默认禁用（tools: [] 覆盖），仅使用显式传入的工具
     const { session } = await createAgentSession({
       cwd: this.options.cwd || process.cwd(),
       model,
@@ -263,8 +264,8 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
       sessionManager,
       settingsManager,
       resourceLoader,
-      customTools: allCustomTools,
-      ...(this.options.useCodingTools ? {} : { tools: [] })
+      customTools: allSdkTools,
+      tools: []
     })
 
     this.piSession = session
@@ -274,7 +275,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
         `(api: openai-completions, model: ${modelName}, ` +
         `baseURL: ${baseURL}, ` +
         `thinking: ${thinkingLevel}, ` +
-        `tools: ${allCustomTools.length}, ` +
+        `tools: ${allSdkTools.length}, ` +
         `skills: ${piSkills.length}, ` +
         `session: ${this.sessionId})`
     )
