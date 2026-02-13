@@ -1,31 +1,28 @@
 /**
  * 配置管理类
  *
- * 统一管理前端运行时配置，所有地址 / 端口均通过 VITE_* 环境变量注入，
- * 并提供合理的默认值。
+ * 统一管理前端运行时配置。
+ * HTTP API 和 WebSocket 共享同一端口（VITE_SERVER_PORT，默认 8765）。
  */
 class ConfigManager {
+  /** 统一服务端口 */
+  private port: string
   private baseUrl: string
   private wsUrl: string
   private timeout: number
 
   constructor() {
-    // ---- HTTP API ----
+    // 统一端口（HTTP + WebSocket 共享）
+    this.port = import.meta.env.VITE_SERVER_PORT || '8765'
     const customBaseURL = import.meta.env.VITE_API_BASE_URL
-    const httpPort = import.meta.env.VITE_HTTP_PORT || '3100'
-    this.baseUrl = customBaseURL || `http://127.0.0.1:${httpPort}`
-
-    // ---- WebSocket ----
-    const wsPort = import.meta.env.VITE_WS_PORT || '8765'
-    this.wsUrl = `ws://localhost:${wsPort}`
-
-    // ---- 通用 ----
+    this.baseUrl = customBaseURL || `http://127.0.0.1:${this.port}`
+    this.wsUrl = `ws://localhost:${this.port}`
     this.timeout = parseInt(import.meta.env.VITE_REQUEST_TIMEOUT || '5000', 10)
   }
 
   /**
    * 获取 HTTP API 基础 URL
-   * @example "http://127.0.0.1:3300"
+   * @example "http://127.0.0.1:8765"
    */
   public getBaseUrl(): string {
     return this.baseUrl
@@ -37,6 +34,13 @@ class ConfigManager {
    */
   public getWsUrl(): string {
     return this.wsUrl
+  }
+
+  /**
+   * 获取统一服务端口
+   */
+  public getPort(): string {
+    return this.port
   }
 
   /**

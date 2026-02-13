@@ -18,7 +18,8 @@ const {
   mockWsServerBroadcastIf,
   mockWsServerForEach,
   mockWsServerClose,
-  mockCaptured
+  mockCaptured,
+  mockHttpServer
 } = vi.hoisted(() => ({
   mockWsServerStart: vi.fn(),
   mockWsServerSend: vi.fn(),
@@ -30,7 +31,9 @@ const {
     onMessage: null as ((ws: unknown, data: string, meta: Record<string, unknown>) => void) | null,
     onConnect: null as ((ws: unknown, meta: Record<string, unknown>) => void) | null,
     onDisconnect: null as ((ws: unknown, meta: Record<string, unknown>) => void) | null
-  }
+  },
+  /** 假的 http.Server 对象（供 WsServer 挂载） */
+  mockHttpServer: {} as Record<string, unknown>
 }))
 
 // ===== Mock WsServer（使用 class 以支持 new 调用） =====
@@ -61,9 +64,13 @@ vi.mock('@main/common/logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
 }))
 
-// ===== Mock env =====
-vi.mock('@main/common/env', () => ({
-  Env: { main: { wsPort: '9999' } }
+// ===== Mock HttpServer（单例，提供 http.Server） =====
+vi.mock('@main/common/server/httpServer', () => ({
+  HttpServer: {
+    getInstance: vi.fn().mockReturnValue({
+      getHttpServer: vi.fn().mockReturnValue(mockHttpServer)
+    })
+  }
 }))
 
 // ===== Mock scan（不自动发现任何 Channel，手动注册测试） =====
@@ -105,13 +112,13 @@ describe('WsHub', () => {
 
   describe('initialize', () => {
     it('启动 WsServer', () => {
-      hub.initialize(9999)
+      hub.initialize()
       expect(mockWsServerStart).toHaveBeenCalledOnce()
     })
 
     it('重复初始化不产生副作用', () => {
-      hub.initialize(9999)
-      hub.initialize(9999)
+      hub.initialize()
+      hub.initialize()
       // WsServer constructor 只调用一次（第二次 isInitialized 检查不通过因为我们 mock 返回 false，
       // 但 start 只应调用一次因为内部有 server 存在检查）
       // 实际上因为 mock 的 isInitialized 是 false，所以会再次创建
@@ -124,7 +131,7 @@ describe('WsHub', () => {
 
   describe('registerChannel', () => {
     it('注册 Channel 后调用 onInit', () => {
-      hub.initialize(9999)
+      hub.initialize()
       const channel = createMockChannel('test', '测试频道')
 
       hub.registerChannel(channel)
@@ -133,7 +140,7 @@ describe('WsHub', () => {
     })
 
     it('注册多个 Channel 不冲突', () => {
-      hub.initialize(9999)
+      hub.initialize()
       const ch1 = createMockChannel('stream', 'AI 流式')
       const ch2 = createMockChannel('worker', 'Worker 管理')
 
@@ -149,7 +156,7 @@ describe('WsHub', () => {
 
   describe('消息路由', () => {
     it('按前缀路由到对应 Channel', async () => {
-      hub.initialize(9999)
+      hub.initialize()
       const channel = createMockChannel('stream', 'AI 流式')
       hub.registerChannel(channel)
 
@@ -164,7 +171,7 @@ describe('WsHub', () => {
     })
 
     it('内置 ping 消息返回 pong', async () => {
-      hub.initialize(9999)
+      hub.initialize()
 
       const mockWs = {} as unknown
       const mockMeta = { isAlive: true, heartbeatTimer: null }
@@ -176,7 +183,7 @@ describe('WsHub', () => {
     })
 
     it('未知前缀返回 error', async () => {
-      hub.initialize(9999)
+      hub.initialize()
 
       const mockWs = {} as unknown
       const mockMeta = { isAlive: true, heartbeatTimer: null }
@@ -194,7 +201,7 @@ describe('WsHub', () => {
     })
 
     it('JSON 解析错误返回 error', async () => {
-      hub.initialize(9999)
+      hub.initialize()
 
       const mockWs = {} as unknown
       const mockMeta = { isAlive: true, heartbeatTimer: null }
@@ -211,7 +218,7 @@ describe('WsHub', () => {
     })
 
     it('多前缀路由互不干扰', async () => {
-      hub.initialize(9999)
+      hub.initialize()
       const streamCh = createMockChannel('stream', 'AI 流式')
       const workerCh = createMockChannel('worker', 'Worker 管理')
       hub.registerChannel(streamCh)
@@ -240,7 +247,7 @@ describe('WsHub', () => {
 
   describe('连接事件', () => {
     it('新连接通知所有 Channel', () => {
-      hub.initialize(9999)
+      hub.initialize()
       const ch1 = createMockChannel('stream', 'AI 流式')
       const ch2 = createMockChannel('worker', 'Worker 管理')
       hub.registerChannel(ch1)
@@ -255,7 +262,7 @@ describe('WsHub', () => {
     })
 
     it('断开连接通知所有 Channel', () => {
-      hub.initialize(9999)
+      hub.initialize()
       const ch1 = createMockChannel('stream', 'AI 流式')
       hub.registerChannel(ch1)
 
@@ -271,7 +278,7 @@ describe('WsHub', () => {
 
   describe('WsHubApi', () => {
     it('send 代理到 WsServer', () => {
-      hub.initialize(9999)
+      hub.initialize()
       const mockWs = {} as unknown
       const payload = { type: 'pong' as const, data: {} }
 
@@ -281,7 +288,7 @@ describe('WsHub', () => {
     })
 
     it('broadcast 代理到 WsServer', () => {
-      hub.initialize(9999)
+      hub.initialize()
       const payload = {
         type: 'worker:status' as const,
         data: { name: 'test', label: 'Test', status: 'ready' as const, restartCount: 0 }
@@ -293,7 +300,7 @@ describe('WsHub', () => {
     })
 
     it('broadcastIf 代理到 WsServer', () => {
-      hub.initialize(9999)
+      hub.initialize()
       const payload = {
         type: 'stream:message' as const,
         data: {
@@ -314,7 +321,7 @@ describe('WsHub', () => {
     })
 
     it('clientCount 返回 WsServer 连接数', () => {
-      hub.initialize(9999)
+      hub.initialize()
       expect(hub.clientCount).toBe(2)
     })
   })
@@ -323,7 +330,7 @@ describe('WsHub', () => {
 
   describe('close', () => {
     it('关闭 WsServer 并清空 Channel', () => {
-      hub.initialize(9999)
+      hub.initialize()
       const ch = createMockChannel('test', '测试')
       hub.registerChannel(ch)
 

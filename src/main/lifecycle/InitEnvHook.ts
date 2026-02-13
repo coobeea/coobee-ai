@@ -91,8 +91,7 @@ export const InitEnvHook: LifecycleHook = {
       log.info(`  日志最大大小:     ${Env.main.logMaxSize || '默认'}`)
       log.info(`  调试模式:         ${Env.main.debug || '未启用'}`)
       log.info(`  自动打开DevTools: ${Env.main.openDevTools || '未启用'}`)
-      log.info(`  启用HTTP服务器:   ${Env.main.enableHttpServer || '未启用'}`)
-      log.info(`  HTTP端口:         ${Env.main.httpPort || '未设置'}`)
+      log.info(`  服务端口:         ${Env.main.serverPort || '8765 (默认)'}`)
     }
 
     // Node.js 版本信息

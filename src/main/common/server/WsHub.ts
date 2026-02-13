@@ -11,17 +11,15 @@
  * - 约定大于配置：消息类型 prefix:action 自动决定路由
  * - 自动发现：Channel 文件放在 channels/ 目录，WsHub 启动时自动扫描
  * - 解耦：AI、Runtime 等模块通过 Channel + EventBus 与 WsHub 交互
+ * - 统一端口：WsServer 挂载到 HttpServer 的 http.Server 上（通过 HTTP Upgrade 共享端口）
  */
 
 import type { WebSocket } from 'ws'
 import { log } from '@main/common/logger'
-import { Env } from '@main/common/env'
 import { WsServer, type WsClientMeta } from './wsServer'
+import { HttpServer } from './httpServer'
 import type { WsChannel, WsHubApi, WsClientMessage, WsServerMessage } from '@shared/stream-protocol'
 import { scanWsChannels } from '@main/common/scan'
-
-/** WsHub 端口，可通过 VITE_WS_PORT 环境变量配置，默认 8765 */
-const WS_HUB_PORT = Env.main.wsPort ? parseInt(Env.main.wsPort, 10) : 8765
 
 // ==================== WsHub ====================
 
@@ -32,15 +30,26 @@ export class WsHub implements WsHubApi {
   /**
    * 初始化消息总线
    *
-   * 1. 启动 WsServer
-   * 2. 自动发现并加载所有 Channel
-   * 3. 调用每个 Channel 的 onInit()
+   * 1. 从 HttpServer 单例获取 http.Server
+   * 2. 创建 WsServer（挂载到 http.Server，共享端口）
+   * 3. 自动发现并加载所有 Channel
+   * 4. 调用每个 Channel 的 onInit()
+   *
+   * 前置条件：HttpServer 必须已经初始化（ReadyApiRegistrationHook 先执行）
    */
-  initialize(port: number = WS_HUB_PORT): void {
+  initialize(): void {
     if (this.server?.isInitialized) return
 
+    const httpServerInstance = HttpServer.getInstance()
+    if (!httpServerInstance) {
+      log.error(
+        '[WsHub] HttpServer not initialized — WsHub requires HttpServer to be started first'
+      )
+      return
+    }
+
     this.server = new WsServer({
-      port,
+      server: httpServerInstance.getHttpServer(),
       onConnect: (ws, meta) => {
         // 通知所有 Channel 有新连接
         for (const channel of this.channels.values()) {
@@ -65,7 +74,7 @@ export class WsHub implements WsHubApi {
     // 自动发现并加载 Channel
     this.discoverChannels()
 
-    log.info(`[WsHub] Initialized on port ${port} with ${this.channels.size} channel(s)`)
+    log.info(`[WsHub] Initialized (shared port) with ${this.channels.size} channel(s)`)
   }
 
   // ==================== Channel 管理 ====================

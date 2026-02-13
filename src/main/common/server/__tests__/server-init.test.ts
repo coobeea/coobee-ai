@@ -2,8 +2,8 @@
  * server/index.ts (initializeServerModules) 单元测试
  *
  * 测试目标：服务器模块初始化逻辑
+ * - HttpServer 始终创建（统一端口）
  * - IPC 服务器始终创建
- * - HTTP 服务器根据环境变量决定是否创建
  * - 异常情况下不会崩溃
  */
 
@@ -22,8 +22,7 @@ const { mockLog, mockEnv, mockIpcServerConstructor, mockHttpServerConstructor } 
     },
     mockEnv: {
       main: {
-        enableHttpServer: 'false' as string | undefined,
-        httpPort: '3100'
+        serverPort: '8765'
       },
       paths: {},
       isDev: true
@@ -34,7 +33,8 @@ const { mockLog, mockEnv, mockIpcServerConstructor, mockHttpServerConstructor } 
 )
 
 vi.mock('@main/common/logger', () => ({
-  log: mockLog
+  log: mockLog,
+  createLogger: () => mockLog
 }))
 
 vi.mock('electron', () => ({
@@ -115,30 +115,9 @@ import { initializeServerModules } from '../index'
 describe('initializeServerModules', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockEnv.main.enableHttpServer = 'false'
   })
 
-  it('总是创建 IpcServer', () => {
-    initializeServerModules()
-
-    expect(mockIpcServerConstructor).toHaveBeenCalledTimes(1)
-    expect(mockLog.info).toHaveBeenCalledWith(
-      expect.stringContaining('[ServerCore] IpcServer instance created')
-    )
-  })
-
-  it('HTTP Server 禁用时不创建 HttpServer', () => {
-    mockEnv.main.enableHttpServer = 'false'
-
-    initializeServerModules()
-
-    expect(mockHttpServerConstructor).not.toHaveBeenCalled()
-    expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('HTTP Server is disabled'))
-  })
-
-  it('VITE_ENABLE_HTTP_SERVER=true 时创建 HttpServer', () => {
-    mockEnv.main.enableHttpServer = 'true'
-
+  it('始终创建 HttpServer（统一端口）', () => {
     initializeServerModules()
 
     expect(mockHttpServerConstructor).toHaveBeenCalledTimes(1)
@@ -147,28 +126,20 @@ describe('initializeServerModules', () => {
     )
   })
 
-  it('VITE_ENABLE_HTTP_SERVER=TRUE（大写）时也创建 HttpServer', () => {
-    mockEnv.main.enableHttpServer = 'TRUE'
-
+  it('始终创建 IpcServer', () => {
     initializeServerModules()
 
-    expect(mockHttpServerConstructor).toHaveBeenCalledTimes(1)
+    expect(mockIpcServerConstructor).toHaveBeenCalledTimes(1)
+    expect(mockLog.info).toHaveBeenCalledWith(
+      expect.stringContaining('[ServerCore] IpcServer instance created')
+    )
   })
 
-  it('enableHttpServer 为 undefined 时不创建 HttpServer', () => {
-    mockEnv.main.enableHttpServer = undefined as unknown as string
-
-    initializeServerModules()
-
-    expect(mockHttpServerConstructor).not.toHaveBeenCalled()
-  })
-
-  it('IpcServer 构造抛出异常时不崩溃，错误被记录', () => {
-    mockIpcServerConstructor.mockImplementationOnce(() => {
-      throw new Error('ipc init failed')
+  it('HttpServer 构造抛出异常时不崩溃，错误被记录', () => {
+    mockHttpServerConstructor.mockImplementationOnce(() => {
+      throw new Error('http init failed')
     })
 
-    // 不应抛出
     expect(() => initializeServerModules()).not.toThrow()
     expect(mockLog.error).toHaveBeenCalledWith(
       expect.stringContaining('[ServerCore] Failed to initialize'),
@@ -176,10 +147,10 @@ describe('initializeServerModules', () => {
     )
   })
 
-  it('HttpServer 构造抛出异常时不崩溃，错误被记录', () => {
-    mockEnv.main.enableHttpServer = 'true'
-    mockHttpServerConstructor.mockImplementationOnce(() => {
-      throw new Error('http init failed')
+  it('IpcServer 构造抛出异常时不崩溃，错误被记录', () => {
+    // HttpServer 成功，IpcServer 失败 → 因为 try-catch 包住整个块，所以都不会崩溃
+    mockIpcServerConstructor.mockImplementationOnce(() => {
+      throw new Error('ipc init failed')
     })
 
     expect(() => initializeServerModules()).not.toThrow()

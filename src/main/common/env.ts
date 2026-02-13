@@ -20,9 +20,8 @@ export const Env = {
     logMaxSize: process.env.VITE_LOG_MAX_SIZE,
     debug: process.env.VITE_DEBUG,
     openDevTools: process.env.VITE_OPEN_DEVTOOLS,
-    enableHttpServer: process.env.VITE_ENABLE_HTTP_SERVER,
-    httpPort: process.env.VITE_HTTP_PORT,
-    wsPort: process.env.VITE_WS_PORT,
+    /** 统一服务端口（HTTP + WebSocket 共享），默认 8765 */
+    serverPort: process.env.VITE_SERVER_PORT,
     /** 模型存储目录（环境变量优先，未设置则用默认路径） */
     modelDir: process.env.VITE_MODEL_DIR
   },

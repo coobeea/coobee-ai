@@ -3,8 +3,11 @@
  *
  * 提供 WebSocket 连接管理、心跳检测、客户端追踪、消息收发。
  * 业务逻辑通过 onMessage 回调注入，不依赖任何业务模块。
+ *
+ * 挂载方式：附加到已有 http.Server（通过 HTTP Upgrade 共享端口）。
  */
 
+import type { Server as HttpServer } from 'node:http'
 import { WebSocketServer, WebSocket } from 'ws'
 import { log } from '@main/common/logger'
 
@@ -32,8 +35,8 @@ export type WsConnectionHandler = (ws: WebSocket, meta: WsClientMeta) => void
 
 /** WsServer 配置 */
 export interface WsServerOptions {
-  /** 监听端口 */
-  port: number
+  /** 附加到的 HTTP Server（通过 HTTP Upgrade 共享端口） */
+  server: HttpServer
   /** 心跳间隔（毫秒），默认 30000 */
   heartbeatInterval?: number
   /** 客户端消息处理 */
@@ -62,12 +65,12 @@ export class WsServer {
     this.onDisconnect = options.onDisconnect
   }
 
-  /** 启动服务 */
+  /** 启动服务（挂载到已有 HTTP Server） */
   start(): void {
     if (this.initialized) return
 
-    this.wss = new WebSocketServer({ port: this.options.port })
-    log.info(`[WsServer] Started on port ${this.options.port}`)
+    this.wss = new WebSocketServer({ server: this.options.server })
+    log.info('[WsServer] Attached to HTTP server (shared port)')
 
     this.wss.on('connection', (ws) => {
       const meta: WsClientMeta = { isAlive: true, heartbeatTimer: null }

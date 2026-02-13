@@ -1,3 +1,4 @@
+import http from 'node:http'
 import path from 'node:path'
 
 import { is } from '@electron-toolkit/utils'
@@ -19,7 +20,8 @@ import handlerAdapter from './handlerAdapter'
 import { discoverApiModules } from './loader'
 import { StreamChannel, streamChannelManager } from './streamChannelManager'
 
-const HTTP_PORT = Env.main.httpPort ? parseInt(Env.main.httpPort, 10) : 3100
+/** 统一服务端口（HTTP + WebSocket 共享） */
+const SERVER_PORT = Env.main.serverPort ? parseInt(Env.main.serverPort, 10) : 8765
 
 /**
  * 解析 GET 请求的查询参数值
@@ -44,11 +46,18 @@ function parseGetQueryParam(argValue: string): unknown {
 }
 
 export class HttpServer {
+  private static _instance: HttpServer | null = null
+
   private app: Koa
   private router: Router
+  private httpServer!: http.Server
   private registeredRoutes = new Set<string>()
 
   constructor() {
+    if (HttpServer._instance) {
+      throw new Error('[HttpServer] Already initialized (singleton)')
+    }
+
     this.app = new Koa()
     this.router = new Router()
 
@@ -56,6 +65,18 @@ export class HttpServer {
     this._setupMiddleware()
     this._registerHttpRoutes()
     this._startServer()
+
+    HttpServer._instance = this
+  }
+
+  /** 获取单例 */
+  static getInstance(): HttpServer | null {
+    return HttpServer._instance
+  }
+
+  /** 获取底层 http.Server（供 WsServer 挂载 WebSocket） */
+  getHttpServer(): http.Server {
+    return this.httpServer
   }
 
   private _setupMiddleware(): void {
@@ -648,8 +669,10 @@ export class HttpServer {
       log.error('[HttpServer] Server error:', err, ctx)
     })
 
-    this.app.listen(HTTP_PORT, '127.0.0.1', () => {
-      log.info(`[HttpServer] Server listening on http://127.0.0.1:${HTTP_PORT}`)
+    // 显式创建 http.Server，供 WsServer 挂载 WebSocket（共享端口）
+    this.httpServer = http.createServer(this.app.callback())
+    this.httpServer.listen(SERVER_PORT, '127.0.0.1', () => {
+      log.info(`[HttpServer] Listening on http://127.0.0.1:${SERVER_PORT} (HTTP + WebSocket)`)
     })
   }
 }

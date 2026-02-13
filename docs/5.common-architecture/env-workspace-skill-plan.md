@@ -265,7 +265,7 @@ private async injectEnv(sessionId: string, builder: AgentBuilder): Promise<void>
 | **路径** | `memoryDir`                  | **是** | 读写记忆                 |
 | **路径** | `userData`、`installDir`     | **否** | 应用内部数据             |
 | **配置** | `isDev`、`platform`          | **是** | 行为分支、跨平台命令     |
-| **配置** | `httpPort`、`wsPort`         | **否** | 服务端口不暴露           |
+| **配置** | `serverPort`                 | **否** | 服务端口不暴露           |
 | **凭据** | API Key 等                   | **否** | 绝对不暴露，由主进程代理 |
 
 ### 9.2 安全边界

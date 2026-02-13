@@ -246,9 +246,15 @@ Worker 状态变更时广播给所有客户端（不限 session）。
   │
   ├── LifecyclePhase.READY
   │     │
+  │     ├── ReadyApiRegistrationHook (priority: 35)
+  │     │     └── initializeServerModules()
+  │     │           ├── new HttpServer() → 创建 http.Server (统一端口 8765)
+  │     │           └── new IpcServer()
+  │     │
   │     ├── ReadyWsHubHook (priority: 40)
   │     │     └── wsHub.initialize()
-  │     │           ├── 创建 WsServer (port 8765)
+  │     │           ├── HttpServer.getInstance().getHttpServer()
+  │     │           ├── 创建 WsServer (挂载到 http.Server，共享端口)
   │     │           ├── WsServer.start()
   │     │           └── discoverChannels()
   │     │                 ├── scanWsChannels()
@@ -257,7 +263,6 @@ Worker 状态变更时广播给所有客户端（不限 session）。
   │     │                 └── WorkerChannel.onInit(hub)
   │     │                       └── 注册 RuntimeManager worker:status 监听
   │     │
-  │     ├── IPC 注册 (priority: 50)
   │     └── ...
   │
 应用运行中 → 接收/分发 WebSocket 消息
@@ -307,14 +312,14 @@ src/renderer/src/plugins/wsSetup.ts
 
 **核心能力：**
 
-| 功能       | 说明                                           |
-| ---------- | ---------------------------------------------- |
-| 自动连接   | `install()` 时立即连接 `ws://localhost:8765`   |
-| 自动重连   | 指数退避（2s → 4s → 8s → 16s → 30s），无限重试 |
-| 前缀路由   | `onPrefix(prefix, handler)` 注册领域消息处理器 |
-| 连接回调   | `onConnect(handler)` 连接/重连成功时通知       |
-| 通用发送   | `send(msg)` 发送任意消息                       |
-| 响应式状态 | `connectionState`（Vue ref）供 UI 层绑定       |
+| 功能       | 说明                                                       |
+| ---------- | ---------------------------------------------------------- |
+| 自动连接   | `install()` 时立即连接 `ws://localhost:{VITE_SERVER_PORT}` |
+| 自动重连   | 指数退避（2s → 4s → 8s → 16s → 30s），无限重试             |
+| 前缀路由   | `onPrefix(prefix, handler)` 注册领域消息处理器             |
+| 连接回调   | `onConnect(handler)` 连接/重连成功时通知                   |
+| 通用发送   | `send(msg)` 发送任意消息                                   |
+| 响应式状态 | `connectionState`（Vue ref）供 UI 层绑定                   |
 
 **导出 API（仅通用方法）：**
 
