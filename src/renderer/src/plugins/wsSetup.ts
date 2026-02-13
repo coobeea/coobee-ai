@@ -4,6 +4,11 @@
  * 职责：管理 WebSocket 连接生命周期（连接、重连、订阅、断开）。
  * 不负责业务数据处理 —— 收到的消息通过 handler 回调分发给消费方（如 chatStore）。
  *
+ * 消息类型采用 prefix:action 前缀约定：
+ *   - stream:*  — AI 流式频道
+ *   - worker:*  — Worker 管理频道
+ *   - 无前缀    — 内置（ping/pong/error）
+ *
  * 参照 ipcSetup 的模式：
  * - 幂等（重复调用不会创建多余连接）
  * - 通过 Vue Plugin API 在应用启动时自动初始化
@@ -94,7 +99,7 @@ function connect(): void {
       }
 
       // 连接后请求 Worker 状态列表
-      sendRaw({ type: 'get_workers' })
+      sendRaw({ type: 'worker:list' })
     }
 
     ws.onmessage = (event) => {
@@ -199,13 +204,14 @@ function unsubscribe(): void {
 
 function handleServerMessage(msg: WsServerMessage): void {
   switch (msg.type) {
-    case 'message':
+    // ---- stream 频道 ----
+    case 'stream:message':
       if (messageHandler && msg.data) {
         messageHandler(msg.data)
       }
       break
 
-    case 'resend_batch':
+    case 'stream:resend_batch':
       if (messageHandler && Array.isArray(msg.data)) {
         for (const m of msg.data) {
           messageHandler(m)
@@ -213,13 +219,12 @@ function handleServerMessage(msg: WsServerMessage): void {
       }
       break
 
-    case 'error':
-      console.error('[wsSetup] Server error:', msg.data?.error)
-      lastError.value = msg.data?.error || '未知服务端错误'
-      getLog()?.error('system', `WebSocket 服务端错误: ${msg.data?.error || '未知'}`)
+    case 'stream:latest_sequence':
+      // 可选：用于断线重连对齐
       break
 
-    case 'worker_status':
+    // ---- worker 频道 ----
+    case 'worker:status':
       // 单个 Worker 状态变更
       if (msg.data) {
         for (const handler of workerStatusHandlers) {
@@ -228,7 +233,7 @@ function handleServerMessage(msg: WsServerMessage): void {
       }
       break
 
-    case 'workers_list':
+    case 'worker:list':
       // Worker 列表（连接后一次性返回所有 Worker 状态）
       if (Array.isArray(msg.data)) {
         for (const info of msg.data) {
@@ -239,12 +244,15 @@ function handleServerMessage(msg: WsServerMessage): void {
       }
       break
 
-    case 'pong':
-      // 心跳响应，忽略
+    // ---- 内置 ----
+    case 'error':
+      console.error('[wsSetup] Server error:', msg.data?.error)
+      lastError.value = msg.data?.error || '未知服务端错误'
+      getLog()?.error('system', `WebSocket 服务端错误: ${msg.data?.error || '未知'}`)
       break
 
-    case 'latest_sequence':
-      // 可选：用于断线重连对齐
+    case 'pong':
+      // 心跳响应，忽略
       break
   }
 }
@@ -257,7 +265,7 @@ function sendRaw(msg: Record<string, unknown>): void {
 
 function sendSubscribe(sessionId: string): void {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'subscribe', sessionId }))
+    ws.send(JSON.stringify({ type: 'stream:subscribe', sessionId }))
     console.log(`[wsSetup] Subscribed to session: ${sessionId}`)
     getLog()?.info('system', `WebSocket 订阅会话: ${sessionId}`)
   }
@@ -265,7 +273,7 @@ function sendSubscribe(sessionId: string): void {
 
 function sendUnsubscribe(sessionId: string): void {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'unsubscribe', sessionId }))
+    ws.send(JSON.stringify({ type: 'stream:unsubscribe', sessionId }))
     console.log(`[wsSetup] Unsubscribed from session: ${sessionId}`)
     getLog()?.info('system', `WebSocket 取消订阅: ${sessionId}`)
   }
@@ -333,11 +341,11 @@ export const wsService = {
   /** 注册 Worker 状态监听 */
   onWorkerStatus,
   /** 启动指定 Worker */
-  startWorker: (name: string) => sendRaw({ type: 'start_worker', workerName: name }),
+  startWorker: (name: string) => sendRaw({ type: 'worker:start', workerName: name }),
   /** 停止指定 Worker */
-  stopWorker: (name: string) => sendRaw({ type: 'stop_worker', workerName: name }),
+  stopWorker: (name: string) => sendRaw({ type: 'worker:stop', workerName: name }),
   /** 主动请求 Worker 状态列表 */
-  requestWorkers: () => sendRaw({ type: 'get_workers' })
+  requestWorkers: () => sendRaw({ type: 'worker:list' })
 }
 
 // ==================== Vue Plugin ====================

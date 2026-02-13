@@ -11,13 +11,9 @@
  *    ↓         ↓         ↓
  * Consumer1  Consumer2  Consumer3
  * (持久化)   (推送)     (监控)
+ *
+ * 注：WebSocket 推送已迁移至 WsHub + StreamChannel（src/main/channels/StreamChannel.ts）
  */
 
 export { StreamStore, streamStore } from './StreamStore'
-export {
-  WebSocketBroadcaster,
-  webSocketBroadcaster,
-  type ClientMessage,
-  type ServerMessage
-} from './WebSocketBroadcaster'
 export { StreamMonitor, streamMonitor, type SessionStats } from './StreamMonitor'

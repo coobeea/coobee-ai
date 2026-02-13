@@ -8,7 +8,7 @@
  *
  * 消费者：
  * - StreamStore (持久化到数据库)
- * - WebSocketBroadcaster (推送到前端)
+ * - StreamChannel (WebSocket 推送，已迁移至 src/main/channels/StreamChannel.ts)
  * - StreamMonitor (监控统计)
  */
 
@@ -23,11 +23,6 @@ export {
   // 持久化消费者
   StreamStore,
   streamStore,
-  // WebSocket 消费者
-  WebSocketBroadcaster,
-  webSocketBroadcaster,
-  type ClientMessage,
-  type ServerMessage,
   // 监控消费者
   StreamMonitor,
   streamMonitor,

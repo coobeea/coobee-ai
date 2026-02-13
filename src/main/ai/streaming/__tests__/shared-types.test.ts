@@ -110,9 +110,9 @@ describe('shared/stream-protocol 类型一致性', () => {
   })
 
   describe('WsServerMessage 消息类型', () => {
-    it('message 类型包含 StreamMessage', () => {
+    it('stream:message 类型包含 StreamMessage', () => {
       const serverMsg: WsServerMessage = {
-        type: 'message',
+        type: 'stream:message',
         data: {
           id: '1',
           sessionId: 's1',
@@ -124,7 +124,7 @@ describe('shared/stream-protocol 类型一致性', () => {
         }
       }
 
-      expect(serverMsg.type).toBe('message')
+      expect(serverMsg.type).toBe('stream:message')
       expect(serverMsg.data.content).toBe('hello')
     })
 
@@ -140,12 +140,12 @@ describe('shared/stream-protocol 类型一致性', () => {
   })
 
   describe('WsClientMessage 消息类型', () => {
-    it('支持 subscribe 和 unsubscribe', () => {
-      const sub: WsClientMessage = { type: 'subscribe', sessionId: 's1' }
-      const unsub: WsClientMessage = { type: 'unsubscribe', sessionId: 's1' }
+    it('支持 stream:subscribe 和 stream:unsubscribe', () => {
+      const sub: WsClientMessage = { type: 'stream:subscribe', sessionId: 's1' }
+      const unsub: WsClientMessage = { type: 'stream:unsubscribe', sessionId: 's1' }
 
-      expect(sub.type).toBe('subscribe')
-      expect(unsub.type).toBe('unsubscribe')
+      expect(sub.type).toBe('stream:subscribe')
+      expect(unsub.type).toBe('stream:unsubscribe')
     })
   })
 

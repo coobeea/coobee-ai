@@ -39,7 +39,7 @@ export default class AgentChatApi {
   /**
    * 发送消息并启动流式处理（推送模式）
    *
-   * 流式事件通过 StreamEmitter → EventBus → WebSocketBroadcaster 推送到前端。
+   * 流式事件通过 StreamEmitter → EventBus → StreamChannel → WsHub 推送到前端。
    */
   @Post()
   async chat(

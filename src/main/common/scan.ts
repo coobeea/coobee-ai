@@ -122,6 +122,31 @@ export function scanEventHandlers(): DiscoveredModule[] {
 }
 
 /**
+ * 扫描 WebSocket Channel 文件
+ * 扫描 @main/channels 目录下所有 *Channel.ts 文件
+ *
+ * Channel 命名规范：
+ * - 文件名以 Channel.ts 结尾（如 StreamChannel.ts、WorkerChannel.ts）
+ * - 必须导出一个实现 WsChannel 接口的对象
+ * - prefix 字段用于消息路由（如 'stream'、'worker'）
+ */
+export function scanWsChannels(): DiscoveredModule[] {
+  log.info('[Scan] 开始扫描 WebSocket Channel 文件...')
+
+  const modules = import.meta.glob('@main/channels/**/*Channel.ts', { eager: true })
+  const totalFound = Object.keys(modules).length
+
+  const filteredModules = filterModules(modules, ['BaseChannel'])
+  const filteredCount = filteredModules.length
+
+  log.info(
+    `[Scan] WebSocket Channel 扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`
+  )
+
+  return filteredModules
+}
+
+/**
  * 通用过滤函数 - 过滤掉指定的文件
  * @param modules 扫描结果对象 (使用 eager: true 时，值直接是模块内容)
  * @param excludePatterns 要排除的文件名模式数组

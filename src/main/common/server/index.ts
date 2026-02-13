@@ -49,3 +49,4 @@ export type {
   WsMessageHandler,
   WsConnectionHandler
 } from './wsServer'
+export { WsHub, wsHub } from './WsHub'
