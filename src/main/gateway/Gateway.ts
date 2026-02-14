@@ -284,6 +284,43 @@ export class Gateway implements GatewayApi {
     return this.server?.clientCount ?? 0
   }
 
+  // ==================== 动态方法注册（Extension 热插拔用） ====================
+
+  /** 受保护的核心命名空间 */
+  private static readonly PROTECTED_NAMESPACES = ['chat', 'stream', 'worker', 'hitl', 'system']
+
+  /**
+   * 动态注册单个方法（Extension 用）
+   *
+   * @throws 核心命名空间（chat/stream/worker/hitl/system）不可覆盖
+   */
+  registerMethod(fullName: string, handler: MethodHandler): void {
+    const namespace = fullName.split('.')[0]
+    if (Gateway.PROTECTED_NAMESPACES.includes(namespace)) {
+      throw new Error(
+        `[Gateway] Cannot register "${fullName}": namespace "${namespace}" is protected`
+      )
+    }
+    if (this.methods.has(fullName)) {
+      log.warn(`[Gateway] registerMethod: overwriting existing "${fullName}"`)
+    }
+    this.methods.set(fullName, handler)
+    log.info(`[Gateway] Dynamically registered method: ${fullName}`)
+  }
+
+  /**
+   * 动态注销方法（Extension 热插拔用）
+   *
+   * @returns 是否存在并已移除
+   */
+  unregisterMethod(fullName: string): boolean {
+    const existed = this.methods.delete(fullName)
+    if (existed) {
+      log.info(`[Gateway] Dynamically unregistered method: ${fullName}`)
+    }
+    return existed
+  }
+
   // ==================== 生命周期 ====================
 
   /** 关闭 Gateway */

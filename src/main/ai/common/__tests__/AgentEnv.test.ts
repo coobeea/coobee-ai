@@ -35,6 +35,7 @@ const mockEnv = {
     configDir: '/mock/.home/config'
   },
   getSkillSearchPaths: vi.fn(),
+  getExtensionSearchPaths: vi.fn(),
   getAgentWorkspaceDir: vi.fn()
 }
 
@@ -55,7 +56,9 @@ describe('AgentEnv', () => {
   describe('buildAgentEnv', () => {
     it('从 Env 构建包含所有必要字段的安全子集', async () => {
       const mockSkillPaths = ['/mock/skills', '/mock/.home/skills', '/mock/workspace/skills']
+      const mockExtPaths = ['/mock/extensions', '/mock/.home/extensions']
       mockEnv.getSkillSearchPaths.mockResolvedValue(mockSkillPaths)
+      mockEnv.getExtensionSearchPaths.mockResolvedValue(mockExtPaths)
 
       const env = await buildAgentEnv('/mock/workspace')
 
@@ -68,16 +71,19 @@ describe('AgentEnv', () => {
         skillPaths: mockSkillPaths,
         builtinSkillsDir: '/mock/skills',
         userSkillsDir: '/mock/.home/skills',
-        memoryDir: '/mock/.home/memory'
+        memoryDir: '/mock/.home/memory',
+        extensionPaths: mockExtPaths
       })
     })
 
     it('调用 getSkillSearchPaths 并传入 workspace', async () => {
       mockEnv.getSkillSearchPaths.mockResolvedValue([])
+      mockEnv.getExtensionSearchPaths.mockResolvedValue([])
 
       await buildAgentEnv('/my/workspace')
 
       expect(mockEnv.getSkillSearchPaths).toHaveBeenCalledWith('/my/workspace')
+      expect(mockEnv.getExtensionSearchPaths).toHaveBeenCalledWith('/my/workspace')
     })
   })
 
@@ -97,6 +103,7 @@ describe('AgentEnv', () => {
       ],
       builtinSkillsDir: '/builtin/skills',
       userSkillsDir: '/home/test/skills',
+      extensionPaths: ['/builtin/extensions', '/home/test/extensions'],
       memoryDir: '/home/test/memory'
     }
 

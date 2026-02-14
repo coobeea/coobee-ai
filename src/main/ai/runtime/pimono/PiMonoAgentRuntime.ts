@@ -913,6 +913,38 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             onUpdate?: (partialResult: any) => void
           ) => {
+            let typedParams = params
+            const toolStartTime = Date.now()
+
+            // === Extension Hook: before_tool_call ===
+            try {
+              const { ExtensionManager } = await import('../../../extension')
+              const runner = ExtensionManager.getHookRunner()
+              if (runner) {
+                const hookResult = await runner.runModifyingHook('before_tool_call', {
+                  sessionId: sandboxContext.sessionId || '',
+                  toolName: def.name,
+                  params: typedParams
+                })
+                if (hookResult) {
+                  if (hookResult.block) {
+                    const reason = hookResult.blockReason || 'no reason'
+                    return {
+                      content: [
+                        { type: 'text', text: `Error: Tool blocked by extension — ${reason}` }
+                      ],
+                      details: { name: def.name }
+                    }
+                  }
+                  if (hookResult.params) {
+                    typedParams = { ...typedParams, ...hookResult.params }
+                  }
+                }
+              }
+            } catch {
+              // Extension hook 失败不阻断工具执行
+            }
+
             // 工具策略检查：sandbox 级别拦截
             const { isToolAllowed, formatToolBlockedMessage } = await import('../../sandbox')
             if (!isToolAllowed(def.name, sandboxContext.toolPolicy)) {
@@ -927,7 +959,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
               }
             }
 
-            const gen = def.execute(params, signal, sandboxContext)
+            const gen = def.execute(typedParams, signal, sandboxContext)
             let iterResult = await gen.next()
 
             // 消费 AsyncGenerator 的增量输出
@@ -949,9 +981,37 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
 
             // 最终结果
             const toolResult = iterResult.value
-            const text =
+            let text =
               toolResult.llmContent ||
               (toolResult.success ? 'Success' : `Error: ${toolResult.error?.message || 'unknown'}`)
+
+            // === Extension Hook: after_tool_call (void) + tool_result_persist (modifying) ===
+            try {
+              const { ExtensionManager } = await import('../../../extension')
+              const runner = ExtensionManager.getHookRunner()
+              if (runner) {
+                const toolDuration = Date.now() - toolStartTime
+                await runner.runVoidHook('after_tool_call', {
+                  sessionId: sandboxContext.sessionId || '',
+                  toolName: def.name,
+                  params: typedParams,
+                  result: text,
+                  durationMs: toolDuration
+                })
+
+                const persistResult = await runner.runModifyingHook('tool_result_persist', {
+                  sessionId: sandboxContext.sessionId || '',
+                  toolName: def.name,
+                  result: text
+                })
+                if (persistResult?.result) {
+                  text = persistResult.result
+                }
+              }
+            } catch {
+              // Extension hook 失败不阻断
+            }
+
             return { content: [{ type: 'text', text }], details: { name: def.name } }
           }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

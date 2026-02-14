@@ -85,7 +85,16 @@ vi.mock('@main/common/env', () => ({
       userData: '/tmp/test-userData'
     },
     getAgentWorkspaceDir: async () => '/tmp/test-home/workspaces/test-session',
-    getSkillSearchPaths: async () => ['/tmp/test-skills', '/tmp/test-home/skills']
+    getSkillSearchPaths: async () => ['/tmp/test-skills', '/tmp/test-home/skills'],
+    getExtensionSearchPaths: async () => []
+  }
+}))
+
+// mock Extension（避免加载 extension 模块失败）
+vi.mock('../../../extension', () => ({
+  ExtensionManager: {
+    getHookRunner: () => null,
+    getRegistry: () => null
   }
 }))
 
@@ -100,7 +109,8 @@ vi.mock('../../common/AgentEnv', () => ({
     skillPaths: [],
     builtinSkillsDir: '/tmp/test-skills',
     userSkillsDir: '/tmp/test-home/skills',
-    memoryDir: '/tmp/test-home/memory'
+    memoryDir: '/tmp/test-home/memory',
+    extensionPaths: []
   }),
   formatRuntimePaths: () => '<runtime_paths>mock</runtime_paths>',
   loadRuntimeEnvSkill: async () => null

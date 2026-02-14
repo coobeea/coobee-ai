@@ -38,6 +38,8 @@ export interface AgentEnv {
   userSkillsDir: string
   /** 记忆总根目录 */
   memoryDir: string
+  /** Extension 搜索路径（按优先级从低到高） */
+  extensionPaths: string[]
 }
 
 // ==================== 构建函数 ====================
@@ -52,6 +54,7 @@ export async function buildAgentEnv(workspace: string): Promise<AgentEnv> {
   const { Env } = await import('@main/common/env')
 
   const skillPaths = await Env.getSkillSearchPaths(workspace)
+  const extensionPaths = await Env.getExtensionSearchPaths(workspace)
 
   return {
     workspace,
@@ -62,7 +65,8 @@ export async function buildAgentEnv(workspace: string): Promise<AgentEnv> {
     skillPaths,
     builtinSkillsDir: Env.paths.builtinSkillsDir,
     userSkillsDir: Env.paths.userSkillsDir,
-    memoryDir: Env.paths.memoryDir
+    memoryDir: Env.paths.memoryDir,
+    extensionPaths
   }
 }
 

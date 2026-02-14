@@ -140,6 +140,9 @@ importers:
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
+      jiti:
+        specifier: ^2.6.1
+        version: 2.6.1
       jsonrepair:
         specifier: ^3.13.2
         version: 3.13.2

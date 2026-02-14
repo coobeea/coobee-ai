@@ -50,4 +50,13 @@ export class ToolRegistry {
   registerAll(tools: ToolDefinition[]): void {
     tools.forEach((tool) => this.register(tool))
   }
+
+  /**
+   * 注销工具（热插拔用）
+   *
+   * @returns 是否存在并已移除
+   */
+  unregister(name: string): boolean {
+    return this.tools.delete(name)
+  }
 }

@@ -114,6 +114,28 @@ export const Env = {
        */
       userSkillsDir: path.join(_userHome, 'skills'),
 
+      // === Extension 目录（Extensions）===
+      /**
+       * 内置 Extension 目录（只读，随应用分发）
+       *
+       * @example 开发: <项目>/extensions | 生产: resources/extensions
+       */
+      builtinExtensionsDir: is.dev
+        ? path.join(app.getAppPath(), 'extensions')
+        : path.join(process.resourcesPath, 'extensions'),
+
+      /**
+       * 用户 Extension 目录（可读写，用户自行安装/编写）
+       *
+       * Extension 多级合并优先级（后者覆盖前者同 ID）：
+       *   1. builtinExtensionsDir  — 内置（最低）
+       *   2. userExtensionsDir     — 用户级
+       *   3. {workspace}/extensions — 工作空间级（最高，仅当前 Agent 可见）
+       *
+       * @example 开发: <项目>/.home/extensions | 生产: ~/.coobee-ai/extensions
+       */
+      userExtensionsDir: path.join(_userHome, 'extensions'),
+
       // === Worker 与模型（Workers & Models）===
 
       /**
@@ -283,6 +305,29 @@ export const Env = {
       }
     }
     return skillPaths
+  },
+
+  /**
+   * 获取 Extension 搜索路径列表（按优先级从低到高）
+   *
+   * 与 Skill 同构的三级目录：
+   *   1. builtinExtensionsDir  — 内置（最低优先级）
+   *   2. userExtensionsDir     — 用户级
+   *   3. {workspace}/extensions — 工作空间级（最高优先级）
+   *
+   * @param workspace 当前工作空间路径（可选）
+   */
+  async getExtensionSearchPaths(workspace?: string): Promise<string[]> {
+    const extensionPaths = [this.paths.builtinExtensionsDir, this.paths.userExtensionsDir]
+    if (workspace) {
+      extensionPaths.push(path.join(workspace, 'extensions'))
+    }
+    for (const dir of extensionPaths) {
+      if (!fs.existsSync(dir)) {
+        await mkdirp(dir)
+      }
+    }
+    return extensionPaths
   },
 
   // ==================== 应用运行时 ====================

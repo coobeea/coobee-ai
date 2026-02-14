@@ -743,6 +743,9 @@ class AgentExecutor {
       const workspace = await this.injectEnv(sessionId, builder)
       const eventsFile = this.getEventsFile(workspace)
 
+      // === Extension Hooks: message_received + session_start + before_agent_start ===
+      await this.runExtensionHooks(sessionId, message, builder)
+
       // 1. 创建 Runtime（Builder 内部调用 initialize）
       runtime = await builder.sessionId(sessionId).build()
       const emitter = this.createEmitter(sessionId, runtime)
@@ -796,6 +799,10 @@ class AgentExecutor {
       }
 
       const duration = Date.now() - startTime
+
+      // === Extension Hooks: agent_end + session_end ===
+      await this.runExtensionEndHooks(sessionId, result, duration)
+
       if (result.error) {
         log.error(
           `[AgentExecutor] Failed: sessionId=${sessionId}, duration=${duration}ms, error=${result.error}`
@@ -824,6 +831,75 @@ class AgentExecutor {
         }
       }
       runtime = null // 确保 GC 可回收
+    }
+  }
+
+  // ========== Extension Hook 辅助方法 ==========
+
+  /**
+   * 执行 Extension 前置 Hook
+   * message_received → session_start → before_agent_start
+   */
+  private async runExtensionHooks(
+    sessionId: string,
+    message: string,
+    builder: AgentBuilder
+  ): Promise<void> {
+    try {
+      const { ExtensionManager } = await import('../extension')
+      const runner = ExtensionManager.getHookRunner()
+      if (!runner) return
+
+      // message_received (void)
+      await runner.runVoidHook('message_received', { sessionId, message })
+
+      // session_start (void)
+      await runner.runVoidHook('session_start', { sessionId })
+
+      // before_agent_start (modifying)
+      const result = await runner.runModifyingHook('before_agent_start', {
+        sessionId,
+        prompt: message
+      })
+      if (result) {
+        if (result.prependContext) {
+          builder.appendInstructions(result.prependContext)
+        }
+        if (result.replaceSystemPrompt) {
+          builder.instructions(result.replaceSystemPrompt)
+        }
+      }
+    } catch (err) {
+      log.warn('[AgentExecutor] Extension hooks (start) failed:', err)
+    }
+  }
+
+  /**
+   * 执行 Extension 后置 Hook
+   * agent_end → session_end
+   */
+  private async runExtensionEndHooks(
+    sessionId: string,
+    result: ExecutionResult,
+    durationMs: number
+  ): Promise<void> {
+    try {
+      const { ExtensionManager } = await import('../extension')
+      const runner = ExtensionManager.getHookRunner()
+      if (!runner) return
+
+      // agent_end (void)
+      await runner.runVoidHook('agent_end', {
+        sessionId,
+        success: !result.error,
+        output: result.output,
+        durationMs
+      })
+
+      // session_end (void)
+      await runner.runVoidHook('session_end', { sessionId })
+    } catch (err) {
+      log.warn('[AgentExecutor] Extension hooks (end) failed:', err)
     }
   }
 }
