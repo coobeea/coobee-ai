@@ -835,18 +835,69 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
   /**
    * 将统一 ToolDefinition 转换为 @openai/agents SDK 原生 Tool
    *
-   * JSON Schema parameters 直传，execute 包装为返回 string。
+   * 核心映射：
+   *   - needUserConfirm → SDK needsApproval（HITL 审批触发）
+   *   - execute 前检查工具策略（isToolAllowed，sandbox 级别拦截）
+   *   - yield 的 ToolStreamUpdate 通过 StreamEmitter 发送 tool:delta 事件给前端
+   *   - return 的 ToolResult.llmContent 作为工具返回值发送回 LLM
+   *   - 自动注入 SandboxContext（路径边界、工具策略、Docker 等）
    */
   private convertTools(defs: ToolDefinition[]): Tool[] {
     if (!defs.length) return []
+
+    // 构建沙箱上下文（path-only 模式，Docker 由上层 Executor 控制）
+    const sandboxContext: import('../../sandbox/types').SandboxContext = {
+      mode: 'path-only',
+      workspaceRoot: this.options.workspaceRoot || process.cwd(),
+      toolPolicy: { allow: [], deny: [] },
+      sessionId: this.sessionId
+    }
+
     return defs.map((def) =>
       tool({
         name: def.name,
         description: def.description,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         parameters: def.parameters as any,
+        // HITL: 将工具定义的 needUserConfirm 映射为 SDK 的 needsApproval
+        // needsApproval=true → SDK 自动触发 tool_approval_requested 事件
+        needsApproval: def.needUserConfirm ?? false,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        execute: async (params: any) => def.execute(params as Record<string, unknown>)
+        execute: async (params: any) => {
+          const typedParams = params as Record<string, unknown>
+          // 工具策略检查：sandbox 级别拦截
+          const { isToolAllowed, formatToolBlockedMessage } = await import('../../sandbox')
+          if (!isToolAllowed(def.name, sandboxContext.toolPolicy)) {
+            const msg = formatToolBlockedMessage(
+              def.name,
+              sandboxContext.toolPolicy as import('../../sandbox/types').ResolvedToolPolicy
+            )
+            log.warn(`[Tool Policy] ${msg}`)
+            return `Error: ${msg}`
+          }
+
+          const gen = def.execute(typedParams, undefined, sandboxContext)
+          let iterResult = await gen.next()
+
+          // 消费 AsyncGenerator 的增量输出
+          while (!iterResult.done) {
+            const update = iterResult.value
+            // 桥接到 StreamChunk: tool:delta → forward 自动映射为 StreamMessage
+            this.streamEmitter?.forward({
+              type: 'tool:delta',
+              content: update.content,
+              data: { delta: update.content }
+            })
+            iterResult = await gen.next()
+          }
+
+          // 最终结果
+          const toolResult = iterResult.value
+          return (
+            toolResult.llmContent ||
+            (toolResult.success ? 'Success' : `Error: ${toolResult.error?.message || 'unknown'}`)
+          )
+        }
       })
     )
   }

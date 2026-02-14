@@ -10,25 +10,24 @@
 // ========== 统一工具定义 ==========
 
 /**
- * 统一工具定义（SDK 无关）
+ * 从 tools/types.ts 统一导出工具类型
  *
- * 在 Runtime 层提供跨 SDK 的工具定义格式：
- *   - parameters 使用 JSON Schema（TypeBox 输出即 JSON Schema，Zod 可转换）
- *   - execute 返回纯 string，各 SDK 适配层自行包装为原生返回值
- *
- * 各 Runtime 内部通过 convertTools() 将 ToolDefinition 转为 SDK 原生格式。
- * 高级用户仍可使用 SDK 原生的工具入口（各 Runtime 的 sdkTools）。
+ * 工具类型的权威来源在 src/main/ai/tools/types.ts，
+ * 此处 re-export 保持 Runtime 层的向后兼容。
  */
-export interface ToolDefinition {
-  /** 工具名称（唯一标识） */
-  name: string
-  /** 工具描述（LLM 用于决策是否调用） */
-  description: string
-  /** 参数 JSON Schema（TypeBox / Zod-to-JSON-Schema 输出） */
-  parameters: Record<string, unknown>
-  /** 执行函数（返回纯文本结果） */
-  execute: (params: Record<string, unknown>) => Promise<string>
-}
+import type { ToolDefinition as _ToolDefinition } from '../tools/types'
+export type {
+  ToolKind,
+  ToolError,
+  ToolResult,
+  ToolResultMetadata,
+  ToolStreamUpdate,
+  ToolExecutionContext,
+  ToolDefinition
+} from '../tools/types'
+
+// 文件内使用的别名（re-export 的类型在同文件不可直接引用）
+type ToolDefinition = _ToolDefinition
 
 // ========== 统一技能定义 ==========
 
@@ -104,6 +103,14 @@ export interface AgentRuntimeOptions {
    * 由 AgentExecutor.injectEnv() 自动设置为 {workspace}/contexts/
    */
   contextDir?: string
+  /**
+   * 工作区根目录
+   *
+   * 所有文件工具（read/write/edit）的路径边界，bash 命令的工作目录。
+   * 由 AgentExecutor.injectEnv() 自动设置为 Agent 的 workspace 目录。
+   * 不传则降级为 process.cwd()。
+   */
+  workspaceRoot?: string
   /**
    * 统一工具列表（SDK 无关）
    *

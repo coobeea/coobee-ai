@@ -1,11 +1,14 @@
 /**
  * 工具注册表
+ *
+ * 管理所有可用工具（内置 + 扩展），基于统一的 ToolDefinition 格式。
+ * 两个 Runtime（OpenAI / PiMono）通过 getAll() 获取工具列表后各自转换为 SDK 原生格式。
  */
-import type { Tool } from '../types'
+import type { ToolDefinition } from './types'
 
 export class ToolRegistry {
   private static instance: ToolRegistry
-  private tools: Map<string, Tool> = new Map()
+  private tools: Map<string, ToolDefinition> = new Map()
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   private constructor() {}
@@ -20,7 +23,7 @@ export class ToolRegistry {
   /**
    * 注册工具
    */
-  register(tool: Tool): void {
+  register(tool: ToolDefinition): void {
     if (this.tools.has(tool.name)) {
       throw new Error(`Tool ${tool.name} already registered`)
     }
@@ -30,21 +33,21 @@ export class ToolRegistry {
   /**
    * 获取工具
    */
-  get(name: string): Tool | undefined {
+  get(name: string): ToolDefinition | undefined {
     return this.tools.get(name)
   }
 
   /**
    * 获取所有工具
    */
-  getAll(): Tool[] {
+  getAll(): ToolDefinition[] {
     return Array.from(this.tools.values())
   }
 
   /**
    * 批量注册工具
    */
-  registerAll(tools: Tool[]): void {
+  registerAll(tools: ToolDefinition[]): void {
     tools.forEach((tool) => this.register(tool))
   }
 }

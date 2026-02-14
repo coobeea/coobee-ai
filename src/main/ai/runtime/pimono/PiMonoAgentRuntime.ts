@@ -877,11 +877,26 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
   /**
    * 将统一 ToolDefinition 转换为 pi-coding-agent SDK 原生 PiToolDefinition
    *
-   * JSON Schema parameters 直接兼容（TypeBox 输出即 JSON Schema），
-   * execute 包装为 SDK 期望的 (toolCallId, params, signal, onUpdate, ctx) => AgentToolResult 签名。
+   * 核心映射：
+   *   - execute 前检查工具策略（isToolAllowed，sandbox 级别拦截）
+   *   - yield 的 ToolStreamUpdate 通过 PiMono 的 onUpdate 回调发送增量输出
+   *   - return 的 ToolResult.llmContent 作为 AgentToolResult 返回
+   *   - 自动注入 SandboxContext（路径边界、工具策略、Docker 等）
+   *
+   * 注意：PiMono SDK 不支持 HITL（needsApproval），工具直接执行。
+   * 安全由工具策略（sandbox tool-policy）和路径守卫保障。
    */
   private convertTools(defs: ToolDefinition[]): PiToolDefinition[] {
     if (!defs.length) return []
+
+    // 构建沙箱上下文（PiMono 用 cwd 作为 workspaceRoot）
+    const sandboxContext: import('../../sandbox/types').SandboxContext = {
+      mode: 'path-only',
+      workspaceRoot: (this.options.cwd as string) || this.options.workspaceRoot || process.cwd(),
+      toolPolicy: { allow: [], deny: [] },
+      sessionId: this.sessionId
+    }
+
     return defs.map(
       (def) =>
         ({
@@ -889,8 +904,52 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
           label: def.name,
           description: def.description,
           parameters: def.parameters,
-          execute: async (_toolCallId: string, params: Record<string, unknown>) => {
-            const text = await def.execute(params)
+          execute: async (
+            _toolCallId: string,
+            params: Record<string, unknown>,
+            signal?: AbortSignal,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            onUpdate?: (partialResult: any) => void
+          ) => {
+            // 工具策略检查：sandbox 级别拦截
+            const { isToolAllowed, formatToolBlockedMessage } = await import('../../sandbox')
+            if (!isToolAllowed(def.name, sandboxContext.toolPolicy)) {
+              const msg = formatToolBlockedMessage(
+                def.name,
+                sandboxContext.toolPolicy as import('../../sandbox/types').ResolvedToolPolicy
+              )
+              log.warn(`[Tool Policy] ${msg}`)
+              return {
+                content: [{ type: 'text', text: `Error: ${msg}` }],
+                details: { name: def.name }
+              }
+            }
+
+            const gen = def.execute(params, signal, sandboxContext)
+            let iterResult = await gen.next()
+
+            // 消费 AsyncGenerator 的增量输出
+            while (!iterResult.done) {
+              const update = iterResult.value
+              // 桥接到 PiMono 的 onUpdate 回调（前端实时展示）
+              if (onUpdate) {
+                onUpdate({
+                  content: [{ type: 'text', text: update.content }],
+                  details: {
+                    name: def.name,
+                    updateType: update.type,
+                    percentage: update.percentage
+                  }
+                })
+              }
+              iterResult = await gen.next()
+            }
+
+            // 最终结果
+            const toolResult = iterResult.value
+            const text =
+              toolResult.llmContent ||
+              (toolResult.success ? 'Success' : `Error: ${toolResult.error?.message || 'unknown'}`)
             return { content: [{ type: 'text', text }], details: { name: def.name } }
           }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

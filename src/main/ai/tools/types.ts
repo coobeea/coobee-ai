@@ -1,23 +1,178 @@
 /**
  * 工具类型定义
- * 基于 @openai/agents SDK 的工具系统
+ *
+ * 统一工具系统的核心类型，不依赖任何特定 SDK。
+ * 两个 Runtime（OpenAI / PiMono）通过各自的 convertTools() 将这些定义转换为 SDK 原生格式。
+ *
+ * 设计要点：
+ *   - execute 返回 AsyncGenerator，支持流式增量输出（yield）和最终结果（return）
+ *   - ToolResult 分离 llmContent / userContent，LLM 和用户看到的内容可以不同
+ *   - ToolKind 分类 + needUserConfirm 声明式元数据，为 HITL 和 UI 策略提供依据
+ *   - 审批/HITL 逻辑不在工具内部，由上层统一处理
  */
 
-import type { Tool as OpenAITool } from '@openai/agents'
+// ========== 工具分类 ==========
+
+/** 工具类型分类 */
+export enum ToolKind {
+  /** 文件系统操作（read, write, edit） */
+  FileSystem = 'file_system',
+  /** 搜索功能（grep, find） */
+  Search = 'search',
+  /** 执行命令（bash） */
+  Execute = 'execute',
+  /** 网络操作（web_search, fetch） */
+  Web = 'web',
+  /** 记忆系统 */
+  Memory = 'memory',
+  /** 文档 */
+  Documentation = 'documentation',
+  /** 扩展（第三方工具） */
+  Extension = 'extension'
+}
+
+// ========== 工具执行结果 ==========
+
+/** 工具错误信息 */
+export interface ToolError {
+  /** 错误代码（如 ENOENT, EACCES, TIMEOUT） */
+  code: string
+  /** 错误消息 */
+  message: string
+  /** 详细信息（可选） */
+  details?: unknown
+}
+
+/** 工具执行结果 */
+export interface ToolResult {
+  /** 是否成功 */
+  success: boolean
+
+  /** LLM 看到的工具执行结果内容（发送回模型的） */
+  llmContent?: string
+
+  /** 用户看到的工具执行结果内容（前端展示用，可含 Markdown） */
+  userContent?: string
+
+  /** 失败时的错误信息 */
+  error?: ToolError
+
+  /** 执行元数据 */
+  metadata?: ToolResultMetadata
+}
+
+/** 工具执行元数据 */
+export interface ToolResultMetadata {
+  /** 执行开始时间（ms timestamp） */
+  startTime?: number
+  /** 执行结束时间（ms timestamp） */
+  endTime?: number
+  /** 执行耗时（毫秒） */
+  duration?: number
+  /** 结果的 token 数量（估算） */
+  tokens?: number
+  /** 其他元数据 */
+  [key: string]: unknown
+}
+
+// ========== 工具流式更新 ==========
 
 /**
- * 工具定义（导出 OpenAI 的 Tool 类型）
+ * 工具流式更新
+ *
+ * 工具执行过程中通过 yield 发出增量更新，前端可实时展示。
+ *
+ * @example
+ * // 进度更新
+ * yield { type: 'progress', content: '正在读取文件...', percentage: 30 }
+ *
+ * @example
+ * // 输出内容（如 bash stdout 的实时输出）
+ * yield { type: 'output', content: 'npm install completed' }
  */
-export type Tool = OpenAITool
+export interface ToolStreamUpdate {
+  /** 更新类型: progress — 进度, output — 输出内容 */
+  type: 'progress' | 'output'
+
+  /** 更新内容 */
+  content: string
+
+  /** 进度百分比（0–100），仅当 type='progress' 时有意义 */
+  percentage?: number
+}
+
+// ========== 工具执行上下文 ==========
 
 /**
  * 工具执行上下文
+ *
+ * 复用 sandbox 模块的 SandboxContext 作为工具执行上下文。
+ * 工具通过 context 获取沙箱信息（路径边界、Docker 容器等）。
  */
-export interface ToolExecutionContext {
-  /** 会话 ID */
-  sessionId: string
-  /** 用户 ID（可选） */
-  userId?: string
-  /** 其他上下文信息 */
-  [key: string]: unknown
+import type { SandboxContext } from '../sandbox/types'
+
+/** 工具执行上下文（= SandboxContext） */
+export type ToolExecutionContext = SandboxContext
+
+// ========== 工具定义 ==========
+
+/**
+ * 统一工具定义（SDK 无关）
+ *
+ * 每个工具的核心接口。Runtime 层通过 convertTools() 将其转换为各 SDK 的原生格式。
+ *
+ * execute 使用 AsyncGenerator 模式：
+ *   - yield ToolStreamUpdate — 增量输出（进度、中间结果）
+ *   - return ToolResult      — 最终执行结果
+ *
+ * @example
+ * const readTool: ToolDefinition = {
+ *   name: 'read',
+ *   kind: ToolKind.FileSystem,
+ *   description: 'Read file contents',
+ *   parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+ *   execute: async function* (params, signal, context) {
+ *     const safePath = assertSandboxPath(params.path as string, context)
+ *     const content = await readFile(safePath, 'utf-8')
+ *     return { success: true, llmContent: content }
+ *   }
+ * }
+ */
+export interface ToolDefinition {
+  /** 工具名称（唯一标识，LLM 调用时使用） */
+  name: string
+
+  /** 工具描述（LLM 用于决策是否调用） */
+  description: string
+
+  /** 工具分类 */
+  kind: ToolKind
+
+  /** 参数 JSON Schema */
+  parameters: Record<string, unknown>
+
+  /**
+   * 是否需要用户确认后才能执行（HITL 声明式元数据）
+   *
+   * - true: 上层 HITL 机制会在执行前请求用户审批
+   * - false/undefined: 直接执行
+   *
+   * 注意：实际审批逻辑由 Runtime 的 HITL 层处理，工具本身不实现审批。
+   */
+  needUserConfirm?: boolean
+
+  /**
+   * 执行函数（AsyncGenerator）
+   *
+   * @param params  - LLM 传入的工具参数
+   * @param signal  - 可选的取消信号（用户取消、超时等）
+   * @param context - 执行上下文（工作区/沙箱信息，由 Runtime 注入）
+   * @yields ToolStreamUpdate - 执行过程中的增量输出
+   * @returns ToolResult - 最终执行结果
+   */
+  execute: (
+    params: Record<string, unknown>,
+    signal?: AbortSignal,
+    context?: ToolExecutionContext
+  ) => AsyncGenerator<ToolStreamUpdate, ToolResult, unknown>
 }

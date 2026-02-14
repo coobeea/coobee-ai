@@ -198,7 +198,10 @@ export class PiMonoBuilder {
     if (this._tools) opts.tools = this._tools
     if (this._skills.length) opts.skills = this._skills
     if (this._maxTurns !== undefined) opts.maxTurns = this._maxTurns
-    if (this._cwd) opts.cwd = this._cwd
+    if (this._cwd) {
+      opts.cwd = this._cwd
+      opts.workspaceRoot = this._cwd
+    }
     if (this._thinkingLevel) opts.thinkingLevel = this._thinkingLevel
     if (this._sdkTools) opts.sdkTools = this._sdkTools
     if (this._compaction) opts.compaction = this._compaction
@@ -237,6 +240,7 @@ export class OpenAIBuilder {
   private _modelSettings?: Record<string, unknown>
   private _compression?: SessionCompressionOptions
   private _contextDir?: string
+  private _workspaceRoot?: string
 
   /** Agent 名称 */
   name(name: string): this {
@@ -322,6 +326,12 @@ export class OpenAIBuilder {
     return this
   }
 
+  /** 工作区根目录（文件工具的路径边界，由 injectEnv 自动设置） */
+  workspaceRoot(dir: string): this {
+    this._workspaceRoot = dir
+    return this
+  }
+
   /** 构建并初始化 Runtime */
   async build(): Promise<AgentRuntime> {
     const opts: OpenAIAgentRuntimeOptions = {
@@ -342,6 +352,7 @@ export class OpenAIBuilder {
       opts.modelSettings = this._modelSettings as OpenAIAgentRuntimeOptions['modelSettings']
     if (this._compression) opts.compression = this._compression
     if (this._contextDir) opts.contextDir = this._contextDir
+    if (this._workspaceRoot) opts.workspaceRoot = this._workspaceRoot
 
     const { OpenAIAgentRuntime } = await import('./runtime/openai')
     const runtime = new OpenAIAgentRuntime(opts)
@@ -522,9 +533,12 @@ class AgentExecutor {
       // 5. 设置会话存储目录（指向 workspace 内的 sessions/）
       builder.sessionDir(path.join(workspace, 'sessions'))
 
-      // 6. 设置工作目录（PiMono Builder 支持 cwd）
+      // 6. 设置工作目录
       if (builder instanceof PiMonoBuilder) {
         builder.cwd(workspace)
+      }
+      if (builder instanceof OpenAIBuilder) {
+        builder.workspaceRoot(workspace)
       }
 
       // 7. 设置上下文快照目录（Runtime 层写入）
