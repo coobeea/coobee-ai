@@ -11,7 +11,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
-import { ToolKind } from '../types'
+import { ToolCategory } from '../types'
 import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
 
 export const editTool: ToolDefinition = {
@@ -21,7 +21,7 @@ export const editTool: ToolDefinition = {
     'The oldText must appear EXACTLY ONCE in the file (including whitespace and indentation). ' +
     'Provide enough surrounding context in oldText to ensure a unique match. ' +
     'The newText will replace the matched oldText.',
-  kind: ToolKind.FileSystem,
+  category: ToolCategory.FileSystem,
   needUserConfirm: true,
   parameters: z.object({
     path: z.string().describe('Absolute or relative file path to edit'),

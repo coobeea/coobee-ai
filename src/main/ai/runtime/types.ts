@@ -17,7 +17,7 @@
  */
 import type { ToolDefinition as _ToolDefinition } from '../tools/types'
 export type {
-  ToolKind,
+  ToolCategory,
   ToolError,
   ToolResult,
   ToolResultMetadata,

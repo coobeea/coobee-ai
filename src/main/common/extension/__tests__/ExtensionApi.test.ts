@@ -11,8 +11,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ExtensionRegistry } from '../ExtensionRegistry'
 import { createExtensionApi } from '../ExtensionApi'
-import { ToolKind } from '../../ai/tools/types'
-import type { ToolDefinition } from '../../ai/tools/types'
+import { ToolCategory } from '../../../ai/tools/types'
+import type { ToolDefinition } from '../../../ai/tools/types'
 import type { ExtensionApi } from '../types'
 import { z } from 'zod'
 
@@ -20,7 +20,7 @@ function makeTool(name: string): ToolDefinition {
   return {
     name,
     description: `Test tool ${name}`,
-    kind: ToolKind.Extension,
+    category: ToolCategory.Extension,
     parameters: z.object({ input: z.string() }),
     // eslint-disable-next-line require-yield
     execute: async function* () {

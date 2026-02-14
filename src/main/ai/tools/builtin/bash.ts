@@ -15,7 +15,7 @@
 import { spawn } from 'node:child_process'
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
-import { ToolKind } from '../types'
+import { ToolCategory } from '../types'
 import { resolveWorkingDirectory } from '../../sandbox'
 
 /** 默认超时（ms） */
@@ -31,7 +31,7 @@ export const bashTool: ToolDefinition = {
     'Use this for running programs, installing packages, running tests, git operations, etc. ' +
     'Commands run in the system default shell within the workspace directory. ' +
     'Long-running commands will be terminated after the timeout.',
-  kind: ToolKind.Execute,
+  category: ToolCategory.Execute,
   needUserConfirm: true,
   parameters: z.object({
     command: z.string().describe('The shell command to execute'),

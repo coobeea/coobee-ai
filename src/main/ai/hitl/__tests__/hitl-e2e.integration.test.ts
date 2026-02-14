@@ -91,7 +91,7 @@ vi.mock('@main/common/env', () => ({
 }))
 
 // mock Extension（避免加载 extension 模块失败）
-vi.mock('../../../extension', () => ({
+vi.mock('../../../common/extension', () => ({
   ExtensionManager: {
     getHookRunner: () => null,
     getRegistry: () => null

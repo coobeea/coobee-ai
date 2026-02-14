@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { ExtensionRegistry } from '../ExtensionRegistry'
 import { ExtensionManager } from '../ExtensionManager'
 import type { RegisteredExtensionHook } from '../types'
-import { ToolKind } from '../../ai/tools/types'
-import type { ToolDefinition } from '../../ai/tools/types'
+import { ToolCategory } from '../../../ai/tools/types'
+import type { ToolDefinition } from '../../../ai/tools/types'
 import { z } from 'zod'
 
 /** 创建一个最小工具定义用于测试 */
@@ -11,7 +11,7 @@ function makeTool(name: string): ToolDefinition {
   return {
     name,
     description: `Test tool ${name}`,
-    kind: ToolKind.Extension,
+    category: ToolCategory.Extension,
     parameters: z.object({ input: z.string() }),
     // eslint-disable-next-line require-yield
     execute: async function* () {

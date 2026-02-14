@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ExtensionRegistry } from '../ExtensionRegistry'
 import { ExtensionManager } from '../ExtensionManager'
 import { createExtensionApi } from '../ExtensionApi'
+import { ToolCategory } from '../../../ai/tools/types'
 
 describe('ExtensionIntegration', () => {
   let registry: ExtensionRegistry
@@ -252,7 +253,7 @@ describe('ExtensionIntegration', () => {
     api.registerTool({
       name: 'custom-tool',
       description: 'Custom tool',
-      kind: 'extension',
+      category: ToolCategory.Extension,
       parameters: {} as never,
       // eslint-disable-next-line require-yield
       execute: async function* () {

@@ -14,14 +14,14 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { z } from 'zod'
 import { ToolRegistry } from '../registry'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types'
-import { ToolKind } from '../types'
+import { ToolCategory } from '../types'
 
 /** 创建模拟工具 */
-function mockTool(name: string, kind: ToolKind = ToolKind.Extension): ToolDefinition {
+function mockTool(name: string, category: ToolCategory = ToolCategory.Extension): ToolDefinition {
   return {
     name,
     description: `Mock tool: ${name}`,
-    kind,
+    category,
     parameters: z.object({}),
     execute: async function* (): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
       yield { type: 'progress', content: 'working...' }
@@ -161,7 +161,7 @@ describe('ToolRegistry', () => {
       const retrieved = registry.get('full')!
       expect(retrieved.name).toBe('full')
       expect(retrieved.description).toBeDefined()
-      expect(retrieved.kind).toBe(ToolKind.Extension)
+      expect(retrieved.category).toBe(ToolCategory.Extension)
       expect(retrieved.parameters).toBeDefined()
       expect(typeof retrieved.execute).toBe('function')
     })
@@ -185,16 +185,16 @@ describe('ToolRegistry', () => {
       expect(result.llmContent).toBe('executed runnable')
     })
 
-    it('支持不同 ToolKind 的工具', () => {
-      registry.register(mockTool('fs_tool', ToolKind.FileSystem))
-      registry.register(mockTool('exec_tool', ToolKind.Execute))
-      registry.register(mockTool('web_tool', ToolKind.Web))
-      registry.register(mockTool('search_tool', ToolKind.Search))
+    it('支持不同 ToolCategory 的工具', () => {
+      registry.register(mockTool('fs_tool', ToolCategory.FileSystem))
+      registry.register(mockTool('exec_tool', ToolCategory.Execute))
+      registry.register(mockTool('web_tool', ToolCategory.Web))
+      registry.register(mockTool('search_tool', ToolCategory.Search))
 
-      expect(registry.get('fs_tool')!.kind).toBe(ToolKind.FileSystem)
-      expect(registry.get('exec_tool')!.kind).toBe(ToolKind.Execute)
-      expect(registry.get('web_tool')!.kind).toBe(ToolKind.Web)
-      expect(registry.get('search_tool')!.kind).toBe(ToolKind.Search)
+      expect(registry.get('fs_tool')!.category).toBe(ToolCategory.FileSystem)
+      expect(registry.get('exec_tool')!.category).toBe(ToolCategory.Execute)
+      expect(registry.get('web_tool')!.category).toBe(ToolCategory.Web)
+      expect(registry.get('search_tool')!.category).toBe(ToolCategory.Search)
     })
 
     it('支持 needUserConfirm 元数据', () => {

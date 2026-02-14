@@ -25,7 +25,7 @@ export const ReadyExtensionHook: LifecycleHook = {
     try {
       const { Env } = await import('@main/common/env')
       const { ExtensionRegistry, ExtensionLoader, ExtensionManager } =
-        await import('@main/extension')
+        await import('@main/common/extension')
       const { ToolRegistry } = await import('@main/ai/tools/registry')
 
       // 1. 获取搜索路径

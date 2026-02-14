@@ -12,7 +12,7 @@ import { writeFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
-import { ToolKind } from '../types'
+import { ToolCategory } from '../types'
 import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
 
 export const writeTool: ToolDefinition = {
@@ -21,7 +21,7 @@ export const writeTool: ToolDefinition = {
     'Write content to a file. Creates the file (and parent directories) if it does not exist. ' +
     'Overwrites the file completely if it already exists. ' +
     'Always provide the COMPLETE file content — do not use placeholders or omit sections.',
-  kind: ToolKind.FileSystem,
+  category: ToolCategory.FileSystem,
   needUserConfirm: true,
   parameters: z.object({
     path: z.string().describe('Absolute or relative file path to write'),

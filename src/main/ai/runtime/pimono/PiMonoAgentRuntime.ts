@@ -918,7 +918,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
 
             // === Extension Hook: before_tool_call ===
             try {
-              const { ExtensionManager } = await import('../../../extension')
+              const { ExtensionManager } = await import('../../../common/extension')
               const runner = ExtensionManager.getHookRunner()
               if (runner) {
                 const hookResult = await runner.runModifyingHook('before_tool_call', {
@@ -987,7 +987,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
 
             // === Extension Hook: after_tool_call (void) + tool_result_persist (modifying) ===
             try {
-              const { ExtensionManager } = await import('../../../extension')
+              const { ExtensionManager } = await import('../../../common/extension')
               const runner = ExtensionManager.getHookRunner()
               if (runner) {
                 const toolDuration = Date.now() - toolStartTime

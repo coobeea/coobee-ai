@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { LifecyclePhase } from '@main/common/types'
-import { ReadyExtensionHook } from '../../lifecycle/ReadyExtensionHook'
+import { ReadyExtensionHook } from '../../../lifecycle/ReadyExtensionHook'
 
 // Mock logger（ReadyExtensionHook 顶层直接导入 logger）
 vi.mock('@main/common/logger', () => ({

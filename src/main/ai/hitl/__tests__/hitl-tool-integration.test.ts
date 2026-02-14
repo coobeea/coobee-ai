@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { z } from 'zod'
 import type { ExecutionResult, StreamChunk } from '../../runtime/types'
 import type { ToolDefinition, ToolResult, ToolStreamUpdate } from '../../tools/types'
-import { ToolKind } from '../../tools/types'
+import { ToolCategory } from '../../tools/types'
 
 // ===== Mock logger =====
 const mockLog = vi.hoisted(() => ({
@@ -91,7 +91,7 @@ vi.mock('@main/common/env', () => ({
 }))
 
 // ===== Mock Extension =====
-vi.mock('../../../extension', () => ({
+vi.mock('../../../common/extension', () => ({
   ExtensionManager: {
     getHookRunner: () => null,
     getRegistry: () => null
@@ -139,7 +139,7 @@ function createMockTool(name: string, needUserConfirm: boolean): ToolDefinition 
   return {
     name,
     description: `Mock tool: ${name}`,
-    kind: ToolKind.Execute,
+    category: ToolCategory.Execute,
     parameters: z.object({
       input: z.string()
     }),
@@ -209,7 +209,7 @@ describe('HITL + 工具系统集成测试', () => {
       const tool: ToolDefinition = {
         name: 'no_confirm_field',
         description: 'test',
-        kind: ToolKind.FileSystem,
+        category: ToolCategory.FileSystem,
         parameters: z.object({}),
         // eslint-disable-next-line require-yield
         execute: async function* () {

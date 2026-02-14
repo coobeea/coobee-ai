@@ -4,8 +4,8 @@
  * 验证 ToolRegistry.unregister 和 Gateway 动态方法注册/注销
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ToolKind } from '../../ai/tools/types'
-import type { ToolDefinition } from '../../ai/tools/types'
+import { ToolCategory } from '../../../ai/tools/types'
+import type { ToolDefinition } from '../../../ai/tools/types'
 import { z } from 'zod'
 
 // ===== Mock logger =====
@@ -47,7 +47,7 @@ function makeTool(name: string): ToolDefinition {
   return {
     name,
     description: `Test tool ${name}`,
-    kind: ToolKind.Extension,
+    category: ToolCategory.Extension,
     parameters: z.object({ input: z.string() }),
     // eslint-disable-next-line require-yield
     execute: async function* () {
@@ -58,12 +58,12 @@ function makeTool(name: string): ToolDefinition {
 
 describe('ToolRegistry.unregister', () => {
   // 每次测试重置单例
-  let ToolRegistry: typeof import('../../ai/tools/registry').ToolRegistry
+  let ToolRegistry: typeof import('../../../ai/tools/registry').ToolRegistry
 
   beforeEach(async () => {
     // 强制重新加载模块以重置单例
     vi.resetModules()
-    const mod = await import('../../ai/tools/registry')
+    const mod = await import('../../../ai/tools/registry')
     ToolRegistry = mod.ToolRegistry
   })
 
@@ -85,11 +85,11 @@ describe('ToolRegistry.unregister', () => {
 
 describe('Gateway 动态方法', () => {
   // Gateway 依赖 HttpServer, ws 等，直接测试类方法
-  let Gateway: typeof import('../../gateway/Gateway').Gateway
+  let Gateway: typeof import('../../../gateway/Gateway').Gateway
 
   beforeEach(async () => {
     vi.resetModules()
-    const mod = await import('../../gateway/Gateway')
+    const mod = await import('../../../gateway/Gateway')
     Gateway = mod.Gateway
   })
 
@@ -173,11 +173,11 @@ describe('Gateway 动态方法', () => {
 })
 
 describe('ToolRegistry — 补充维度', () => {
-  let ToolRegistry: typeof import('../../ai/tools/registry').ToolRegistry
+  let ToolRegistry: typeof import('../../../ai/tools/registry').ToolRegistry
 
   beforeEach(async () => {
     vi.resetModules()
-    const mod = await import('../../ai/tools/registry')
+    const mod = await import('../../../ai/tools/registry')
     ToolRegistry = mod.ToolRegistry
   })
 

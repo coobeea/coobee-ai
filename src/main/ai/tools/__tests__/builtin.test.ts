@@ -20,7 +20,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { resolve } from 'node:path'
 import { z } from 'zod'
 import type { ToolStreamUpdate, ToolResult } from '../types'
-import { ToolKind } from '../types'
+import { ToolCategory } from '../types'
 
 // Mock fs 模块
 vi.mock('node:fs/promises', () => ({
@@ -66,7 +66,7 @@ describe('readTool', () => {
   describe('元数据', () => {
     it('工具名称为 read, 分类为 FileSystem', () => {
       expect(readTool.name).toBe('read')
-      expect(readTool.kind).toBe(ToolKind.FileSystem)
+      expect(readTool.category).toBe(ToolCategory.FileSystem)
       expect(readTool.needUserConfirm).toBe(false)
     })
 
@@ -354,7 +354,7 @@ describe('writeTool', () => {
   describe('元数据', () => {
     it('工具名称为 write, 需要用户确认', () => {
       expect(writeTool.name).toBe('write')
-      expect(writeTool.kind).toBe(ToolKind.FileSystem)
+      expect(writeTool.category).toBe(ToolCategory.FileSystem)
       expect(writeTool.needUserConfirm).toBe(true)
     })
 
@@ -577,7 +577,7 @@ describe('editTool', () => {
   describe('元数据', () => {
     it('工具名称为 edit, 需要用户确认', () => {
       expect(editTool.name).toBe('edit')
-      expect(editTool.kind).toBe(ToolKind.FileSystem)
+      expect(editTool.category).toBe(ToolCategory.FileSystem)
       expect(editTool.needUserConfirm).toBe(true)
     })
 
@@ -845,7 +845,7 @@ describe('bashTool', () => {
   describe('元数据', () => {
     it('工具名称为 bash, 分类为 Execute, 需要用户确认', () => {
       expect(bashTool.name).toBe('bash')
-      expect(bashTool.kind).toBe(ToolKind.Execute)
+      expect(bashTool.category).toBe(ToolCategory.Execute)
       expect(bashTool.needUserConfirm).toBe(true)
     })
 
@@ -1046,7 +1046,7 @@ describe('builtinTools 集合', () => {
       expect(typeof t.name).toBe('string')
       expect(t.description).toBeDefined()
       expect(typeof t.description).toBe('string')
-      expect(t.kind).toBeDefined()
+      expect(t.category).toBeDefined()
       expect(t.parameters).toBeDefined()
       expect(typeof t.execute).toBe('function')
     }

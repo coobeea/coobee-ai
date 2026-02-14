@@ -5,8 +5,8 @@
  * Extension 系统提供三种能力注册：Agent 生命周期钩子、工具、Gateway 方法。
  */
 
-import type { ToolDefinition } from '../ai/tools/types'
-import type { MethodHandler } from '../gateway/protocol/types'
+import type { ToolDefinition } from '../../ai/tools/types'
+import type { MethodHandler } from '../../gateway/protocol/types'
 
 // ==================== Extension 模块 ====================
 

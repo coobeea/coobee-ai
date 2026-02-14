@@ -7,14 +7,14 @@
  * 设计要点：
  *   - execute 返回 AsyncGenerator，支持流式增量输出（yield）和最终结果（return）
  *   - ToolResult 分离 llmContent / userContent，LLM 和用户看到的内容可以不同
- *   - ToolKind 分类 + needUserConfirm 声明式元数据，为 HITL 和 UI 策略提供依据
+ *   - ToolCategory 分类 + needUserConfirm 声明式元数据，为 HITL 和 UI 策略提供依据
  *   - 审批/HITL 逻辑不在工具内部，由上层统一处理
  */
 
 // ========== 工具分类 ==========
 
-/** 工具类型分类 */
-export enum ToolKind {
+/** 工具功能分类（用于策略控制、UI 分组） */
+export enum ToolCategory {
   /** 文件系统操作（read, write, edit） */
   FileSystem = 'file_system',
   /** 搜索功能（grep, find） */
@@ -136,7 +136,7 @@ export type ToolExecutionContext = SandboxContext
  * @example
  * const readTool: ToolDefinition = {
  *   name: 'read',
- *   kind: ToolKind.FileSystem,
+ *   category: ToolCategory.FileSystem,
  *   description: 'Read file contents',
  *   parameters: z.object({ path: z.string().describe('File path') }),
  *   execute: async function* (params, signal, context) {
@@ -153,8 +153,8 @@ export interface ToolDefinition {
   /** 工具描述（LLM 用于决策是否调用） */
   description: string
 
-  /** 工具分类 */
-  kind: ToolKind
+  /** 工具功能分类 */
+  category: ToolCategory
 
   /**
    * 参数 Zod Schema

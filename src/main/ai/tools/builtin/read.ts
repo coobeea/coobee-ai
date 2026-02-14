@@ -11,7 +11,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
-import { ToolKind } from '../types'
+import { ToolCategory } from '../types'
 import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
 
 /** 默认最大读取行数（防止超大文件打爆 token） */
@@ -23,7 +23,7 @@ export const readTool: ToolDefinition = {
     'Read the contents of a file. ' +
     'Returns lines with line numbers (e.g. "  1|content"). ' +
     'Use offset and limit to read specific ranges of large files.',
-  kind: ToolKind.FileSystem,
+  category: ToolCategory.FileSystem,
   needUserConfirm: false,
   parameters: z.object({
     path: z.string().describe('Absolute or relative file path to read'),

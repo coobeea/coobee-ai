@@ -846,7 +846,7 @@ class AgentExecutor {
     builder: AgentBuilder
   ): Promise<void> {
     try {
-      const { ExtensionManager } = await import('../extension')
+      const { ExtensionManager } = await import('../common/extension')
       const runner = ExtensionManager.getHookRunner()
       if (!runner) return
 
@@ -884,7 +884,7 @@ class AgentExecutor {
     durationMs: number
   ): Promise<void> {
     try {
-      const { ExtensionManager } = await import('../extension')
+      const { ExtensionManager } = await import('../common/extension')
       const runner = ExtensionManager.getHookRunner()
       if (!runner) return
 

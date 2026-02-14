@@ -12,7 +12,7 @@ export type {
   ToolStreamUpdate,
   ToolExecutionContext
 } from './types'
-export { ToolKind } from './types'
+export { ToolCategory } from './types'
 
 // 内置工具
 export { builtinTools, readTool, writeTool, editTool, bashTool } from './builtin'

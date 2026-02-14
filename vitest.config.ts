@@ -9,7 +9,7 @@ export default defineConfig({
       'src/main/ai/**/__tests__/**/*.test.ts',
       'src/main/common/server/__tests__/**/*.test.ts',
       'src/main/gateway/__tests__/**/*.test.ts',
-      'src/main/extension/__tests__/**/*.test.ts'
+      'src/main/common/extension/__tests__/**/*.test.ts'
     ],
     // 自动加载 .env 文件中的环境变量
     env: {
@@ -21,14 +21,14 @@ export default defineConfig({
         'src/main/ai/**/*.ts',
         'src/main/common/server/**/*.ts',
         'src/main/gateway/**/*.ts',
-        'src/main/extension/**/*.ts'
+        'src/main/common/extension/**/*.ts'
       ],
       exclude: [
         'src/main/ai/**/__tests__/**',
         'src/main/ai/**/index.ts',
         'src/main/common/server/__tests__/**',
         'src/main/gateway/__tests__/**',
-        'src/main/extension/__tests__/**'
+        'src/main/common/extension/__tests__/**'
       ]
     },
     alias: {
