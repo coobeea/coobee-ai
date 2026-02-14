@@ -15,7 +15,16 @@ export type {
 export { ToolCategory } from './types'
 
 // 内置工具
-export { builtinTools, readTool, writeTool, editTool, bashTool } from './builtin'
+export {
+  builtinTools,
+  readTool,
+  writeTool,
+  editTool,
+  execTool,
+  processTool,
+  memoryTool,
+  ProcessRegistry
+} from './builtin'
 
 // 工具注册表
 export { ToolRegistry } from './registry'

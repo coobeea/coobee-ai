@@ -91,7 +91,7 @@ describe('AgentEnv', () => {
       mockToolRegistryInstance.getAll.mockReturnValue([
         { name: 'read' },
         { name: 'write' },
-        { name: 'bash' }
+        { name: 'exec' }
       ])
 
       const env = await buildAgentEnv('session-123', '/mock/workspace')
@@ -114,7 +114,7 @@ describe('AgentEnv', () => {
         userExtensionsDir: '/mock/.home/extensions',
         loadedExtensions: [],
         memoryDir: '/mock/.home/memory',
-        availableTools: ['read', 'write', 'bash']
+        availableTools: ['read', 'write', 'exec']
       })
     })
 
@@ -174,12 +174,12 @@ describe('AgentEnv', () => {
         { name: 'read' },
         { name: 'write' },
         { name: 'edit' },
-        { name: 'bash' }
+        { name: 'exec' }
       ])
 
       const env = await buildAgentEnv('sess-1', '/mock/workspace')
 
-      expect(env.availableTools).toEqual(['read', 'write', 'edit', 'bash'])
+      expect(env.availableTools).toEqual(['read', 'write', 'edit', 'exec'])
     })
 
     // ---- 扩展贡献 Skill 路径合并 ----
@@ -258,7 +258,7 @@ describe('AgentEnv', () => {
       userExtensionsDir: '/home/test/extensions',
       loadedExtensions: ['ext-memory', 'ext-translate'],
       memoryDir: '/home/test/memory',
-      availableTools: ['read', 'write', 'edit', 'bash']
+      availableTools: ['read', 'write', 'edit', 'exec']
     }
 
     it('生成包含所有信息的 XML 块', () => {
@@ -306,7 +306,7 @@ describe('AgentEnv', () => {
       expect(result).toContain('<tool>read</tool>')
       expect(result).toContain('<tool>write</tool>')
       expect(result).toContain('<tool>edit</tool>')
-      expect(result).toContain('<tool>bash</tool>')
+      expect(result).toContain('<tool>exec</tool>')
     })
 
     it('空列表时仍能正确输出', () => {

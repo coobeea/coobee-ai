@@ -45,10 +45,10 @@ describe('createPathOnlyContext', () => {
 
   it('支持 toolPolicy', () => {
     const ctx = createPathOnlyContext('/home/user/project', {
-      toolPolicy: { allow: ['read'], deny: ['bash'] }
+      toolPolicy: { allow: ['read'], deny: ['exec'] }
     })
     expect(ctx.toolPolicy.allow).toEqual(['read'])
-    expect(ctx.toolPolicy.deny).toEqual(['bash'])
+    expect(ctx.toolPolicy.deny).toEqual(['exec'])
   })
 
   it('支持 sessionId', () => {
@@ -61,13 +61,13 @@ describe('createPathOnlyContext', () => {
   it('支持所有选项组合', () => {
     const ctx = createPathOnlyContext('/workspace', {
       sandboxRoot: '/workspace/src',
-      toolPolicy: { deny: ['bash', 'exec'] },
+      toolPolicy: { deny: ['exec', 'read'] },
       sessionId: 'full-options'
     })
     expect(ctx.mode).toBe('path-only')
     expect(ctx.workspaceRoot).toBe('/workspace')
     expect(ctx.sandboxRoot).toBe('/workspace/src')
-    expect(ctx.toolPolicy.deny).toEqual(['bash', 'exec'])
+    expect(ctx.toolPolicy.deny).toEqual(['exec', 'read'])
     expect(ctx.sessionId).toBe('full-options')
   })
 
@@ -79,10 +79,10 @@ describe('createPathOnlyContext', () => {
     expect(ctx1.toolPolicy.deny).toEqual([])
 
     const ctx2 = createPathOnlyContext('/workspace', {
-      toolPolicy: { deny: ['bash'] }
+      toolPolicy: { deny: ['exec'] }
     })
     expect(ctx2.toolPolicy.allow).toEqual([])
-    expect(ctx2.toolPolicy.deny).toEqual(['bash'])
+    expect(ctx2.toolPolicy.deny).toEqual(['exec'])
   })
 })
 
@@ -110,9 +110,9 @@ describe('resolveSandboxContext', () => {
       const ctx = await resolveSandboxContext({
         mode: 'off',
         workspaceRoot: '/workspace',
-        toolPolicy: { deny: ['bash'] }
+        toolPolicy: { deny: ['exec'] }
       })
-      expect(ctx.toolPolicy.deny).toEqual(['bash'])
+      expect(ctx.toolPolicy.deny).toEqual(['exec'])
     })
 
     it('传递 sandboxRoot', async () => {
@@ -158,10 +158,10 @@ describe('resolveSandboxContext', () => {
       const ctx = await resolveSandboxContext({
         mode: 'path-only',
         workspaceRoot: '/workspace',
-        toolPolicy: { allow: ['read', 'write'], deny: ['bash'] }
+        toolPolicy: { allow: ['read', 'write'], deny: ['exec'] }
       })
       expect(ctx.toolPolicy.allow).toEqual(['read', 'write'])
-      expect(ctx.toolPolicy.deny).toEqual(['bash'])
+      expect(ctx.toolPolicy.deny).toEqual(['exec'])
     })
 
     it('不调用 Docker 相关函数', async () => {
@@ -316,13 +316,13 @@ describe('resolveSandboxContext', () => {
         {
           mode: 'docker',
           workspaceRoot: '/workspace',
-          toolPolicy: { allow: ['read'], deny: ['bash'] }
+          toolPolicy: { allow: ['read'], deny: ['exec'] }
         },
         'session'
       )
 
       expect(ctx.toolPolicy.allow).toEqual(['read'])
-      expect(ctx.toolPolicy.deny).toEqual(['bash'])
+      expect(ctx.toolPolicy.deny).toEqual(['exec'])
     })
 
     it('非 Error 类型的容器错误也能正确降级', async () => {

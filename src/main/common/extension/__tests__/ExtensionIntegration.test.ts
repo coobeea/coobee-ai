@@ -68,8 +68,8 @@ describe('ExtensionIntegration', () => {
   it('before_tool_call: block 工具不执行', async () => {
     const api = createExtensionApi('ext-block', 'Block Extension', 'user', registry)
     api.on('before_tool_call', async (event) => {
-      if (event.toolName === 'bash') {
-        return { block: true, blockReason: 'bash is forbidden' }
+      if (event.toolName === 'exec') {
+        return { block: true, blockReason: 'exec is forbidden' }
       }
       return undefined
     })
@@ -77,12 +77,12 @@ describe('ExtensionIntegration', () => {
     const runner = ExtensionManager.getHookRunner()!
     const result = await runner.runModifyingHook('before_tool_call', {
       sessionId: 's1',
-      toolName: 'bash',
+      toolName: 'exec',
       params: { command: 'rm -rf /' }
     })
 
     expect(result!.block).toBe(true)
-    expect(result!.blockReason).toBe('bash is forbidden')
+    expect(result!.blockReason).toBe('exec is forbidden')
   })
 
   it('before_tool_call: 修改 params', async () => {

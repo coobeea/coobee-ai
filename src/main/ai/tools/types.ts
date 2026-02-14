@@ -19,7 +19,7 @@ export enum ToolCategory {
   FileSystem = 'file_system',
   /** 搜索功能（grep, find） */
   Search = 'search',
-  /** 执行命令（bash） */
+  /** 执行命令（exec） */
   Execute = 'execute',
   /** 网络操作（web_search, fetch） */
   Web = 'web',
@@ -87,7 +87,7 @@ export interface ToolResultMetadata {
  * yield { type: 'progress', content: '正在读取文件...', percentage: 30 }
  *
  * @example
- * // 输出内容（如 bash stdout 的实时输出）
+ * // 输出内容（如 exec stdout 的实时输出）
  * yield { type: 'output', content: 'npm install completed' }
  */
 export interface ToolStreamUpdate {

@@ -234,8 +234,8 @@ describe('HITL + 工具系统集成测试', () => {
       expect(toolMap['write']?.needUserConfirm).toBe(true)
       // edit — 中风险，需要确认
       expect(toolMap['edit']?.needUserConfirm).toBe(true)
-      // bash — 高风险，需要确认
-      expect(toolMap['bash']?.needUserConfirm).toBe(true)
+      // exec — 高风险，需要确认
+      expect(toolMap['exec']?.needUserConfirm).toBe(true)
     })
   })
 
@@ -354,11 +354,11 @@ describe('HITL + 工具系统集成测试', () => {
       expect(mockRuntime.approveToolCall).not.toHaveBeenCalled()
     })
 
-    it('approve-always → bash 工具后续调用不再中断', async () => {
+    it('approve-always → exec 工具后续调用不再中断', async () => {
       const interruptedResult: ExecutionResult = {
         output: '',
         interrupted: true,
-        interruptions: [{ index: 0, toolName: 'bash', arguments: '{"command":"ls -la"}' }]
+        interruptions: [{ index: 0, toolName: 'exec', arguments: '{"command":"ls -la"}' }]
       }
       mockRuntime.stream.mockReturnValue(createStreamGen([], interruptedResult))
 
@@ -369,16 +369,16 @@ describe('HITL + 工具系统集成测试', () => {
       mockRuntime.initialize.mockResolvedValue(undefined)
       mockRuntime.destroy.mockResolvedValue(undefined)
 
-      const builder = agentExecutor.piMono().name('test').sessionId('session-always-bash')
+      const builder = agentExecutor.piMono().name('test').sessionId('session-always-exec')
       agentExecutor.submit({
-        sessionId: 'session-always-bash',
+        sessionId: 'session-always-exec',
         message: 'run ls',
         builder
       })
 
       await flushAsync()
 
-      hitlApprovalManager.submitDecision('session-always-bash', 0, 'approve-always')
+      hitlApprovalManager.submitDecision('session-always-exec', 0, 'approve-always')
       await flushAsync()
 
       expect(mockRuntime.approveToolCall).toHaveBeenCalledWith(0, { alwaysApprove: true })
@@ -423,13 +423,13 @@ describe('HITL + 工具系统集成测试', () => {
   // ========== 多工具混合审批 ==========
 
   describe('多工具混合审批', () => {
-    it('write + bash 同时需要审批 → 全部审批后恢复', async () => {
+    it('write + exec 同时需要审批 → 全部审批后恢复', async () => {
       const interruptedResult: ExecutionResult = {
         output: '',
         interrupted: true,
         interruptions: [
           { index: 0, toolName: 'write', arguments: '{"path":"test.txt"}' },
-          { index: 1, toolName: 'bash', arguments: '{"command":"echo hi"}' }
+          { index: 1, toolName: 'exec', arguments: '{"command":"echo hi"}' }
         ]
       }
       mockRuntime.stream.mockReturnValue(
@@ -442,8 +442,8 @@ describe('HITL + 工具系统集成测试', () => {
             },
             {
               type: 'hitl:required',
-              content: 'bash',
-              data: { index: 1, toolName: 'bash', approvalItem: {} }
+              content: 'exec',
+              data: { index: 1, toolName: 'exec', approvalItem: {} }
             }
           ],
           interruptedResult
@@ -481,13 +481,13 @@ describe('HITL + 工具系统集成测试', () => {
       expect(mockRuntime.resumeStream).toHaveBeenCalledTimes(1)
     })
 
-    it('write approve + bash reject — 混合决策', async () => {
+    it('write approve + exec reject — 混合决策', async () => {
       const interruptedResult: ExecutionResult = {
         output: '',
         interrupted: true,
         interruptions: [
           { index: 0, toolName: 'write', arguments: '{}' },
-          { index: 1, toolName: 'bash', arguments: '{"command":"rm -rf /"}' }
+          { index: 1, toolName: 'exec', arguments: '{"command":"rm -rf /"}' }
         ]
       }
       mockRuntime.stream.mockReturnValue(createStreamGen([], interruptedResult))
@@ -523,10 +523,10 @@ describe('HITL + 工具系统集成测试', () => {
       const interruptedResult: ExecutionResult = {
         output: '',
         interrupted: true,
-        interruptions: [{ index: 0, toolName: 'bash', arguments: '{"command":"deploy"}' }]
+        interruptions: [{ index: 0, toolName: 'exec', arguments: '{"command":"deploy"}' }]
       }
       mockRuntime.stream.mockReturnValue(
-        createStreamGen([{ type: 'hitl:required', content: 'bash' }], interruptedResult)
+        createStreamGen([{ type: 'hitl:required', content: 'exec' }], interruptedResult)
       )
       mockRuntime.initialize.mockResolvedValue(undefined)
       mockRuntime.destroy.mockResolvedValue(undefined)
@@ -581,20 +581,20 @@ describe('HITL + 工具系统集成测试', () => {
       mockRuntime.resumeStream.mockImplementation(() => {
         resumeCallCount++
         if (resumeCallCount === 1) {
-          // 第一次 resume → 又遇到 bash 工具中断
+          // 第一次 resume → 又遇到 exec 工具中断
           return createStreamGen(
             [
               { type: 'run:resumed', content: '' },
               {
                 type: 'hitl:required',
-                content: 'bash',
-                data: { index: 0, toolName: 'bash', approvalItem: {} }
+                content: 'exec',
+                data: { index: 0, toolName: 'exec', approvalItem: {} }
               }
             ],
             {
               output: '',
               interrupted: true,
-              interruptions: [{ index: 0, toolName: 'bash', arguments: '{}' }]
+              interruptions: [{ index: 0, toolName: 'exec', arguments: '{}' }]
             }
           )
         }
@@ -626,7 +626,7 @@ describe('HITL + 工具系统集成测试', () => {
       hitlApprovalManager.submitDecision('session-multi-round-tool', 0, 'approve-once')
       await flushAsync()
 
-      // 第二轮：审批 bash
+      // 第二轮：审批 exec
       expect(hitlApprovalManager.hasPending('session-multi-round-tool')).toBe(true)
       hitlApprovalManager.submitDecision('session-multi-round-tool', 0, 'approve-always')
       await flushAsync()
@@ -635,7 +635,7 @@ describe('HITL + 工具系统集成测试', () => {
       expect(mockRuntime.resumeStream).toHaveBeenCalledTimes(2)
       // 第一次审批 write
       expect(mockRuntime.approveToolCall).toHaveBeenCalledWith(0, { alwaysApprove: false })
-      // 第二次审批 bash（approve-always）
+      // 第二次审批 exec（approve-always）
       expect(mockRuntime.approveToolCall).toHaveBeenCalledWith(0, { alwaysApprove: true })
     })
   })

@@ -23,7 +23,7 @@ import { isDockerAvailable, ensureContainer } from './docker'
  * const context = await resolveSandboxContext({
  *   mode: 'path-only',
  *   workspaceRoot: '/home/user/project',
- *   toolPolicy: { deny: ['bash'] }
+ *   toolPolicy: { deny: ['exec'] }
  * }, 'session-123')
  */
 export async function resolveSandboxContext(

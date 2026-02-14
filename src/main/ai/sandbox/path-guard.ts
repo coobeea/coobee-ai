@@ -100,7 +100,7 @@ export function pathGuardErrorToToolResult(error: PathGuardError): {
 /**
  * 解析命令的工作目录
  *
- * bash 工具和 Docker exec 都需要确定执行目录。
+ * exec 工具和 Docker exec 都需要确定执行目录。
  * Docker 模式下返回容器内工作目录，否则返回 workspaceRoot。
  *
  * @param context - 沙箱上下文

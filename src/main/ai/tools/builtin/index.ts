@@ -1,7 +1,7 @@
 /**
  * 内置工具
  *
- * 4 个基础编码工具，使用统一 ToolDefinition 格式定义，
+ * 5 个基础编码工具 + 1 个进程管理工具，使用统一 ToolDefinition 格式定义，
  * 可被任何 Runtime（OpenAI / PiMono）使用。
  *
  * 工具 execute 使用 AsyncGenerator 模式：
@@ -15,22 +15,36 @@ import type { ToolDefinition } from '../types'
 import { readTool } from './read'
 import { writeTool } from './write'
 import { editTool } from './edit'
-import { bashTool } from './bash'
+import { execTool } from './exec'
+import { processTool } from './process'
+import { memoryTool } from './memory'
 
 // 单独导出
 export { readTool } from './read'
 export { writeTool } from './write'
 export { editTool } from './edit'
-export { bashTool } from './bash'
+export { execTool } from './exec'
+export { processTool } from './process'
+export { memoryTool } from './memory'
+export { ProcessRegistry } from './ProcessRegistry'
 // 沙箱工具已迁移到 src/main/ai/sandbox/ — 从那里导入
 
 /**
  * 所有内置工具
  *
  * 按风险等级排列（低 → 高）：
- *   read  — 只读，低风险，needUserConfirm: false
- *   write — 写文件，中风险，needUserConfirm: true
- *   edit  — 编辑文件，中风险，needUserConfirm: true
- *   bash  — 执行命令，高风险，needUserConfirm: true
+ *   read    — 只读，低风险，needUserConfirm: false
+ *   write   — 写文件，中风险，needUserConfirm: true
+ *   edit    — 编辑文件，中风险，needUserConfirm: true
+ *   exec    — 执行命令，高风险，needUserConfirm: true
+ *   process — 管理后台进程，中风险，needUserConfirm: false
+ *   memory  — 记忆管理，低风险，needUserConfirm: false
  */
-export const builtinTools: ToolDefinition[] = [readTool, writeTool, editTool, bashTool]
+export const builtinTools: ToolDefinition[] = [
+  readTool,
+  writeTool,
+  editTool,
+  execTool,
+  processTool,
+  memoryTool
+]

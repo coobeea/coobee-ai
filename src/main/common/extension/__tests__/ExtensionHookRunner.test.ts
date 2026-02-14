@@ -138,7 +138,7 @@ describe('ExtensionHookRunner', () => {
 
     const result = await runner.runModifyingHook('before_tool_call', {
       sessionId: 's1',
-      toolName: 'bash',
+      toolName: 'exec',
       params: {}
     })
     expect(result).toBeDefined()
@@ -381,7 +381,7 @@ describe('ExtensionHookRunner', () => {
 
     const result = await runner.runModifyingHook('before_tool_call', {
       sessionId: 's1',
-      toolName: 'bash',
+      toolName: 'exec',
       params: {}
     })
     expect(result!.block).toBe(false)
@@ -403,7 +403,7 @@ describe('ExtensionHookRunner', () => {
 
     const result = await runner.runModifyingHook('before_tool_call', {
       sessionId: 's1',
-      toolName: 'bash',
+      toolName: 'exec',
       params: {}
     })
     expect(result!.block).toBe(true)
@@ -520,13 +520,13 @@ describe('ExtensionHookRunner', () => {
 
     await runner.runModifyingHook('before_tool_call', {
       sessionId: 'sess-1',
-      toolName: 'bash',
+      toolName: 'exec',
       params: { command: 'ls' }
     })
 
     expect(received).toEqual({
       sessionId: 'sess-1',
-      toolName: 'bash',
+      toolName: 'exec',
       params: { command: 'ls' }
     })
   })

@@ -170,10 +170,10 @@ describe('类型导出验证', () => {
   it('BeforeToolCallEvent 结构', () => {
     const event: BeforeToolCallEvent = {
       sessionId: 's1',
-      toolName: 'bash',
+      toolName: 'exec',
       params: { command: 'ls' }
     }
-    expect(event.toolName).toBe('bash')
+    expect(event.toolName).toBe('exec')
   })
 
   it('BeforeToolCallResult 结构', () => {
@@ -212,7 +212,7 @@ describe('类型导出验证', () => {
   it('AfterToolCallEvent 结构', () => {
     const event: AfterToolCallEvent = {
       sessionId: 's1',
-      toolName: 'bash',
+      toolName: 'exec',
       params: {},
       result: 'ok',
       durationMs: 50

@@ -1,11 +1,11 @@
 /**
  * 内置工具全面测试
  *
- * 验证 4 个基础工具（read, write, edit, bash）的 AsyncGenerator 执行逻辑：
+ * 验证 4 个基础工具（read, write, edit, exec）的 AsyncGenerator 执行逻辑：
  *   - yield ToolStreamUpdate — 增量输出
  *   - return ToolResult      — 最终结果
  *
- * 文件系统操作使用 mock，bash 工具使用真实 shell 执行。
+ * 文件系统操作使用 mock，exec 工具使用真实 shell 执行。
  *
  * 覆盖维度：
  *   - 正常流程
@@ -16,11 +16,26 @@
  *   - AbortSignal 取消
  *   - 流式输出验证
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { resolve } from 'node:path'
 import { z } from 'zod'
 import type { ToolStreamUpdate, ToolResult } from '../types'
 import { ToolCategory } from '../types'
+
+// Mock logger（memory 工具依赖 @main/common/logger → env → electron）
+vi.mock('@main/common/logger', () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+}))
+
+// Mock env（memory 工具延迟导入 Env）
+vi.mock('@main/common/env', () => ({
+  Env: {
+    paths: {
+      userMemoryDir: '/tmp/test-memory/user',
+      agentMemoryDir: '/tmp/test-memory/agent'
+    }
+  }
+}))
 
 // Mock fs 模块
 vi.mock('node:fs/promises', () => ({
@@ -31,7 +46,8 @@ vi.mock('node:fs/promises', () => ({
 }))
 
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises'
-import { readTool, writeTool, editTool, bashTool, builtinTools } from '../builtin'
+import { readTool, writeTool, editTool, execTool, builtinTools } from '../builtin'
+import { ProcessRegistry } from '../builtin/ProcessRegistry'
 import { resolveSandboxPath, createPathOnlyContext } from '../../sandbox'
 
 /** 测试用 context：允许 /tmp 目录下的操作 */
@@ -836,21 +852,21 @@ describe('editTool', () => {
 })
 
 // ═══════════════════════════════════════════
-// bashTool
+// execTool
 // ═══════════════════════════════════════════
 
-describe('bashTool', () => {
+describe('execTool', () => {
   // --- 元数据 ---
 
   describe('元数据', () => {
-    it('工具名称为 bash, 分类为 Execute, 需要用户确认', () => {
-      expect(bashTool.name).toBe('bash')
-      expect(bashTool.category).toBe(ToolCategory.Execute)
-      expect(bashTool.needUserConfirm).toBe(true)
+    it('工具名称为 exec, 分类为 Execute, 需要用户确认', () => {
+      expect(execTool.name).toBe('exec')
+      expect(execTool.category).toBe(ToolCategory.Execute)
+      expect(execTool.needUserConfirm).toBe(true)
     })
 
     it('command 是必填参数', () => {
-      const jsonSchema = z.toJSONSchema(bashTool.parameters) as Record<string, unknown>
+      const jsonSchema = z.toJSONSchema(execTool.parameters) as Record<string, unknown>
       const required = jsonSchema.required as string[]
       expect(required).toContain('command')
     })
@@ -861,7 +877,7 @@ describe('bashTool', () => {
   describe('正常执行', () => {
     it('执行简单命令返回输出', async () => {
       const { updates, result } = await consumeGenerator(
-        bashTool.execute({ command: 'echo hello' })
+        execTool.execute({ command: 'echo hello' })
       )
 
       expect(updates.length).toBeGreaterThan(0)
@@ -875,7 +891,7 @@ describe('bashTool', () => {
 
     it('执行多行命令', async () => {
       const { result } = await consumeGenerator(
-        bashTool.execute({ command: 'echo line1 && echo line2' })
+        execTool.execute({ command: 'echo line1 && echo line2' })
       )
 
       expect(result.success).toBe(true)
@@ -884,14 +900,14 @@ describe('bashTool', () => {
     })
 
     it('执行数学计算命令', async () => {
-      const { result } = await consumeGenerator(bashTool.execute({ command: 'echo $((2 + 3))' }))
+      const { result } = await consumeGenerator(execTool.execute({ command: 'echo $((2 + 3))' }))
 
       expect(result.success).toBe(true)
       expect(result.llmContent).toContain('5')
     })
 
     it('使用安全的环境变量', async () => {
-      const { result } = await consumeGenerator(bashTool.execute({ command: 'echo $HOME' }))
+      const { result } = await consumeGenerator(execTool.execute({ command: 'echo $HOME' }))
 
       expect(result.success).toBe(true)
       // HOME 环境变量应该被传递
@@ -903,7 +919,7 @@ describe('bashTool', () => {
 
   describe('命令失败', () => {
     it('命令失败返回非零 exit code', async () => {
-      const { result } = await consumeGenerator(bashTool.execute({ command: 'exit 42' }))
+      const { result } = await consumeGenerator(execTool.execute({ command: 'exit 42' }))
 
       expect(result.success).toBe(false)
       expect(result.llmContent).toContain('Exit code: 42')
@@ -913,7 +929,7 @@ describe('bashTool', () => {
 
     it('不存在的命令', async () => {
       const { result } = await consumeGenerator(
-        bashTool.execute({ command: 'this_command_definitely_does_not_exist_xyz123' })
+        execTool.execute({ command: 'this_command_definitely_does_not_exist_xyz123' })
       )
 
       expect(result.success).toBe(false)
@@ -925,7 +941,7 @@ describe('bashTool', () => {
 
   describe('stderr 捕获', () => {
     it('捕获 stderr 输出', async () => {
-      const { result } = await consumeGenerator(bashTool.execute({ command: 'echo err >&2' }))
+      const { result } = await consumeGenerator(execTool.execute({ command: 'echo err >&2' }))
 
       expect(result.llmContent).toContain('stderr:')
       expect(result.llmContent).toContain('err')
@@ -933,7 +949,7 @@ describe('bashTool', () => {
 
     it('同时有 stdout 和 stderr', async () => {
       const { result } = await consumeGenerator(
-        bashTool.execute({ command: 'echo out && echo err >&2' })
+        execTool.execute({ command: 'echo out && echo err >&2' })
       )
 
       expect(result.llmContent).toContain('stdout:')
@@ -947,21 +963,21 @@ describe('bashTool', () => {
 
   describe('参数校验', () => {
     it('空命令返回 INVALID_PARAM', async () => {
-      const { result } = await consumeGenerator(bashTool.execute({ command: '' }))
+      const { result } = await consumeGenerator(execTool.execute({ command: '' }))
 
       expect(result.success).toBe(false)
       expect(result.error?.code).toBe('INVALID_PARAM')
     })
 
     it('非字符串命令返回 INVALID_PARAM', async () => {
-      const { result } = await consumeGenerator(bashTool.execute({ command: 123 }))
+      const { result } = await consumeGenerator(execTool.execute({ command: 123 }))
 
       expect(result.success).toBe(false)
       expect(result.error?.code).toBe('INVALID_PARAM')
     })
 
     it('null 命令返回 INVALID_PARAM', async () => {
-      const { result } = await consumeGenerator(bashTool.execute({ command: null }))
+      const { result } = await consumeGenerator(execTool.execute({ command: null }))
 
       expect(result.success).toBe(false)
       expect(result.error?.code).toBe('INVALID_PARAM')
@@ -974,7 +990,7 @@ describe('bashTool', () => {
     it('自定义短超时触发 TIMEOUT', async () => {
       const { result } = await consumeGenerator(
         // sleep 10 秒，但超时 200ms
-        bashTool.execute({ command: 'sleep 10', timeout: 200 })
+        execTool.execute({ command: 'sleep 10', timeout: 200 })
       )
 
       expect(result.success).toBe(false)
@@ -989,7 +1005,7 @@ describe('bashTool', () => {
     it('使用 context 的 workspaceRoot 作为 cwd', async () => {
       const ctx = createPathOnlyContext('/tmp')
       const { result } = await consumeGenerator(
-        bashTool.execute({ command: 'pwd' }, undefined, ctx)
+        execTool.execute({ command: 'pwd' }, undefined, ctx)
       )
 
       expect(result.success).toBe(true)
@@ -999,7 +1015,7 @@ describe('bashTool', () => {
     })
 
     it('无 context 时使用 process.cwd()', async () => {
-      const { result } = await consumeGenerator(bashTool.execute({ command: 'pwd' }))
+      const { result } = await consumeGenerator(execTool.execute({ command: 'pwd' }))
 
       expect(result.success).toBe(true)
       expect(result.metadata?.cwd).toBe(process.cwd())
@@ -1010,18 +1026,109 @@ describe('bashTool', () => {
 
   describe('流式输出', () => {
     it('第一个 yield 包含命令回显', async () => {
-      const { updates } = await consumeGenerator(bashTool.execute({ command: 'echo test' }))
+      const { updates } = await consumeGenerator(execTool.execute({ command: 'echo test' }))
 
       expect(updates[0].type).toBe('progress')
       expect(updates[0].content).toContain('echo test')
     })
 
     it('最后一个 yield 包含执行结果摘要', async () => {
-      const { updates } = await consumeGenerator(bashTool.execute({ command: 'echo test' }))
+      const { updates } = await consumeGenerator(execTool.execute({ command: 'echo test' }))
 
       const lastUpdate = updates[updates.length - 1]
       expect(lastUpdate.type).toBe('output')
       expect(lastUpdate.content).toContain('completed')
+    })
+  })
+
+  // --- stdout/stderr 截断 ---
+
+  describe('stdout/stderr 截断', () => {
+    it('超大输出时 llmContent 包含 truncated', async () => {
+      const { result } = await consumeGenerator(
+        execTool.execute({ command: 'python3 -c "print(\'x\' * 200000)"' })
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.llmContent).toContain('truncated')
+    })
+  })
+
+  // --- 后台模式 ---
+
+  describe('后台模式', () => {
+    afterEach(() => {
+      ProcessRegistry.resetInstance()
+    })
+
+    it('background=true 时立即返回 processId', async () => {
+      const { result } = await consumeGenerator(
+        execTool.execute({ command: 'sleep 100', background: true })
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.metadata?.processId).toBeDefined()
+      expect(result.metadata?.processId).toMatch(/^proc-/)
+      expect(result.metadata?.background).toBe(true)
+      expect(result.metadata?.pid).toBeDefined()
+    })
+
+    it('返回的 llmContent 包含 process 工具使用说明', async () => {
+      const { result } = await consumeGenerator(
+        execTool.execute({ command: 'sleep 100', background: true })
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.llmContent).toContain('processId')
+      expect(result.llmContent).toContain('process')
+      expect(result.llmContent).toContain('read_output')
+      expect(result.llmContent).toContain('kill')
+    })
+
+    it('yield 的 progress 包含 [background]', async () => {
+      const { updates } = await consumeGenerator(
+        execTool.execute({ command: 'sleep 100', background: true })
+      )
+
+      const progressUpdate = updates.find((u) => u.type === 'progress')
+      expect(progressUpdate).toBeDefined()
+      expect(progressUpdate!.content).toContain('[background]')
+    })
+
+    it('yield 的 output 包含 Background process started', async () => {
+      const { updates } = await consumeGenerator(
+        execTool.execute({ command: 'sleep 100', background: true })
+      )
+
+      const outputUpdate = updates.find((u) => u.type === 'output')
+      expect(outputUpdate).toBeDefined()
+      expect(outputUpdate!.content).toContain('Background process started')
+    })
+
+    it('后台进程可通过 ProcessRegistry 管理', async () => {
+      const { result } = await consumeGenerator(
+        execTool.execute({ command: 'sleep 100', background: true })
+      )
+
+      expect(result.success).toBe(true)
+      const processId = result.metadata?.processId as string
+      const proc = ProcessRegistry.getInstance().get(processId)
+      expect(proc).toBeDefined()
+      expect(proc!.status).toBe('running')
+    })
+
+    it('前台模式不受 background 参数影响（background=false/undefined）', async () => {
+      const { result: r1 } = await consumeGenerator(execTool.execute({ command: 'echo hello' }))
+      const { result: r2 } = await consumeGenerator(
+        execTool.execute({ command: 'echo hello', background: false })
+      )
+
+      expect(r1.success).toBe(true)
+      expect(r2.success).toBe(true)
+      expect(r1.metadata?.background).toBeUndefined()
+      expect(r2.metadata?.background).toBeUndefined()
+      expect(r1.llmContent).toContain('hello')
+      expect(r2.llmContent).toContain('hello')
     })
   })
 })
@@ -1031,13 +1138,13 @@ describe('bashTool', () => {
 // ═══════════════════════════════════════════
 
 describe('builtinTools 集合', () => {
-  it('包含 4 个内置工具', () => {
-    expect(builtinTools).toHaveLength(4)
+  it('包含 6 个内置工具', () => {
+    expect(builtinTools).toHaveLength(6)
   })
 
   it('按正确顺序包含所有工具', () => {
     const names = builtinTools.map((t) => t.name)
-    expect(names).toEqual(['read', 'write', 'edit', 'bash'])
+    expect(names).toEqual(['read', 'write', 'edit', 'exec', 'process', 'memory'])
   })
 
   it('所有工具都符合 ToolDefinition 接口', () => {
@@ -1070,9 +1177,9 @@ describe('builtinTools 集合', () => {
     expect(editT.needUserConfirm).toBe(true)
   })
 
-  it('bash 工具需要用户确认', () => {
-    const bash = builtinTools.find((t) => t.name === 'bash')!
-    expect(bash.needUserConfirm).toBe(true)
+  it('exec 工具需要用户确认', () => {
+    const exec = builtinTools.find((t) => t.name === 'exec')!
+    expect(exec.needUserConfirm).toBe(true)
   })
 })
 

@@ -1,13 +1,22 @@
 /**
- * bash — Shell 命令执行工具
+ * exec — Shell 命令执行工具
  *
- * 在系统 shell 中执行命令。
- * 通过 AsyncGenerator 实时流式输出 stdout/stderr，前端可即时展示。
+ * 在系统 shell 中执行命令，支持前台和后台两种模式。
+ *
+ * 前台模式（默认）：
+ *   - 等待命令完成，返回 stdout/stderr 和退出码
+ *   - 通过 AsyncGenerator 实时流式输出
+ *   - 超时自动终止
+ *
+ * 后台模式（background: true）：
+ *   - 立即返回 processId，进程在后台运行
+ *   - 通过 process 工具管理（查看输出、发送输入、终止）
+ *   - 适用于 dev server、watch 任务等长进程
  *
  * 安全：
  *   - 工作目录限制在 workspaceRoot 内
  *   - 支持 AbortSignal 取消
- *   - 超时自动终止
+ *   - 超时自动终止（前台模式）
  *   - 审批/HITL 由上层统一处理
  *
  * 分类：Execute | 风险：高（可执行任意系统命令）
@@ -17,6 +26,7 @@ import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolCategory } from '../types'
 import { resolveWorkingDirectory } from '../../sandbox'
+import { ProcessRegistry } from './ProcessRegistry'
 
 /** 默认超时（ms） */
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -24,22 +34,29 @@ const DEFAULT_TIMEOUT_MS = 30_000
 /** 最大输出字节数（约 100KB，防止 token 爆炸） */
 const MAX_OUTPUT_BYTES = 100_000
 
-export const bashTool: ToolDefinition = {
-  name: 'bash',
+export const execTool: ToolDefinition = {
+  name: 'exec',
   description:
-    'Execute a shell command and return stdout, stderr, and exit code. ' +
-    'Use this for running programs, installing packages, running tests, git operations, etc. ' +
-    'Commands run in the system default shell within the workspace directory. ' +
-    'Long-running commands will be terminated after the timeout.',
+    'Execute a shell command. Supports two modes:\n' +
+    '- Foreground (default): waits for completion, returns stdout/stderr/exit code.\n' +
+    '- Background (background=true): starts the process in background, returns a processId immediately. ' +
+    'Use the `process` tool to manage background processes (read output, send input, kill).\n' +
+    'Use background mode for long-running tasks like dev servers, watchers, or builds.',
   category: ToolCategory.Execute,
   needUserConfirm: true,
   parameters: z.object({
     command: z.string().describe('The shell command to execute'),
+    background: z
+      .boolean()
+      .optional()
+      .describe(
+        'Run in background mode. Returns processId immediately. Use `process` tool to manage.'
+      ),
     timeout: z
       .number()
       .optional()
       .describe(
-        `Timeout in milliseconds. Defaults to ${DEFAULT_TIMEOUT_MS}ms (${DEFAULT_TIMEOUT_MS / 1000}s)`
+        `Timeout in milliseconds (foreground only). Defaults to ${DEFAULT_TIMEOUT_MS}ms (${DEFAULT_TIMEOUT_MS / 1000}s)`
       )
   }),
 
@@ -49,6 +66,7 @@ export const bashTool: ToolDefinition = {
     context?: ToolExecutionContext
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
     const command = params.command as string
+    const background = params.background as boolean | undefined
     const timeout = (params.timeout as number) || DEFAULT_TIMEOUT_MS
     const startTime = Date.now()
 
@@ -63,6 +81,55 @@ export const bashTool: ToolDefinition = {
     // 工作目录：限制在 workspaceRoot 内
     const cwd = resolveWorkingDirectory(context)
 
+    // ==================== 后台模式 ====================
+    if (background) {
+      yield { type: 'progress', content: `[background] $ ${command}`, percentage: 0 }
+
+      const child = spawn(command, {
+        shell: true,
+        cwd,
+        env: { ...process.env },
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: false // 不脱离父进程，确保可管理
+      })
+
+      // 注册到 ProcessRegistry
+      const registry = ProcessRegistry.getInstance()
+      const processId = registry.register(command, cwd, child)
+
+      const llmContent =
+        `Process started in background.\n` +
+        `processId: ${processId}\n` +
+        `pid: ${child.pid}\n` +
+        `command: ${command}\n` +
+        `cwd: ${cwd}\n\n` +
+        `Use the \`process\` tool to manage this process:\n` +
+        `- process({ action: "read_output", processId: "${processId}" }) — read output\n` +
+        `- process({ action: "send_input", processId: "${processId}", input: "..." }) — send input\n` +
+        `- process({ action: "kill", processId: "${processId}" }) — terminate`
+
+      yield {
+        type: 'output',
+        content: `Background process started: ${processId} (pid=${child.pid})`
+      }
+
+      return {
+        success: true,
+        llmContent,
+        userContent: `Background: ${command} (${processId}, pid=${child.pid})`,
+        metadata: {
+          startTime,
+          endTime: Date.now(),
+          duration: Date.now() - startTime,
+          processId,
+          pid: child.pid,
+          background: true,
+          cwd
+        }
+      }
+    }
+
+    // ==================== 前台模式 ====================
     yield { type: 'progress', content: `$ ${command}`, percentage: 0 }
 
     const result: ToolResult = await new Promise<ToolResult>((resolveResult) => {
@@ -77,7 +144,7 @@ export const bashTool: ToolDefinition = {
       const child = spawn(command, {
         shell: true,
         timeout,
-        cwd, // 在工作区目录内执行
+        cwd,
         env: { ...process.env },
         stdio: ['ignore', 'pipe', 'pipe']
       })

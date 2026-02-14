@@ -9,7 +9,8 @@ export default defineConfig({
       'src/main/ai/**/__tests__/**/*.test.ts',
       'src/main/common/server/__tests__/**/*.test.ts',
       'src/main/gateway/__tests__/**/*.test.ts',
-      'src/main/common/extension/__tests__/**/*.test.ts'
+      'src/main/common/extension/__tests__/**/*.test.ts',
+      'src/main/lifecycle/__tests__/**/*.test.ts'
     ],
     // 自动加载 .env 文件中的环境变量
     env: {

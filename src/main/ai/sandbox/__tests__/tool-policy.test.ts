@@ -17,30 +17,30 @@ describe('isToolAllowed', () => {
 
   describe('无策略 / 空策略', () => {
     it('无策略时全部允许', () => {
-      expect(isToolAllowed('bash')).toBe(true)
+      expect(isToolAllowed('exec')).toBe(true)
       expect(isToolAllowed('read')).toBe(true)
       expect(isToolAllowed('any_tool_name')).toBe(true)
     })
 
     it('undefined 策略允许所有', () => {
-      expect(isToolAllowed('bash', undefined)).toBe(true)
+      expect(isToolAllowed('exec', undefined)).toBe(true)
     })
 
     it('空对象策略允许所有', () => {
-      expect(isToolAllowed('bash', {})).toBe(true)
+      expect(isToolAllowed('exec', {})).toBe(true)
       expect(isToolAllowed('read', {})).toBe(true)
     })
 
     it('空数组 allow 和 deny 允许所有', () => {
-      expect(isToolAllowed('bash', { allow: [], deny: [] })).toBe(true)
+      expect(isToolAllowed('exec', { allow: [], deny: [] })).toBe(true)
     })
 
     it('只有空 allow 列表允许所有', () => {
-      expect(isToolAllowed('bash', { allow: [] })).toBe(true)
+      expect(isToolAllowed('exec', { allow: [] })).toBe(true)
     })
 
     it('只有空 deny 列表允许所有', () => {
-      expect(isToolAllowed('bash', { deny: [] })).toBe(true)
+      expect(isToolAllowed('exec', { deny: [] })).toBe(true)
     })
   })
 
@@ -48,24 +48,23 @@ describe('isToolAllowed', () => {
 
   describe('deny 精确匹配', () => {
     it('deny 精确匹配拒绝', () => {
-      const policy = { deny: ['bash'] }
-      expect(isToolAllowed('bash', policy)).toBe(false)
+      const policy = { deny: ['exec'] }
+      expect(isToolAllowed('exec', policy)).toBe(false)
       expect(isToolAllowed('read', policy)).toBe(true)
     })
 
     it('deny 多个精确匹配', () => {
-      const policy = { deny: ['bash', 'exec', 'rm'] }
-      expect(isToolAllowed('bash', policy)).toBe(false)
+      const policy = { deny: ['exec', 'rm'] }
       expect(isToolAllowed('exec', policy)).toBe(false)
       expect(isToolAllowed('rm', policy)).toBe(false)
       expect(isToolAllowed('read', policy)).toBe(true)
     })
 
     it('deny 大小写不敏感', () => {
-      expect(isToolAllowed('BASH', { deny: ['bash'] })).toBe(false)
-      expect(isToolAllowed('Bash', { deny: ['bash'] })).toBe(false)
-      expect(isToolAllowed('bAsH', { deny: ['bash'] })).toBe(false)
-      expect(isToolAllowed('bash', { deny: ['BASH'] })).toBe(false)
+      expect(isToolAllowed('EXEC', { deny: ['exec'] })).toBe(false)
+      expect(isToolAllowed('Exec', { deny: ['exec'] })).toBe(false)
+      expect(isToolAllowed('eXeC', { deny: ['exec'] })).toBe(false)
+      expect(isToolAllowed('exec', { deny: ['EXEC'] })).toBe(false)
     })
   })
 
@@ -74,7 +73,7 @@ describe('isToolAllowed', () => {
   describe('deny glob 模式', () => {
     it('deny * 匹配全部', () => {
       expect(isToolAllowed('anything', { deny: ['*'] })).toBe(false)
-      expect(isToolAllowed('bash', { deny: ['*'] })).toBe(false)
+      expect(isToolAllowed('exec', { deny: ['*'] })).toBe(false)
     })
 
     it('deny 前缀通配 file_*', () => {
@@ -82,7 +81,7 @@ describe('isToolAllowed', () => {
       expect(isToolAllowed('file_read', policy)).toBe(false)
       expect(isToolAllowed('file_write', policy)).toBe(false)
       expect(isToolAllowed('file_', policy)).toBe(false)
-      expect(isToolAllowed('bash', policy)).toBe(true)
+      expect(isToolAllowed('exec', policy)).toBe(true)
       expect(isToolAllowed('file', policy)).toBe(true)
     })
 
@@ -110,7 +109,7 @@ describe('isToolAllowed', () => {
       const policy = { allow: ['read', 'write'] }
       expect(isToolAllowed('read', policy)).toBe(true)
       expect(isToolAllowed('write', policy)).toBe(true)
-      expect(isToolAllowed('bash', policy)).toBe(false)
+      expect(isToolAllowed('exec', policy)).toBe(false)
       expect(isToolAllowed('edit', policy)).toBe(false)
     })
 
@@ -133,7 +132,7 @@ describe('isToolAllowed', () => {
     it('allow * 允许全部', () => {
       const policy = { allow: ['*'] }
       expect(isToolAllowed('anything', policy)).toBe(true)
-      expect(isToolAllowed('bash', policy)).toBe(true)
+      expect(isToolAllowed('exec', policy)).toBe(true)
     })
 
     it('allow 前缀通配 file_*', () => {
@@ -141,7 +140,7 @@ describe('isToolAllowed', () => {
       expect(isToolAllowed('file_read', policy)).toBe(true)
       expect(isToolAllowed('file_write', policy)).toBe(true)
       expect(isToolAllowed('read', policy)).toBe(true)
-      expect(isToolAllowed('bash', policy)).toBe(false)
+      expect(isToolAllowed('exec', policy)).toBe(false)
     })
 
     it('allow 后缀通配 *_search', () => {
@@ -156,9 +155,9 @@ describe('isToolAllowed', () => {
 
   describe('deny 优先于 allow', () => {
     it('deny 精确匹配优先于 allow 通配', () => {
-      const policy = { allow: ['*'], deny: ['bash'] }
+      const policy = { allow: ['*'], deny: ['exec'] }
       expect(isToolAllowed('read', policy)).toBe(true)
-      expect(isToolAllowed('bash', policy)).toBe(false)
+      expect(isToolAllowed('exec', policy)).toBe(false)
     })
 
     it('deny glob 优先于 allow glob', () => {
@@ -170,12 +169,12 @@ describe('isToolAllowed', () => {
     it('deny * 即使 allow * 也全部拒绝', () => {
       const policy = { allow: ['*'], deny: ['*'] }
       expect(isToolAllowed('read', policy)).toBe(false)
-      expect(isToolAllowed('bash', policy)).toBe(false)
+      expect(isToolAllowed('exec', policy)).toBe(false)
     })
 
     it('deny 精确匹配优先于 allow 精确匹配', () => {
-      const policy = { allow: ['bash'], deny: ['bash'] }
-      expect(isToolAllowed('bash', policy)).toBe(false)
+      const policy = { allow: ['exec'], deny: ['exec'] }
+      expect(isToolAllowed('exec', policy)).toBe(false)
     })
   })
 
@@ -183,9 +182,9 @@ describe('isToolAllowed', () => {
 
   describe('使用 ResolvedToolPolicy', () => {
     it('已解析策略正常工作', () => {
-      const resolved = resolveToolPolicy({ allow: ['read', 'write'], deny: ['bash'] })
+      const resolved = resolveToolPolicy({ allow: ['read', 'write'], deny: ['exec'] })
       expect(isToolAllowed('read', resolved)).toBe(true)
-      expect(isToolAllowed('bash', resolved)).toBe(false)
+      expect(isToolAllowed('exec', resolved)).toBe(false)
       expect(isToolAllowed('edit', resolved)).toBe(false)
     })
   })
@@ -199,12 +198,12 @@ describe('isToolAllowed', () => {
     })
 
     it('带空格的工具名会 trim', () => {
-      expect(isToolAllowed(' bash ', { deny: ['bash'] })).toBe(false)
+      expect(isToolAllowed(' exec ', { deny: ['exec'] })).toBe(false)
     })
 
     it('deny 列表中包含空字符串被忽略', () => {
-      const policy = { deny: ['', 'bash'] }
-      expect(isToolAllowed('bash', policy)).toBe(false)
+      const policy = { deny: ['', 'exec'] }
+      expect(isToolAllowed('exec', policy)).toBe(false)
       expect(isToolAllowed('read', policy)).toBe(true)
     })
   })
@@ -232,15 +231,15 @@ describe('resolveToolPolicy', () => {
   })
 
   it('只有 deny', () => {
-    const result = resolveToolPolicy({ deny: ['bash'] })
+    const result = resolveToolPolicy({ deny: ['exec'] })
     expect(result.allow).toEqual([])
-    expect(result.deny).toEqual(['bash'])
+    expect(result.deny).toEqual(['exec'])
   })
 
   it('同时有 allow 和 deny', () => {
-    const result = resolveToolPolicy({ allow: ['read'], deny: ['bash'] })
+    const result = resolveToolPolicy({ allow: ['read'], deny: ['exec'] })
     expect(result.allow).toEqual(['read'])
-    expect(result.deny).toEqual(['bash'])
+    expect(result.deny).toEqual(['exec'])
   })
 
   it('保留 glob 模式字符串', () => {
@@ -254,8 +253,8 @@ describe('resolveToolPolicy', () => {
 
 describe('formatToolBlockedMessage', () => {
   it('deny 拦截消息包含 deny 原因', () => {
-    const msg = formatToolBlockedMessage('bash', { allow: [], deny: ['bash'] })
-    expect(msg).toContain('bash')
+    const msg = formatToolBlockedMessage('exec', { allow: [], deny: ['exec'] })
+    expect(msg).toContain('exec')
     expect(msg).toContain('blocked')
     expect(msg).toContain('deny')
   })
@@ -268,8 +267,8 @@ describe('formatToolBlockedMessage', () => {
   })
 
   it('同时被 deny 和不在 allow 中', () => {
-    const msg = formatToolBlockedMessage('bash', { allow: ['read'], deny: ['bash'] })
-    expect(msg).toContain('bash')
+    const msg = formatToolBlockedMessage('exec', { allow: ['read'], deny: ['exec'] })
+    expect(msg).toContain('exec')
     expect(msg).toContain('blocked')
     expect(msg).toContain('deny')
   })

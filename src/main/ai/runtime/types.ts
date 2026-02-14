@@ -106,7 +106,7 @@ export interface AgentRuntimeOptions {
   /**
    * 工作区根目录
    *
-   * 所有文件工具（read/write/edit）的路径边界，bash 命令的工作目录。
+   * 所有文件工具（read/write/edit）的路径边界，exec 命令的工作目录。
    * 由 AgentExecutor.injectEnv() 自动设置为 Agent 的 workspace 目录。
    * 不传则降级为 process.cwd()。
    */

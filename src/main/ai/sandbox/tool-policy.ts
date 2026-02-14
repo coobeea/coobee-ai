@@ -74,7 +74,7 @@ function matchesAny(name: string, patterns: CompiledPattern[]): boolean {
  * @returns true = 允许, false = 拒绝
  *
  * @example
- * isToolAllowed('bash', { deny: ['bash'] })  // false
+ * isToolAllowed('exec', { deny: ['exec'] })  // false
  * isToolAllowed('read', { allow: ['read', 'write'] })  // true
  * isToolAllowed('exec', { allow: ['read', 'write'] })  // false
  * isToolAllowed('read', {})  // true (无策略 = 全部允许)
