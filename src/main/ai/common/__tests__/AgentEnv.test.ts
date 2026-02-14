@@ -2,8 +2,8 @@
  * AgentEnv 单元测试
  *
  * 测试：
- *   - buildAgentEnv: 从 Env 构建安全子集
- *   - formatRuntimePaths: 格式化为 <runtime_paths> XML
+ *   - buildAgentEnv: 从 Env 构建安全子集（含系统信息、Extension、工具清单）
+ *   - formatRuntimePaths: 格式化为 <runtime_environment> XML
  *   - loadRuntimeEnvSkill: 加载内置 runtime-env Skill
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -23,11 +23,15 @@ vi.mock('@main/common/logger', () => ({
 // ===== Mock env =====
 const mockEnv = {
   isDev: true,
+  app: { version: '1.2.3' },
   paths: {
     userHome: '/mock/.home',
+    home: '/Users/mock',
     temp: '/tmp/mock',
     builtinSkillsDir: '/mock/skills',
     userSkillsDir: '/mock/.home/skills',
+    builtinExtensionsDir: '/mock/extensions',
+    userExtensionsDir: '/mock/.home/extensions',
     memoryDir: '/mock/.home/memory',
     userMemoryDir: '/mock/.home/memory/user',
     agentMemoryDir: '/mock/.home/memory/agent',
@@ -52,12 +56,24 @@ vi.mock('@main/common/extension', () => ({
   ExtensionManager: mockExtensionManager
 }))
 
+// ===== Mock ToolRegistry =====
+const mockToolRegistryInstance = {
+  getAll: vi.fn().mockReturnValue([])
+}
+
+vi.mock('@main/ai/tools/registry', () => ({
+  ToolRegistry: {
+    getInstance: () => mockToolRegistryInstance
+  }
+}))
+
 import { buildAgentEnv, formatRuntimePaths, loadRuntimeEnvSkill } from '../AgentEnv'
 import type { AgentEnv } from '../AgentEnv'
 
 describe('AgentEnv', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockToolRegistryInstance.getAll.mockReturnValue([])
   })
 
   // ==================== buildAgentEnv ====================
@@ -68,22 +84,37 @@ describe('AgentEnv', () => {
       const mockExtPaths = ['/mock/extensions', '/mock/.home/extensions']
       mockEnv.getSkillSearchPaths.mockResolvedValue(mockSkillPaths)
       mockEnv.getExtensionSearchPaths.mockResolvedValue(mockExtPaths)
-      // 无扩展 Skill 贡献
-      mockExtensionManager.getRegistry.mockReturnValue({ getSkillDirs: () => [] })
+      mockExtensionManager.getRegistry.mockReturnValue({
+        getSkillDirs: () => [],
+        getExtensionIds: () => []
+      })
+      mockToolRegistryInstance.getAll.mockReturnValue([
+        { name: 'read' },
+        { name: 'write' },
+        { name: 'bash' }
+      ])
 
-      const env = await buildAgentEnv('/mock/workspace')
+      const env = await buildAgentEnv('session-123', '/mock/workspace')
 
       expect(env).toEqual({
-        workspace: '/mock/workspace',
-        userHome: '/mock/.home',
-        temp: '/tmp/mock',
         platform: process.platform,
+        arch: process.arch,
         isDev: true,
+        appVersion: '1.2.3',
+        workspace: '/mock/workspace',
+        sessionId: 'session-123',
+        userHome: '/mock/.home',
+        systemHome: '/Users/mock',
+        temp: '/tmp/mock',
         skillPaths: mockSkillPaths,
         builtinSkillsDir: '/mock/skills',
         userSkillsDir: '/mock/.home/skills',
+        extensionPaths: mockExtPaths,
+        builtinExtensionsDir: '/mock/extensions',
+        userExtensionsDir: '/mock/.home/extensions',
+        loadedExtensions: [],
         memoryDir: '/mock/.home/memory',
-        extensionPaths: mockExtPaths
+        availableTools: ['read', 'write', 'bash']
       })
     })
 
@@ -92,10 +123,63 @@ describe('AgentEnv', () => {
       mockEnv.getExtensionSearchPaths.mockResolvedValue([])
       mockExtensionManager.getRegistry.mockReturnValue(null)
 
-      await buildAgentEnv('/my/workspace')
+      await buildAgentEnv('sess-1', '/my/workspace')
 
       expect(mockEnv.getSkillSearchPaths).toHaveBeenCalledWith('/my/workspace')
       expect(mockEnv.getExtensionSearchPaths).toHaveBeenCalledWith('/my/workspace')
+    })
+
+    it('sessionId 正确传入', async () => {
+      mockEnv.getSkillSearchPaths.mockResolvedValue([])
+      mockEnv.getExtensionSearchPaths.mockResolvedValue([])
+      mockExtensionManager.getRegistry.mockReturnValue(null)
+
+      const env = await buildAgentEnv('my-session-456', '/mock/workspace')
+
+      expect(env.sessionId).toBe('my-session-456')
+    })
+
+    it('包含系统信息：arch、appVersion', async () => {
+      mockEnv.getSkillSearchPaths.mockResolvedValue([])
+      mockEnv.getExtensionSearchPaths.mockResolvedValue([])
+      mockExtensionManager.getRegistry.mockReturnValue(null)
+
+      const env = await buildAgentEnv('sess-1', '/mock/workspace')
+
+      expect(env.arch).toBe(process.arch)
+      expect(env.appVersion).toBe('1.2.3')
+      expect(env.systemHome).toBe('/Users/mock')
+    })
+
+    it('包含 Extension 目录信息', async () => {
+      mockEnv.getSkillSearchPaths.mockResolvedValue([])
+      mockEnv.getExtensionSearchPaths.mockResolvedValue(['/mock/ext1', '/mock/ext2'])
+      mockExtensionManager.getRegistry.mockReturnValue({
+        getSkillDirs: () => [],
+        getExtensionIds: () => ['ext-a', 'ext-b']
+      })
+
+      const env = await buildAgentEnv('sess-1', '/mock/workspace')
+
+      expect(env.builtinExtensionsDir).toBe('/mock/extensions')
+      expect(env.userExtensionsDir).toBe('/mock/.home/extensions')
+      expect(env.loadedExtensions).toEqual(['ext-a', 'ext-b'])
+    })
+
+    it('包含可用工具清单', async () => {
+      mockEnv.getSkillSearchPaths.mockResolvedValue([])
+      mockEnv.getExtensionSearchPaths.mockResolvedValue([])
+      mockExtensionManager.getRegistry.mockReturnValue(null)
+      mockToolRegistryInstance.getAll.mockReturnValue([
+        { name: 'read' },
+        { name: 'write' },
+        { name: 'edit' },
+        { name: 'bash' }
+      ])
+
+      const env = await buildAgentEnv('sess-1', '/mock/workspace')
+
+      expect(env.availableTools).toEqual(['read', 'write', 'edit', 'bash'])
     })
 
     // ---- 扩展贡献 Skill 路径合并 ----
@@ -108,18 +192,18 @@ describe('AgentEnv', () => {
         getSkillDirs: () => [
           { extensionId: 'ext-a', dir: '/ext-a/skills' },
           { extensionId: 'ext-b', dir: '/ext-b/skills' }
-        ]
+        ],
+        getExtensionIds: () => ['ext-a', 'ext-b']
       })
 
-      const env = await buildAgentEnv('/mock/workspace')
+      const env = await buildAgentEnv('sess-1', '/mock/workspace')
 
-      // 优先级：builtin(0) → ext-a(1) → ext-b(2) → user(3) → workspace(4)
       expect(env.skillPaths).toEqual([
-        '/mock/skills', // builtin（最低）
-        '/ext-a/skills', // 扩展贡献
-        '/ext-b/skills', // 扩展贡献
-        '/mock/.home/skills', // 用户级
-        '/mock/workspace/skills' // 工作空间（最高）
+        '/mock/skills',
+        '/ext-a/skills',
+        '/ext-b/skills',
+        '/mock/.home/skills',
+        '/mock/workspace/skills'
       ])
     })
 
@@ -129,7 +213,7 @@ describe('AgentEnv', () => {
       mockEnv.getExtensionSearchPaths.mockResolvedValue([])
       mockExtensionManager.getRegistry.mockReturnValue(null)
 
-      const env = await buildAgentEnv('/mock/workspace')
+      const env = await buildAgentEnv('sess-1', '/mock/workspace')
 
       expect(env.skillPaths).toEqual(baseSkillPaths)
     })
@@ -139,10 +223,11 @@ describe('AgentEnv', () => {
       mockEnv.getSkillSearchPaths.mockResolvedValue([...baseSkillPaths])
       mockEnv.getExtensionSearchPaths.mockResolvedValue([])
       mockExtensionManager.getRegistry.mockReturnValue({
-        getSkillDirs: () => []
+        getSkillDirs: () => [],
+        getExtensionIds: () => []
       })
 
-      const env = await buildAgentEnv('/mock/workspace')
+      const env = await buildAgentEnv('sess-1', '/mock/workspace')
 
       expect(env.skillPaths).toEqual(baseSkillPaths)
     })
@@ -152,11 +237,15 @@ describe('AgentEnv', () => {
 
   describe('formatRuntimePaths', () => {
     const sampleEnv: AgentEnv = {
-      workspace: '/home/test/workspaces/session-1',
-      userHome: '/home/test',
-      temp: '/tmp',
       platform: 'darwin',
+      arch: 'arm64',
       isDev: true,
+      appVersion: '1.0.0',
+      workspace: '/home/test/workspaces/session-1',
+      sessionId: 'session-1',
+      userHome: '/home/test',
+      systemHome: '/Users/test',
+      temp: '/tmp',
       skillPaths: [
         '/builtin/skills',
         '/home/test/skills',
@@ -165,40 +254,75 @@ describe('AgentEnv', () => {
       builtinSkillsDir: '/builtin/skills',
       userSkillsDir: '/home/test/skills',
       extensionPaths: ['/builtin/extensions', '/home/test/extensions'],
-      memoryDir: '/home/test/memory'
+      builtinExtensionsDir: '/builtin/extensions',
+      userExtensionsDir: '/home/test/extensions',
+      loadedExtensions: ['ext-memory', 'ext-translate'],
+      memoryDir: '/home/test/memory',
+      availableTools: ['read', 'write', 'edit', 'bash']
     }
 
-    it('生成包含所有路径的 XML 块', () => {
+    it('生成包含所有信息的 XML 块', () => {
       const result = formatRuntimePaths(sampleEnv)
 
-      expect(result).toContain('<runtime_paths>')
-      expect(result).toContain('</runtime_paths>')
+      expect(result).toContain('<runtime_environment>')
+      expect(result).toContain('</runtime_environment>')
+      // 系统信息
+      expect(result).toContain('<platform>darwin</platform>')
+      expect(result).toContain('<arch>arm64</arch>')
+      expect(result).toContain('<appVersion>1.0.0</appVersion>')
+      expect(result).toContain('<isDev>true</isDev>')
+      // 会话
+      expect(result).toContain('<sessionId>session-1</sessionId>')
       expect(result).toContain(`<workspace>${sampleEnv.workspace}</workspace>`)
+      // 路径
       expect(result).toContain(`<userHome>${sampleEnv.userHome}</userHome>`)
-      expect(result).toContain(`<temp>${sampleEnv.temp}</temp>`)
-      expect(result).toContain(`<builtinSkillsDir>${sampleEnv.builtinSkillsDir}</builtinSkillsDir>`)
-      expect(result).toContain(`<userSkillsDir>${sampleEnv.userSkillsDir}</userSkillsDir>`)
+      expect(result).toContain(`<systemHome>/Users/test</systemHome>`)
+      expect(result).toContain(`<temp>/tmp</temp>`)
       expect(result).toContain(`<memoryDir>${sampleEnv.memoryDir}</memoryDir>`)
-      expect(result).toContain(`<platform>darwin</platform>`)
-      expect(result).toContain(`<isDev>true</isDev>`)
     })
 
-    it('包含所有 skillPaths', () => {
+    it('包含 Skill 搜索路径', () => {
       const result = formatRuntimePaths(sampleEnv)
 
+      expect(result).toContain('<builtinSkillsDir>/builtin/skills</builtinSkillsDir>')
+      expect(result).toContain('<userSkillsDir>/home/test/skills</userSkillsDir>')
       for (const p of sampleEnv.skillPaths) {
         expect(result).toContain(`<path>${p}</path>`)
       }
     })
 
-    it('skillPaths 为空时仍能正确输出', () => {
-      const emptySkills = { ...sampleEnv, skillPaths: [] }
-      const result = formatRuntimePaths(emptySkills)
+    it('包含 Extension 信息', () => {
+      const result = formatRuntimePaths(sampleEnv)
 
-      expect(result).toContain('<skillPaths>')
-      expect(result).toContain('</skillPaths>')
-      // 不包含 <path> 子元素
-      expect(result).not.toContain('<path>')
+      expect(result).toContain('<builtinExtensionsDir>/builtin/extensions</builtinExtensionsDir>')
+      expect(result).toContain('<userExtensionsDir>/home/test/extensions</userExtensionsDir>')
+      expect(result).toContain('<extension>ext-memory</extension>')
+      expect(result).toContain('<extension>ext-translate</extension>')
+    })
+
+    it('包含可用工具列表', () => {
+      const result = formatRuntimePaths(sampleEnv)
+
+      expect(result).toContain('<tool>read</tool>')
+      expect(result).toContain('<tool>write</tool>')
+      expect(result).toContain('<tool>edit</tool>')
+      expect(result).toContain('<tool>bash</tool>')
+    })
+
+    it('空列表时仍能正确输出', () => {
+      const emptyEnv = {
+        ...sampleEnv,
+        skillPaths: [],
+        extensionPaths: [],
+        loadedExtensions: [],
+        availableTools: []
+      }
+      const result = formatRuntimePaths(emptyEnv)
+
+      expect(result).toContain('<runtime_environment>')
+      expect(result).toContain('</runtime_environment>')
+      expect(result).not.toContain('<tool>')
+      expect(result).not.toContain('<extension>')
     })
   })
 
@@ -208,13 +332,11 @@ describe('AgentEnv', () => {
     let tmpDir: string
 
     beforeEach(() => {
-      // 创建临时目录用于测试
       tmpDir = path.join('/tmp', `agentenv-test-${Date.now()}`)
       fs.mkdirSync(path.join(tmpDir, 'runtime-env'), { recursive: true })
     })
 
     afterEach(() => {
-      // 清理临时目录
       fs.rmSync(tmpDir, { recursive: true, force: true })
     })
 
@@ -237,7 +359,6 @@ This is the skill content.`
       expect(skill!.description).toBe('Agent 运行时环境的目录结构、路径约定和可用资源说明')
       expect(skill!.content).toContain('# Runtime Environment')
       expect(skill!.content).toContain('This is the skill content.')
-      // frontmatter 不应该出现在 content 中
       expect(skill!.content).not.toContain('---')
     })
 
@@ -259,7 +380,6 @@ This is the skill content.`
     })
 
     it('SKILL.md 文件不存在时返回 null', async () => {
-      // tmpDir 存在但没有 SKILL.md
       fs.rmSync(path.join(tmpDir, 'runtime-env', 'SKILL.md'), { force: true })
 
       const skill = await loadRuntimeEnvSkill(tmpDir)

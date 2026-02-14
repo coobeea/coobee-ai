@@ -156,7 +156,10 @@ describe('AgentExecutor — 环境注入', () => {
 
       // 验证 injectEnv 调用链
       expect(mockGetAgentWorkspaceDir).toHaveBeenCalledWith('session-1')
-      expect(mockBuildAgentEnv).toHaveBeenCalledWith('/mock/.home/workspaces/session-1')
+      expect(mockBuildAgentEnv).toHaveBeenCalledWith(
+        'session-1',
+        '/mock/.home/workspaces/session-1'
+      )
       expect(mockLoadRuntimeEnvSkill).toHaveBeenCalledWith('/mock/builtin-skills')
       expect(mockFormatRuntimePaths).toHaveBeenCalled()
     })

@@ -518,7 +518,7 @@ class AgentExecutor {
       const workspace = await Env.getAgentWorkspaceDir(sessionId)
 
       // 2. 构建 AgentEnv
-      const agentEnv = await buildAgentEnv(workspace)
+      const agentEnv = await buildAgentEnv(sessionId, workspace)
 
       // 3. 加载 runtime-env Skill
       const envSkill = await loadRuntimeEnvSkill(Env.paths.builtinSkillsDir)

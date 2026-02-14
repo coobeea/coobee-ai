@@ -1,6 +1,6 @@
 # OpenAI AgentRuntime 事件流分析报告
 
-> 自动生成于 2026-02-14T11:59:01.816Z
+> 自动生成于 2026-02-14T14:27:48.648Z
 >
 > 模型: `MiniMax-M2.1` | API: `https://api.minimaxi.com/v1`
 
@@ -15,28 +15,28 @@
 
 - **输入**: `1+1等于几？用一个数字回答`
 - **输出**: `2`
-- **耗时**: 1879ms
+- **耗时**: 1131ms
 - **事件总数**: 13
 - **模型**: `MiniMax-M2.1`
 - **有推理事件**: 是（<think> 标签被拆分）
 
 ### 1.1 完整事件流
 
-| #   | 时间(ms) | 事件类型          | 内容摘要                                                                                          |
-| --- | -------- | ----------------- | ------------------------------------------------------------------------------------------------- |
-| 1   | 0        | `run:start`       |                                                                                                   |
-| 2   | 1152     | `turn:start`      | turnIndex: 1                                                                                      |
-| 3   | 1152     | `llm:start`       |                                                                                                   |
-| 4   | 1152     | `reasoning:start` |                                                                                                   |
-| 5   | 1152     | `reasoning:delta` | `\n用户问`                                                                                        |
-| 6   | 1855     | `reasoning:delta` | `1+1等于几，要求用一个数字回答。这是一个简单的数学问题，1+1=2。我需要用一句话回答，并且只用一...` |
-| 7   | 1855     | `reasoning:done`  | rawContent(59字符)                                                                                |
-| 8   | 1855     | `text:start`      |                                                                                                   |
-| 9   | 1855     | `text:delta`      | `\n\n2`                                                                                           |
-| 10  | 1876     | `text:done`       | 2                                                                                                 |
-| 11  | 1877     | `llm:done`        | tokens: in=32, out=36, total=68                                                                   |
-| 12  | 1879     | `turn:done`       | turnIndex: 1                                                                                      |
-| 13  | 1879     | `run:done`        |                                                                                                   |
+| #   | 时间(ms) | 事件类型          | 内容摘要                                                |
+| --- | -------- | ----------------- | ------------------------------------------------------- |
+| 1   | 1        | `run:start`       |                                                         |
+| 2   | 718      | `turn:start`      | turnIndex: 1                                            |
+| 3   | 718      | `llm:start`       |                                                         |
+| 4   | 719      | `reasoning:start` |                                                         |
+| 5   | 719      | `reasoning:delta` | `\n用户问`                                              |
+| 6   | 1121     | `reasoning:delta` | `1+1等于几，要求用一个数字回答。1+1=2，所以答案是2。\n` |
+| 7   | 1121     | `reasoning:done`  | rawContent(35字符)                                      |
+| 8   | 1121     | `text:start`      |                                                         |
+| 9   | 1121     | `text:delta`      | `\n\n2`                                                 |
+| 10  | 1131     | `text:done`       | 2                                                       |
+| 11  | 1131     | `llm:done`        | tokens: in=32, out=26, total=58                         |
+| 12  | 1132     | `turn:done`       | turnIndex: 1                                            |
+| 13  | 1132     | `run:done`        |                                                         |
 
 ### 1.2 事件闭环检查
 
@@ -54,14 +54,14 @@
 
 | seq | type    | role      | 内容摘要                  | 时间         |
 | --- | ------- | --------- | ------------------------- | ------------ |
-| 1   | message | user      | 1+1等于几？用一个数字回答 | 11:59:01.829 |
-| 2   | message | assistant | [多段内容]                | 11:59:03.697 |
+| 1   | message | user      | 1+1等于几？用一个数字回答 | 14:27:48.658 |
+| 2   | message | assistant | [多段内容]                | 14:27:49.783 |
 
 ### 1.4 Session 文件原始内容
 
 ```json
-{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"1+1等于几？用一个数字回答"},"ts":1771070341829}
-{"seq":2,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户问1+1等于几，要求用一个数字回答。这是一个简单的数学问题，1+1=2。我需要用一句话回答，并且只用一个数字。\n</think>\n\n2"}]},"ts":1771070343697}
+{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"1+1等于几？用一个数字回答"},"ts":1771079268658}
+{"seq":2,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户问1+1等于几，要求用一个数字回答。1+1=2，所以答案是2。\n</think>\n\n2"}]},"ts":1771079269783}
 ```
 
 ### 1.5 Context Snapshot（下次 LLM 调用的上下文）
@@ -78,7 +78,7 @@
 
 ```json
 // [user] 1+1等于几？用一个数字回答
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户问1+1等于几，要求用一个数字回答。这是一个简单的数学问题，1+1=2。我需要用一句话回答，并且只用一个数字。\n</think>\n\n2"}]
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户问1+1等于几，要求用一个数字回答。1+1=2，所以答案是2。\n</think>\n\n2"}]
 ```
 
 ### 1.6 推理事件拆分分析
@@ -88,7 +88,7 @@
 - reasoning:start 次数: 1
 - reasoning:delta 次数: 2
 - reasoning:done 次数: 1
-- 推理全文(59字符): `用户问1+1等于几，要求用一个数字回答。这是一个简单的数学问题，1+1=2。我需要用一句话回答，并且只用一个数字。`
+- 推理全文(35字符): `用户问1+1等于几，要求用一个数字回答。1+1=2，所以答案是2。`
 - text:delta 拼接: `
 
 2`
@@ -100,60 +100,57 @@
 ## 场景2：工具调用（add_numbers + reverse_string）
 
 - **输入**: `请计算 17 + 28，然后反转 "hello" 这个字符串`
-- **输出**: `17 + 28 的计算结果是 **45**。
+- **输出**: `计算结果如下：
 
-字符串 "hello" 反转后的结果是 **"olleh"**。
+1. **加法计算**：17 + 28 = **45**
+2. **字符串反转**： "hello" 反转为 **"olleh"**
 
-需要注意的是，这两个操作是相互独立的：
+两个操作都已完成！`
 
-- 加法运算得出数值结果 45
-- 字符串反转将原文字符顺序调换`
-- **耗时**: 4783ms
-- **事件总数**: 34
+- **耗时**: 27475ms
+- **事件总数**: 31
 - **Turn 数**: 2
 - **工具调用**: add_numbers({"a":17,"b":28}), reverse_string({"text":"hello"})
 - **有推理事件**: 是
 
 ### 2.1 完整事件流
 
-| #   | 时间(ms) | 事件类型          | 内容摘要                                                                                      |
-| --- | -------- | ----------------- | --------------------------------------------------------------------------------------------- |
-| 1   | 0        | `run:start`       |                                                                                               |
-| 2   | 509      | `turn:start`      | turnIndex: 1                                                                                  |
-| 3   | 509      | `llm:start`       |                                                                                               |
-| 4   | 509      | `reasoning:start` |                                                                                               |
-| 5   | 509      | `reasoning:delta` | `\n用户提出了`                                                                                |
-| 6   | 1197     | `reasoning:delta` | `两个明确的需求：计算加法和反转字符串。我有两个工具可以完美匹配这两个需求：add_numbers 用...` |
-| 7   | 1363     | `reasoning:delta` | `法，reverse_string 用于反转字符串。因此，我需要分别调用这两个工具，并传递相应的参数。...`    |
-| 8   | 1363     | `reasoning:done`  | rawContent(109字符)                                                                           |
-| 9   | 1363     | `text:start`      |                                                                                               |
-| 10  | 1363     | `text:delta`      | `\n\n\n`                                                                                      |
-| 11  | 1777     | `text:done`       |                                                                                               |
-| 12  | 1778     | `llm:done`        | tokens: in=351, out=100, total=451                                                            |
-| 13  | 1779     | `tool:start`      | add_numbers (callId: N/A)                                                                     |
-| 14  | 1779     | `tool:start`      | reverse_string (callId: N/A)                                                                  |
-| 15  | 1779     | `tool:done`       | {"result":45,"expression":"17 + 28 = 45"}                                                     |
-| 16  | 1780     | `tool:done`       | {"original":"hello","reversed":"olleh"}                                                       |
-| 17  | 2436     | `turn:done`       | turnIndex: 1                                                                                  |
-| 18  | 2436     | `turn:start`      | turnIndex: 2                                                                                  |
-| 19  | 2436     | `llm:start`       |                                                                                               |
-| 20  | 2437     | `reasoning:start` |                                                                                               |
-| 21  | 2437     | `reasoning:delta` | `\n用户要求`                                                                                  |
-| 22  | 3070     | `reasoning:delta` | `计算 17 + 28 的结果，并反转 \"hello\" 这个字符串。\n\n我有两个工具可以使用：\n1. ...`        |
-| 23  | 3393     | `reasoning:delta` | `reverse_string` - 用于反转字符串\n\n我已经成功调用了这两个工具：\n- `add_n...`               |
-| 24  | 3759     | `reasoning:delta` | `\n- `reverse_string` 返回结果：hello 反转后是 olleh\n\n现在我需要将这...`                    |
-| 25  | 4183     | `reasoning:delta` | `明了的语言回答，并分别展示两个操作的结果。\n`                                                |
-| 26  | 4183     | `reasoning:done`  | rawContent(247字符)                                                                           |
-| 27  | 4183     | `text:start`      |                                                                                               |
-| 28  | 4183     | `text:delta`      | `\n\n17 + 28 的计算结果是 **45**。\n\n字符串 \"hello\" 反`                                    |
-| 29  | 4543     | `text:delta`      | `转后的结果是 **\"olleh\"**。\n\n需要注意的是，这两个操作是相互独立的：\n- 加法运算得出`      |
-| 30  | 4772     | `text:delta`      | `数值结果 45\n- 字符串反转将原文字符顺序调换`                                                 |
-| 31  | 4781     | `text:done`       | 17 + 28 的计算结果是 **45**。                                                                 |
+| #   | 时间(ms) | 事件类型          | 内容摘要                                                                                    |
+| --- | -------- | ----------------- | ------------------------------------------------------------------------------------------- |
+| 1   | 0        | `run:start`       |                                                                                             |
+| 2   | 22605    | `turn:start`      | turnIndex: 1                                                                                |
+| 3   | 22605    | `llm:start`       |                                                                                             |
+| 4   | 22606    | `reasoning:start` |                                                                                             |
+| 5   | 22606    | `reasoning:delta` | `\n用户明确`                                                                                |
+| 6   | 23487    | `reasoning:delta` | `要求进行两项操作：一是计算加法 17 + 28，二是反转字符串 \"hello\"。我需要调用两个工具来...` |
+| 7   | 24130    | `reasoning:delta` | `任务。\n`                                                                                  |
+| 8   | 24130    | `reasoning:done`  | rawContent(66字符)                                                                          |
+| 9   | 24130    | `text:start`      |                                                                                             |
+| 10  | 24130    | `text:delta`      | `\n\n\n`                                                                                    |
+| 11  | 24407    | `text:done`       |                                                                                             |
+| 12  | 24408    | `llm:done`        | tokens: in=351, out=89, total=440                                                           |
+| 13  | 24408    | `tool:start`      | add_numbers (callId: N/A)                                                                   |
+| 14  | 24409    | `tool:start`      | reverse_string (callId: N/A)                                                                |
+| 15  | 24409    | `tool:done`       | {"result":45,"expression":"17 + 28 = 45"}                                                   |
+| 16  | 24410    | `tool:done`       | {"original":"hello","reversed":"olleh"}                                                     |
+| 17  | 25930    | `turn:done`       | turnIndex: 1                                                                                |
+| 18  | 25930    | `turn:start`      | turnIndex: 2                                                                                |
+| 19  | 25930    | `llm:start`       |                                                                                             |
+| 20  | 25930    | `reasoning:start` |                                                                                             |
+| 21  | 25930    | `reasoning:delta` | `\n好的，我已经`                                                                            |
+| 22  | 26621    | `reasoning:delta` | `调用了两个工具并收到了结果：\n\n1. 加法计算：17 + 28 = 45\n2. 字符串反转：\"hel...`        |
+| 23  | 27045    | `reasoning:delta` | `转为 \"olleh\"\n\n现在我可以直接向用户展示这两个结果。\n`                                  |
+| 24  | 27045    | `reasoning:done`  | rawContent(93字符)                                                                          |
+| 25  | 27045    | `text:start`      |                                                                                             |
+| 26  | 27045    | `text:delta`      | `\n\n计算结果如下：\n\n1. **加法计算**：17 + 28 = **`                                       |
+| 27  | 27460    | `text:delta`      | `45**\n2. **字符串反转**： \"hello\" 反转为 **\"olleh\"**\n\n两个操作都已...`               |
+| 28  | 27473    | `text:done`       | 计算结果如下：                                                                              |
 
-字符串 "hello" 反转后的结果是 \*\*"oll... |
-| 32 | 4782 | `llm:done` | tokens: in=498, out=168, total=666 |
-| 33 | 4783 | `turn:done` | turnIndex: 2 |
-| 34 | 4783 | `run:done` | |
+1. **加法计算**：17 + 28 = **45**
+2. **字符串反转**... |
+   | 29 | 27473 | `llm:done` | tokens: in=487, out=91, total=578 |
+   | 30 | 27475 | `turn:done` | turnIndex: 2 |
+   | 31 | 27475 | `run:done` | |
 
 ### 2.2 事件闭环检查
 
@@ -199,24 +196,24 @@ run:done
 
 | seq | type    | role                 | 内容摘要                                    | 时间         |
 | --- | ------- | -------------------- | ------------------------------------------- | ------------ |
-| 1   | message | user                 | 请计算 17 + 28，然后反转 "hello" 这个字符串 | 11:59:03.707 |
-| 2   | message | assistant            | [多段内容]                                  | 11:59:08.488 |
-| 3   | message | function_call        |                                             | 11:59:08.488 |
-| 4   | message | function_call        |                                             | 11:59:08.488 |
-| 5   | message | function_call_result |                                             | 11:59:08.488 |
-| 6   | message | function_call_result |                                             | 11:59:08.488 |
-| 7   | message | assistant            | [多段内容]                                  | 11:59:08.488 |
+| 1   | message | user                 | 请计算 17 + 28，然后反转 "hello" 这个字符串 | 14:27:49.788 |
+| 2   | message | assistant            | [多段内容]                                  | 14:28:17.262 |
+| 3   | message | function_call        |                                             | 14:28:17.262 |
+| 4   | message | function_call        |                                             | 14:28:17.262 |
+| 5   | message | function_call_result |                                             | 14:28:17.262 |
+| 6   | message | function_call_result |                                             | 14:28:17.262 |
+| 7   | message | assistant            | [多段内容]                                  | 14:28:17.262 |
 
 ### 2.5 Session 文件原始内容
 
 ```json
-{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"请计算 17 + 28，然后反转 \"hello\" 这个字符串"},"ts":1771070343707}
-{"seq":2,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户提出了两个明确的需求：计算加法和反转字符串。我有两个工具可以完美匹配这两个需求：add_numbers 用于加法，reverse_string 用于反转字符串。因此，我需要分别调用这两个工具，并传递相应的参数。\n</think>\n\n\n"}]},"ts":1771070348488}
-{"seq":3,"type":"message","item":{"type":"function_call","callId":"call_function_f1a6k2n8zij5_1","name":"add_numbers","arguments":"{\"a\": 17, \"b\": 28}"},"ts":1771070348488}
-{"seq":4,"type":"message","item":{"type":"function_call","callId":"call_function_f1a6k2n8zij5_2","name":"reverse_string","arguments":"{\"text\": \"hello\"}"},"ts":1771070348488}
-{"seq":5,"type":"message","item":{"type":"function_call_result","name":"add_numbers","callId":"call_function_f1a6k2n8zij5_1","status":"completed","output":{"type":"text","text":"{\"result\":45,\"expression\":\"17 + 28 = 45\"}"}},"ts":1771070348488}
-{"seq":6,"type":"message","item":{"type":"function_call_result","name":"reverse_string","callId":"call_function_f1a6k2n8zij5_2","status":"completed","output":{"type":"text","text":"{\"original\":\"hello\",\"reversed\":\"olleh\"}"}},"ts":1771070348488}
-{"seq":7,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户要求计算 17 + 28 的结果，并反转 \"hello\" 这个字符串。\n\n我有两个工具可以使用：\n1. `add_numbers` - 用于计算加法\n2. `reverse_string` - 用于反转字符串\n\n我已经成功调用了这两个工具：\n- `add_numbers` 返回结果：17 + 28 = 45\n- `reverse_string` 返回结果：hello 反转后是 olleh\n\n现在我需要将这两个结果清晰地呈现给用户。我会用简洁明了的语言回答，并分别展示两个操作的结果。\n</think>\n\n17 + 28 的计算结果是 **45**。\n\n字符串 \"hello\" 反转后的结果是 **\"olleh\"**。\n\n需要注意的是，这两个操作是相互独立的：\n- 加法运算得出数值结果 45\n- 字符串反转将原文字符顺序调换"}]},"ts":1771070348488}
+{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"请计算 17 + 28，然后反转 \"hello\" 这个字符串"},"ts":1771079269788}
+{"seq":2,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户明确要求进行两项操作：一是计算加法 17 + 28，二是反转字符串 \"hello\"。我需要调用两个工具来分别完成这两个任务。\n</think>\n\n\n"}]},"ts":1771079297262}
+{"seq":3,"type":"message","item":{"type":"function_call","callId":"call_function_3donuqszwe7j_1","name":"add_numbers","arguments":"{\"a\": 17, \"b\": 28}"},"ts":1771079297262}
+{"seq":4,"type":"message","item":{"type":"function_call","callId":"call_function_3donuqszwe7j_2","name":"reverse_string","arguments":"{\"text\": \"hello\"}"},"ts":1771079297262}
+{"seq":5,"type":"message","item":{"type":"function_call_result","name":"add_numbers","callId":"call_function_3donuqszwe7j_1","status":"completed","output":{"type":"text","text":"{\"result\":45,\"expression\":\"17 + 28 = 45\"}"}},"ts":1771079297262}
+{"seq":6,"type":"message","item":{"type":"function_call_result","name":"reverse_string","callId":"call_function_3donuqszwe7j_2","status":"completed","output":{"type":"text","text":"{\"original\":\"hello\",\"reversed\":\"olleh\"}"}},"ts":1771079297262}
+{"seq":7,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n好的，我已经调用了两个工具并收到了结果：\n\n1. 加法计算：17 + 28 = 45\n2. 字符串反转：\"hello\" 反转为 \"olleh\"\n\n现在我可以直接向用户展示这两个结果。\n</think>\n\n计算结果如下：\n\n1. **加法计算**：17 + 28 = **45**\n2. **字符串反转**： \"hello\" 反转为 **\"olleh\"**\n\n两个操作都已完成！"}]},"ts":1771079297262}
 ```
 
 ### 2.6 Context Snapshot
@@ -233,35 +230,33 @@ run:done
 
 ```json
 // [user] 请计算 17 + 28，然后反转 "hello" 这个字符串
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户提出了两个明确的需求：计算加法和反转字符串。我有两个工具可以完美匹配这两个需求：add_numbers 用于加法，reverse_string 用于反转字符串。因此，我需要分别调用这两个工具，并传递相应的参数。\n</think>\n\n\n"}]
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户明确要求进行两项操作：一是计算加法 17 + 28，二是反转字符串 \"hello\"。我需要调用两个工具来分别完成这两个任务。\n</think>\n\n\n"}]
 // [unknown]
 // [unknown]
 // [unknown]
 // [unknown]
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户要求计算 17 + 28 的结果，并反转 \"hello\" 这个字符串。\n\n我有两个工具可以使用：\n1. `add_numbers` - 用于计算加法\n2. `reverse_string` - 用于反转字符串\n\n我已经成功调用了这两
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n好的，我已经调用了两个工具并收到了结果：\n\n1. 加法计算：17 + 28 = 45\n2. 字符串反转：\"hello\" 反转为 \"olleh\"\n\n现在我可以直接向用户展示这两个结果。\n</think>\n\n计算结果如下：\n\n1
 ```
 
 ### 2.7 推理事件拆分分析
 
-- reasoning:start/delta/done: 2/8/2
+- reasoning:start/delta/done: 2/6/2
 - text:delta 拼接: `
 
-17 + 28 的计算结果是 **45**。
+计算结果如下：
 
-字符串 "hello" 反转后的结果是 **"olleh"**。
+1. **加法计算**：17 + 28 = **45**
+2. **字符串反转**： "hello" 反转为 **"olleh"**
 
-需要注意的是，这两个操作是相互独立的：
+两个操作都已完成！`
 
-- 加法运算得出数值结果 45
-- 字符串反转将原文字符顺序调换`
-- text:done: `17 + 28 的计算结果是 **45**。
+- text:done: `计算结果如下：
 
-字符串 "hello" 反转后的结果是 **"olleh"**。
+1. **加法计算**：17 + 28 = **45**
+2. **字符串反转**： "hello" 反转为 **"olleh"**
 
-需要注意的是，这两个操作是相互独立的：
+两个操作都已完成！`
 
-- 加法运算得出数值结果 45
-- 字符串反转将原文字符顺序调换`
 - **结论**: 推理与正文已正确分离 ✅
 
 ## 场景3：多轮对话 + Session 持久化验证
@@ -275,9 +270,12 @@ run:done
 - 名字：小明
 - 最喜欢的数字：42
 
-有什么我可以帮你的吗？... | 2 | 2 |
-| 2 | 帮我算一下 42 + 58 | 42 + 58 = **100**... | 7 | 7 |
-| 3 | 我叫什么名字？ | 你叫小明呀！你之前告诉我的。😊... | 9 | 9 |
+这个数字在《银河系漫游指南》中是"生命、宇宙以及一切... | 2 | 2 |
+| 2 | 帮我算一下 42 + 58 | 42 + 58 = 100，正好是整数！计算完成，小明。... | 7 | 7 |
+| 3 | 我叫什么名字？ | 你叫小明呀！我之前记住的：
+
+- 名字：小明
+- 最喜欢的数字：42... | 9 | 9 |
 
 ### 3.2 Session 文件最终内容
 
@@ -285,28 +283,28 @@ run:done
 
 | seq | type    | role                 | 内容摘要                    | 时间         |
 | --- | ------- | -------------------- | --------------------------- | ------------ |
-| 1   | message | user                 | 我叫小明，最喜欢的数字是 42 | 11:59:08.494 |
-| 2   | message | assistant            | [多段内容]                  | 11:59:10.487 |
-| 3   | message | user                 | 帮我算一下 42 + 58          | 11:59:10.489 |
-| 4   | message | assistant            | [多段内容]                  | 11:59:13.693 |
-| 5   | message | function_call        |                             | 11:59:13.693 |
-| 6   | message | function_call_result |                             | 11:59:13.693 |
-| 7   | message | assistant            | [多段内容]                  | 11:59:13.693 |
-| 8   | message | user                 | 我叫什么名字？              | 11:59:13.696 |
-| 9   | message | assistant            | [多段内容]                  | 11:59:16.371 |
+| 1   | message | user                 | 我叫小明，最喜欢的数字是 42 | 14:28:17.278 |
+| 2   | message | assistant            | [多段内容]                  | 14:28:19.609 |
+| 3   | message | user                 | 帮我算一下 42 + 58          | 14:28:19.613 |
+| 4   | message | assistant            | [多段内容]                  | 14:28:22.681 |
+| 5   | message | function_call        |                             | 14:28:22.681 |
+| 6   | message | function_call_result |                             | 14:28:22.681 |
+| 7   | message | assistant            | [多段内容]                  | 14:28:22.681 |
+| 8   | message | user                 | 我叫什么名字？              | 14:28:22.685 |
+| 9   | message | assistant            | [多段内容]                  | 14:28:24.546 |
 
 ### 3.3 Session 文件原始内容
 
 ```json
-{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"我叫小明，最喜欢的数字是 42"},"ts":1771070348494}
-{"seq":2,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户告诉我他的名字叫小明，最喜欢的数字是 42。我需要记住这些信息并在后续对话中准确引用。\n\n- 名字：小明\n- 最喜欢的数字：42\n</think>\n\n你好，小明！我记住你了：\n- 名字：小明\n- 最喜欢的数字：42\n\n有什么我可以帮你的吗？"}]},"ts":1771070350487}
-{"seq":3,"type":"message","item":{"type":"message","role":"user","content":"帮我算一下 42 + 58"},"ts":1771070350489}
-{"seq":4,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户要求计算 42 + 58。根据指示，当用户要求计算加法时必须使用 add_numbers 工具。\n</think>\n\n\n"}]},"ts":1771070353693}
-{"seq":5,"type":"message","item":{"type":"function_call","callId":"call_function_oq1xc5x59qqr_1","name":"add_numbers","arguments":"{\"a\": 42, \"b\": 58}"},"ts":1771070353693}
-{"seq":6,"type":"message","item":{"type":"function_call_result","name":"add_numbers","callId":"call_function_oq1xc5x59qqr_1","status":"completed","output":{"type":"text","text":"{\"result\":100,\"expression\":\"42 + 58 = 100\"}"}},"ts":1771070353693}
-{"seq":7,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n工具返回了结果：42 + 58 = 100。我可以直接告诉用户这个结果。\n</think>\n\n42 + 58 = **100**"}]},"ts":1771070353693}
-{"seq":8,"type":"message","item":{"type":"message","role":"user","content":"我叫什么名字？"},"ts":1771070353696}
-{"seq":9,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户问我叫什么名字。根据系统提示，我是简洁的助手。用户之前告诉我他叫小明，但我需要明确区分：\n- 用户告诉我的是\"我叫小明\"\n- 不是我（小明）的名字\n\n所以用户（小明）问我叫什么名字。作为AI助手，我应该说明我没有名字，或者回答用户的问题可能有些误解。\n\n让我再想想 - 用户可能是在测试我是否记得他的信息。他之前告诉我\"我叫小明\"，所以他在问我是否还记得他的名字。\n\n如果是这样，答案应该是\"小明\"。\n\n我应该简洁地回答这个问题。\n</think>\n\n你叫小明呀！你之前告诉我的。😊"}]},"ts":1771070356371}
+{"seq":1,"type":"message","item":{"type":"message","role":"user","content":"我叫小明，最喜欢的数字是 42"},"ts":1771079297278}
+{"seq":2,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户告诉我他的名字是小明，最喜欢的数字是42。我应该记住这个信息，并在后续对话中准确引用。\n\n这是一个简单的自我介绍，不需要调用任何工具。我只需要确认并记住这些信息。\n</think>\n\n你好，小明！我记住你了：\n- 名字：小明\n- 最喜欢的数字：42\n\n这个数字在《银河系漫游指南》中是\"生命、宇宙以及一切终极问题的答案\"，很有意思的选择！有什么我可以帮你的吗？"}]},"ts":1771079299609}
+{"seq":3,"type":"message","item":{"type":"message","role":"user","content":"帮我算一下 42 + 58"},"ts":1771079299613}
+{"seq":4,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户要求计算 42 + 58。我需要使用 add_numbers 工具来计算这个加法。\n</think>\n\n\n"}]},"ts":1771079302681}
+{"seq":5,"type":"message","item":{"type":"function_call","callId":"call_function_i53hvjhn4j8o_1","name":"add_numbers","arguments":"{\"a\": 42, \"b\": 58}"},"ts":1771079302681}
+{"seq":6,"type":"message","item":{"type":"function_call_result","name":"add_numbers","callId":"call_function_i53hvjhn4j8o_1","status":"completed","output":{"type":"text","text":"{\"result\":100,\"expression\":\"42 + 58 = 100\"}"}},"ts":1771079302681}
+{"seq":7,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n结果是 100。这个计算对用户来说很简单，而且正好是 42 + 58 = 100，这是一个整数结果。\n</think>\n\n42 + 58 = 100，正好是整数！计算完成，小明。"}]},"ts":1771079302681}
+{"seq":8,"type":"message","item":{"type":"message","role":"user","content":"我叫什么名字？"},"ts":1771079302685}
+{"seq":9,"type":"message","item":{"id":"FAKE_ID","type":"message","role":"assistant","status":"completed","content":[{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户问他们叫什么名字。根据系统提示，用户告诉我他们叫小明，最喜欢的数字是42。我需要在后续对话中准确引用这些信息。\n</think>\n\n你叫小明呀！我之前记住的：\n- 名字：小明\n- 最喜欢的数字：42"}]},"ts":1771079304546}
 ```
 
 ### 3.4 各轮 Context Snapshot 对比
@@ -325,7 +323,7 @@ run:done
 
 ```json
 // [user] 我叫小明，最喜欢的数字是 42
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户告诉我他的名字叫小明，最喜欢的数字是 42。我需要记住这些信息并在后续对话中准确引用。\n\n- 名字：小明\n- 最喜欢的数字：42\n</think>\n\n你好，小明！我记住你了：\n- 名字：小明\n- 最喜欢的数字：42\n\n有什么我可
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户告诉我他的名字是小明，最喜欢的数字是42。我应该记住这个信息，并在后续对话中准确引用。\n\n这是一个简单的自我介绍，不需要调用任何工具。我只需要确认并记住这些信息。\n</think>\n\n你好，小明！我记住你了：\n- 名字：小明\n- 最喜
 ```
 
 #### 第2轮后（工具调用后）
@@ -342,12 +340,12 @@ run:done
 
 ```json
 // [user] 我叫小明，最喜欢的数字是 42
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户告诉我他的名字叫小明，最喜欢的数字是 42。我需要记住这些信息并在后续对话中准确引用。\n\n- 名字：小明\n- 最喜欢的数字：42\n</think>\n\n你好，小明！我记住你了：\n- 名字：小明\n- 最喜欢的数字：42\n\n有什么我可
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户告诉我他的名字是小明，最喜欢的数字是42。我应该记住这个信息，并在后续对话中准确引用。\n\n这是一个简单的自我介绍，不需要调用任何工具。我只需要确认并记住这些信息。\n</think>\n\n你好，小明！我记住你了：\n- 名字：小明\n- 最喜
 // [user] 帮我算一下 42 + 58
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户要求计算 42 + 58。根据指示，当用户要求计算加法时必须使用 add_numbers 工具。\n</think>\n\n\n"}]
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户要求计算 42 + 58。我需要使用 add_numbers 工具来计算这个加法。\n</think>\n\n\n"}]
 // [unknown]
 // [unknown]
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n工具返回了结果：42 + 58 = 100。我可以直接告诉用户这个结果。\n</think>\n\n42 + 58 = **100**"}]
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n结果是 100。这个计算对用户来说很简单，而且正好是 42 + 58 = 100，这是一个整数结果。\n</think>\n\n42 + 58 = 100，正好是整数！计算完成，小明。"}]
 ```
 
 #### 第3轮后
@@ -364,84 +362,85 @@ run:done
 
 ```json
 // [user] 我叫小明，最喜欢的数字是 42
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户告诉我他的名字叫小明，最喜欢的数字是 42。我需要记住这些信息并在后续对话中准确引用。\n\n- 名字：小明\n- 最喜欢的数字：42\n</think>\n\n你好，小明！我记住你了：\n- 名字：小明\n- 最喜欢的数字：42\n\n有什么我可
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户告诉我他的名字是小明，最喜欢的数字是42。我应该记住这个信息，并在后续对话中准确引用。\n\n这是一个简单的自我介绍，不需要调用任何工具。我只需要确认并记住这些信息。\n</think>\n\n你好，小明！我记住你了：\n- 名字：小明\n- 最喜
 // [user] 帮我算一下 42 + 58
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户要求计算 42 + 58。根据指示，当用户要求计算加法时必须使用 add_numbers 工具。\n</think>\n\n\n"}]
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户要求计算 42 + 58。我需要使用 add_numbers 工具来计算这个加法。\n</think>\n\n\n"}]
 // [unknown]
 // [unknown]
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n工具返回了结果：42 + 58 = 100。我可以直接告诉用户这个结果。\n</think>\n\n42 + 58 = **100**"}]
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n结果是 100。这个计算对用户来说很简单，而且正好是 42 + 58 = 100，这是一个整数结果。\n</think>\n\n42 + 58 = 100，正好是整数！计算完成，小明。"}]
 // [user] 我叫什么名字？
-// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户问我叫什么名字。根据系统提示，我是简洁的助手。用户之前告诉我他叫小明，但我需要明确区分：\n- 用户告诉我的是\"我叫小明\"\n- 不是我（小明）的名字\n\n所以用户（小明）问我叫什么名字。作为AI助手，我应该说明我没有名字，或者回答用户的问题
+// [assistant] [{"providerData":{"annotations":[]},"type":"output_text","text":"<think>\n用户问他们叫什么名字。根据系统提示，用户告诉我他们叫小明，最喜欢的数字是42。我需要在后续对话中准确引用这些信息。\n</think>\n\n你叫小明呀！我之前记住的：\n- 名字：小明\n- 最喜欢的数字：42"}]
 ```
 
-### 3.5 完整事件流（3轮合计 59 个事件）
+### 3.5 完整事件流（3轮合计 57 个事件）
 
-| #   | 时间(ms) | 事件类型          | 内容摘要                                                                              |
-| --- | -------- | ----------------- | ------------------------------------------------------------------------------------- |
-| 1   | 0        | `run:start`       |                                                                                       |
-| 2   | 802      | `turn:start`      | turnIndex: 1                                                                          |
-| 3   | 802      | `llm:start`       |                                                                                       |
-| 4   | 803      | `reasoning:start` |                                                                                       |
-| 5   | 803      | `reasoning:delta` | `\n用户告诉我`                                                                        |
-| 6   | 1376     | `reasoning:delta` | `他的名字叫小明，最喜欢的数字是 42。我需要记住这些信息并在后续对话中准确引用。\n\n- ` |
-| 7   | 1787     | `reasoning:delta` | `名字：小明\n- 最喜欢的数字：42\n`                                                    |
-| 8   | 1787     | `reasoning:done`  | rawContent(68字符)                                                                    |
-| 9   | 1787     | `text:start`      |                                                                                       |
-| 10  | 1787     | `text:delta`      | `\n\n你好，小明！我记住你了：\n- 名字：小明\n- 最`                                    |
-| 11  | 1987     | `text:delta`      | `喜欢的数字：42\n\n有什么我可以帮你的吗？`                                            |
-| 12  | 1995     | `text:done`       | 你好，小明！我记住你了：                                                              |
+| #   | 时间(ms) | 事件类型          | 内容摘要                                                                                                |
+| --- | -------- | ----------------- | ------------------------------------------------------------------------------------------------------- |
+| 1   | 1        | `run:start`       |                                                                                                         |
+| 2   | 838      | `turn:start`      | turnIndex: 1                                                                                            |
+| 3   | 838      | `llm:start`       |                                                                                                         |
+| 4   | 838      | `reasoning:start` |                                                                                                         |
+| 5   | 838      | `reasoning:delta` | `\n用户告诉我`                                                                                          |
+| 6   | 1346     | `reasoning:delta` | `他的名字是小明，最喜欢的数字是42。我应该记住这个信息，并在后续对话中准确引用。\n\n这是一个简单的自...` |
+| 7   | 1729     | `reasoning:delta` | `工具。我只需要确认并记住这些信息。\n`                                                                  |
+| 8   | 1729     | `reasoning:done`  | rawContent(85字符)                                                                                      |
+| 9   | 1729     | `text:start`      |                                                                                                         |
+| 10  | 1729     | `text:delta`      | `\n\n你好，小明！我记住你了：\n- 名字：小明\n- 最喜欢的数字：42`                                        |
+| 11  | 2169     | `text:delta`      | `\n\n这个数字在《银河系漫游指南》中是\"生命、宇宙以及一切终极问题的答案\"，很有意思的选择`              |
+| 12  | 2327     | `text:delta`      | `！有什么我可以帮你的吗？`                                                                              |
+| 13  | 2334     | `text:done`       | 你好，小明！我记住你了：                                                                                |
 
 - 名字：小明
 - 最喜欢的数字：42
 
-有什么我可以帮你的吗？ |
-| 13 | 1995 | `llm:done` | tokens: in=249, out=67, total=316 |
-| 14 | 1995 | `turn:done` | turnIndex: 1 |
-| 15 | 1995 | `run:done` | |
-| 16 | 1997 | `run:start` | |
-| 17 | 2744 | `turn:start` | turnIndex: 1 |
-| 18 | 2744 | `llm:start` | |
-| 19 | 2744 | `reasoning:start` | |
-| 20 | 2744 | `reasoning:delta` | `\n用户要求` |
-| 21 | 3226 | `reasoning:delta` | `计算 42 + 58。根据指示，当用户要求计算加法时必须使用 add_numbers 工具。\n` |
-| 22 | 3226 | `reasoning:done` | rawContent(52字符) |
-| 23 | 3226 | `text:start` | |
-| 24 | 3226 | `text:delta` | `\n\n\n` |
-| 25 | 3442 | `text:done` | |
-| 26 | 3443 | `llm:done` | tokens: in=293, out=61, total=354 |
-| 27 | 3443 | `tool:start` | add_numbers (callId: N/A) |
-| 28 | 3444 | `tool:done` | {"result":100,"expression":"42 + 58 = 100"} |
-| 29 | 4782 | `turn:done` | turnIndex: 1 |
-| 30 | 4782 | `turn:start` | turnIndex: 2 |
-| 31 | 4782 | `llm:start` | |
-| 32 | 4782 | `reasoning:start` | |
-| 33 | 4782 | `reasoning:delta` | `\n工具返回` |
-| 34 | 5193 | `reasoning:delta` | `了结果：42 + 58 = 100。我可以直接告诉用户这个结果。\n` |
-| 35 | 5193 | `reasoning:done` | rawContent(38字符) |
-| 36 | 5193 | `text:start` | |
-| 37 | 5193 | `text:delta` | `\n\n42 + 58 = **100**` |
-| 38 | 5200 | `text:done` | 42 + 58 = **100** |
-| 39 | 5200 | `llm:done` | tokens: in=390, out=31, total=421 |
-| 40 | 5201 | `turn:done` | turnIndex: 2 |
-| 41 | 5201 | `run:done` | |
-| 42 | 5203 | `run:start` | |
-| 43 | 5886 | `turn:start` | turnIndex: 1 |
-| 44 | 5886 | `llm:start` | |
-| 45 | 5887 | `reasoning:start` | |
-| 46 | 5887 | `reasoning:delta` | `\n用户问我` |
-| 47 | 6387 | `reasoning:delta` | `叫什么名字。根据系统提示，我是简洁的助手。用户之前告诉我他叫小明，但我需要明确区分：\n- 用户告诉我...` |
-| 48 | 6638 | `reasoning:delta` | `\"我叫小明\"\n- 不是我（小明）的名字\n\n所以用户（小明）问我叫什么名字。作为AI` |
-| 49 | 6985 | `reasoning:delta` | `助手，我应该说明我没有名字，或者回答用户的问题可能有些误解。\n\n让我再想想 - 用户可能是在` |
-| 50 | 7408 | `reasoning:delta` | `测试我是否记得他的信息。他之前告诉我\"我叫小明\"，所以他在问我是否还记得他的名字。\n\n如果是这样` |
-| 51 | 7708 | `reasoning:delta` | `，答案应该是\"小明\"。\n\n我应该简洁地回答这个问题。\n` |
-| 52 | 7708 | `reasoning:done` | rawContent(219字符) |
-| 53 | 7708 | `text:start` | |
-| 54 | 7708 | `text:delta` | `\n\n你叫小明呀！你之前告诉我的。` |
-| 55 | 7869 | `text:delta` | `😊` |
-| 56 | 7879 | `text:done` | 你叫小明呀！你之前告诉我的。😊 |
-| 57 | 7879 | `llm:done` | tokens: in=384, out=120, total=504 |
-| 58 | 7880 | `turn:done` | turnIndex: 1 |
-| 59 | 7880 | `run:done` | |
+这个数字在《银河系漫游指南》中是... |
+| 14 | 2334 | `llm:done` | tokens: in=249, out=90, total=339 |
+| 15 | 2336 | `turn:done` | turnIndex: 1 |
+| 16 | 2336 | `run:done` | |
+| 17 | 2338 | `run:start` | |
+| 18 | 3263 | `turn:start` | turnIndex: 1 |
+| 19 | 3263 | `llm:start` | |
+| 20 | 3263 | `reasoning:start` | |
+| 21 | 3263 | `reasoning:delta` | `\n用户要求` |
+| 22 | 3660 | `reasoning:delta` | `计算 42 + 58。我需要使用 add_numbers 工具来计算这个加法。\n` |
+| 23 | 3660 | `reasoning:done` | rawContent(45字符) |
+| 24 | 3660 | `text:start` | |
+| 25 | 3660 | `text:delta` | `\n\n\n` |
+| 26 | 4020 | `text:done` | |
+| 27 | 4020 | `llm:done` | tokens: in=315, out=58, total=373 |
+| 28 | 4020 | `tool:start` | add_numbers (callId: N/A) |
+| 29 | 4020 | `tool:done` | {"result":100,"expression":"42 + 58 = 100"} |
+| 30 | 4762 | `turn:done` | turnIndex: 1 |
+| 31 | 4762 | `turn:start` | turnIndex: 2 |
+| 32 | 4762 | `llm:start` | |
+| 33 | 4763 | `reasoning:start` | |
+| 34 | 4763 | `reasoning:delta` | `\n结果是 ` |
+| 35 | 5145 | `reasoning:delta` | `100。这个计算对用户来说很简单，而且正好是 42 + 58 = 100，这是一个整数结果。\n` |
+| 36 | 5145 | `reasoning:done` | rawContent(52字符) |
+| 37 | 5145 | `text:start` | |
+| 38 | 5145 | `text:delta` | `\n\n42` |
+| 39 | 5393 | `text:delta` | ` + 58 = 100，正好是整数！计算完成，小明。` |
+| 40 | 5407 | `text:done` | 42 + 58 = 100，正好是整数！计算完成，小明。 |
+| 41 | 5407 | `llm:done` | tokens: in=409, out=44, total=453 |
+| 42 | 5408 | `turn:done` | turnIndex: 2 |
+| 43 | 5408 | `run:done` | |
+| 44 | 5409 | `run:start` | |
+| 45 | 6387 | `turn:start` | turnIndex: 1 |
+| 46 | 6387 | `llm:start` | |
+| 47 | 6387 | `reasoning:start` | |
+| 48 | 6387 | `reasoning:delta` | `\n用户问` |
+| 49 | 6994 | `reasoning:delta` | `他们叫什么名字。根据系统提示，用户告诉我他们叫小明，最喜欢的数字是42。我需要在后续对话中准确引用这...` |
+| 50 | 6994 | `reasoning:done` | rawContent(59字符) |
+| 51 | 6994 | `text:start` | |
+| 52 | 6994 | `text:delta` | `\n\n你叫小明` |
+| 53 | 7262 | `text:delta` | `呀！我之前记住的：\n- 名字：小明\n- 最喜欢的数字：42` |
+| 54 | 7271 | `text:done` | 你叫小明呀！我之前记住的：
+
+- 名字：小明
+- 最喜欢的数字：42 |
+  | 55 | 7271 | `llm:done` | tokens: in=414, out=53, total=467 |
+  | 56 | 7272 | `turn:done` | turnIndex: 1 |
+  | 57 | 7272 | `run:done` | |
 
 ### 3.6 事件闭环检查
 
