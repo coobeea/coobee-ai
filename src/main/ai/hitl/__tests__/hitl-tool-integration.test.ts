@@ -10,6 +10,7 @@
  * 5. AgentExecutor HITL 循环与统一工具的兼容性
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { z } from 'zod'
 import type { ExecutionResult, StreamChunk } from '../../runtime/types'
 import type { ToolDefinition, ToolResult, ToolStreamUpdate } from '../../tools/types'
 import { ToolKind } from '../../tools/types'
@@ -129,11 +130,9 @@ function createMockTool(name: string, needUserConfirm: boolean): ToolDefinition 
     name,
     description: `Mock tool: ${name}`,
     kind: ToolKind.Execute,
-    parameters: {
-      type: 'object',
-      properties: { input: { type: 'string' } },
-      required: ['input']
-    },
+    parameters: z.object({
+      input: z.string()
+    }),
     needUserConfirm,
     execute: async function* (
       params: Record<string, unknown>
@@ -201,7 +200,7 @@ describe('HITL + 工具系统集成测试', () => {
         name: 'no_confirm_field',
         description: 'test',
         kind: ToolKind.FileSystem,
-        parameters: { type: 'object', properties: {} },
+        parameters: z.object({}),
         // eslint-disable-next-line require-yield
         execute: async function* () {
           return { success: true, llmContent: 'ok' }

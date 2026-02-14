@@ -18,6 +18,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { resolve } from 'node:path'
+import { z } from 'zod'
 import type { ToolStreamUpdate, ToolResult } from '../types'
 import { ToolKind } from '../types'
 
@@ -69,15 +70,17 @@ describe('readTool', () => {
       expect(readTool.needUserConfirm).toBe(false)
     })
 
-    it('有必要的参数定义', () => {
-      const props = readTool.parameters.properties as Record<string, unknown>
+    it('有必要的参数定义（Zod schema）', () => {
+      const jsonSchema = z.toJSONSchema(readTool.parameters) as Record<string, unknown>
+      const props = jsonSchema.properties as Record<string, unknown>
       expect(props.path).toBeDefined()
       expect(props.offset).toBeDefined()
       expect(props.limit).toBeDefined()
     })
 
     it('path 是必填参数', () => {
-      const required = readTool.parameters.required as string[]
+      const jsonSchema = z.toJSONSchema(readTool.parameters) as Record<string, unknown>
+      const required = jsonSchema.required as string[]
       expect(required).toContain('path')
     })
   })
@@ -356,7 +359,8 @@ describe('writeTool', () => {
     })
 
     it('path 和 content 是必填参数', () => {
-      const required = writeTool.parameters.required as string[]
+      const jsonSchema = z.toJSONSchema(writeTool.parameters) as Record<string, unknown>
+      const required = jsonSchema.required as string[]
       expect(required).toContain('path')
       expect(required).toContain('content')
     })
@@ -578,7 +582,8 @@ describe('editTool', () => {
     })
 
     it('path, oldText, newText 是必填参数', () => {
-      const required = editTool.parameters.required as string[]
+      const jsonSchema = z.toJSONSchema(editTool.parameters) as Record<string, unknown>
+      const required = jsonSchema.required as string[]
       expect(required).toContain('path')
       expect(required).toContain('oldText')
       expect(required).toContain('newText')
@@ -845,7 +850,8 @@ describe('bashTool', () => {
     })
 
     it('command 是必填参数', () => {
-      const required = bashTool.parameters.required as string[]
+      const jsonSchema = z.toJSONSchema(bashTool.parameters) as Record<string, unknown>
+      const required = jsonSchema.required as string[]
       expect(required).toContain('command')
     })
   })

@@ -9,6 +9,7 @@
  * 分类：FileSystem | 风险：低（只读操作）
  */
 import { readFile, stat } from 'node:fs/promises'
+import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolKind } from '../types'
 import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
@@ -24,24 +25,14 @@ export const readTool: ToolDefinition = {
     'Use offset and limit to read specific ranges of large files.',
   kind: ToolKind.FileSystem,
   needUserConfirm: false,
-  parameters: {
-    type: 'object',
-    properties: {
-      path: {
-        type: 'string',
-        description: 'Absolute or relative file path to read'
-      },
-      offset: {
-        type: 'number',
-        description: 'Starting line number (1-based). Defaults to 1'
-      },
-      limit: {
-        type: 'number',
-        description: `Maximum number of lines to return. Defaults to ${DEFAULT_MAX_LINES}`
-      }
-    },
-    required: ['path']
-  },
+  parameters: z.object({
+    path: z.string().describe('Absolute or relative file path to read'),
+    offset: z.number().optional().describe('Starting line number (1-based). Defaults to 1'),
+    limit: z
+      .number()
+      .optional()
+      .describe(`Maximum number of lines to return. Defaults to ${DEFAULT_MAX_LINES}`)
+  }),
 
   execute: async function* (
     params: Record<string, unknown>,

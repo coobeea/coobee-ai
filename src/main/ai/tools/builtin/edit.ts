@@ -9,6 +9,7 @@
  * 分类：FileSystem | 风险：中（修改文件系统）
  */
 import { readFile, writeFile } from 'node:fs/promises'
+import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolKind } from '../types'
 import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
@@ -22,24 +23,11 @@ export const editTool: ToolDefinition = {
     'The newText will replace the matched oldText.',
   kind: ToolKind.FileSystem,
   needUserConfirm: true,
-  parameters: {
-    type: 'object',
-    properties: {
-      path: {
-        type: 'string',
-        description: 'Absolute or relative file path to edit'
-      },
-      oldText: {
-        type: 'string',
-        description: 'The exact text to find (must match exactly once in the file)'
-      },
-      newText: {
-        type: 'string',
-        description: 'The replacement text'
-      }
-    },
-    required: ['path', 'oldText', 'newText']
-  },
+  parameters: z.object({
+    path: z.string().describe('Absolute or relative file path to edit'),
+    oldText: z.string().describe('The exact text to find (must match exactly once in the file)'),
+    newText: z.string().describe('The replacement text')
+  }),
 
   execute: async function* (
     params: Record<string, unknown>,

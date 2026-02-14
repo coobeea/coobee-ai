@@ -24,6 +24,7 @@
  */
 
 import path from 'node:path'
+import { z } from 'zod'
 import {
   createAgentSession,
   createExtensionRuntime,
@@ -903,7 +904,8 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
           name: def.name,
           label: def.name,
           description: def.description,
-          parameters: def.parameters,
+          // Zod → JSON Schema（PiMono SDK 使用 TypeBox/JSON Schema 格式）
+          parameters: z.toJSONSchema(def.parameters),
           execute: async (
             _toolCallId: string,
             params: Record<string, unknown>,

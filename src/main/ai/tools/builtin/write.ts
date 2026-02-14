@@ -10,6 +10,7 @@
  */
 import { writeFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolKind } from '../types'
 import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
@@ -22,20 +23,10 @@ export const writeTool: ToolDefinition = {
     'Always provide the COMPLETE file content — do not use placeholders or omit sections.',
   kind: ToolKind.FileSystem,
   needUserConfirm: true,
-  parameters: {
-    type: 'object',
-    properties: {
-      path: {
-        type: 'string',
-        description: 'Absolute or relative file path to write'
-      },
-      content: {
-        type: 'string',
-        description: 'The full content to write to the file'
-      }
-    },
-    required: ['path', 'content']
-  },
+  parameters: z.object({
+    path: z.string().describe('Absolute or relative file path to write'),
+    content: z.string().describe('The full content to write to the file')
+  }),
 
   execute: async function* (
     params: Record<string, unknown>,

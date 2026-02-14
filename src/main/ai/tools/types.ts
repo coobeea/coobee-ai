@@ -101,6 +101,14 @@ export interface ToolStreamUpdate {
   percentage?: number
 }
 
+// ========== Zod Schema 类型 ==========
+
+import type { z } from 'zod'
+
+/** Zod 参数 Schema 类型（工具参数必须是 ZodObject） */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ToolParametersSchema = z.ZodObject<any>
+
 // ========== 工具执行上下文 ==========
 
 /**
@@ -130,7 +138,7 @@ export type ToolExecutionContext = SandboxContext
  *   name: 'read',
  *   kind: ToolKind.FileSystem,
  *   description: 'Read file contents',
- *   parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+ *   parameters: z.object({ path: z.string().describe('File path') }),
  *   execute: async function* (params, signal, context) {
  *     const safePath = assertSandboxPath(params.path as string, context)
  *     const content = await readFile(safePath, 'utf-8')
@@ -148,8 +156,14 @@ export interface ToolDefinition {
   /** 工具分类 */
   kind: ToolKind
 
-  /** 参数 JSON Schema */
-  parameters: Record<string, unknown>
+  /**
+   * 参数 Zod Schema
+   *
+   * 所有工具参数使用 Zod 定义，Runtime 层根据需要转换：
+   *   - OpenAI SDK: 直接传给 tool()（原生支持 Zod）
+   *   - PiMono SDK: 通过 z.toJSONSchema() 转换为 JSON Schema
+   */
+  parameters: ToolParametersSchema
 
   /**
    * 是否需要用户确认后才能执行（HITL 声明式元数据）

@@ -11,6 +11,7 @@
  *   - 边界情况
  */
 import { describe, it, expect, beforeEach } from 'vitest'
+import { z } from 'zod'
 import { ToolRegistry } from '../registry'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types'
 import { ToolKind } from '../types'
@@ -21,7 +22,7 @@ function mockTool(name: string, kind: ToolKind = ToolKind.Extension): ToolDefini
     name,
     description: `Mock tool: ${name}`,
     kind,
-    parameters: { type: 'object', properties: {} },
+    parameters: z.object({}),
     execute: async function* (): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
       yield { type: 'progress', content: 'working...' }
       return { success: true, llmContent: `executed ${name}` }

@@ -5,6 +5,7 @@
 // 类型定义
 export type {
   ToolDefinition,
+  ToolParametersSchema,
   ToolResult,
   ToolResultMetadata,
   ToolError,

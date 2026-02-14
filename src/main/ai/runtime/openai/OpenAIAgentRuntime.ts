@@ -857,8 +857,7 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
       tool({
         name: def.name,
         description: def.description,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        parameters: def.parameters as any,
+        parameters: def.parameters,
         // HITL: 将工具定义的 needUserConfirm 映射为 SDK 的 needsApproval
         // needsApproval=true → SDK 自动触发 tool_approval_requested 事件
         needsApproval: def.needUserConfirm ?? false,

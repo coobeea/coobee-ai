@@ -13,6 +13,7 @@
  * 分类：Execute | 风险：高（可执行任意系统命令）
  */
 import { spawn } from 'node:child_process'
+import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolKind } from '../types'
 import { resolveWorkingDirectory } from '../../sandbox'
@@ -32,20 +33,15 @@ export const bashTool: ToolDefinition = {
     'Long-running commands will be terminated after the timeout.',
   kind: ToolKind.Execute,
   needUserConfirm: true,
-  parameters: {
-    type: 'object',
-    properties: {
-      command: {
-        type: 'string',
-        description: 'The shell command to execute'
-      },
-      timeout: {
-        type: 'number',
-        description: `Timeout in milliseconds. Defaults to ${DEFAULT_TIMEOUT_MS}ms (${DEFAULT_TIMEOUT_MS / 1000}s)`
-      }
-    },
-    required: ['command']
-  },
+  parameters: z.object({
+    command: z.string().describe('The shell command to execute'),
+    timeout: z
+      .number()
+      .optional()
+      .describe(
+        `Timeout in milliseconds. Defaults to ${DEFAULT_TIMEOUT_MS}ms (${DEFAULT_TIMEOUT_MS / 1000}s)`
+      )
+  }),
 
   execute: async function* (
     params: Record<string, unknown>,
