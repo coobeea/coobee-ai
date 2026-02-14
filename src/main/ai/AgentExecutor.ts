@@ -36,7 +36,8 @@ import type { OpenAIAgentRuntimeOptions, SessionCompressionOptions } from './run
 import { createStreamEmitter, type IStreamEmitter } from './streaming/StreamEmitter'
 import type { StreamSource } from './streaming/types'
 import { hitlApprovalManager, DEFAULT_HITL_TIMEOUT_MS } from './hitl/HitlApprovalManager'
-import { buildAgentEnv, formatRuntimePaths, loadRuntimeEnvSkill } from './common/AgentEnv'
+import { buildAgentEnv, formatRuntimePaths } from './common/AgentEnv'
+import { SkillManager } from './skills'
 
 // ==================== Builder ====================
 
@@ -520,10 +521,15 @@ class AgentExecutor {
       // 2. 构建 AgentEnv
       const agentEnv = await buildAgentEnv(sessionId, workspace)
 
-      // 3. 加载 runtime-env Skill
-      const envSkill = await loadRuntimeEnvSkill(Env.paths.builtinSkillsDir)
-      if (envSkill) {
-        builder.skills([envSkill])
+      // 3. 加载所有 Skill（内置 → 用户 → 工作空间）
+      const skillManager = new SkillManager()
+      const skills = skillManager.scanSkills([
+        Env.paths.builtinSkillsDir,
+        Env.paths.userSkillsDir,
+        path.join(workspace, 'skills')
+      ])
+      if (skills.length > 0) {
+        builder.skills(skills)
       }
 
       // 4. 注入 <runtime_paths> 到 appendInstructions

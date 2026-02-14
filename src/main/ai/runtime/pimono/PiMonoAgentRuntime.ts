@@ -255,8 +255,9 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
     ]
 
     // 7. 创建 AgentSession
-    //    内置 codingTools 默认禁用（tools: [] 覆盖），仅使用显式传入的工具
-    const { session } = await createAgentSession({
+    //    有工具时：tools: [] 禁用内置 codingTools，通过 customTools 传入自定义工具
+    //    无工具时：完全不传 tools/customTools，避免 API 收到空 tools 数组报 400
+    const sessionConfig: Record<string, unknown> = {
       cwd: this.options.cwd || process.cwd(),
       model,
       thinkingLevel,
@@ -264,10 +265,17 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
       modelRegistry,
       sessionManager,
       settingsManager,
-      resourceLoader,
-      customTools: allSdkTools,
-      tools: []
-    })
+      resourceLoader
+    }
+
+    if (allSdkTools.length > 0) {
+      sessionConfig.customTools = allSdkTools
+      sessionConfig.tools = [] // 禁用内置 codingTools，仅使用 customTools
+    }
+
+    const { session } = await createAgentSession(
+      sessionConfig as Parameters<typeof createAgentSession>[0]
+    )
 
     this.piSession = session
 
@@ -596,7 +604,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const evt = event as any
 
-      log.debug(`[Pi Event] ${event.type}`, JSON.stringify(event))
+      log.debug(`[Pi Event] ${event.type}`)
 
       switch (event.type) {
         // ===== Agent 生命周期 =====

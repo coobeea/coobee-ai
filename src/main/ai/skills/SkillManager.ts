@@ -1,131 +1,192 @@
 /**
- * 技能管理器
- * 管理和执行技能（基于 @openai/agents SDK）
+ * Skill 管理器 — 文件驱动的 Skill 生命周期管理
+ *
+ * 职责：
+ *   - 扫描目录下所有 SKILL.md 文件并解析 frontmatter
+ *   - 支持多级搜索路径（内置 → 用户 → 工作空间），同名先发现优先
+ *   - 动态注册/注销（Extension 贡献）
+ *   - 动态添加搜索路径
+ *   - 查询（按名称、全量）
+ *   - 格式化输出（生成 <skill> XML 块供提示词注入）
+ *
+ * 不负责：
+ *   - 路径的定义和存储（由 Env 提供）
+ *   - 环境信息的构建（由 AgentEnv 负责）
  */
 
-import type { AISkill, SkillActivationOptions, SkillExecutionContext } from './types'
+import fs from 'fs'
+import path from 'path'
+import { log } from '@main/common/logger'
+import type { SkillDefinition } from '../runtime/types'
+
+// ==================== Skill 文件解析 ====================
 
 /**
- * 技能激活结果
+ * 解析 SKILL.md 文件内容，提取 frontmatter 中的 name/description 和正文
+ *
+ * @param filePath SKILL.md 文件的绝对路径
+ * @returns 解析结果，或 null（文件不存在/解析失败）
  */
-export interface SkillActivationResult {
-  /** 激活的技能列表 */
-  activatedSkills: AISkill[]
-  /** 技能提示词段落（注入到 Agent instructions） */
-  promptSection: string
+export function parseSkillMd(
+  filePath: string
+): { name: string; description: string; content: string } | null {
+  try {
+    if (!fs.existsSync(filePath)) return null
+
+    const raw = fs.readFileSync(filePath, 'utf-8')
+
+    // 解析 YAML frontmatter: ---\nkey: value\n---
+    const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
+    if (!fmMatch) {
+      // 无 frontmatter，用目录名作为 name
+      const dirName = path.basename(path.dirname(filePath))
+      return { name: dirName, description: '', content: raw.trim() }
+    }
+
+    const frontmatter = fmMatch[1]
+    const body = fmMatch[2].trim()
+
+    // 简单解析 YAML（只取 name 和 description）
+    const nameMatch = frontmatter.match(/^name:\s*(.+)$/m)
+    const descMatch = frontmatter.match(/^description:\s*(.+)$/m)
+
+    const dirName = path.basename(path.dirname(filePath))
+    return {
+      name: nameMatch ? nameMatch[1].trim() : dirName,
+      description: descMatch ? descMatch[1].trim() : '',
+      content: body
+    }
+  } catch {
+    return null
+  }
 }
 
-/**
- * 技能管理器接口
- */
-export interface ISkillManager {
-  register(skill: AISkill): void
-  registerAll(skills: AISkill[]): void
-  getAllSkills(): AISkill[]
-  getSkill(skillId: string): AISkill | undefined
-  activateSkills(context: string, options?: SkillActivationOptions): SkillActivationResult
-  executeSkill(skillId: string, context: SkillExecutionContext): Promise<unknown>
-  generatePromptSection(skills: AISkill[]): string
-}
+// ==================== SkillManager ====================
 
-/**
- * 技能管理器实现
- */
-export class SkillManager implements ISkillManager {
-  private skills = new Map<string, AISkill>()
+export class SkillManager {
+  /** 已加载的 Skill（name → SkillDefinition） */
+  private skills = new Map<string, SkillDefinition>()
 
-  register(skill: AISkill): void {
-    this.skills.set(skill.id, skill)
+  /** 已加载的目录名集合（用于去重） */
+  private loadedDirNames = new Set<string>()
+
+  // ========== 扫描与加载 ==========
+
+  /**
+   * 扫描多个搜索路径，加载所有 SKILL.md
+   *
+   * 按搜索路径顺序扫描，同名目录先发现的优先（不重复加载）。
+   *
+   * @param searchPaths Skill 搜索路径数组
+   * @returns 本次新加载的 SkillDefinition 数组
+   */
+  scanSkills(searchPaths: string[]): SkillDefinition[] {
+    const newSkills: SkillDefinition[] = []
+
+    for (const searchDir of searchPaths) {
+      try {
+        if (!fs.existsSync(searchDir)) continue
+
+        const entries = fs.readdirSync(searchDir, { withFileTypes: true })
+
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue
+          if (entry.name.startsWith('.')) continue // 跳过隐藏目录
+
+          // 用目录名去重
+          if (this.loadedDirNames.has(entry.name)) continue
+
+          const skillPath = path.join(searchDir, entry.name, 'SKILL.md')
+          const parsed = parseSkillMd(skillPath)
+
+          if (!parsed) continue
+
+          this.loadedDirNames.add(entry.name)
+
+          const skill: SkillDefinition = {
+            name: parsed.name,
+            description: parsed.description,
+            content: parsed.content
+          }
+
+          this.skills.set(parsed.name, skill)
+          newSkills.push(skill)
+        }
+      } catch (error) {
+        log.warn(`[SkillManager] 扫描目录失败: ${searchDir}`, error)
+      }
+    }
+
+    log.info(
+      `[SkillManager] 加载 ${this.skills.size} 个 Skill: ${[...this.skills.keys()].join(', ')}`
+    )
+    return newSkills
   }
 
-  registerAll(skills: AISkill[]): void {
-    skills.forEach((skill) => this.register(skill))
+  // ========== 动态注册/注销 ==========
+
+  /**
+   * 动态注册 Skill（Extension 贡献等场景）
+   *
+   * 如果同名 Skill 已存在，会被覆盖。
+   */
+  register(skill: SkillDefinition): void {
+    this.skills.set(skill.name, skill)
+    log.debug(`[SkillManager] 注册 Skill: ${skill.name}`)
   }
 
-  getAllSkills(): AISkill[] {
+  /**
+   * 注销指定 Skill
+   *
+   * @returns 是否成功注销（不存在则返回 false）
+   */
+  unregister(name: string): boolean {
+    const existed = this.skills.delete(name)
+    if (existed) {
+      log.debug(`[SkillManager] 注销 Skill: ${name}`)
+    }
+    return existed
+  }
+
+  // ========== 查询 ==========
+
+  /** 获取所有已加载的 Skill */
+  getAll(): SkillDefinition[] {
     return Array.from(this.skills.values())
   }
 
-  getSkill(skillId: string): AISkill | undefined {
-    return this.skills.get(skillId)
+  /** 按名称查找 Skill */
+  getByName(name: string): SkillDefinition | undefined {
+    return this.skills.get(name)
   }
 
-  activateSkills(context: string, _options?: SkillActivationOptions): SkillActivationResult {
-    const allSkills = this.getAllSkills()
-    const activatedSkills: AISkill[] = []
-
-    // 简单的关键词匹配
-    for (const skill of allSkills) {
-      if (this.isSkillRelevant(skill, context)) {
-        activatedSkills.push(skill)
-      }
-    }
-
-    const promptSection = this.generatePromptSection(activatedSkills)
-
-    return {
-      activatedSkills,
-      promptSection
-    }
+  /** 已加载的 Skill 数量 */
+  get size(): number {
+    return this.skills.size
   }
 
-  async executeSkill(skillId: string, context: SkillExecutionContext): Promise<unknown> {
-    const skill = this.getSkill(skillId)
-    if (!skill) {
-      throw new Error(`Skill not found: ${skillId}`)
-    }
+  // ========== 格式化 ==========
 
-    return await skill.execute(context)
+  /**
+   * 将所有 Skill 格式化为 <skill> XML 块
+   *
+   * 用于注入到系统提示词的 appendInstructions 中。
+   *
+   * @returns XML 格式字符串，空则返回空字符串
+   */
+  toPromptBlocks(): string {
+    if (this.skills.size === 0) return ''
+
+    return this.getAll()
+      .map((s) => `<skill name="${s.name}">\n${s.content}\n</skill>`)
+      .join('\n\n')
   }
 
-  generatePromptSection(skills: AISkill[]): string {
-    if (skills.length === 0) {
-      return ''
-    }
+  // ========== 清理 ==========
 
-    let section = '\n\n## Available Skills\n\n'
-    section += 'The following skills have been activated for you:\n\n'
-
-    for (const skill of skills) {
-      section += `### ${skill.name}\n`
-      section += `- **ID**: ${skill.id}\n`
-      section += `- **Description**: ${skill.description}\n`
-
-      if (skill.keywords && skill.keywords.length > 0) {
-        section += `- **Keywords**: ${skill.keywords.join(', ')}\n`
-      }
-
-      if (skill.examples && skill.examples.length > 0) {
-        section += '- **Examples**:\n'
-        skill.examples.forEach((example, idx) => {
-          section += `  ${idx + 1}. ${example}\n`
-        })
-      }
-
-      section += '\n'
-    }
-
-    return section
-  }
-
-  private isSkillRelevant(skill: AISkill, context: string): boolean {
-    const contextLower = context.toLowerCase()
-
-    if (skill.keywords && skill.keywords.length > 0) {
-      for (const keyword of skill.keywords) {
-        if (contextLower.includes(keyword.toLowerCase())) {
-          return true
-        }
-      }
-    }
-
-    if (
-      contextLower.includes(skill.name.toLowerCase()) ||
-      contextLower.includes(skill.description.toLowerCase())
-    ) {
-      return true
-    }
-
-    return false
+  /** 清空所有已加载的 Skill */
+  clear(): void {
+    this.skills.clear()
+    this.loadedDirNames.clear()
   }
 }

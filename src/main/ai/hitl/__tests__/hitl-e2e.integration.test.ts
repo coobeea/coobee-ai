@@ -112,8 +112,13 @@ vi.mock('../../common/AgentEnv', () => ({
     memoryDir: '/tmp/test-home/memory',
     extensionPaths: []
   }),
-  formatRuntimePaths: () => '<runtime_paths>mock</runtime_paths>',
-  loadRuntimeEnvSkill: async () => null
+  formatRuntimePaths: () => '<runtime_paths>mock</runtime_paths>'
+}))
+
+vi.mock('../../skills', () => ({
+  SkillManager: class MockSkillManager {
+    scanSkills = (): [] => []
+  }
 }))
 
 // ===== 导入真实模块 =====

@@ -49,12 +49,19 @@ vi.mock('@main/common/env', () => ({
 // ===== Mock AgentEnv module functions =====
 const mockBuildAgentEnv = vi.fn()
 const mockFormatRuntimePaths = vi.fn()
-const mockLoadRuntimeEnvSkill = vi.fn()
 
 vi.mock('../AgentEnv', () => ({
   buildAgentEnv: (...args: unknown[]) => mockBuildAgentEnv(...args),
-  formatRuntimePaths: (...args: unknown[]) => mockFormatRuntimePaths(...args),
-  loadRuntimeEnvSkill: (...args: unknown[]) => mockLoadRuntimeEnvSkill(...args)
+  formatRuntimePaths: (...args: unknown[]) => mockFormatRuntimePaths(...args)
+}))
+
+// ===== Mock SkillManager =====
+const mockScanSkills = vi.fn()
+
+vi.mock('../../skills', () => ({
+  SkillManager: class MockSkillManager {
+    scanSkills = mockScanSkills
+  }
 }))
 
 // ===== Mock StreamEmitter =====
@@ -116,11 +123,13 @@ describe('AgentExecutor — 环境注入', () => {
       memoryDir: '/mock/.home/memory'
     })
     mockFormatRuntimePaths.mockReturnValue('<runtime_paths>...</runtime_paths>')
-    mockLoadRuntimeEnvSkill.mockResolvedValue({
-      name: 'runtime-env',
-      description: '运行时环境说明',
-      content: '# Runtime Environment\n...'
-    })
+    mockScanSkills.mockReturnValue([
+      {
+        name: 'runtime-env',
+        description: '运行时环境说明',
+        content: '# Runtime Environment\n...'
+      }
+    ])
 
     // runtime mock
     mockRuntime.initialize.mockResolvedValue(undefined)
@@ -160,7 +169,11 @@ describe('AgentExecutor — 环境注入', () => {
         'session-1',
         '/mock/.home/workspaces/session-1'
       )
-      expect(mockLoadRuntimeEnvSkill).toHaveBeenCalledWith('/mock/builtin-skills')
+      expect(mockScanSkills).toHaveBeenCalledWith([
+        '/mock/builtin-skills',
+        '/mock/.home/skills',
+        '/mock/.home/workspaces/session-1/skills'
+      ])
       expect(mockFormatRuntimePaths).toHaveBeenCalled()
     })
 
@@ -195,8 +208,8 @@ describe('AgentExecutor — 环境注入', () => {
       expect(collected).toHaveLength(1) // run:start
     })
 
-    it('runtime-env Skill 不存在时仍正常执行', async () => {
-      mockLoadRuntimeEnvSkill.mockResolvedValue(null)
+    it('SkillManager 返回空数组时仍正常执行', async () => {
+      mockScanSkills.mockReturnValue([])
 
       const result = { output: 'done' }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

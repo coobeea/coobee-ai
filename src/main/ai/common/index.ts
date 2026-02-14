@@ -4,3 +4,4 @@
 
 export * from './errors'
 export * from './AgentEnv'
+export * from './ContextSnapshot'

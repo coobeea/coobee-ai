@@ -9,11 +9,6 @@
  *   2. 作为 Agent 进程的环境变量子集（未来 sandbox 场景）
  */
 
-import fs from 'fs'
-import path from 'path'
-import { log } from '@main/common/logger'
-import type { SkillDefinition } from '../runtime/types'
-
 // ==================== 类型定义 ====================
 
 /**
@@ -205,40 +200,4 @@ ${env.loadedExtensions.map((id) => `    <extension>${id}</extension>`).join('\n'
 ${env.availableTools.map((t) => `  <tool>${t}</tool>`).join('\n')}
 </tools>
 </runtime_environment>`
-}
-
-// ==================== Skill 加载 ====================
-
-/**
- * 加载内置 runtime-env Skill
- *
- * 从 builtinSkillsDir/runtime-env/SKILL.md 读取。
- * 如果文件不存在则返回 null（不阻断执行）。
- */
-export async function loadRuntimeEnvSkill(
-  builtinSkillsDir: string
-): Promise<SkillDefinition | null> {
-  const skillPath = path.join(builtinSkillsDir, 'runtime-env', 'SKILL.md')
-
-  try {
-    if (!fs.existsSync(skillPath)) {
-      log.warn(`[AgentEnv] runtime-env Skill 不存在: ${skillPath}`)
-      return null
-    }
-
-    const content = fs.readFileSync(skillPath, 'utf-8')
-
-    // 解析 frontmatter
-    const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
-    const body = fmMatch ? fmMatch[2].trim() : content.trim()
-
-    return {
-      name: 'runtime-env',
-      description: 'Agent 运行时环境的目录结构、路径约定和可用资源说明',
-      content: body
-    }
-  } catch (error) {
-    log.error(`[AgentEnv] 加载 runtime-env Skill 失败:`, error)
-    return null
-  }
 }

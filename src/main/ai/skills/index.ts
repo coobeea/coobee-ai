@@ -1,7 +1,4 @@
 /**
- * 技能系统模块
+ * Skill 模块公共 API
  */
-
-export * from './types'
-export * from './SkillManager'
-export * from './builtin'
+export { SkillManager, parseSkillMd } from './SkillManager'

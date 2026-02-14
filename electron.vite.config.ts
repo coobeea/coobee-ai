@@ -13,7 +13,7 @@ import type { Plugin } from 'vite'
 import dotenv from 'dotenv'
 
 // 手动加载 .env 文件到 process.env
-dotenv.config()
+dotenv.config({ quiet: true })
 
 // 复制 WASM 等静态资源到构建输出目录
 function copyWasmAssetsPlugin(): Plugin {

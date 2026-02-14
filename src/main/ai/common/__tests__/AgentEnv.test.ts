@@ -4,11 +4,8 @@
  * 测试：
  *   - buildAgentEnv: 从 Env 构建安全子集（含系统信息、Extension、工具清单）
  *   - formatRuntimePaths: 格式化为 <runtime_environment> XML
- *   - loadRuntimeEnvSkill: 加载内置 runtime-env Skill
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import path from 'path'
-import fs from 'fs'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ===== Mock logger =====
 vi.mock('@main/common/logger', () => ({
@@ -67,7 +64,7 @@ vi.mock('@main/ai/tools/registry', () => ({
   }
 }))
 
-import { buildAgentEnv, formatRuntimePaths, loadRuntimeEnvSkill } from '../AgentEnv'
+import { buildAgentEnv, formatRuntimePaths } from '../AgentEnv'
 import type { AgentEnv } from '../AgentEnv'
 
 describe('AgentEnv', () => {
@@ -323,68 +320,6 @@ describe('AgentEnv', () => {
       expect(result).toContain('</runtime_environment>')
       expect(result).not.toContain('<tool>')
       expect(result).not.toContain('<extension>')
-    })
-  })
-
-  // ==================== loadRuntimeEnvSkill ====================
-
-  describe('loadRuntimeEnvSkill', () => {
-    let tmpDir: string
-
-    beforeEach(() => {
-      tmpDir = path.join('/tmp', `agentenv-test-${Date.now()}`)
-      fs.mkdirSync(path.join(tmpDir, 'runtime-env'), { recursive: true })
-    })
-
-    afterEach(() => {
-      fs.rmSync(tmpDir, { recursive: true, force: true })
-    })
-
-    it('成功加载 SKILL.md 并解析 frontmatter', async () => {
-      const skillContent = `---
-name: Runtime Environment
-description: Test description
----
-
-# Runtime Environment
-
-This is the skill content.`
-
-      fs.writeFileSync(path.join(tmpDir, 'runtime-env', 'SKILL.md'), skillContent)
-
-      const skill = await loadRuntimeEnvSkill(tmpDir)
-
-      expect(skill).not.toBeNull()
-      expect(skill!.name).toBe('runtime-env')
-      expect(skill!.description).toBe('Agent 运行时环境的目录结构、路径约定和可用资源说明')
-      expect(skill!.content).toContain('# Runtime Environment')
-      expect(skill!.content).toContain('This is the skill content.')
-      expect(skill!.content).not.toContain('---')
-    })
-
-    it('没有 frontmatter 时返回完整内容', async () => {
-      const skillContent = `# Runtime Environment\n\nNo frontmatter here.`
-      fs.writeFileSync(path.join(tmpDir, 'runtime-env', 'SKILL.md'), skillContent)
-
-      const skill = await loadRuntimeEnvSkill(tmpDir)
-
-      expect(skill).not.toBeNull()
-      expect(skill!.content).toContain('# Runtime Environment')
-      expect(skill!.content).toContain('No frontmatter here.')
-    })
-
-    it('目录不存在时返回 null', async () => {
-      const skill = await loadRuntimeEnvSkill('/nonexistent/path')
-
-      expect(skill).toBeNull()
-    })
-
-    it('SKILL.md 文件不存在时返回 null', async () => {
-      fs.rmSync(path.join(tmpDir, 'runtime-env', 'SKILL.md'), { force: true })
-
-      const skill = await loadRuntimeEnvSkill(tmpDir)
-
-      expect(skill).toBeNull()
     })
   })
 })

@@ -11,6 +11,7 @@
 
 import { log } from '@main/common/logger'
 import { agentExecutor } from '@main/ai/AgentExecutor'
+import { builtinTools } from '@main/ai/tools'
 import { GatewayErrorCode, GatewayMethodError } from '../protocol'
 import type { MethodGroup } from '../protocol'
 
@@ -29,6 +30,7 @@ function createChatBuilder(): ReturnType<typeof agentExecutor.piMono> {
     .name('chat-agent')
     .instructions(CHAT_INSTRUCTIONS)
     .sessionMode('file')
+    .tools(builtinTools)
 }
 
 export const chatMethods: MethodGroup = {
