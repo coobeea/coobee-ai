@@ -23,6 +23,7 @@ export type {
   RegisteredExtensionHook,
   RegisteredExtensionTool,
   RegisteredExtensionMethod,
+  RegisteredExtensionSkillDir,
   BeforeAgentStartEvent,
   BeforeAgentStartResult,
   BeforeToolCallEvent,

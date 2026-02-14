@@ -83,31 +83,45 @@ export class ExtensionLoader {
       this.unload(manifest.id)
     }
 
-    // 查找入口文件
+    // 注册扩展贡献的 Skill 目录（声明式，无需代码入口）
+    if (manifest.skills) {
+      const skillDir = path.resolve(dir, manifest.skills)
+      if (fs.existsSync(skillDir) && fs.statSync(skillDir).isDirectory()) {
+        this.registry.registerSkillDir(manifest.id, skillDir)
+        console.log(`[ExtensionLoader] Registered skill dir for "${manifest.id}": ${skillDir}`)
+      } else {
+        console.warn(
+          `[ExtensionLoader] Skill dir declared but not found for "${manifest.id}": ${skillDir}`
+        )
+      }
+    }
+
+    // 查找入口文件（纯 Skill 扩展可以没有代码入口）
     const entryPath = resolveEntryPath(dir)
-    if (!entryPath) {
-      console.warn(`[ExtensionLoader] No entry file (index.ts/index.js) found in "${dir}"`)
-      return
-    }
+    if (entryPath) {
+      // jiti 加载模块
+      let mod: ExtensionModule
+      try {
+        const imported = await jiti.import(entryPath)
+        mod = ((imported as Record<string, unknown>).default || imported) as ExtensionModule
+      } catch (err) {
+        console.error(`[ExtensionLoader] Failed to load "${manifest.id}" from "${entryPath}":`, err)
+        return
+      }
 
-    // jiti 加载模块
-    let mod: ExtensionModule
-    try {
-      const imported = await jiti.import(entryPath)
-      mod = ((imported as Record<string, unknown>).default || imported) as ExtensionModule
-    } catch (err) {
-      console.error(`[ExtensionLoader] Failed to load "${manifest.id}" from "${entryPath}":`, err)
-      return
-    }
-
-    // 调用 register
-    const api = createExtensionApi(manifest.id, manifest.name, origin, this.registry)
-    try {
-      mod.register(api)
-    } catch (err) {
-      console.error(`[ExtensionLoader] register() failed for "${manifest.id}":`, err)
-      // 注册失败，清理已注册的内容
-      this.registry.unregisterAll(manifest.id)
+      // 调用 register
+      const api = createExtensionApi(manifest.id, manifest.name, origin, this.registry)
+      try {
+        mod.register(api)
+      } catch (err) {
+        console.error(`[ExtensionLoader] register() failed for "${manifest.id}":`, err)
+        // 注册失败，清理已注册的内容
+        this.registry.unregisterAll(manifest.id)
+        return
+      }
+    } else if (!manifest.skills) {
+      // 既没有代码入口，也没有 Skill 声明 → 无效扩展
+      console.warn(`[ExtensionLoader] No entry file or skills declaration in "${dir}", skipping`)
       return
     }
 

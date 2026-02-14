@@ -11,7 +11,8 @@ import type {
   ExtensionHookName,
   RegisteredExtensionHook,
   RegisteredExtensionTool,
-  RegisteredExtensionMethod
+  RegisteredExtensionMethod,
+  RegisteredExtensionSkillDir
 } from './types'
 
 /** 受保护的 Gateway 核心命名空间，Extension 不可覆盖 */
@@ -21,6 +22,7 @@ export class ExtensionRegistry {
   private hooks: RegisteredExtensionHook[] = []
   private tools: RegisteredExtensionTool[] = []
   private gatewayMethods: RegisteredExtensionMethod[] = []
+  private skillDirs: RegisteredExtensionSkillDir[] = []
 
   // --- 工具 ---
 
@@ -95,12 +97,37 @@ export class ExtensionRegistry {
     return [...this.gatewayMethods]
   }
 
+  // --- Skill 目录 ---
+
+  registerSkillDir(extensionId: string, dir: string): void {
+    // 同一扩展可以只贡献一个 Skill 目录，重复注册忽略
+    if (this.skillDirs.some((s) => s.extensionId === extensionId && s.dir === dir)) return
+    this.skillDirs.push({ extensionId, dir })
+  }
+
+  unregisterSkillDirsByExtension(extensionId: string): string[] {
+    const removed: string[] = []
+    this.skillDirs = this.skillDirs.filter((s) => {
+      if (s.extensionId === extensionId) {
+        removed.push(s.dir)
+        return false
+      }
+      return true
+    })
+    return removed
+  }
+
+  getSkillDirs(): RegisteredExtensionSkillDir[] {
+    return [...this.skillDirs]
+  }
+
   // --- 整体 ---
 
   unregisterAll(extensionId: string): void {
     this.unregisterToolsByExtension(extensionId)
     this.unregisterHooksByExtension(extensionId)
     this.unregisterGatewayMethodsByExtension(extensionId)
+    this.unregisterSkillDirsByExtension(extensionId)
   }
 
   getExtensionIds(): string[] {
@@ -108,6 +135,7 @@ export class ExtensionRegistry {
     for (const t of this.tools) ids.add(t.extensionId)
     for (const h of this.hooks) ids.add(h.extensionId)
     for (const m of this.gatewayMethods) ids.add(m.extensionId)
+    for (const s of this.skillDirs) ids.add(s.extensionId)
     return [...ids]
   }
 
@@ -115,5 +143,6 @@ export class ExtensionRegistry {
     this.hooks = []
     this.tools = []
     this.gatewayMethods = []
+    this.skillDirs = []
   }
 }

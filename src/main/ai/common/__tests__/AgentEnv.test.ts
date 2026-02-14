@@ -43,6 +43,15 @@ vi.mock('@main/common/env', () => ({
   Env: mockEnv
 }))
 
+// ===== Mock extension system =====
+const mockExtensionManager = {
+  getRegistry: vi.fn()
+}
+
+vi.mock('@main/common/extension', () => ({
+  ExtensionManager: mockExtensionManager
+}))
+
 import { buildAgentEnv, formatRuntimePaths, loadRuntimeEnvSkill } from '../AgentEnv'
 import type { AgentEnv } from '../AgentEnv'
 
@@ -59,6 +68,8 @@ describe('AgentEnv', () => {
       const mockExtPaths = ['/mock/extensions', '/mock/.home/extensions']
       mockEnv.getSkillSearchPaths.mockResolvedValue(mockSkillPaths)
       mockEnv.getExtensionSearchPaths.mockResolvedValue(mockExtPaths)
+      // 无扩展 Skill 贡献
+      mockExtensionManager.getRegistry.mockReturnValue({ getSkillDirs: () => [] })
 
       const env = await buildAgentEnv('/mock/workspace')
 
@@ -79,11 +90,61 @@ describe('AgentEnv', () => {
     it('调用 getSkillSearchPaths 并传入 workspace', async () => {
       mockEnv.getSkillSearchPaths.mockResolvedValue([])
       mockEnv.getExtensionSearchPaths.mockResolvedValue([])
+      mockExtensionManager.getRegistry.mockReturnValue(null)
 
       await buildAgentEnv('/my/workspace')
 
       expect(mockEnv.getSkillSearchPaths).toHaveBeenCalledWith('/my/workspace')
       expect(mockEnv.getExtensionSearchPaths).toHaveBeenCalledWith('/my/workspace')
+    })
+
+    // ---- 扩展贡献 Skill 路径合并 ----
+
+    it('扩展贡献的 Skill 路径插入到 builtinSkillsDir 之后', async () => {
+      const baseSkillPaths = ['/mock/skills', '/mock/.home/skills', '/mock/workspace/skills']
+      mockEnv.getSkillSearchPaths.mockResolvedValue([...baseSkillPaths])
+      mockEnv.getExtensionSearchPaths.mockResolvedValue([])
+      mockExtensionManager.getRegistry.mockReturnValue({
+        getSkillDirs: () => [
+          { extensionId: 'ext-a', dir: '/ext-a/skills' },
+          { extensionId: 'ext-b', dir: '/ext-b/skills' }
+        ]
+      })
+
+      const env = await buildAgentEnv('/mock/workspace')
+
+      // 优先级：builtin(0) → ext-a(1) → ext-b(2) → user(3) → workspace(4)
+      expect(env.skillPaths).toEqual([
+        '/mock/skills', // builtin（最低）
+        '/ext-a/skills', // 扩展贡献
+        '/ext-b/skills', // 扩展贡献
+        '/mock/.home/skills', // 用户级
+        '/mock/workspace/skills' // 工作空间（最高）
+      ])
+    })
+
+    it('ExtensionManager 未初始化时 — skillPaths 不受影响', async () => {
+      const baseSkillPaths = ['/mock/skills', '/mock/.home/skills']
+      mockEnv.getSkillSearchPaths.mockResolvedValue([...baseSkillPaths])
+      mockEnv.getExtensionSearchPaths.mockResolvedValue([])
+      mockExtensionManager.getRegistry.mockReturnValue(null)
+
+      const env = await buildAgentEnv('/mock/workspace')
+
+      expect(env.skillPaths).toEqual(baseSkillPaths)
+    })
+
+    it('扩展无 Skill 贡献时 — skillPaths 不变', async () => {
+      const baseSkillPaths = ['/mock/skills', '/mock/.home/skills']
+      mockEnv.getSkillSearchPaths.mockResolvedValue([...baseSkillPaths])
+      mockEnv.getExtensionSearchPaths.mockResolvedValue([])
+      mockExtensionManager.getRegistry.mockReturnValue({
+        getSkillDirs: () => []
+      })
+
+      const env = await buildAgentEnv('/mock/workspace')
+
+      expect(env.skillPaths).toEqual(baseSkillPaths)
     })
   })
 

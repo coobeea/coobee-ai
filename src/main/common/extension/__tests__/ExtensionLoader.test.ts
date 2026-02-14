@@ -196,7 +196,7 @@ describe('ExtensionLoader', () => {
 
   // ---- 补充维度 ----
 
-  it('load 无入口文件 — 只有 extension.json，无 index.ts/js', async () => {
+  it('load 无入口文件且无 skills — 只有 extension.json，跳过', async () => {
     const extDir = path.join(tmpDir, 'no-entry')
     fs.mkdirSync(extDir, { recursive: true })
     fs.writeFileSync(
@@ -208,7 +208,9 @@ describe('ExtensionLoader', () => {
     await loader.load(extDir, 'user')
 
     expect(loader.getLoadedIds()).not.toContain('no-entry')
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('No entry file'))
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('No entry file or skills declaration')
+    )
     warnSpy.mockRestore()
   })
 
@@ -367,5 +369,139 @@ describe('ExtensionLoader', () => {
       loader.stopWatch()
       loader.stopWatch()
     }).not.toThrow()
+  })
+
+  // ---- Skill 目录贡献 ----
+
+  it('load Extension 声明 skills — Skill 目录注册到 registry', async () => {
+    const extDir = path.join(tmpDir, 'ext-with-skills')
+    fs.mkdirSync(extDir, { recursive: true })
+    // 创建 skills 子目录及示例 Skill
+    const skillsDir = path.join(extDir, 'skills')
+    fs.mkdirSync(path.join(skillsDir, 'my-skill'), { recursive: true })
+    fs.writeFileSync(path.join(skillsDir, 'my-skill', 'SKILL.md'), '# My Skill')
+
+    fs.writeFileSync(
+      path.join(extDir, 'extension.json'),
+      JSON.stringify({
+        id: 'ext-with-skills',
+        name: 'Skills Extension',
+        version: '1.0.0',
+        skills: 'skills'
+      })
+    )
+    fs.writeFileSync(
+      path.join(extDir, 'index.js'),
+      `module.exports = { id: 'ext-with-skills', name: 'Skills Extension', register(api) {} };`
+    )
+
+    await loader.load(extDir, 'user')
+
+    expect(loader.getLoadedIds()).toContain('ext-with-skills')
+    const dirs = registry.getSkillDirs()
+    expect(dirs).toHaveLength(1)
+    expect(dirs[0].extensionId).toBe('ext-with-skills')
+    expect(dirs[0].dir).toBe(skillsDir)
+  })
+
+  it('纯 Skill 扩展（无 index.ts）— 只有 manifest+skills，正常加载', async () => {
+    const extDir = path.join(tmpDir, 'skill-only')
+    fs.mkdirSync(extDir, { recursive: true })
+    const skillsDir = path.join(extDir, 'skills')
+    fs.mkdirSync(skillsDir, { recursive: true })
+
+    fs.writeFileSync(
+      path.join(extDir, 'extension.json'),
+      JSON.stringify({
+        id: 'skill-only',
+        name: 'Skill Only Extension',
+        version: '1.0.0',
+        skills: 'skills'
+      })
+    )
+    // 注意：没有 index.ts / index.js
+
+    await loader.load(extDir, 'user')
+
+    expect(loader.getLoadedIds()).toContain('skill-only')
+    const dirs = registry.getSkillDirs()
+    expect(dirs).toHaveLength(1)
+    expect(dirs[0].extensionId).toBe('skill-only')
+  })
+
+  it('skills 目录不存在 — 警告但不阻止加载', async () => {
+    const extDir = path.join(tmpDir, 'ext-bad-skill')
+    fs.mkdirSync(extDir, { recursive: true })
+
+    fs.writeFileSync(
+      path.join(extDir, 'extension.json'),
+      JSON.stringify({
+        id: 'ext-bad-skill',
+        name: 'Bad Skill Path',
+        version: '1.0.0',
+        skills: 'nonexistent-dir'
+      })
+    )
+    fs.writeFileSync(
+      path.join(extDir, 'index.js'),
+      `module.exports = { id: 'ext-bad-skill', name: 'Bad Skill', register(api) {} };`
+    )
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await loader.load(extDir, 'user')
+
+    expect(loader.getLoadedIds()).toContain('ext-bad-skill')
+    expect(registry.getSkillDirs()).toHaveLength(0) // Skill 目录不存在，不注册
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Skill dir declared but not found')
+    )
+    warnSpy.mockRestore()
+  })
+
+  it('unload — 同时移除扩展贡献的 Skill 目录', async () => {
+    const extDir = path.join(tmpDir, 'ext-skill-rm')
+    fs.mkdirSync(extDir, { recursive: true })
+    const skillsDir = path.join(extDir, 'skills')
+    fs.mkdirSync(skillsDir, { recursive: true })
+
+    fs.writeFileSync(
+      path.join(extDir, 'extension.json'),
+      JSON.stringify({
+        id: 'ext-skill-rm',
+        name: 'Removable Skill Extension',
+        version: '1.0.0',
+        skills: 'skills'
+      })
+    )
+    fs.writeFileSync(
+      path.join(extDir, 'index.js'),
+      `module.exports = { id: 'ext-skill-rm', name: 'Removable', register(api) { api.on('session_start', async () => {}); } };`
+    )
+
+    await loader.load(extDir, 'user')
+    expect(registry.getSkillDirs()).toHaveLength(1)
+    expect(registry.getHooks('session_start')).toHaveLength(1)
+
+    loader.unload('ext-skill-rm')
+    expect(registry.getSkillDirs()).toHaveLength(0)
+    expect(registry.getHooks('session_start')).toHaveLength(0)
+  })
+
+  it('无入口无 skills — 跳过并警告', async () => {
+    const extDir = path.join(tmpDir, 'ext-empty')
+    fs.mkdirSync(extDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(extDir, 'extension.json'),
+      JSON.stringify({ id: 'ext-empty', name: 'Empty', version: '1.0.0' })
+    )
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await loader.load(extDir, 'user')
+
+    expect(loader.getLoadedIds()).not.toContain('ext-empty')
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('No entry file or skills declaration')
+    )
+    warnSpy.mockRestore()
   })
 })

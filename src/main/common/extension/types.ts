@@ -16,6 +16,13 @@ export interface ExtensionManifest {
   name: string
   version: string
   description?: string
+  /**
+   * 扩展贡献的 Skill 目录（相对于扩展根目录）
+   *
+   * 声明后，该目录下的 Skill 会被 Skill 加载器自动发现。
+   * @example "skills" → <extensionDir>/skills/
+   */
+  skills?: string
 }
 
 /** Extension 来源 */
@@ -192,4 +199,11 @@ export interface RegisteredExtensionMethod {
   extensionId: string
   method: string
   handler: MethodHandler
+}
+
+/** 扩展贡献的 Skill 目录 */
+export interface RegisteredExtensionSkillDir {
+  extensionId: string
+  /** 已解析为绝对路径的 Skill 目录 */
+  dir: string
 }

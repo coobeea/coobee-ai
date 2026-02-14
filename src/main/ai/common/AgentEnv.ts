@@ -56,6 +56,25 @@ export async function buildAgentEnv(workspace: string): Promise<AgentEnv> {
   const skillPaths = await Env.getSkillSearchPaths(workspace)
   const extensionPaths = await Env.getExtensionSearchPaths(workspace)
 
+  // 合并扩展贡献的 Skill 目录
+  // 优先级：内置(1) → 扩展贡献(1.5) → 用户级(2) → 工作空间(3)
+  // 插入到 builtinSkillsDir 之后、userSkillsDir 之前
+  try {
+    const { ExtensionManager } = await import('@main/common/extension')
+    const registry = ExtensionManager.getRegistry()
+    if (registry) {
+      const extSkillDirs = registry.getSkillDirs().map((s) => s.dir)
+      if (extSkillDirs.length > 0) {
+        // 找到 builtinSkillsDir 的位置，在其后插入扩展贡献路径
+        const builtinIdx = skillPaths.indexOf(Env.paths.builtinSkillsDir)
+        const insertIdx = builtinIdx >= 0 ? builtinIdx + 1 : 0
+        skillPaths.splice(insertIdx, 0, ...extSkillDirs)
+      }
+    }
+  } catch {
+    // Extension 系统未初始化时忽略
+  }
+
   return {
     workspace,
     userHome: Env.paths.userHome,

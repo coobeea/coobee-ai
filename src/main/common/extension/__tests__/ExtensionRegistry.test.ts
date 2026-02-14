@@ -286,6 +286,65 @@ describe('ExtensionRegistry', () => {
     expect(registry.getGatewayMethods()).toHaveLength(0)
     expect(registry.getExtensionIds()).toHaveLength(0)
   })
+
+  // ---- Skill 目录 ----
+
+  it('registerSkillDir — 注册后可通过 getSkillDirs 获取', () => {
+    registry.registerSkillDir('ext-a', '/path/to/ext-a/skills')
+    const dirs = registry.getSkillDirs()
+    expect(dirs).toHaveLength(1)
+    expect(dirs[0]).toEqual({ extensionId: 'ext-a', dir: '/path/to/ext-a/skills' })
+  })
+
+  it('registerSkillDir — 多个扩展各自贡献 Skill 目录', () => {
+    registry.registerSkillDir('ext-a', '/path/to/ext-a/skills')
+    registry.registerSkillDir('ext-b', '/path/to/ext-b/skills')
+    expect(registry.getSkillDirs()).toHaveLength(2)
+  })
+
+  it('registerSkillDir — 同一扩展同一路径重复注册被忽略', () => {
+    registry.registerSkillDir('ext-a', '/path/to/ext-a/skills')
+    registry.registerSkillDir('ext-a', '/path/to/ext-a/skills')
+    expect(registry.getSkillDirs()).toHaveLength(1)
+  })
+
+  it('unregisterSkillDirsByExtension — 移除该扩展的 Skill 目录', () => {
+    registry.registerSkillDir('ext-a', '/path/to/ext-a/skills')
+    registry.registerSkillDir('ext-b', '/path/to/ext-b/skills')
+
+    const removed = registry.unregisterSkillDirsByExtension('ext-a')
+    expect(removed).toEqual(['/path/to/ext-a/skills'])
+    expect(registry.getSkillDirs()).toHaveLength(1)
+    expect(registry.getSkillDirs()[0].extensionId).toBe('ext-b')
+  })
+
+  it('unregisterAll — 包含 Skill 目录的清理', () => {
+    registry.registerSkillDir('ext-a', '/path/to/ext-a/skills')
+    registry.registerTool('ext-a', makeTool('tool-a'))
+    registry.unregisterAll('ext-a')
+
+    expect(registry.getSkillDirs()).toHaveLength(0)
+    expect(registry.getTools()).toHaveLength(0)
+  })
+
+  it('getExtensionIds — 只注册 Skill 的扩展也出现在 ID 列表中', () => {
+    registry.registerSkillDir('ext-skill-only', '/path/to/skills')
+    expect(registry.getExtensionIds()).toContain('ext-skill-only')
+  })
+
+  it('clear — 同时清理 Skill 目录', () => {
+    registry.registerSkillDir('ext-a', '/path/to/ext-a/skills')
+    registry.clear()
+    expect(registry.getSkillDirs()).toHaveLength(0)
+  })
+
+  it('getSkillDirs — 返回浅拷贝', () => {
+    registry.registerSkillDir('ext-a', '/path/to/ext-a/skills')
+    const dirs1 = registry.getSkillDirs()
+    const dirs2 = registry.getSkillDirs()
+    expect(dirs1).not.toBe(dirs2)
+    expect(dirs1).toEqual(dirs2)
+  })
 })
 
 // ---- ExtensionManager ----
