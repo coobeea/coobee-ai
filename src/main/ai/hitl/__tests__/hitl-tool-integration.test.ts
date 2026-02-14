@@ -99,7 +99,7 @@ vi.mock('../../../common/extension', () => ({
 }))
 
 // ===== Mock AgentEnv helpers =====
-vi.mock('../../common/AgentEnv', () => ({
+vi.mock('../../AgentEnv', () => ({
   buildAgentEnv: async () => ({
     workspace: '/tmp/test-workspace',
     userHome: '/tmp/test-home',
@@ -188,7 +188,7 @@ describe('HITL + 工具系统集成测试', () => {
 
     // 预热动态 import 缓存（避免首次 import 的额外微任务延迟）
     await import('../../runtime/pimono')
-    await import('../../common/AgentEnv')
+    await import('../../AgentEnv')
     await import('@main/common/env')
   })
 

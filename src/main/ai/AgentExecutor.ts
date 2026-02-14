@@ -36,7 +36,7 @@ import type { OpenAIAgentRuntimeOptions, SessionCompressionOptions } from './run
 import { createStreamEmitter, type IStreamEmitter } from './streaming/StreamEmitter'
 import type { StreamSource } from './streaming/types'
 import { hitlApprovalManager, DEFAULT_HITL_TIMEOUT_MS } from './hitl/HitlApprovalManager'
-import { buildAgentEnv, formatRuntimePaths } from './common/AgentEnv'
+import { buildAgentEnv, formatRuntimePaths } from './AgentEnv'
 import { SkillManager } from './skills'
 
 // ==================== Builder ====================

@@ -58,14 +58,14 @@ vi.mock('../AgentEnv', () => ({
 // ===== Mock SkillManager =====
 const mockScanSkills = vi.fn()
 
-vi.mock('../../skills', () => ({
+vi.mock('../skills', () => ({
   SkillManager: class MockSkillManager {
     scanSkills = mockScanSkills
   }
 }))
 
 // ===== Mock StreamEmitter =====
-vi.mock('../../streaming/StreamEmitter', () => ({
+vi.mock('../streaming/StreamEmitter', () => ({
   createStreamEmitter: vi.fn(() => ({ forward: vi.fn() }))
 }))
 
@@ -88,7 +88,7 @@ const mockRuntime = {
   resumeStream: vi.fn()
 }
 
-vi.mock('../../runtime/pimono', () => ({
+vi.mock('../runtime/pimono', () => ({
   PiMonoAgentRuntime: class MockPiMonoRuntime {
     constructor() {
       return mockRuntime
@@ -96,16 +96,16 @@ vi.mock('../../runtime/pimono', () => ({
   }
 }))
 
-import { PiMonoBuilder } from '../../AgentExecutor'
+import { PiMonoBuilder } from '../AgentExecutor'
 
 describe('AgentExecutor — 环境注入', () => {
-  let agentExecutor: typeof import('../../AgentExecutor').agentExecutor
+  let agentExecutor: typeof import('../AgentExecutor').agentExecutor
 
   beforeEach(async () => {
     vi.clearAllMocks()
     process.env.VITE_LLM_API_KEY = 'test-key'
 
-    const mod = await import('../../AgentExecutor')
+    const mod = await import('../AgentExecutor')
     agentExecutor = mod.agentExecutor
 
     // 默认 mock 返回值

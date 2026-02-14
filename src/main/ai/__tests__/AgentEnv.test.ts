@@ -66,6 +66,7 @@ vi.mock('@main/ai/tools/registry', () => ({
 
 import { buildAgentEnv, formatRuntimePaths } from '../AgentEnv'
 import type { AgentEnv } from '../AgentEnv'
+// AgentEnv.ts 已从 common/ 移至 ai/ 根层
 
 describe('AgentEnv', () => {
   beforeEach(() => {

@@ -17,7 +17,7 @@
 
 import fs from 'fs'
 import path from 'path'
-import type { AgentRuntimeOptions, ExecutionResult } from '../runtime/types'
+import type { AgentRuntimeOptions, ExecutionResult } from './types'
 
 // ==================== Logger ====================
 

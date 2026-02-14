@@ -23,7 +23,7 @@ import type {
   StreamChunk,
   SessionInfo
 } from './types'
-import { saveContextSnapshot } from '../common/ContextSnapshot'
+import { saveContextSnapshot } from './ContextSnapshot'
 
 // ==================== Logger 工具 ====================
 
