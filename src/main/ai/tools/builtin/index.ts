@@ -33,7 +33,6 @@ export { sessionStatusTool } from './session_status'
 export { sessionHistoryTool } from './session_history'
 export { contextInspectTool } from './context_inspect'
 export { skillListTool } from './skill_list'
-export { ProcessRegistry } from '../../process/ProcessRegistry'
 
 /**
  * 所有内置工具

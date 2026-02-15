@@ -310,12 +310,47 @@ function listMemoryFiles(dir: string, prefix = ''): MemoryFileInfo[] {
   return results.sort((a, b) => b.modifiedAt - a.modifiedAt)
 }
 
-/** 解析记忆文件路径（防止路径穿越） */
+/**
+ * 解析记忆文件路径（防止路径穿越 + 符号链接穿越）
+ *
+ * 1. path.resolve 后检查是否在 memoryRoot 内
+ * 2. 如果文件/目录存在，用 realpathSync 解析符号链接再次检查
+ * 3. 如果文件不存在，检查最近存在的祖先目录
+ */
 function resolveMemoryPath(memoryRoot: string, file: string): string | null {
   const resolved = path.resolve(memoryRoot, file)
-  // 确保解析后的路径在 memoryRoot 内
+
+  // 1. 字符串级检查
   if (!resolved.startsWith(memoryRoot + path.sep) && resolved !== memoryRoot) {
     return null
   }
+
+  // 2. 符号链接穿越检查
+  try {
+    let realTarget: string
+    if (fs.existsSync(resolved)) {
+      realTarget = fs.realpathSync(resolved)
+    } else {
+      // 文件不存在（write 创建场景），检查最近存在的父目录
+      let current = path.dirname(resolved)
+      while (!fs.existsSync(current) && current !== path.dirname(current)) {
+        current = path.dirname(current)
+      }
+      realTarget = fs.existsSync(current) ? fs.realpathSync(current) : current
+    }
+
+    // 确保 realpath 结果仍在 memoryRoot 内
+    const realMemoryRoot = fs.existsSync(memoryRoot) ? fs.realpathSync(memoryRoot) : memoryRoot
+    if (!realTarget.startsWith(realMemoryRoot + path.sep) && realTarget !== realMemoryRoot) {
+      log.warn(
+        `[memory] Symlink traversal blocked: "${file}" → "${realTarget}" outside "${realMemoryRoot}"`
+      )
+      return null
+    }
+  } catch {
+    // realpath 失败（broken symlink 等），阻止访问
+    return null
+  }
+
   return resolved
 }

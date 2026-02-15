@@ -72,6 +72,9 @@ const MAX_OUTPUT_LINES = 1000
 /** 输出缓冲区最大字节数 */
 const MAX_OUTPUT_BYTES = 500_000
 
+/** 最大同时托管进程数（包含已结束但未 prune 的） */
+const MAX_PROCESSES = 20
+
 // ==================== 单例 ====================
 
 let instance: ProcessRegistry | null = null
@@ -104,8 +107,24 @@ export class ProcessRegistry {
    * 注册一个后台进程
    *
    * @returns 分配的 processId
+   * @throws 当进程数量达到 MAX_PROCESSES 上限时抛出错误
    */
   register(command: string, cwd: string, child: ChildProcess): string {
+    // 先尝试自动 prune 已结束的进程腾出空间
+    if (this.processes.size >= MAX_PROCESSES) {
+      this.prune()
+    }
+
+    // prune 后仍然超限则拒绝注册
+    if (this.processes.size >= MAX_PROCESSES) {
+      // 杀掉刚 spawn 的子进程，防止泄漏
+      child.kill('SIGTERM')
+      throw new Error(
+        `Process limit reached (max ${MAX_PROCESSES}). ` +
+          `Kill existing processes before starting new ones.`
+      )
+    }
+
     const processId = `proc-${this.nextId++}`
 
     const entry: ProcessEntry = {

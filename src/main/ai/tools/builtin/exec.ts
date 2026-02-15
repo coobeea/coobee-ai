@@ -25,7 +25,7 @@ import { spawn } from 'node:child_process'
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolCategory } from '../types'
-import { resolveWorkingDirectory } from '../../sandbox'
+import { resolveWorkingDirectory, checkExecPolicy } from '../../sandbox'
 import { ProcessRegistry } from '../../process/ProcessRegistry'
 
 /** 默认超时（ms） */
@@ -75,6 +75,16 @@ export const execTool: ToolDefinition = {
         success: false,
         llmContent: 'Error: command must be a non-empty string',
         error: { code: 'INVALID_PARAM', message: 'command must be a non-empty string' }
+      }
+    }
+
+    // 命令安全策略检查（黑名单命令始终拒绝，不进入 HITL）
+    const policy = checkExecPolicy(command)
+    if (policy.action === 'deny') {
+      return {
+        success: false,
+        llmContent: `Command rejected by security policy: ${policy.reason}`,
+        error: { code: 'POLICY_DENIED', message: policy.reason }
       }
     }
 

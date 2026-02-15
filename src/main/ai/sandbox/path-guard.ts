@@ -9,7 +9,8 @@
  *   - 防止 ../../../etc/passwd 之类的路径穿越攻击
  *   - 不依赖具体工具实现，内置工具和扩展工具都可以使用
  */
-import { resolve, relative, isAbsolute } from 'node:path'
+import fs from 'node:fs'
+import { resolve, relative, isAbsolute, dirname } from 'node:path'
 import type { SandboxContext } from './types'
 
 /** 路径解析结果 */
@@ -58,7 +59,7 @@ export function resolveSandboxPath(
     absolutePath = resolve(root, filePath)
   }
 
-  // 计算相对路径，检查是否越界
+  // 1. 字符串级检查（resolve 后的路径）
   const rel = relative(root, absolutePath)
   const isOutside = rel.startsWith('..') || isAbsolute(rel)
 
@@ -70,6 +71,48 @@ export function resolveSandboxPath(
         details: { filePath, absolutePath, boundary: root }
       }
     }
+  }
+
+  // 2. 符号链接穿越检查：realpath 解析后再次验证
+  //    防止 workspace 内的 symlink 指向外部文件
+  //    仅在目标路径或其某个祖先实际存在时才检查
+  try {
+    // 只有路径存在时才有实际的 symlink 穿越风险
+    if (fs.existsSync(absolutePath)) {
+      const realTarget = fs.realpathSync(absolutePath)
+      const realRoot = fs.existsSync(root) ? fs.realpathSync(root) : root
+      const realRel = relative(realRoot, realTarget)
+      const realOutside = realRel.startsWith('..') || isAbsolute(realRel)
+
+      if (realOutside) {
+        return {
+          error: {
+            code: 'SANDBOX_VIOLATION',
+            message: `Path "${filePath}" resolves through a symlink to "${realTarget}" which is outside the workspace (${root}).`,
+            details: { filePath, absolutePath: realTarget, boundary: root }
+          }
+        }
+      }
+    } else if (fs.existsSync(root)) {
+      // 目标不存在但 root 存在 — 检查最近存在的祖先目录
+      const realTarget = resolveNearestRealpath(absolutePath)
+      const realRoot = fs.realpathSync(root)
+      const realRel = relative(realRoot, realTarget)
+      const realOutside = realRel.startsWith('..') || isAbsolute(realRel)
+
+      if (realOutside) {
+        return {
+          error: {
+            code: 'SANDBOX_VIOLATION',
+            message: `Path "${filePath}" resolves through a symlink to "${realTarget}" which is outside the workspace (${root}).`,
+            details: { filePath, absolutePath: realTarget, boundary: root }
+          }
+        }
+      }
+    }
+    // 如果 root 本身不存在（测试用虚拟路径），跳过 realpath 检查
+  } catch {
+    // realpath 失败（broken symlink 等）— 允许通过，由后续 IO 操作处理错误
   }
 
   return { path: absolutePath }
@@ -113,4 +156,30 @@ export function resolveWorkingDirectory(
     return (context as SandboxContext).docker!.workdir
   }
   return context?.workspaceRoot || process.cwd()
+}
+
+/**
+ * 向上查找最近存在的祖先目录并返回其 realpath + 剩余路径
+ *
+ * 用于文件不存在时（如即将创建），检查其父目录链是否有 symlink 穿越。
+ *
+ * @param targetPath - 不存在的目标路径
+ * @returns 最近存在祖先的 realpath + 剩余子路径
+ */
+function resolveNearestRealpath(targetPath: string): string {
+  let current = targetPath
+  const trail: string[] = []
+
+  while (!fs.existsSync(current)) {
+    const parent = dirname(current)
+    if (parent === current) {
+      // 到达根目录，无法继续
+      return targetPath
+    }
+    trail.unshift(current.slice(parent.length + 1))
+    current = parent
+  }
+
+  const realParent = fs.realpathSync(current)
+  return trail.length > 0 ? resolve(realParent, ...trail) : realParent
 }

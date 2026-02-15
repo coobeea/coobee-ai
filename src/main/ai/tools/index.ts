@@ -26,8 +26,7 @@ export {
   sessionStatusTool,
   sessionHistoryTool,
   contextInspectTool,
-  skillListTool,
-  ProcessRegistry
+  skillListTool
 } from './builtin'
 
 // 工具注册表

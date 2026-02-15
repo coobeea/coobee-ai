@@ -42,5 +42,14 @@ export {
   removeAllContainers
 } from './docker'
 
+// 命令安全策略
+export type { PolicyDecision } from './exec-policy'
+export {
+  checkExecPolicy,
+  learnExecCommand,
+  getLearnedAllowlist,
+  clearLearnedAllowlist
+} from './exec-policy'
+
 // 上下文构建
 export { resolveSandboxContext, createPathOnlyContext } from './context'
