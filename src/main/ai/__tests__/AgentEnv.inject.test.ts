@@ -63,8 +63,16 @@ vi.mock('../skills', () => ({
   SkillManager: Object.assign(
     class MockSkillManager {
       scanSkills = mockScanSkills
+      private _skills: Array<{ name: string; description: string; content: string }> = []
       get size(): number {
-        return mockScanSkills()?.length ?? 0
+        return this._skills.length
+      }
+      getByName(name: string): { name: string; description: string; content: string } | undefined {
+        return this._skills.find((s) => s.name === name)
+      }
+      // scanSkills 的副作用：保存已扫描的 skills
+      _setSkills(skills: Array<{ name: string; description: string; content: string }>): void {
+        this._skills = skills
       }
     },
     {
@@ -133,13 +141,18 @@ describe('AgentExecutor — 环境注入', () => {
       memoryDir: '/mock/.home/memory'
     })
     mockFormatRuntimePaths.mockReturnValue('<runtime_paths>...</runtime_paths>')
-    mockScanSkills.mockReturnValue([
-      {
-        name: 'runtime-env',
-        description: '运行时环境说明',
-        content: '# Runtime Environment\n...'
-      }
-    ])
+    // scanSkills mock: 返回 skills 并设置内部状态
+    mockScanSkills.mockImplementation(function (this: { _setSkills?: (s: unknown[]) => void }) {
+      const skills = [
+        {
+          name: 'runtime-env',
+          description: '运行时环境说明',
+          content: '# Runtime Environment\n...'
+        }
+      ]
+      if (this._setSkills) this._setSkills(skills)
+      return skills
+    })
 
     // runtime mock
     mockRuntime.initialize.mockResolvedValue(undefined)
@@ -179,11 +192,8 @@ describe('AgentExecutor — 环境注入', () => {
         'session-1',
         '/mock/.home/workspaces/session-1'
       )
-      expect(mockScanSkills).toHaveBeenCalledWith([
-        '/mock/builtin-skills',
-        '/mock/.home/skills',
-        '/mock/.home/workspaces/session-1/skills'
-      ])
+      // 现在使用 agentEnv.skillPaths（包含 Extension 贡献的 Skill 目录）
+      expect(mockScanSkills).toHaveBeenCalledWith(['/mock/builtin-skills', '/mock/.home/skills'])
       expect(mockSetCurrent).toHaveBeenCalled()
       expect(mockFormatRuntimePaths).toHaveBeenCalled()
     })
@@ -220,7 +230,10 @@ describe('AgentExecutor — 环境注入', () => {
     })
 
     it('SkillManager 返回空数组时仍正常执行', async () => {
-      mockScanSkills.mockReturnValue([])
+      mockScanSkills.mockImplementation(function (this: { _setSkills?: (s: unknown[]) => void }) {
+        if (this._setSkills) this._setSkills([])
+        return []
+      })
 
       const result = { output: 'done' }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

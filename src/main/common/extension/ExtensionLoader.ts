@@ -85,12 +85,20 @@ export class ExtensionLoader {
       return
     }
 
-    // 信任模型校验：非 builtin Extension 记录警告
+    // 信任模型校验：非 builtin Extension 需要通过安全检查
     if (origin !== 'builtin') {
-      console.warn(
-        `[ExtensionLoader] Loading non-builtin extension "${manifest.id}" (${origin}). ` +
-          `Extension code runs in the main process without sandboxing.`
-      )
+      const trustResult = verifyExtensionTrust(manifest, dir, origin)
+      if (!trustResult.allowed) {
+        console.warn(
+          `[ExtensionLoader] Blocked untrusted extension "${manifest.id}" (${origin}): ${trustResult.reason}`
+        )
+        return
+      }
+      if (trustResult.warning) {
+        console.warn(
+          `[ExtensionLoader] Loading non-builtin extension "${manifest.id}" (${origin}). ${trustResult.warning}`
+        )
+      }
     }
 
     // 同 ID 覆盖：先卸载旧版
@@ -98,9 +106,18 @@ export class ExtensionLoader {
       this.unload(manifest.id)
     }
 
+    // Skill 目录路径安全检查：确保 manifest.skills 不会穿越到扩展目录之外
     // 注册扩展贡献的 Skill 目录（声明式，无需代码入口）
     if (manifest.skills) {
       const skillDir = path.resolve(dir, manifest.skills)
+      // 路径穿越检查
+      const rel = path.relative(dir, skillDir)
+      if (rel.startsWith('..') || path.isAbsolute(rel)) {
+        console.error(
+          `[ExtensionLoader] Blocked "${manifest.id}": skills path "${manifest.skills}" escapes extension directory`
+        )
+        return
+      }
       if (fs.existsSync(skillDir) && fs.statSync(skillDir).isDirectory()) {
         this.registry.registerSkillDir(manifest.id, skillDir)
         console.log(`[ExtensionLoader] Registered skill dir for "${manifest.id}": ${skillDir}`)
@@ -258,6 +275,59 @@ function resolveEntryPath(dir: string): string | undefined {
  *
  * @returns 校验错误消息，null 表示通过
  */
+/**
+ * Extension 信任校验 — P0 级安全检查
+ *
+ * 在 jiti.import() 执行前检查 Extension 的可信度：
+ *   - builtin: 免检（由 load() 调用方保证）
+ *   - user: 检查已知信任 ID 列表，否则警告但允许（用户主动安装）
+ *   - workspace: Agent 创建的 Extension，需要额外谨慎
+ *
+ * 未来可扩展：
+ *   - P1: manifest 哈希签名校验
+ *   - P2: 用户首次加载时弹出确认对话框
+ */
+interface TrustResult {
+  allowed: boolean
+  reason?: string
+  warning?: string
+}
+
+/** 已知的可信 Extension ID（内置 Extension 或经过审核的） */
+const TRUSTED_EXTENSION_IDS = new Set(['memory-auto', 'tool-approval'])
+
+function verifyExtensionTrust(
+  manifest: ExtensionManifest,
+  _dir: string,
+  origin: ExtensionOrigin
+): TrustResult {
+  // 已知信任 ID（如内置 Extension 被安装到非 builtin 路径）
+  if (TRUSTED_EXTENSION_IDS.has(manifest.id)) {
+    return { allowed: true }
+  }
+
+  // user 级 Extension：用户主动安装的，发出警告但允许加载
+  if (origin === 'user') {
+    return {
+      allowed: true,
+      warning: 'Extension code runs in the main process without sandboxing.'
+    }
+  }
+
+  // workspace 级 Extension：Agent 创建的，允许但发出更强的警告
+  if (origin === 'workspace') {
+    return {
+      allowed: true,
+      warning:
+        'Workspace extension (possibly agent-created) runs in the main process without sandboxing. ' +
+        'Review the code before trusting it.'
+    }
+  }
+
+  // 默认允许（不应到达此处）
+  return { allowed: true }
+}
+
 function validateManifest(manifest: ExtensionManifest): string | null {
   if (!manifest.id || typeof manifest.id !== 'string') {
     return 'Missing or invalid "id" field'

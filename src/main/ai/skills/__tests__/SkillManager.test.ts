@@ -174,7 +174,7 @@ Content.`
       expect(manager.getByName('User B')).toBeDefined()
     })
 
-    it('同名目录先发现优先（去重）', () => {
+    it('同名目录后发现覆盖先发现（高优先级覆盖低优先级）', () => {
       const dir1 = path.join(tmpDir, 'builtin')
       const dir2 = path.join(tmpDir, 'user')
       fs.mkdirSync(dir1, { recursive: true })
@@ -185,9 +185,30 @@ Content.`
 
       const skills = manager.scanSkills([dir1, dir2])
 
+      // 后扫描的 dir2（用户级）覆盖 dir1（内置），最终只保留 1 个
       expect(skills).toHaveLength(1)
-      expect(skills[0].name).toBe('Builtin Env')
-      expect(skills[0].description).toBe('Builtin version')
+      expect(skills[0].name).toBe('User Env')
+      expect(skills[0].description).toBe('User version')
+    })
+
+    it('三级优先级覆盖：内置 → 用户 → 工作空间', () => {
+      const builtin = path.join(tmpDir, 'builtin')
+      const user = path.join(tmpDir, 'user')
+      const workspace = path.join(tmpDir, 'workspace')
+      fs.mkdirSync(builtin, { recursive: true })
+      fs.mkdirSync(user, { recursive: true })
+      fs.mkdirSync(workspace, { recursive: true })
+
+      createSkill(builtin, 'my-skill', 'Builtin Ver', 'V1 builtin')
+      createSkill(user, 'my-skill', 'User Ver', 'V2 user')
+      createSkill(workspace, 'my-skill', 'Workspace Ver', 'V3 workspace')
+
+      const skills = manager.scanSkills([builtin, user, workspace])
+
+      // 工作空间（最高优先级）覆盖
+      expect(skills).toHaveLength(1)
+      expect(skills[0].name).toBe('Workspace Ver')
+      expect(skills[0].description).toBe('V3 workspace')
     })
 
     it('跳过隐藏目录', () => {

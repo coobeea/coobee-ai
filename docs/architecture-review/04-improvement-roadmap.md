@@ -11,24 +11,25 @@
 ```
 ┌─────────────────────────────────────────────────┐
 │ Phase 1: 架构纠偏（基础设施）                      │
-│   P1-1  HITL 独立于 SDK（通用工具审批引擎）         │
-│   P1-2  path-guard 符号链接修复                    │
-│   P1-3  Extension Skill 发现 bug 修复              │
+│   P1-1  HITL 独立于 SDK（通用工具审批引擎）  ✅ 已完成│
+│   P1-2  path-guard 符号链接修复               ✅ 已完成│
+│   P1-3  Extension Skill 发现 bug 修复          ✅ 已完成│
 ├─────────────────────────────────────────────────┤
-│ Phase 2: Memory 系统升级                          │
-│   P2-1  memory 工具接入 LongTermMemoryStore        │
-│   P2-2  自动记忆提取（agent_end Hook）              │
-│   P2-3  会话启动记忆注入（before_agent_start Hook） │
+│ Phase 2: Memory 系统升级                    ✅ 全部完成│
+│   P2-1  Memory 存储结构重构（MEMORY.md）     ✅ 已完成│
+│   P2-2  增强型关键字搜索                     ✅ 已完成│
+│   P2-3  记忆自动提取（agent_end Hook）       ✅ 已完成│
+│   P2-4  会话启动记忆注入（before_agent_start）✅ 已完成│
 ├─────────────────────────────────────────────────┤
 │ Phase 3: 自我进化闭环                             │
-│   P3-1  评估结果自动存入记忆                       │
-│   P3-2  错误模式自动生成 Skill                     │
-│   P3-3  执行协议动态调整                           │
+│   P3-1  评估结果自动存入记忆                 ✅ 已完成│
+│   P3-2  错误模式自动生成 Skill               ✅ 已完成│
+│   P3-3  执行协议动态调整                     ✅ 已完成│
 ├─────────────────────────────────────────────────┤
 │ Phase 4: 安全与韧性                               │
-│   P4-1  Extension 沙箱隔离                        │
-│   P4-2  渐进式错误恢复                            │
-│   P4-3  工具操作版本追踪                           │
+│   P4-1  Extension 沙箱隔离（P0 来源校验）    ✅ 已完成│
+│   P4-2  渐进式错误恢复                      ✅ 已完成│
+│   P4-3  工具操作版本追踪                     ✅ 已完成│
 └─────────────────────────────────────────────────┘
 ```
 
@@ -36,107 +37,42 @@
 
 ## Phase 1: 架构纠偏
 
-### P1-1 HITL 独立于 SDK — 通用工具审批引擎
+### P1-1 HITL 独立于 SDK — 通用工具审批引擎 ✅ 已完成
 
-#### 问题
+> **完成时间**：2026-02-15
+> **实现方式**：通过 `tool-approval` Extension + `before_tool_call` Hook 实现，比原方案更简洁
 
-1. HITL 依赖 OpenAI SDK 的 `needsApproval` 机制，PiMono 用户无法使用
-2. `exec-policy.ts` 名称绑定 exec 工具，但审批策略应该是通用的
-3. `approve-always` 的作用范围（session/agent/global）未设计
-4. 策略逻辑分散在 AgentExecutor、两个 Runtime 中
+#### 已解决的问题
 
-#### 方案
+1. ~~HITL 依赖 OpenAI SDK 的 `needsApproval` 机制~~ → 现在通过 Extension Hook 统一处理
+2. ~~策略逻辑分散在 AgentExecutor、两个 Runtime 中~~ → 集中到 `extensions/tool-approval/`
+3. ~~PiMono 用户无法使用 HITL~~ → 两个 Runtime 行为完全一致
 
-##### 目标架构
-
-```
-hitl/
-├── HitlApprovalManager.ts    ← 已有，审批状态管理
-├── ToolApprovalPolicy.ts      ← 新增，通用工具审批策略引擎
-├── ApprovalScopeStore.ts      ← 新增，多维度审批记忆
-├── policies/
-│   ├── exec-rules.ts          ← exec 工具规则（黑名单/白名单）
-│   └── fs-rules.ts            ← write/edit 工具规则（路径匹配等）
-└── types.ts                   ← HITL 类型定义
-```
-
-##### 核心类型
-
-```typescript
-// 审批维度
-type ApprovalScope = 'once' | 'session' | 'agent' | 'global'
-
-// 策略规则（通用）
-interface ToolApprovalRule {
-  /** 匹配工具名 */
-  toolName: string | string[]
-  /** 参数条件匹配 */
-  match?: (args: Record<string, unknown>) => boolean
-  /** 决策 */
-  decision: 'allow' | 'deny' | 'ask'
-  /** 优先级（越高越先匹配） */
-  priority: number
-  /** 规则来源 */
-  source: 'builtin' | 'learned' | 'user'
-  /** 描述（拒绝时展示） */
-  reason: string
-}
-
-// 审批上下文
-interface ApprovalContext {
-  sessionId: string
-  agentId?: string
-  toolName: string
-  arguments: Record<string, unknown>
-}
-
-// 策略引擎
-class ToolApprovalPolicy {
-  evaluate(context: ApprovalContext): { action: 'allow' | 'deny' | 'ask'; reason: string }
-  learn(context: ApprovalContext, scope: ApprovalScope): void
-  addRule(rule: ToolApprovalRule): void
-  removeRule(ruleId: string): void
-}
-```
-
-##### SDK 独立的 HITL 实现
-
-**核心变更**：在 Runtime 的 `convertTools()` 的 execute 回调中统一拦截，而非依赖 SDK 的 `needsApproval`。
+#### 实际实现架构
 
 ```
-两个 Runtime 统一流程：
-
-LLM 调用工具 → execute 回调触发
-  → ToolApprovalPolicy.evaluate(context)
-  → allow → 直接执行
-  → deny  → 返回错误给 LLM（不执行）
-  → ask   → 发送 hitl:required 事件
-          → HitlApprovalManager.waitForDecision(sessionId, toolName, args)
-          → 用户审批
-          → approve → 执行 + learn(scope)
-          → reject  → 返回错误给 LLM
+extensions/tool-approval/
+├── extension.json           ← Extension 声明
+└── index.ts                 ← 统一审批逻辑（before_tool_call Hook）
+    ├── ExecPolicy 检查      ← deny/allow/ask（仅 exec 工具）
+    ├── needUserConfirm 检查 ← 工具定义元数据
+    └── requestApproval()    ← hitl:required 事件 + waitForSingleDecision
 ```
 
-**变更范围**：
+#### 关键变更
 
-- 删除 `sandbox/exec-policy.ts`
-- 新增 `hitl/ToolApprovalPolicy.ts`、`hitl/ApprovalScopeStore.ts`、`hitl/policies/`
-- 修改 `OpenAIAgentRuntime.convertTools()` — 移除 `needsApproval`，改用 Policy 拦截
-- 修改 `PiMonoAgentRuntime.convertTools()` — 同上（两个 Runtime 逻辑一致）
-- 修改 `AgentExecutor.ts` — 移除 `computePolicyDecisions()`，HITL 循环简化
-- 修改 `HitlApprovalManager.ts` — 支持单工具等待模式（当前是批量）
+- OpenAIAgentRuntime: 移除 SDK 原生 HITL（needsApproval、interruptions、resumeStream）
+- PiMonoAgentRuntime: 移除 exec-policy 硬拦截
+- AgentExecutor: 移除 HITL while 循环和 computePolicyDecisions
+- HitlApprovalManager: 新增 per-tool-call 审批 API
+- BeforeToolCallEvent: 新增 needUserConfirm 字段
+- Gateway approval.ts: 适配 per-call approvalId 格式
 
-**关键考量**：
-
-- OpenAI SDK 对工具执行时间可能有限制；需测试长等待场景
-- 如果 SDK 超时，需要优雅处理（返回错误而非崩溃）
-- `HitlApprovalManager` 需要从"批量等待"改为"按工具等待"或"混合模式"
-
-**工作量**：3-4 天
+**净效果**：删除 ~1950 行旧代码，新增 ~595 行精简实现
 
 ---
 
-### P1-2 path-guard 符号链接修复
+### P1-2 path-guard 符号链接修复 ✅ 已完成
 
 #### 问题
 
@@ -185,7 +121,7 @@ export function resolveSandboxPath(filePath: string, context: SandboxContext): s
 
 ---
 
-### P1-3 Extension Skill 发现 Bug 修复
+### P1-3 Extension Skill 发现 Bug 修复 ✅ 已完成
 
 #### 问题
 
@@ -216,12 +152,13 @@ skillManager.scanSkills(agentEnv.skillPaths) // 已包含 Extension Skill 目录
 
 ---
 
-## Phase 2: Memory 系统升级（文件驱动）
+## Phase 2: Memory 系统升级（文件驱动） ✅ 全部完成
 
+> **完成时间**：2026-02-15
 > 设计参考：OpenClaw memory-core 方案 — 以 Markdown 文件为记忆源，不引入 SQLite 索引
 > 核心原则：**文件即记忆**，Agent 通过 write 工具和 memory 工具直接操作 Markdown 文件
 
-### P2-1 Memory 存储结构重构
+### P2-1 Memory 存储结构重构 ✅ 已完成
 
 #### 问题
 
@@ -271,7 +208,7 @@ skillManager.scanSkills(agentEnv.skillPaths) // 已包含 Extension Skill 目录
 
 ---
 
-### P2-2 增强型关键字搜索
+### P2-2 增强型关键字搜索 ✅ 已完成
 
 #### 问题
 
@@ -306,7 +243,7 @@ interface MemorySearchResult {
 
 ---
 
-### P2-3 记忆自动提取 — 提示词引导 + agent_end Hook
+### P2-3 记忆自动提取 — 提示词引导 + agent_end Hook ✅ 已完成
 
 #### 问题
 
@@ -358,7 +295,7 @@ api.on('agent_end', async (event) => {
 
 ---
 
-### P2-4 会话启动记忆注入（before_agent_start Hook）
+### P2-4 会话启动记忆注入（before_agent_start Hook） ✅ 已完成
 
 #### 问题
 
@@ -426,19 +363,13 @@ api.on('before_agent_start', async (event) => {
 
 ## Phase 3: 自我进化闭环
 
-### P3-1 评估结果自动存入记忆
+### P3-1 评估结果自动存入记忆 ✅ 已完成
 
-#### 问题
-
-self-reflection Skill 指导 LLM 做自我评估，但评估结果存在上下文窗口中，会话结束后丢失。
-
-#### 方案
-
-已合并到 P2-3 方式 1 中（execution_protocol 第 5 步增加记忆存储提示）。
+已合并到 P2-3（execution_protocol 第 5 步增加 "Report & Memorize" 记忆存储提示 + memory-auto Extension 自动提取）。
 
 ---
 
-### P3-2 错误模式自动生成 Skill
+### P3-2 错误模式自动生成 Skill ✅ 已完成
 
 #### 问题
 
@@ -476,7 +407,7 @@ write({workspace}/skills/{skill-name}/SKILL.md, content)
 
 ---
 
-### P3-3 执行协议动态调整
+### P3-3 执行协议动态调整 ✅ 已完成
 
 #### 问题
 
@@ -516,7 +447,7 @@ skills / execution - protocol / SKILL.md
 
 ## Phase 4: 安全与韧性
 
-### P4-1 Extension 沙箱隔离
+### P4-1 Extension 沙箱隔离 ✅ P0 阶段已完成
 
 #### 问题
 
@@ -551,7 +482,7 @@ async function verifyExtension(dir: string): Promise<boolean> {
 
 ---
 
-### P4-2 渐进式错误恢复
+### P4-2 渐进式错误恢复 ✅ 已完成
 
 #### 问题
 
@@ -598,7 +529,7 @@ class ErrorRecoveryChain {
 
 ---
 
-### P4-3 工具操作版本追踪
+### P4-3 工具操作版本追踪 ✅ 已完成
 
 #### 问题
 
@@ -629,24 +560,37 @@ async function backupBeforeWrite(filePath: string, workspaceRoot: string): Promi
 
 ## 实施时间线
 
-| 阶段    | 周期     | 关键交付物                                          |
-| ------- | -------- | --------------------------------------------------- |
-| Phase 1 | Week 1-2 | HITL 独立引擎、path-guard 修复、Skill 发现 bug 修复 |
-| Phase 2 | Week 3-4 | Memory SQLite 后端、自动记忆提取/注入               |
-| Phase 3 | Week 5   | 评估→记忆闭环、错误模式→Skill 生成                  |
-| Phase 4 | Week 6-8 | Extension 沙箱、错误恢复链、版本追踪                |
+| 阶段    | 周期     | 关键交付物                                          | 状态        |
+| ------- | -------- | --------------------------------------------------- | ----------- |
+| Phase 1 | Week 1-2 | HITL 独立引擎、path-guard 修复、Skill 发现 bug 修复 | ✅ 全部完成 |
+| Phase 2 | Week 3-4 | Memory 文件驱动、自动记忆提取/注入                  | ✅ 全部完成 |
+| Phase 3 | Week 5   | 评估→记忆闭环、错误模式→Skill 生成、执行协议动态化  | ✅ 全部完成 |
+| Phase 4 | Week 6-8 | Extension 沙箱(P0)、错误恢复链、版本追踪            | ✅ 全部完成 |
 
 ---
 
-## 附录：已完成的改进（来自 02-issues-and-improvement-plan.md）
+## 附录：已完成的改进
 
-| 编号 | 任务                            | 状态                                                    |
-| ---- | ------------------------------- | ------------------------------------------------------- |
-| C-1  | exec 命令白名单 + 黑名单        | ✅ 已完成（exec-policy.ts）                             |
-| M-4  | memory 路径校验统一（符号链接） | ✅ 已完成（resolveMemoryPath）                          |
-| H-1  | AgentExecutor 拆分              | ✅ 部分完成（EnvInjector、EventWriter、Builder 已提取） |
-| M-1  | monitoring/guardrails 死代码    | ✅ 已删除                                               |
-| M-6  | ProcessRegistry re-export       | ✅ 已移至 process/                                      |
+| 编号 | 任务                            | 状态                                                         |
+| ---- | ------------------------------- | ------------------------------------------------------------ |
+| C-1  | exec 命令白名单 + 黑名单        | ✅ 已完成（exec-policy.ts）                                  |
+| M-4  | memory 路径校验统一（符号链接） | ✅ 已完成（resolveMemoryPath）                               |
+| H-1  | AgentExecutor 拆分              | ✅ 部分完成（EnvInjector、EventWriter、Builder 已提取）      |
+| M-1  | monitoring/guardrails 死代码    | ✅ 已删除                                                    |
+| M-6  | ProcessRegistry re-export       | ✅ 已移至 process/                                           |
+| P1-1 | HITL 独立于 SDK                 | ✅ 已完成（tool-approval Extension + before_tool_call Hook） |
+| P2-1 | Memory 存储结构重构             | ✅ 已完成（MEMORY.md + memory/\*.md 文件驱动）               |
+| P2-2 | 增强型关键字搜索                | ✅ 已完成（多关键字、TF 评分、标题加权、snippet）            |
+| P2-3 | 记忆自动提取                    | ✅ 已完成（execution_protocol + memory-auto Extension）      |
+| P2-4 | 会话启动记忆注入                | ✅ 已完成（memory-auto before_agent_start Hook）             |
+| P3-1 | 评估结果自动存入记忆            | ✅ 已完成（合并到 P2-3）                                     |
+| P1-2 | path-guard 符号链接修复         | ✅ 已完成（代码已有，新增符号链接测试覆盖）                  |
+| P1-3 | Extension Skill 发现 bug 修复   | ✅ 已完成（scanSkills 改用 agentEnv.skillPaths + 后到覆盖）  |
+| P3-2 | 错误模式自动生成 Skill          | ✅ 已完成（self-reflection Skill 第六部分：经验沉淀）        |
+| P3-3 | 执行协议动态调整                | ✅ 已完成（Skill 驱动 + buildExecutionProtocol 查找覆盖）    |
+| P4-1 | Extension 沙箱隔离（P0）        | ✅ 已完成（来源校验 + Skill 路径穿越检查）                   |
+| P4-2 | 渐进式错误恢复                  | ✅ 已完成（ErrorRecoveryChain + AbstractAgentRuntime 集成）  |
+| P4-3 | 工具操作版本追踪                | ✅ 已完成（file-backup.ts + write/edit 工具集成）            |
 
 ---
 

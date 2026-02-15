@@ -4,13 +4,16 @@
  * 覆盖：
  *   - 基础路径解析（相对/绝对）
  *   - 路径穿越攻击防护
+ *   - 符号链接穿越检查
  *   - sandboxRoot vs workspaceRoot 优先级
  *   - 边界情况（空路径、特殊字符、深层嵌套）
  *   - pathGuardErrorToToolResult 转换
  *   - resolveWorkingDirectory 各模式
  */
-import { describe, it, expect } from 'vitest'
-import { resolve } from 'node:path'
+import { describe, it, expect, afterEach } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import { resolve, join } from 'node:path'
 import {
   resolveSandboxPath,
   resolveWorkingDirectory,
@@ -258,5 +261,110 @@ describe('resolveWorkingDirectory', () => {
       toolPolicy: { allow: [], deny: [] }
     }
     expect(resolveWorkingDirectory(ctx)).toBe('/home/user/project')
+  })
+})
+
+// ========== 符号链接穿越检查 ==========
+
+describe('resolveSandboxPath — 符号链接穿越检查', () => {
+  let tmpDir: string
+  let workspaceRoot: string
+
+  /**
+   * 每个测试自行创建 tmpDir，
+   * afterEach 统一清理
+   */
+  function setupDirs(): void {
+    tmpDir = fs.mkdtempSync(join(os.tmpdir(), 'pathguard-'))
+    workspaceRoot = join(tmpDir, 'workspace')
+    fs.mkdirSync(workspaceRoot, { recursive: true })
+    fs.mkdirSync(join(workspaceRoot, 'src'), { recursive: true })
+  }
+
+  afterEach(() => {
+    if (tmpDir && fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('workspace 内指向外部文件的符号链接被拒绝', () => {
+    setupDirs()
+    // 在 workspace 外创建一个 secret 文件
+    const externalFile = join(tmpDir, 'secret.txt')
+    fs.writeFileSync(externalFile, 'secret data')
+
+    // 在 workspace 内创建指向外部文件的 symlink
+    const symlinkPath = join(workspaceRoot, 'src', 'link-to-secret.txt')
+    fs.symlinkSync(externalFile, symlinkPath)
+
+    const result = resolveSandboxPath('src/link-to-secret.txt', { workspaceRoot })
+    expect(result.error).toBeDefined()
+    expect(result.error!.code).toBe('SANDBOX_VIOLATION')
+    expect(result.error!.message).toContain('symlink')
+  })
+
+  it('workspace 内指向外部目录的符号链接被拒绝', () => {
+    setupDirs()
+    // 在 workspace 外创建一个目录
+    const externalDir = join(tmpDir, 'external-data')
+    fs.mkdirSync(externalDir)
+    fs.writeFileSync(join(externalDir, 'data.json'), '{}')
+
+    // 在 workspace 内创建指向外部目录的 symlink
+    const symlinkPath = join(workspaceRoot, 'external')
+    fs.symlinkSync(externalDir, symlinkPath)
+
+    const result = resolveSandboxPath('external/data.json', { workspaceRoot })
+    expect(result.error).toBeDefined()
+    expect(result.error!.code).toBe('SANDBOX_VIOLATION')
+  })
+
+  it('workspace 内指向 workspace 内部的符号链接允许通过', () => {
+    setupDirs()
+    // 在 workspace 内创建目标文件
+    const targetFile = join(workspaceRoot, 'src', 'original.ts')
+    fs.writeFileSync(targetFile, 'content')
+
+    // 在 workspace 内创建指向 workspace 内部的 symlink
+    const symlinkPath = join(workspaceRoot, 'link-to-src.ts')
+    fs.symlinkSync(targetFile, symlinkPath)
+
+    const result = resolveSandboxPath('link-to-src.ts', { workspaceRoot })
+    expect(result.error).toBeUndefined()
+    expect(result.path).toBeDefined()
+  })
+
+  it('目标不存在但父目录 symlink 指向外部 — 被拒绝', () => {
+    setupDirs()
+    // 在 workspace 外创建一个目录
+    const externalDir = join(tmpDir, 'outside')
+    fs.mkdirSync(externalDir)
+
+    // 在 workspace 内创建指向外部的 symlink 目录
+    const symlinkDir = join(workspaceRoot, 'fake-dir')
+    fs.symlinkSync(externalDir, symlinkDir)
+
+    // 尝试在 symlink 目录下写入新文件（目标不存在）
+    const result = resolveSandboxPath('fake-dir/new-file.txt', { workspaceRoot })
+    expect(result.error).toBeDefined()
+    expect(result.error!.code).toBe('SANDBOX_VIOLATION')
+  })
+
+  it('目标不存在且父目录正常 — 允许通过', () => {
+    setupDirs()
+    // src 目录存在且不是 symlink
+    const result = resolveSandboxPath('src/new-file.ts', { workspaceRoot })
+    expect(result.error).toBeUndefined()
+    expect(result.path).toBeDefined()
+  })
+
+  it('普通文件（非 symlink）正常通过', () => {
+    setupDirs()
+    const normalFile = join(workspaceRoot, 'normal.txt')
+    fs.writeFileSync(normalFile, 'hello')
+
+    const result = resolveSandboxPath('normal.txt', { workspaceRoot })
+    expect(result.error).toBeUndefined()
+    expect(result.path).toBe(normalFile)
   })
 })

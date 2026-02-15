@@ -14,6 +14,7 @@ import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext
 import { ToolCategory } from '../types'
 import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
 import { withFileLock } from './file-lock'
+import { backupBeforeWrite } from './file-backup'
 
 export const editTool: ToolDefinition = {
   name: 'edit',
@@ -75,6 +76,10 @@ export const editTool: ToolDefinition = {
     try {
       // 文件级互斥锁 — 整个 read-check-write 在锁保护下执行
       const editResult = await withFileLock(absolutePath, async () => {
+        // 编辑前备份
+        if (context?.workspaceRoot) {
+          backupBeforeWrite(absolutePath, context.workspaceRoot)
+        }
         const content = await readFile(absolutePath, 'utf-8')
 
         // 检查匹配次数

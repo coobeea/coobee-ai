@@ -40,16 +40,14 @@ export async function injectEnv(
     const agentEnv = await buildAgentEnv(sessionId, workspace)
 
     // 3. 扫描 Skill 并存储到 SkillManager（供 skill_list 工具按需查询）
+    //    使用 agentEnv.skillPaths（已包含 Extension 贡献的 Skill 目录）
     const skillManager = new SkillManager()
-    skillManager.scanSkills([
-      Env.paths.builtinSkillsDir,
-      Env.paths.userSkillsDir,
-      path.join(workspace, 'skills')
-    ])
+    skillManager.scanSkills(agentEnv.skillPaths)
     SkillManager.setCurrent(skillManager)
 
     // 4. 注入核心执行协议 + 运行时环境 + Skill 发现提示到 appendInstructions
-    const executionProtocol = buildExecutionProtocol()
+    //    执行协议可通过同名 Skill 覆盖（用户在 workspace/skills/execution-protocol/ 创建即可）
+    const executionProtocol = buildExecutionProtocol(skillManager)
     const runtimePathsBlock = formatRuntimePaths(agentEnv)
     const skillDiscoveryHint =
       skillManager.size > 0
@@ -97,8 +95,18 @@ export async function injectEnv(
  *
  * 这是 Agent 的基础行为规范，通过 appendInstructions 注入到所有 Agent。
  * 详细的评估方法论由 self-reflection Skill 提供（按需加载）。
+ *
+ * **可覆盖**：用户可在工作空间的 skills/execution-protocol/ 下创建同名 SKILL.md 覆盖。
+ * SkillManager 的"后到覆盖"策略确保工作空间版本优先于内置版本。
  */
-function buildExecutionProtocol(): string {
+function buildExecutionProtocol(skillManager?: SkillManager): string {
+  // 优先使用 SkillManager 中的 execution-protocol Skill（支持用户/Agent 覆盖）
+  const customProtocol = skillManager?.getByName('execution-protocol')
+  if (customProtocol?.content) {
+    return `<execution_protocol>\n${customProtocol.content}\n</execution_protocol>`
+  }
+
+  // 兜底：硬编码默认值（正常情况下不会走到这里，因为内置 Skill 应该总是可用的）
   return `<execution_protocol>
 When you receive a user request, follow this protocol:
 

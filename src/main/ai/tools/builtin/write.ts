@@ -15,6 +15,7 @@ import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext
 import { ToolCategory } from '../types'
 import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
 import { withFileLock } from './file-lock'
+import { backupBeforeWrite } from './file-backup'
 
 export const writeTool: ToolDefinition = {
   name: 'write',
@@ -64,6 +65,10 @@ export const writeTool: ToolDefinition = {
     try {
       // 文件级互斥锁（防止多 Agent 竞态写入）
       await withFileLock(absolutePath, async () => {
+        // 写入前备份（已有文件才备份，新建文件跳过）
+        if (context?.workspaceRoot) {
+          backupBeforeWrite(absolutePath, context.workspaceRoot)
+        }
         // 确保父目录存在
         await mkdir(dirname(absolutePath), { recursive: true })
         await writeFile(absolutePath, content, 'utf-8')

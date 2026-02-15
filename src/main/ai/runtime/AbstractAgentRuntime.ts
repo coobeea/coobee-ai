@@ -24,6 +24,7 @@ import type {
   SessionInfo
 } from './types'
 import { saveContextSnapshot } from './ContextSnapshot'
+import { defaultRecoveryChain } from './ErrorRecoveryChain'
 
 // ==================== Logger 工具 ====================
 
@@ -123,24 +124,59 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
    *   - 透传 doStream() 的所有 StreamChunk
    *   - 执行完成后自动调用 saveContextSnapshot()
    *   - 快照写入失败不阻断主流程
+   *   - 错误时尝试渐进式恢复（重试）
    */
   async *stream(
     input: string,
     config?: ExecutionConfig
   ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
-    const gen = this.doStream(input, config)
-    let r = await gen.next()
-    while (!r.done) {
-      yield r.value
-      r = await gen.next()
+    const maxAttempts = 3
+    let attempt = 0
+
+    while (true) {
+      try {
+        const gen = this.doStream(input, config)
+        let r = await gen.next()
+        while (!r.done) {
+          yield r.value
+          r = await gen.next()
+        }
+
+        const result = r.value
+
+        // 自动写入上下文快照（异步，不阻塞返回）
+        saveContextSnapshot(this.options, this.type, input, result).catch(() => {})
+
+        return result
+      } catch (error: unknown) {
+        if (!(error instanceof Error)) throw error
+
+        // 渐进式错误恢复
+        const recovery = await defaultRecoveryChain.recover(error, {
+          attempt,
+          maxAttempts,
+          sessionId: config?.sessionId as string | undefined
+        })
+
+        if (recovery.action === 'retry') {
+          attempt++
+          // 延迟等待（如有）
+          if (recovery.delay && recovery.delay > 0) {
+            await new Promise((resolve) => setTimeout(resolve, recovery.delay))
+          }
+          // 发出恢复事件
+          yield {
+            type: 'run:error' as const,
+            content: `Recovery: ${recovery.reason}`,
+            data: { recoveryAttempt: attempt }
+          }
+          continue // 重试 doStream
+        }
+
+        // 不可恢复，抛出原错误
+        throw error
+      }
     }
-
-    const result = r.value
-
-    // 自动写入上下文快照（异步，不阻塞返回）
-    saveContextSnapshot(this.options, this.type, input, result).catch(() => {})
-
-    return result
   }
 
   // ========== 默认实现：run ==========

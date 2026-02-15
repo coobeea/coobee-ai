@@ -3,7 +3,7 @@
  *
  * 职责：
  *   - 扫描目录下所有 SKILL.md 文件并解析 frontmatter
- *   - 支持多级搜索路径（内置 → 用户 → 工作空间），同名先发现优先
+ *   - 支持多级搜索路径（内置 → Extension → 用户 → 工作空间），后到覆盖（高优先级覆盖低优先级）
  *   - 动态注册/注销（Extension 贡献）
  *   - 动态添加搜索路径
  *   - 查询（按名称、全量）
@@ -80,22 +80,22 @@ export class SkillManager {
   /** 已加载的 Skill（name → SkillDefinition） */
   private skills = new Map<string, SkillDefinition>()
 
-  /** 已加载的目录名集合（用于去重） */
-  private loadedDirNames = new Set<string>()
+  /** 目录名 → Skill name 的映射（用于后到覆盖时移除旧版本） */
+  private dirNameToSkillName = new Map<string, string>()
 
   // ========== 扫描与加载 ==========
 
   /**
    * 扫描多个搜索路径，加载所有 SKILL.md
    *
-   * 按搜索路径顺序扫描，同名目录先发现的优先（不重复加载）。
+   * 按搜索路径顺序扫描，**后到覆盖**（同名目录后发现的覆盖先发现的）。
+   * 搜索路径顺序应为 低→高 优先级（内置 → Extension → 用户 → 工作空间）。
+   * 这样工作空间中的同名 Skill 会覆盖内置 Skill，实现用户定制。
    *
-   * @param searchPaths Skill 搜索路径数组
-   * @returns 本次新加载的 SkillDefinition 数组
+   * @param searchPaths Skill 搜索路径数组（低 → 高优先级）
+   * @returns 最终有效的 SkillDefinition 数组
    */
   scanSkills(searchPaths: string[]): SkillDefinition[] {
-    const newSkills: SkillDefinition[] = []
-
     for (const searchDir of searchPaths) {
       try {
         if (!fs.existsSync(searchDir)) continue
@@ -106,15 +106,17 @@ export class SkillManager {
           if (!entry.isDirectory()) continue
           if (entry.name.startsWith('.')) continue // 跳过隐藏目录
 
-          // 用目录名去重
-          if (this.loadedDirNames.has(entry.name)) continue
-
           const skillPath = path.join(searchDir, entry.name, 'SKILL.md')
           const parsed = parseSkillMd(skillPath)
 
           if (!parsed) continue
 
-          this.loadedDirNames.add(entry.name)
+          // 后到覆盖：同名目录从更高优先级的路径中覆盖先前加载的
+          const existingName = this.dirNameToSkillName.get(entry.name)
+          if (existingName !== undefined) {
+            this.skills.delete(existingName) // 移除旧版本
+          }
+          this.dirNameToSkillName.set(entry.name, parsed.name)
 
           const skill: SkillDefinition = {
             name: parsed.name,
@@ -124,7 +126,6 @@ export class SkillManager {
           }
 
           this.skills.set(parsed.name, skill)
-          newSkills.push(skill)
         }
       } catch (error) {
         log.warn(`[SkillManager] 扫描目录失败: ${searchDir}`, error)
@@ -134,7 +135,7 @@ export class SkillManager {
     log.info(
       `[SkillManager] 加载 ${this.skills.size} 个 Skill: ${[...this.skills.keys()].join(', ')}`
     )
-    return newSkills
+    return this.getAll()
   }
 
   // ========== 动态注册/注销 ==========
@@ -201,6 +202,6 @@ export class SkillManager {
   /** 清空所有已加载的 Skill */
   clear(): void {
     this.skills.clear()
-    this.loadedDirNames.clear()
+    this.dirNameToSkillName.clear()
   }
 }
