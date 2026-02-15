@@ -12,7 +12,7 @@ import type { ToolResult, ToolStreamUpdate } from '../types'
 // ========== Mock logger ==========
 vi.mock('@main/common/logger', () => {
   const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
-  return { default: log, log }
+  return { default: log, log, createLogger: vi.fn(() => log) }
 })
 
 // ========== Mock Env（exec/process/memory 依赖） ==========

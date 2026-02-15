@@ -23,9 +23,10 @@ import type { ToolStreamUpdate, ToolResult } from '../types'
 import { ToolCategory } from '../types'
 
 // Mock logger（memory 工具依赖 @main/common/logger → env → electron）
-vi.mock('@main/common/logger', () => ({
-  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
-}))
+vi.mock('@main/common/logger', () => {
+  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+  return { log, createLogger: vi.fn(() => log) }
+})
 
 // Mock env（memory 工具延迟导入 Env）
 vi.mock('@main/common/env', () => ({
@@ -1138,8 +1139,8 @@ describe('execTool', () => {
 // ═══════════════════════════════════════════
 
 describe('builtinTools 集合', () => {
-  it('包含 10 个内置工具', () => {
-    expect(builtinTools).toHaveLength(10)
+  it('包含 12 个内置工具', () => {
+    expect(builtinTools).toHaveLength(12)
   })
 
   it('按正确顺序包含所有工具', () => {
@@ -1151,6 +1152,8 @@ describe('builtinTools 集合', () => {
       'exec',
       'process',
       'memory',
+      'search',
+      'glob',
       'session_status',
       'session_history',
       'context_inspect',

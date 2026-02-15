@@ -1,0 +1,116 @@
+---
+description: 代码变更标准流程 — 实现→测试→修复→提交，确保每次变更都有测试覆盖
+globs:
+alwaysApply: true
+---
+
+# 开发流程规则：实现→测试→修复→提交
+
+## 核心原则
+
+每次完成代码变更后，必须按以下流程执行：
+
+```
+1. 实现（Implement）
+2. 测试（Test）
+3. 修复（Fix）
+4. 提交（Commit）
+```
+
+**不允许跳过测试直接提交。**
+
+## 详细流程
+
+### 1. 实现（Implement）
+
+- 按照需求修改代码
+- 每个改动点保持最小化、聚焦
+- 运行 `npx tsc --noEmit` 确认无类型错误
+
+### 2. 测试（Test）
+
+实现完成后，**必须**编写或更新测试用例：
+
+#### 何时需要写测试
+
+- 新增功能（工具、模块、API）→ 必须写测试
+- 修复 bug → 写回归测试（验证 bug 不会复发）
+- 重构 → 确保已有测试仍通过，必要时更新
+- 纯文档/注释/格式修改 → 可跳过测试
+
+#### 测试文件约定
+
+- 测试放在源文件同层的 `__tests__/` 目录
+- 文件名格式：`{模块名}.test.ts`
+- 使用 Vitest 框架（`describe`, `it`, `expect`, `vi.mock`）
+- Mock 外部依赖：`@main/common/logger`, `@main/common/env` 等
+
+#### 测试编写要点
+
+- 测试应覆盖：正常路径 + 边界条件 + 错误处理
+- 使用 `fs.mkdtempSync` 创建临时目录，`afterEach` 中清理
+- AsyncGenerator 工具使用 `consumeGenerator` 辅助函数
+- 尽量不依赖外部服务（纯单元测试优先）
+
+#### 运行测试
+
+```bash
+# 运行全部测试
+pnpm test
+
+# 运行特定测试文件
+pnpm test -- src/main/ai/tools/__tests__/xxx.test.ts
+
+# 监听模式
+pnpm test:watch
+```
+
+### 3. 修复（Fix）
+
+- 运行测试后如果有失败 → 修复代码或测试
+- 运行 `npx tsc --noEmit` 确认无类型错误
+- 检查 linter 错误并修复
+- 重复直到所有测试通过
+
+### 4. 提交（Commit）
+
+测试全部通过后，按 `auto-commit.mdc` 规则提交：
+
+```bash
+git add -A
+git commit -m "type(scope): message"
+```
+
+如果有测试用例一起提交，commit message 应体现：
+
+```
+feat(tools): add search and glob built-in tools
+
+test(tools): add search/glob/path-traversal tests
+```
+
+或合并为一个 commit：
+
+```
+feat(tools): add search and glob tools with tests
+```
+
+## 检查清单
+
+每次完成变更时，过一遍以下清单：
+
+- [ ] 代码实现完成
+- [ ] TypeScript 无类型错误
+- [ ] 测试用例编写/更新
+- [ ] 测试全部通过
+- [ ] Linter 无新增错误
+- [ ] 提交成功（pre-commit hook 通过）
+
+## 例外情况
+
+以下情况可以不写测试（但需在 commit message 中说明）：
+
+- 纯文档变更（`.md` 文件）
+- 配置文件微调（`package.json` 版本号等）
+- 生成文件/资源文件
+- 实验性代码（标注 `wip`）

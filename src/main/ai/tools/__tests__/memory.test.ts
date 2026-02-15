@@ -26,14 +26,15 @@ function makeContext(workspaceRoot: string): ToolExecutionContext {
   }
 }
 
-vi.mock('@main/common/logger', () => ({
-  log: {
+vi.mock('@main/common/logger', () => {
+  const log = {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn()
   }
-}))
+  return { log, createLogger: vi.fn(() => log) }
+})
 
 // 使用唯一临时目录，避免并行测试冲突
 const TEST_BASE = path.join(os.tmpdir(), `memory-test-coobee-${process.pid}`)

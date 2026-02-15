@@ -13,6 +13,20 @@
  *     - sessionId 传递
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// Mock logger（context.ts 使用 createLogger）
+const { mockLogWarn } = vi.hoisted(() => ({
+  mockLogWarn: vi.fn()
+}))
+vi.mock('@main/common/logger', () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: mockLogWarn,
+    error: vi.fn(),
+    debug: vi.fn()
+  }))
+}))
+
 import { createPathOnlyContext, resolveSandboxContext } from '../context'
 
 // Mock docker 模块
@@ -199,8 +213,8 @@ describe('resolveSandboxContext', () => {
 
     it('Docker 不可用时降级为 path-only', async () => {
       vi.mocked(isDockerAvailable).mockResolvedValue(false)
+      mockLogWarn.mockClear()
 
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const ctx = await resolveSandboxContext(
         { mode: 'docker', workspaceRoot: '/home/user/project' },
         'session-123'
@@ -208,15 +222,15 @@ describe('resolveSandboxContext', () => {
 
       expect(ctx.mode).toBe('path-only')
       expect(ctx.docker).toBeUndefined()
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Docker not available'))
-      consoleSpy.mockRestore()
+      // M-3 改进：现在使用 log.warn 而非 console.warn
+      expect(mockLogWarn).toHaveBeenCalledWith(expect.stringContaining('Docker not available'))
     })
 
     it('容器创建失败时降级为 path-only', async () => {
       vi.mocked(isDockerAvailable).mockResolvedValue(true)
       vi.mocked(ensureContainer).mockRejectedValue(new Error('container create failed'))
+      mockLogWarn.mockClear()
 
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const ctx = await resolveSandboxContext(
         { mode: 'docker', workspaceRoot: '/home/user/project' },
         'session-123'
@@ -224,8 +238,7 @@ describe('resolveSandboxContext', () => {
 
       expect(ctx.mode).toBe('path-only')
       expect(ctx.docker).toBeUndefined()
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('container create failed'))
-      consoleSpy.mockRestore()
+      expect(mockLogWarn).toHaveBeenCalledWith(expect.stringContaining('container create failed'))
     })
 
     it('将 sessionId 传递给 ensureContainer', async () => {

@@ -14,14 +14,15 @@ import { processTool } from '../builtin/process'
 import { execTool } from '../builtin/exec'
 import { ProcessRegistry } from '../../process/ProcessRegistry'
 
-vi.mock('@main/common/logger', () => ({
-  log: {
+vi.mock('@main/common/logger', () => {
+  const log = {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn()
   }
-}))
+  return { log, createLogger: vi.fn(() => log) }
+})
 
 /**
  * 消费 AsyncGenerator，收集 yield 的更新和最终结果

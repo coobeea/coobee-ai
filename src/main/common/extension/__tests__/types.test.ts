@@ -31,9 +31,10 @@ import type {
 } from '../types'
 
 describe('EXTENSION_HOOK_MODE', () => {
-  it('包含全部 8 种 Hook', () => {
+  it('包含全部 12 种 Hook', () => {
     const keys = Object.keys(EXTENSION_HOOK_MODE)
-    expect(keys).toHaveLength(8)
+    expect(keys).toHaveLength(12)
+    // 原始 8 种
     expect(keys).toContain('before_agent_start')
     expect(keys).toContain('agent_end')
     expect(keys).toContain('before_tool_call')
@@ -42,6 +43,11 @@ describe('EXTENSION_HOOK_MODE', () => {
     expect(keys).toContain('message_received')
     expect(keys).toContain('session_start')
     expect(keys).toContain('session_end')
+    // Phase 1 新增 4 种
+    expect(keys).toContain('turn_start')
+    expect(keys).toContain('turn_end')
+    expect(keys).toContain('before_compaction')
+    expect(keys).toContain('after_compaction')
   })
 
   it('modifying 类型正确 — before_agent_start', () => {
@@ -76,23 +82,32 @@ describe('EXTENSION_HOOK_MODE', () => {
     expect(EXTENSION_HOOK_MODE.session_end).toBe('void')
   })
 
-  it('modifying 共 3 种', () => {
+  it('modifying 共 4 种', () => {
     const modifying = Object.entries(EXTENSION_HOOK_MODE)
       .filter(([, mode]) => mode === 'modifying')
       .map(([name]) => name)
-    expect(modifying).toHaveLength(3)
+    expect(modifying).toHaveLength(4)
     expect(modifying.sort()).toEqual(
-      ['before_agent_start', 'before_tool_call', 'tool_result_persist'].sort()
+      ['before_agent_start', 'before_compaction', 'before_tool_call', 'tool_result_persist'].sort()
     )
   })
 
-  it('void 共 5 种', () => {
+  it('void 共 8 种', () => {
     const voidHooks = Object.entries(EXTENSION_HOOK_MODE)
       .filter(([, mode]) => mode === 'void')
       .map(([name]) => name)
-    expect(voidHooks).toHaveLength(5)
+    expect(voidHooks).toHaveLength(8)
     expect(voidHooks.sort()).toEqual(
-      ['agent_end', 'after_tool_call', 'message_received', 'session_start', 'session_end'].sort()
+      [
+        'agent_end',
+        'after_compaction',
+        'after_tool_call',
+        'message_received',
+        'session_start',
+        'session_end',
+        'turn_start',
+        'turn_end'
+      ].sort()
     )
   })
 
