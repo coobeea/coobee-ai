@@ -78,6 +78,21 @@ export class ExtensionLoader {
       return
     }
 
+    // Manifest 校验
+    const validationError = validateManifest(manifest)
+    if (validationError) {
+      console.error(`[ExtensionLoader] Invalid manifest in "${dir}": ${validationError}`)
+      return
+    }
+
+    // 信任模型校验：非 builtin Extension 记录警告
+    if (origin !== 'builtin') {
+      console.warn(
+        `[ExtensionLoader] Loading non-builtin extension "${manifest.id}" (${origin}). ` +
+          `Extension code runs in the main process without sandboxing.`
+      )
+    }
+
     // 同 ID 覆盖：先卸载旧版
     if (this.loadedExtensions.has(manifest.id)) {
       this.unload(manifest.id)
@@ -236,4 +251,28 @@ function resolveEntryPath(dir: string): string | undefined {
     if (fs.existsSync(p)) return p
   }
   return undefined
+}
+
+/**
+ * 校验 Extension manifest 的必填字段和格式
+ *
+ * @returns 校验错误消息，null 表示通过
+ */
+function validateManifest(manifest: ExtensionManifest): string | null {
+  if (!manifest.id || typeof manifest.id !== 'string') {
+    return 'Missing or invalid "id" field'
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(manifest.id)) {
+    return `Invalid "id" format: "${manifest.id}" (only alphanumeric, - and _ allowed)`
+  }
+  if (!manifest.name || typeof manifest.name !== 'string') {
+    return 'Missing or invalid "name" field'
+  }
+  if (!manifest.version || typeof manifest.version !== 'string') {
+    return 'Missing or invalid "version" field'
+  }
+  if (manifest.skills !== undefined && typeof manifest.skills !== 'string') {
+    return '"skills" field must be a string (directory path)'
+  }
+  return null
 }

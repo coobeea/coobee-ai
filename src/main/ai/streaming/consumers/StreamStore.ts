@@ -3,12 +3,13 @@
  * 监听 EventBus 的流式事件，保存到数据库
  */
 
+import fs from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { eventBus } from '@main/common/eventbus'
 import { log } from '@main/common/logger'
 import { SQLiteService } from '@main/common/database'
 import { StreamEventType, type StreamEvent, type StreamMessage } from '../types'
-import { readFile } from 'fs/promises'
-import { join } from 'path'
 
 /**
  * 流式消息存储
@@ -155,8 +156,8 @@ export class StreamStore {
         // 重新入队等待下次重试
         this.messageQueue.unshift(...batch)
       } else {
-        // 达到上限，丢弃消息（死信）并重置计数器
-        log.error(`[StreamStore] Max flush retries reached, dropping ${batch.length} messages`)
+        // 达到上限 → 写入死信文件而非丢弃
+        this.writeDeadLetters(batch)
         this.flushRetryCount = 0
       }
     }
@@ -276,6 +277,45 @@ export class StreamStore {
       queueSize: this.messageQueue.length,
       maxBatchSize: this.maxBatchSize,
       flushInterval: this.flushInterval
+    }
+  }
+
+  /**
+   * 将无法写入数据库的消息保存到死信文件
+   *
+   * 文件路径：{userData}/dead-letters/stream-{timestamp}.jsonl
+   * 每行一个 JSON 对象，便于后续重放或分析。
+   */
+  private writeDeadLetters(messages: StreamMessage[]): void {
+    try {
+      let deadLetterDir: string
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const env = require('@main/common/env') as { Env: { paths: { userData: string } } }
+        deadLetterDir = join(env.Env.paths.userData, 'dead-letters')
+      } catch {
+        deadLetterDir = join(process.env.HOME || '/tmp', '.coobee-ai', 'dead-letters')
+      }
+
+      fs.mkdirSync(deadLetterDir, { recursive: true })
+
+      const filename = `stream-${Date.now()}.jsonl`
+      const filePath = join(deadLetterDir, filename)
+
+      const lines = messages.map((msg) => JSON.stringify(msg)).join('\n') + '\n'
+      fs.writeFileSync(filePath, lines)
+
+      log.error(
+        `[StreamStore] Wrote ${messages.length} dead letters to ${filePath}. ` +
+          `These messages failed to write to the database after ${this.maxFlushRetries} retries.`
+      )
+    } catch (err) {
+      // 死信写入也失败了，只能记录日志
+      log.error(
+        `[StreamStore] CRITICAL: Failed to write ${messages.length} dead letters. ` +
+          `Messages are permanently lost.`,
+        err
+      )
     }
   }
 

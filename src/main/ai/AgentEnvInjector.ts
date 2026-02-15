@@ -14,9 +14,8 @@ import path from 'node:path'
 import { createLogger } from '@main/common/logger'
 import { formatRuntimePaths, buildAgentEnv } from './AgentEnv'
 import { SkillManager } from './skills'
+import { createPathOnlyContext } from './sandbox'
 import type { AgentBuilder } from './AgentExecutor'
-import { PiMonoBuilder } from './runtime/pimono/PiMonoBuilder'
-import { OpenAIBuilder } from './runtime/openai/OpenAIBuilder'
 
 const log = createLogger('ai')
 
@@ -70,15 +69,14 @@ export async function injectEnv(
     // 5. 设置会话存储目录（指向 workspace 内的 sessions/）
     builder.sessionDir(path.join(workspace, 'sessions'))
 
-    // 6. 设置工作目录
-    if (builder instanceof PiMonoBuilder) {
-      builder.cwd(workspace)
-    }
-    if (builder instanceof OpenAIBuilder) {
-      builder.workspaceRoot(workspace)
-    }
+    // 6. 设置工作目录（统一 API：两个 Builder 都支持 workspaceRoot()）
+    builder.workspaceRoot(workspace)
 
-    // 7. 设置上下文快照目录（Runtime 层写入）
+    // 7. 设置沙箱上下文（由 Runtime 的 convertTools 使用）
+    const sandboxCtx = createPathOnlyContext(workspace, { sessionId })
+    builder.sandboxContext(sandboxCtx)
+
+    // 8. 设置上下文快照目录（Runtime 层写入）
     builder.contextDir(path.join(workspace, 'contexts'))
 
     log.info(`[EnvInjector] Injected: sessionId=${sessionId}, workspace=${workspace}`)

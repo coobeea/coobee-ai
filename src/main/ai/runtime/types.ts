@@ -120,6 +120,14 @@ export interface AgentRuntimeOptions {
    * 与 SDK 原生工具（各 Runtime 的 sdkTools）共存，SDK 原生工具优先。
    */
   tools?: ToolDefinition[]
+  /**
+   * 沙箱上下文
+   *
+   * 由 AgentEnvInjector 通过 Builder 注入。
+   * Runtime 用此上下文执行工具时的路径守卫、策略检查。
+   * 不传则降级为 path-only + workspaceRoot。
+   */
+  sandboxContext?: import('../sandbox/types').SandboxContext
 }
 
 // ========== 系统提示词构建 ==========

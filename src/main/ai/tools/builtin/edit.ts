@@ -13,6 +13,7 @@ import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolCategory } from '../types'
 import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
+import { withFileLock } from './file-lock'
 
 export const editTool: ToolDefinition = {
   name: 'edit',
@@ -72,45 +73,54 @@ export const editTool: ToolDefinition = {
     yield { type: 'progress', content: `Reading ${filePath}...`, percentage: 0 }
 
     try {
-      const content = await readFile(absolutePath, 'utf-8')
+      // 文件级互斥锁 — 整个 read-check-write 在锁保护下执行
+      const editResult = await withFileLock(absolutePath, async () => {
+        const content = await readFile(absolutePath, 'utf-8')
 
-      yield { type: 'progress', content: 'Searching for match...', percentage: 30 }
+        // 检查匹配次数
+        const occurrences = content.split(oldText).length - 1
 
-      // 检查匹配次数
-      const occurrences = content.split(oldText).length - 1
-
-      if (occurrences === 0) {
-        const trimmedOld = oldText.trim()
-        const loosyMatch = trimmedOld.length > 0 && content.includes(trimmedOld)
-        const hint = loosyMatch
-          ? ' (a trimmed version was found — check leading/trailing whitespace)'
-          : ''
-        return {
-          success: false,
-          llmContent: `Error: oldText not found in ${filePath}${hint}`,
-          error: { code: 'NOT_FOUND', message: `oldText not found in ${filePath}${hint}` }
+        if (occurrences === 0) {
+          const trimmedOld = oldText.trim()
+          const loosyMatch = trimmedOld.length > 0 && content.includes(trimmedOld)
+          const hint = loosyMatch
+            ? ' (a trimmed version was found — check leading/trailing whitespace)'
+            : ''
+          return {
+            error: { code: 'NOT_FOUND', message: `oldText not found in ${filePath}${hint}` }
+          } as const
         }
-      }
 
-      if (occurrences > 1) {
+        if (occurrences > 1) {
+          return {
+            error: {
+              code: 'MULTIPLE_MATCHES',
+              message: `oldText matches ${occurrences} times`,
+              details: { occurrences }
+            }
+          } as const
+        }
+
+        // 精确替换一次
+        const newContent = content.replace(oldText, newText)
+        await writeFile(absolutePath, newContent, 'utf-8')
+        return { ok: true } as const
+      })
+
+      if ('error' in editResult && editResult.error) {
+        const err = editResult.error
+        const msg =
+          err.code === 'NOT_FOUND'
+            ? `Error: ${err.message}`
+            : `Error: oldText matches ${'details' in err ? (err as { details: { occurrences: number } }).details.occurrences : '?'} times in ${filePath}. Include more surrounding context to make it unique.`
         return {
           success: false,
-          llmContent:
-            `Error: oldText matches ${occurrences} times in ${filePath}. ` +
-            `Include more surrounding context to make it unique.`,
-          error: {
-            code: 'MULTIPLE_MATCHES',
-            message: `oldText matches ${occurrences} times`,
-            details: { occurrences }
-          }
+          llmContent: msg,
+          error: err
         }
       }
 
       yield { type: 'progress', content: 'Applying edit...', percentage: 60 }
-
-      // 精确替换一次
-      const newContent = content.replace(oldText, newText)
-      await writeFile(absolutePath, newContent, 'utf-8')
 
       // 变更统计
       const oldLines = oldText.split('\n').length

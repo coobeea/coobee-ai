@@ -898,8 +898,9 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
   private convertTools(defs: ToolDefinition[]): PiToolDefinition[] {
     if (!defs.length) return []
 
-    // 构建沙箱上下文（PiMono 用 cwd 作为 workspaceRoot）
-    const sandboxContext: import('../../sandbox/types').SandboxContext = {
+    // 优先使用注入的沙箱上下文，否则降级为 path-only
+    const sandboxContext: import('../../sandbox/types').SandboxContext = this.options
+      .sandboxContext || {
       mode: 'path-only',
       workspaceRoot: (this.options.cwd as string) || this.options.workspaceRoot || process.cwd(),
       toolPolicy: { allow: [], deny: [] },

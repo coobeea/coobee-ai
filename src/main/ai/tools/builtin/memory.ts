@@ -15,6 +15,11 @@
  *   - search: 搜索记忆内容（关键字匹配）
  *
  * 分类：Memory | 风险：低
+ *
+ * 后端演进路径：
+ *   当前 → 文件系统（Markdown/JSON）
+ *   计划 → memory/LongTermMemoryStore（SQLite + embedding + importance）
+ *   文件系统后端作为 fallback 保留
  */
 
 import fs from 'node:fs'

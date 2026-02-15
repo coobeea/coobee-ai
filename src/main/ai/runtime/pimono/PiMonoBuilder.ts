@@ -29,6 +29,7 @@ export class PiMonoBuilder {
   private _compaction?: { enabled?: boolean }
   private _retry?: { enabled?: boolean; maxRetries?: number; baseDelayMs?: number }
   private _contextDir?: string
+  private _sandboxContext?: import('../../sandbox/types').SandboxContext
 
   /** Agent 名称 */
   name(name: string): this {
@@ -102,8 +103,14 @@ export class PiMonoBuilder {
     return this
   }
 
-  /** 工作目录 */
+  /** 工作目录（与 OpenAIBuilder.workspaceRoot() 对齐） */
   cwd(dir: string): this {
+    this._cwd = dir
+    return this
+  }
+
+  /** 工作区根目录（cwd 的别名，统一 Builder API） */
+  workspaceRoot(dir: string): this {
     this._cwd = dir
     return this
   }
@@ -135,6 +142,12 @@ export class PiMonoBuilder {
   /** 上下文快照目录（由 injectEnv 自动设置） */
   contextDir(dir: string): this {
     this._contextDir = dir
+    return this
+  }
+
+  /** 沙箱上下文（由 EnvInjector 自动设置） */
+  sandboxContext(ctx: import('../../sandbox/types').SandboxContext): this {
+    this._sandboxContext = ctx
     return this
   }
 
@@ -171,6 +184,7 @@ export class PiMonoBuilder {
     if (this._compaction) opts.compaction = this._compaction
     if (this._retry) opts.retry = this._retry
     if (this._contextDir) opts.contextDir = this._contextDir
+    if (this._sandboxContext) opts.sandboxContext = this._sandboxContext
 
     // 动态导入，避免顶层加载 SDK
     const { PiMonoAgentRuntime } = await import('./index')

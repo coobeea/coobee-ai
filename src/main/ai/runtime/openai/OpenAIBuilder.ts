@@ -26,6 +26,7 @@ export class OpenAIBuilder {
   private _compression?: SessionCompressionOptions
   private _contextDir?: string
   private _workspaceRoot?: string
+  private _sandboxContext?: import('../../sandbox/types').SandboxContext
 
   /** Agent 名称 */
   name(name: string): this {
@@ -117,6 +118,12 @@ export class OpenAIBuilder {
     return this
   }
 
+  /** 沙箱上下文（由 EnvInjector 自动设置） */
+  sandboxContext(ctx: import('../../sandbox/types').SandboxContext): this {
+    this._sandboxContext = ctx
+    return this
+  }
+
   /** 构建并初始化 Runtime */
   async build(defaultSessionDir?: string): Promise<AgentRuntime> {
     const opts: OpenAIAgentRuntimeOptions = {
@@ -138,6 +145,7 @@ export class OpenAIBuilder {
     if (this._compression) opts.compression = this._compression
     if (this._contextDir) opts.contextDir = this._contextDir
     if (this._workspaceRoot) opts.workspaceRoot = this._workspaceRoot
+    if (this._sandboxContext) opts.sandboxContext = this._sandboxContext
 
     const { OpenAIAgentRuntime } = await import('./index')
     const runtime = new OpenAIAgentRuntime(opts)
