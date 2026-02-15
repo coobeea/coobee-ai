@@ -1,17 +1,71 @@
 /**
  * 工具策略
  *
- * 控制哪些工具可以被 Agent 调用。
- * 支持精确匹配和 glob 模式（`*` 通配符）。
+ * 控制哪些工具可以被 Agent 调用，以及哪些需要用户确认。
+ * 支持精确匹配、glob 模式（`*` 通配符）和工具组（`group:` 前缀）。
+ *
+ * 工具组定义：
+ *   - group:fs      → read, write, edit
+ *   - group:exec    → exec, process
+ *   - group:memory  → memory
+ *   - group:observe → session_status, session_history, context_inspect, skill_list
  *
  * 执行逻辑（deny 优先）：
  *   1. 工具名命中 deny 列表 → 拒绝
  *   2. allow 非空且工具名未命中 allow 列表 → 拒绝
  *   3. 以上都不满足 → 允许
  *
- * 参考 OpenClaw 的 tool-policy.ts，简化了 source tracking。
+ * 确认逻辑（独立于 allow/deny）：
+ *   4. 工具名命中 confirm 列表 → 需要用户确认
+ *   5. 未命中 → 使用工具自身的 needUserConfirm
+ *
+ * 策略分层（高优先级覆盖低优先级）：
+ *   Agent 策略 → 全局策略 → 默认策略
+ *   deny 始终叠加（安全优先），allow 取交集
+ *
+ * 参考 OpenClaw 的 tool-policy.ts。
  */
 import type { SandboxToolPolicy, ResolvedToolPolicy } from './types'
+
+// ========== 工具组定义 ==========
+
+/**
+ * 工具组 → 工具名映射
+ *
+ * 策略配置中使用 `group:fs` 等语法引用整组工具。
+ * 新增内置工具时应同步更新此映射。
+ */
+export const TOOL_GROUPS: Record<string, string[]> = {
+  fs: ['read', 'write', 'edit'],
+  exec: ['exec', 'process'],
+  memory: ['memory'],
+  observe: ['session_status', 'session_history', 'context_inspect', 'skill_list']
+}
+
+/**
+ * 展开策略列表中的 group: 引用
+ *
+ * @example
+ * expandGroups(['group:fs', 'exec']) → ['read', 'write', 'edit', 'exec']
+ */
+export function expandGroups(patterns: string[]): string[] {
+  const result: string[] = []
+  for (const p of patterns) {
+    if (p.startsWith('group:')) {
+      const groupName = p.slice(6)
+      const members = TOOL_GROUPS[groupName]
+      if (members) {
+        result.push(...members)
+      } else {
+        // 未知 group，保留原样（可能是用户自定义 group，后续可扩展）
+        result.push(p)
+      }
+    } else {
+      result.push(p)
+    }
+  }
+  return result
+}
 
 // ========== 模式编译 ==========
 
@@ -104,13 +158,83 @@ export function isToolAllowed(
 /**
  * 解析工具策略配置为运行时格式
  *
+ * 自动展开 `group:` 引用。
+ *
  * @param policy - 原始配置
  * @returns 已解析的策略
  */
 export function resolveToolPolicy(policy?: SandboxToolPolicy): ResolvedToolPolicy {
   return {
-    allow: policy?.allow ?? [],
-    deny: policy?.deny ?? []
+    allow: expandGroups(policy?.allow ?? []),
+    deny: expandGroups(policy?.deny ?? []),
+    confirm: expandGroups(policy?.confirm ?? [])
+  }
+}
+
+/**
+ * 检查工具是否需要用户确认
+ *
+ * @param toolName - 工具名
+ * @param policy   - 已解析的策略
+ * @returns true = 策略要求确认（覆盖工具自身的 needUserConfirm）
+ */
+export function needsConfirmation(
+  toolName: string,
+  policy?: SandboxToolPolicy | ResolvedToolPolicy
+): boolean | undefined {
+  if (!policy || !policy.confirm || policy.confirm.length === 0) return undefined
+  const normalized = toolName.trim().toLowerCase()
+  const confirmPatterns = compilePatterns(
+    Array.isArray(policy.confirm) ? expandGroups(policy.confirm) : policy.confirm
+  )
+  return matchesAny(normalized, confirmPatterns) ? true : undefined
+}
+
+/**
+ * 合并多层策略（高优先级 → 低优先级）
+ *
+ * deny 叠加（安全优先），allow 取交集，confirm 叠加。
+ * 传入顺序：[最高优先级, ..., 最低优先级]
+ */
+export function mergeToolPolicies(
+  ...policies: (SandboxToolPolicy | undefined)[]
+): SandboxToolPolicy {
+  const deny: string[] = []
+  const confirm: string[] = []
+  let allow: string[] | undefined
+
+  for (const policy of policies) {
+    if (!policy) continue
+
+    // deny 始终叠加
+    if (policy.deny?.length) {
+      deny.push(...policy.deny)
+    }
+
+    // confirm 始终叠加
+    if (policy.confirm?.length) {
+      confirm.push(...policy.confirm)
+    }
+
+    // allow 取交集（仅当有明确 allow 列表时）
+    if (policy.allow?.length) {
+      if (allow === undefined) {
+        allow = [...policy.allow]
+      } else {
+        // 交集：只保留两边都允许的
+        const expanded = new Set(expandGroups(policy.allow))
+        allow = allow.filter((a) => {
+          const names = a.startsWith('group:') ? TOOL_GROUPS[a.slice(6)] || [a] : [a]
+          return names.some((n) => expanded.has(n))
+        })
+      }
+    }
+  }
+
+  return {
+    ...(allow !== undefined ? { allow } : {}),
+    ...(deny.length > 0 ? { deny: [...new Set(deny)] } : {}),
+    ...(confirm.length > 0 ? { confirm: [...new Set(confirm)] } : {})
   }
 }
 

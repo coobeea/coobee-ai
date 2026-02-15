@@ -50,6 +50,18 @@ export interface SkillDefinition {
   filePath?: string
 }
 
+// ========== 运行模式 ==========
+
+/**
+ * Agent 运行模式
+ *
+ *   - chat: 纯对话模式 — 不提供工具，不注入执行协议和 Skill，响应快、成本低
+ *   - agent: 完整 Agent 模式 — 提供工具、注入执行协议和 Skill，支持 HITL
+ *
+ * 模式在 Builder 上设置，AgentEnvInjector 根据模式决定注入内容。
+ */
+export type AgentMode = 'chat' | 'agent'
+
 // ========== Agent 运行时通用选项 ==========
 
 /**

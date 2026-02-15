@@ -30,7 +30,7 @@ describe('createPathOnlyContext', () => {
     const ctx = createPathOnlyContext('/home/user/project')
     expect(ctx.mode).toBe('path-only')
     expect(ctx.workspaceRoot).toBe('/home/user/project')
-    expect(ctx.toolPolicy).toEqual({ allow: [], deny: [] })
+    expect(ctx.toolPolicy).toEqual({ allow: [], deny: [], confirm: [] })
     expect(ctx.docker).toBeUndefined()
     expect(ctx.sandboxRoot).toBeUndefined()
     expect(ctx.sessionId).toBeUndefined()

@@ -40,6 +40,7 @@ export class ExtensionHookRunner {
 
     await Promise.allSettled(
       hooks.map(async (hook) => {
+        const start = Date.now()
         try {
           await hook.handler(event)
         } catch (err) {
@@ -47,6 +48,8 @@ export class ExtensionHookRunner {
             `[ExtensionHookRunner] void hook "${name}" from "${hook.extensionId}" failed:`,
             err
           )
+        } finally {
+          logHookTiming(name, hook.extensionId, Date.now() - start)
         }
       })
     )
@@ -66,6 +69,7 @@ export class ExtensionHookRunner {
     let merged: Record<string, unknown> | undefined
 
     for (const hook of hooks) {
+      const start = Date.now()
       try {
         const result = await hook.handler(event)
         if (result == null) continue
@@ -81,6 +85,8 @@ export class ExtensionHookRunner {
           err
         )
         // 跳过失败的 handler，继续下一个
+      } finally {
+        logHookTiming(name, hook.extensionId, Date.now() - start)
       }
     }
 
@@ -170,4 +176,24 @@ function mergeToolResultPersist(
 function joinOptional(a?: string, b?: string): string | undefined {
   if (a && b) return `${a}\n${b}`
   return b ?? a
+}
+
+// ==================== Hook 执行时间监控 ====================
+
+/** 慢 Hook 警告阈值（毫秒） */
+const HOOK_WARN_THRESHOLD_MS = 1000
+/** 超慢 Hook 错误阈值（毫秒） */
+const HOOK_ERROR_THRESHOLD_MS = 5000
+
+/** 记录 Hook 执行时间，超过阈值时输出告警 */
+function logHookTiming(hookName: string, extensionId: string, durationMs: number): void {
+  if (durationMs >= HOOK_ERROR_THRESHOLD_MS) {
+    console.error(
+      `[ExtensionHookRunner] SLOW hook "${hookName}" from "${extensionId}": ${durationMs}ms (threshold: ${HOOK_ERROR_THRESHOLD_MS}ms)`
+    )
+  } else if (durationMs >= HOOK_WARN_THRESHOLD_MS) {
+    console.warn(
+      `[ExtensionHookRunner] Slow hook "${hookName}" from "${extensionId}": ${durationMs}ms (threshold: ${HOOK_WARN_THRESHOLD_MS}ms)`
+    )
+  }
 }

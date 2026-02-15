@@ -1,5 +1,5 @@
 ---
-name: Runtime Environment
+name: runtime-env
 description: 描述 Agent 运行时环境的目录结构、路径约定和可用资源。当 Agent 需要了解文件存放位置、工作空间结构、Skill 来源、Extension 系统或记忆存储时使用此技能。
 ---
 

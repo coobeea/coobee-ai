@@ -1,12 +1,10 @@
 /**
- * ⚠️ OpenAI SDK 专用模块
- *
- * 本模块直接依赖 @openai/agents SDK，不可用于 PiMono Runtime。
- * 计划在未来版本中通过 IAgentFactory 接口抽象，实现 SDK 无关。
- */
-
-/**
  * Team 类型定义
+ *
+ * @experimental 设计储备 — 本模块目前未接入产品代码。
+ * @deprecated 因与 swarm/ 功能重叠且绑定 OpenAI SDK，建议优先使用 swarm/ 模块。
+ *
+ * ⚠️ OpenAI SDK 专用：直接依赖 @openai/agents SDK，不可用于 PiMono Runtime。
  */
 
 /**

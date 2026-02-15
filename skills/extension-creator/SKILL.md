@@ -1,5 +1,5 @@
 ---
-name: Extension Creator
+name: extension-creator
 description: 指导 Agent 创建新的 Extension 扩展。当用户要求创建扩展、注册新工具、添加生命周期钩子、或需要动态增强系统能力时使用。
 ---
 

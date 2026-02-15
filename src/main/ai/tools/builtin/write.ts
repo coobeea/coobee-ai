@@ -13,7 +13,7 @@ import { dirname } from 'node:path'
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolCategory } from '../types'
-import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
+import { resolveToolPath, formatFileError, checkAborted } from '../pipeline'
 import { withFileLock } from './file-lock'
 import { backupBeforeWrite } from './file-backup'
 
@@ -47,18 +47,15 @@ export const writeTool: ToolDefinition = {
       }
     }
 
-    // 沙箱路径检查
-    const resolved = resolveSandboxPath(filePath, context)
-    if (resolved.error) return pathGuardErrorToToolResult(resolved.error)
+    // 统一路径解析
+    const resolved = resolveToolPath(filePath, context)
+    if (!resolved.ok) return resolved.error
 
-    const absolutePath = resolved.path
+    const absolutePath = resolved.absolutePath
 
-    if (signal?.aborted) {
-      return {
-        success: false,
-        error: { code: 'ABORTED', message: 'Operation cancelled' }
-      }
-    }
+    // 取消信号检查
+    const aborted = checkAborted(signal)
+    if (aborted) return aborted
 
     yield { type: 'progress', content: `Writing to ${filePath}...`, percentage: 0 }
 
@@ -89,23 +86,7 @@ export const writeTool: ToolDefinition = {
         metadata: { startTime, endTime: Date.now(), duration, byteSize, lineCount }
       }
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error)
-      const duration = Date.now() - startTime
-
-      if (msg.includes('EACCES')) {
-        return {
-          success: false,
-          llmContent: `Error: Permission denied: ${filePath}`,
-          error: { code: 'EACCES', message: `Permission denied: ${filePath}` },
-          metadata: { startTime, endTime: Date.now(), duration }
-        }
-      }
-      return {
-        success: false,
-        llmContent: `Error writing file: ${msg}`,
-        error: { code: 'WRITE_ERROR', message: msg },
-        metadata: { startTime, endTime: Date.now(), duration }
-      }
+      return formatFileError(error, filePath, 'writing', startTime)
     }
   }
 }

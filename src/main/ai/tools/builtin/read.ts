@@ -12,7 +12,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolCategory } from '../types'
-import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
+import { resolveToolPath, formatFileError, checkAborted } from '../pipeline'
 
 /** 默认最大读取行数（防止超大文件打爆 token） */
 const DEFAULT_MAX_LINES = 2000
@@ -44,22 +44,19 @@ export const readTool: ToolDefinition = {
     const limit = Math.min((params.limit as number) || DEFAULT_MAX_LINES, DEFAULT_MAX_LINES)
     const startTime = Date.now()
 
-    // 沙箱路径检查
-    const resolved = resolveSandboxPath(filePath, context)
-    if (resolved.error) return pathGuardErrorToToolResult(resolved.error)
+    // 统一路径解析
+    const resolved = resolveToolPath(filePath, context)
+    if (!resolved.ok) return resolved.error
 
-    const absolutePath = resolved.path
+    const absolutePath = resolved.absolutePath
+
+    // 取消信号检查
+    const aborted = checkAborted(signal)
+    if (aborted) return aborted
 
     yield { type: 'progress', content: `Reading ${filePath}...`, percentage: 0 }
 
     try {
-      if (signal?.aborted) {
-        return {
-          success: false,
-          error: { code: 'ABORTED', message: 'Operation cancelled' }
-        }
-      }
-
       const fileStat = await stat(absolutePath)
       if (!fileStat.isFile()) {
         return {
@@ -118,31 +115,7 @@ export const readTool: ToolDefinition = {
         }
       }
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error)
-      const duration = Date.now() - startTime
-
-      if (msg.includes('ENOENT')) {
-        return {
-          success: false,
-          llmContent: `Error: File not found: ${filePath}`,
-          error: { code: 'ENOENT', message: `File not found: ${filePath}` },
-          metadata: { startTime, endTime: Date.now(), duration }
-        }
-      }
-      if (msg.includes('EACCES')) {
-        return {
-          success: false,
-          llmContent: `Error: Permission denied: ${filePath}`,
-          error: { code: 'EACCES', message: `Permission denied: ${filePath}` },
-          metadata: { startTime, endTime: Date.now(), duration }
-        }
-      }
-      return {
-        success: false,
-        llmContent: `Error reading file: ${msg}`,
-        error: { code: 'READ_ERROR', message: msg },
-        metadata: { startTime, endTime: Date.now(), duration }
-      }
+      return formatFileError(error, filePath, 'reading', startTime)
     }
   }
 }

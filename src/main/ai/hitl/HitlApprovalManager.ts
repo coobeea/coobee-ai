@@ -47,6 +47,9 @@ export class HitlApprovalManager {
   /**
    * 等待所有工具的审批决策
    *
+   * @deprecated 批量模式已废弃，生产代码使用 per-call 模式（waitForSingleDecision）。
+   * 此方法仅在旧测试中使用，后续版本将移除。
+   *
    * 返回一个 Promise，在以下情况之一 resolve：
    *   1. 所有工具都提交了决策 → resolve(decisions[])
    *   2. 超时 → resolve(null)
@@ -87,7 +90,10 @@ export class HitlApprovalManager {
   }
 
   /**
-   * 提交单个工具的审批决策
+   * 提交单个工具的审批决策（批量模式）
+   *
+   * @deprecated 批量模式已废弃，生产代码使用 per-call 模式（submitSingleDecision）。
+   * 此方法仅在旧测试中使用，后续版本将移除。
    *
    * 当所有工具都有决策后，自动 resolve 等待的 Promise。
    *

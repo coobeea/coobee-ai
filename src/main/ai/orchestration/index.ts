@@ -1,13 +1,10 @@
 /**
- * ⚠️ OpenAI SDK 专用模块
+ * Orchestration 模块 — Orchestrator-Planner-Worker 协作模式
  *
- * 本模块直接依赖 @openai/agents SDK，不可用于 PiMono Runtime。
- * 计划在未来版本中通过 IAgentFactory 接口抽象，实现 SDK 无关。
- */
-
-/**
- * Orchestration 模块
- * 实现 Orchestrator-Planner-Worker 协作模式
+ * @experimental 设计储备 — 本模块目前未接入产品代码。
+ *
+ * ⚠️ OpenAI SDK 专用：直接依赖 @openai/agents SDK，不可用于 PiMono Runtime。
+ * 待多 Agent 路线确定后评估是否激活或替换为 SDK 无关实现。
  */
 
 export * from './types'

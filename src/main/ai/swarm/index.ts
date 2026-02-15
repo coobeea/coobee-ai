@@ -1,12 +1,10 @@
 /**
- * ⚠️ OpenAI SDK 专用模块
+ * Swarm 群体智能模块 — 动态 Agent 自组织协作
  *
- * 本模块直接依赖 @openai/agents SDK，不可用于 PiMono Runtime。
- * 计划在未来版本中通过 IAgentFactory 接口抽象，实现 SDK 无关。
- */
-
-/**
- * Swarm 群体智能模块
+ * @experimental 设计储备 — 本模块目前未接入产品代码。
+ *
+ * ⚠️ OpenAI SDK 专用：直接依赖 @openai/agents SDK，不可用于 PiMono Runtime。
+ * 待多 Agent 路线确定后评估激活时机。包含完整的编排能力，可作为高级多 Agent 模式的候选。
  *
  * 基于 OpenAI Agents SDK 的 Handoff 机制，实现动态 Agent 自组织协作。
  *

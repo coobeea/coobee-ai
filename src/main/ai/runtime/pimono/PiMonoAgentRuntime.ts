@@ -905,7 +905,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
       .sandboxContext || {
       mode: 'path-only',
       workspaceRoot: (this.options.cwd as string) || this.options.workspaceRoot || process.cwd(),
-      toolPolicy: { allow: [], deny: [] },
+      toolPolicy: { allow: [], deny: [], confirm: [] },
       sessionId: this.sessionId
     }
 

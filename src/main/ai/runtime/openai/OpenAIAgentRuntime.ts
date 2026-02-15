@@ -623,7 +623,7 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
       .sandboxContext || {
       mode: 'path-only',
       workspaceRoot: this.options.workspaceRoot || process.cwd(),
-      toolPolicy: { allow: [], deny: [] },
+      toolPolicy: { allow: [], deny: [], confirm: [] },
       sessionId: this.sessionId
     }
 

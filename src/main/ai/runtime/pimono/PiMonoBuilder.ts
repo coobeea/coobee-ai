@@ -7,11 +7,12 @@
 
 import path from 'node:path'
 import type { AgentRuntime } from '../AgentRuntime'
-import type { ToolDefinition, SkillDefinition } from '../types'
+import type { AgentMode, ToolDefinition, SkillDefinition } from '../types'
 import type { PiMonoAgentRuntimeOptions, ThinkingLevel } from './types'
 
 export class PiMonoBuilder {
   private _name = 'agent'
+  private _mode: AgentMode = 'agent'
   private _instructions = '你是一个 AI 助手。'
   private _appendInstructions: string[] = []
   private _model?: string
@@ -35,6 +36,21 @@ export class PiMonoBuilder {
   name(name: string): this {
     this._name = name
     return this
+  }
+
+  /**
+   * 运行模式
+   *   - 'chat': 纯对话（无工具、无执行协议、无 Skill）
+   *   - 'agent': 完整 Agent（工具 + 执行协议 + Skill + HITL）
+   */
+  mode(m: AgentMode): this {
+    this._mode = m
+    return this
+  }
+
+  /** 获取当前运行模式（供 AgentEnvInjector 读取） */
+  getMode(): AgentMode {
+    return this._mode
   }
 
   /** 系统指令 */

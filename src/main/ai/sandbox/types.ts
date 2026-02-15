@@ -26,19 +26,28 @@ export type SandboxMode = 'off' | 'path-only' | 'docker'
 /**
  * 工具策略配置
  *
- * 控制哪些工具可以被 Agent 调用。
- * 支持 glob 模式匹配（如 `file_*` 匹配所有 file_ 开头的工具）。
+ * 控制哪些工具可以被 Agent 调用，以及哪些需要用户确认。
+ * 支持 glob 模式匹配和工具组引用。
+ *
+ * 工具组前缀 `group:`：
+ *   - group:fs      → read, write, edit
+ *   - group:exec    → exec, process
+ *   - group:memory  → memory
+ *   - group:observe → session_status, session_history, context_inspect, skill_list
  *
  * 执行逻辑：
  *   1. deny 优先：命中 deny 列表 → 拒绝
  *   2. allow 校验：allow 非空且未命中 → 拒绝
- *   3. 默认允许：都没命中 → 允许
+ *   3. confirm 校验：命中 confirm 列表 → 需要用户确认
+ *   4. 默认允许：都没命中 → 允许（无需确认）
  */
 export interface SandboxToolPolicy {
-  /** 允许的工具列表（glob 模式，空数组 = 允许全部） */
+  /** 允许的工具列表（glob / group: 模式，空数组 = 允许全部） */
   allow?: string[]
-  /** 拒绝的工具列表（glob 模式，优先于 allow） */
+  /** 拒绝的工具列表（glob / group: 模式，优先于 allow） */
   deny?: string[]
+  /** 需要用户确认的工具列表（glob / group: 模式） */
+  confirm?: string[]
 }
 
 // ========== Docker 配置 ==========
@@ -144,6 +153,8 @@ export interface ResolvedToolPolicy {
   /** 原始配置 */
   allow: string[]
   deny: string[]
+  /** 需要用户确认的工具列表（已展开 group:，可选，默认空） */
+  confirm?: string[]
 }
 
 // ========== 默认配置 ==========
@@ -165,6 +176,7 @@ export const DEFAULT_SANDBOX_CONFIG: Omit<SandboxConfig, 'workspaceRoot'> = {
   mode: 'path-only',
   toolPolicy: {
     allow: [],
-    deny: []
+    deny: [],
+    confirm: []
   }
 }

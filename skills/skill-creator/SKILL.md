@@ -1,5 +1,5 @@
 ---
-name: Skill Creator
+name: skill-creator
 description: 指导 Agent 创建新的 Skill。当用户要求创建新技能、编写操作手册、或 Agent 需要记录可复用的工作流程时使用。
 ---
 

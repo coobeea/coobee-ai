@@ -1,5 +1,5 @@
 ---
-name: Self-Reflection
+name: self-reflection
 description: 自我评估与修复方法论。当需要评估任务完成质量、分析执行过程效率、或决定如何修复问题时使用此技能。配合 execution_protocol 中的自我评估和自我修复步骤使用。
 ---
 
