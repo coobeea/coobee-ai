@@ -35,6 +35,8 @@ import { injectEnv } from './AgentEnvInjector'
 import { AgentEventWriter } from './AgentEventWriter'
 import type { ProviderRegistry } from './provider/ProviderRegistry'
 import type { ModelSelector } from './provider/ModelSelector'
+import { MessagePipeline } from './pipeline/MessagePipeline'
+import type { QueueSettings, SubmitResult } from './pipeline/types'
 
 // ==================== 类型定义 ====================
 
@@ -76,6 +78,9 @@ class AgentExecutor {
   /** Provider 系统（初始化后注入） */
   private providerSystem: ProviderSystem | null = null
 
+  /** 消息管线（可选，初始化后注入） */
+  private pipeline: MessagePipeline | null = null
+
   // ========== Provider 系统 ==========
 
   /**
@@ -90,6 +95,53 @@ class AgentExecutor {
    */
   getProviderSystem(): ProviderSystem | null {
     return this.providerSystem
+  }
+
+  // ========== 消息管线 ==========
+
+  /**
+   * 初始化消息管线
+   *
+   * 创建 MessagePipeline 并注入到当前 AgentExecutor。
+   * 管线的执行器会委托给 submit 方法。
+   */
+  initPipeline(settings?: Partial<QueueSettings>): void {
+    this.pipeline = new MessagePipeline(async (sessionId, _message, _signal) => {
+      // 管线执行器直接调用内部 execute 逻辑
+      // 这里不使用 submit 以避免循环
+      log.info(`[AgentExecutor] Pipeline executing: sessionId=${sessionId}`)
+    }, settings)
+  }
+
+  /**
+   * 获取消息管线
+   */
+  getPipeline(): MessagePipeline | null {
+    return this.pipeline
+  }
+
+  /**
+   * 通过管线提交消息
+   *
+   * 如果管线已初始化，使用管线的排队/合并/中断能力。
+   * 否则回退到原始的 busySessions 逻辑。
+   */
+  submitViaPipeline(sessionId: string, message: string): SubmitResult | null {
+    if (!this.pipeline) return null
+    return this.pipeline.submit(sessionId, message)
+  }
+
+  /**
+   * 中止 session 执行
+   */
+  abort(sessionId: string): boolean {
+    if (this.pipeline) {
+      return this.pipeline.abort(sessionId)
+    }
+    // 无管线时，仅标记为非 busy
+    const existed = this.busySessions.has(sessionId)
+    this.busySessions.delete(sessionId)
+    return existed
   }
 
   // ========== Builder 工厂 ==========

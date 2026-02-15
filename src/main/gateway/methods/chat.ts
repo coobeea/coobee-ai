@@ -114,6 +114,18 @@ export const chatMethods: MethodGroup = {
       log.info(`[chat.send] sessionId=${sid}, mode=${mode}`)
 
       try {
+        // 优先使用管线（支持排队/合并/中断）
+        const pipelineResult = agentExecutor.submitViaPipeline(sid, message)
+        if (pipelineResult) {
+          return {
+            sessionId: sid,
+            status: pipelineResult.status,
+            mode,
+            queuePosition: pipelineResult.queuePosition
+          }
+        }
+
+        // 回退到原始 submit
         const result = agentExecutor.submit({
           sessionId: sid,
           message,
@@ -131,6 +143,19 @@ export const chatMethods: MethodGroup = {
         log.error(`[chat.send] Failed: sessionId=${sid}`, error)
         throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, msg)
       }
+    },
+
+    abort: async (params) => {
+      const { sessionId } = params as { sessionId?: string }
+
+      if (!sessionId) {
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'sessionId is required')
+      }
+
+      log.info(`[chat.abort] sessionId=${sessionId}`)
+      const aborted = agentExecutor.abort(sessionId)
+
+      return { sessionId, aborted }
     }
   }
 }
