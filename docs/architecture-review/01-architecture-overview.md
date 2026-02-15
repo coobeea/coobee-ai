@@ -27,9 +27,7 @@ src/main/ai/
 │   │   ├── PiMonoAgentRuntime.ts
 │   │   ├── ChunkQueue.ts
 │   │   └── types.ts
-│   └── evaluation/           # 执行评估
-│       ├── ExecutionEvaluator.ts
-│       └── types.ts
+│   └── evaluation/           # [已删除] 硬编码评估器已移除，自我评估由 self-reflection Skill 完成
 │
 ├── tools/                    # 工具系统
 │   ├── types.ts              # ToolDefinition, ToolCategory, ToolResult, ToolExecutionContext
