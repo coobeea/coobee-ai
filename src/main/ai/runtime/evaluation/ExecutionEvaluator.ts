@@ -1,17 +1,21 @@
 /**
- * 执行评估器
+ * 执行评估器 — **测试专用基础设施**
  *
- * 独立、通用的评估模块，适用于所有 AgentRuntime 实现。
+ * ⚠️ 本模块仅用于集成测试中对 Agent 执行结果的自动化评分。
+ * 产品运行时的自我评估由 LLM 通过 `self-reflection` Skill 完成，
+ * 不依赖本模块的硬编码公式。
  *
  * 三维度评估：
  *   1. 质量（40%）：输出正确性、关键词匹配、事件闭环
  *   2. 过程（30%）：处理效率、工具使用、轮次合理性
  *   3. 成本（30%）：时间消耗、Token 消耗、费用估算
  *
- * 使用方式：
+ * 使用方式（仅在测试中）：
  *   const evaluator = new ExecutionEvaluator(config?)
  *   const report = evaluator.evaluate(input)
  *   const formatted = ExecutionEvaluator.formatReport(report)
+ *
+ * @internal 测试专用，请勿在产品代码中引用
  */
 
 import type { StreamChunk } from '../types'

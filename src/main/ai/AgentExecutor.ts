@@ -530,9 +530,8 @@ class AgentExecutor {
       ])
       SkillManager.setCurrent(skillManager)
 
-      // 4. 注入 <runtime_paths> + Skill 发现提示到 appendInstructions
-      //    Skill 内容不再注入系统提示词，改为按需发现：
-      //    Agent 通过 skill_list 工具查看可用 Skill → read 工具读取 SKILL.md
+      // 4. 注入核心执行协议 + 运行时环境 + Skill 发现提示到 appendInstructions
+      const executionProtocol = buildExecutionProtocol()
       const runtimePathsBlock = formatRuntimePaths(agentEnv)
       const skillDiscoveryHint =
         skillManager.size > 0
@@ -544,6 +543,7 @@ class AgentExecutor {
             `</skill_discovery>`
           : ''
       builder.appendInstructions(
+        executionProtocol,
         runtimePathsBlock,
         ...(skillDiscoveryHint ? [skillDiscoveryHint] : [])
       )
@@ -920,6 +920,56 @@ class AgentExecutor {
       log.warn('[AgentExecutor] Extension hooks (end) failed:', err)
     }
   }
+}
+
+// ==================== 核心执行协议 ====================
+
+/**
+ * 构建核心执行协议
+ *
+ * 定义 Agent 的默认行为循环：
+ *   意图识别 → 目标量化 → 执行 → 自我评估 → 自我修复
+ *
+ * 这是 Agent 的基础行为规范，通过 appendInstructions 注入到所有 Agent。
+ * 详细的评估方法论由 self-reflection Skill 提供（按需加载）。
+ */
+function buildExecutionProtocol(): string {
+  return `<execution_protocol>
+When you receive a user request, follow this protocol:
+
+1. **Intent & Goal Extraction**
+   - Identify the user's core intent and underlying need
+   - Extract concrete goals from the request
+   - For each goal, define verifiable criteria:
+     · Quantifiable goals → specific metrics (numbers, pass/fail, existence checks)
+     · Fuzzy/creative goals → acceptance checklist (qualities, properties to verify)
+   - Keep the criteria lightweight — 2-5 items per goal is sufficient
+
+2. **Plan & Execute**
+   - Create a brief plan to achieve the goals
+   - Execute step by step, using available tools
+   - Track progress against your verifiable criteria
+
+3. **Self-Evaluation** (after task completion)
+   - **Quality**: Compare your output against the verifiable criteria from step 1
+   - **Process**: Briefly reflect on execution efficiency — any unnecessary steps, errors, or waste?
+   - For detailed evaluation, load the \`self-reflection\` Skill (via \`skill_list\` → \`read\`)
+   - Use \`session_history\` / \`context_inspect\` tools for objective process data when needed
+
+4. **Self-Repair** (if evaluation reveals issues, max 3 rounds)
+   - Fix priority (try in order):
+     a. Fix execution strategy — try a different approach to achieve the goal
+     b. Fix goal understanding — re-analyze user intent if criteria seem wrong
+     c. Report remaining issues to user with clear explanation
+   - **Stop condition**: all criteria pass, OR score doesn't improve after 2 consecutive rounds
+
+5. **Report**
+   - Summarize what was accomplished vs. original goals
+   - Note any unresolved issues or caveats
+   - For complex tasks, include a brief evaluation summary
+
+NOTE: For simple/trivial requests (greetings, quick facts, single-step tasks), skip steps 1 and 3-4 — just answer directly.
+</execution_protocol>`
 }
 
 // ==================== 单例导出 ====================

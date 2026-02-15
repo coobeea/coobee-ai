@@ -1,5 +1,8 @@
 /**
- * 执行评估类型定义
+ * 执行评估类型定义 — **测试专用基础设施**
+ *
+ * ⚠️ 本模块仅用于集成测试中的自动化评分。
+ * 产品运行时的自我评估由 LLM 通过 `self-reflection` Skill 完成。
  *
  * 三维度评估体系：
  *   1. 质量（Quality）：输出正确性、完整性
@@ -10,6 +13,8 @@
  *   - SDK 无关：仅依赖 StreamChunk + ExecutionResult
  *   - 可序列化：所有类型可直接 JSON.stringify
  *   - 可扩展：评估规则通过 EvaluationConfig 注入
+ *
+ * @internal 测试专用，请勿在产品代码中引用
  */
 
 import type { StreamChunk, ExecutionResult } from '../types'
