@@ -451,7 +451,11 @@ describe('Observability & Discovery Tools', () => {
       mgr.scanSkills([skillsDir])
       SkillManager.setCurrent(mgr)
 
-      const gen = skillListTool.execute({})
+      const gen = skillListTool.execute({}, undefined, {
+        workspaceRoot: tmpDir,
+        mode: 'path-only' as const,
+        toolPolicy: { allow: [], deny: [] }
+      })
       const { result } = await consumeGenerator(gen)
       expect(result.success).toBe(true)
       expect(result.llmContent).toContain('Available Skills (2)')
@@ -462,19 +466,25 @@ describe('Observability & Discovery Tools', () => {
       expect(result.llmContent).toContain('read')
     })
 
-    it('包含 filePath 信息', async () => {
+    it('包含 filePath 信息（workspace 内显示相对路径）', async () => {
       const mgr = new SkillManager()
       const skillsDir = path.join(tmpDir, 'skills2')
       fs.mkdirSync(path.join(skillsDir, 'test-skill'), { recursive: true })
-      const skillMdPath = path.join(skillsDir, 'test-skill', 'SKILL.md')
-      fs.writeFileSync(skillMdPath, '---\nname: Test\ndescription: A test\n---\n# Test')
+      fs.writeFileSync(
+        path.join(skillsDir, 'test-skill', 'SKILL.md'),
+        '---\nname: Test\ndescription: A test\n---\n# Test'
+      )
 
       mgr.scanSkills([skillsDir])
       SkillManager.setCurrent(mgr)
 
-      const gen = skillListTool.execute({})
+      const gen = skillListTool.execute({}, undefined, {
+        workspaceRoot: skillsDir,
+        mode: 'path-only' as const,
+        toolPolicy: { allow: [], deny: [] }
+      })
       const { result } = await consumeGenerator(gen)
-      expect(result.llmContent).toContain(skillMdPath)
+      expect(result.llmContent).toContain('test-skill/SKILL.md')
     })
 
     it('产生 progress yield', async () => {

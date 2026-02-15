@@ -120,8 +120,6 @@ export interface AgentRuntimeOptions {
    * 与 SDK 原生工具（各 Runtime 的 sdkTools）共存，SDK 原生工具优先。
    */
   tools?: ToolDefinition[]
-  /** SDK 特有配置（各实现自定义） */
-  [key: string]: unknown
 }
 
 // ========== 系统提示词构建 ==========

@@ -13,10 +13,20 @@
  * 分类：Discovery | 风险：低（只读）
  */
 
+import path from 'node:path'
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types'
 import { ToolCategory } from '../types'
 import { SkillManager } from '../../skills'
+
+function formatSkillPath(filePath: string, workspaceRoot?: string): string | null {
+  if (!workspaceRoot) return null
+  const rel = path.relative(workspaceRoot, filePath)
+  if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+    return rel
+  }
+  return null
+}
 
 export const skillListTool: ToolDefinition = {
   name: 'skill_list',
@@ -30,7 +40,9 @@ export const skillListTool: ToolDefinition = {
   parameters: z.object({}),
 
   execute: async function* (
-    _params: Record<string, unknown>
+    _params: Record<string, unknown>,
+    _signal?: AbortSignal,
+    context?: { workspaceRoot?: string }
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
     yield { type: 'progress' as const, content: '[skill_list] listing...' }
 
@@ -41,6 +53,7 @@ export const skillListTool: ToolDefinition = {
     }
 
     const skills = manager.getAll()
+    const workspaceRoot = context?.workspaceRoot
 
     const lines: string[] = [`Available Skills (${skills.length}):`, '']
 
@@ -50,7 +63,10 @@ export const skillListTool: ToolDefinition = {
         lines.push(`  ${skill.description}`)
       }
       if (skill.filePath) {
-        lines.push(`  Path: ${skill.filePath}`)
+        const pathDisplay = formatSkillPath(skill.filePath, workspaceRoot)
+        if (pathDisplay !== null) {
+          lines.push(`  Path: ${pathDisplay}`)
+        }
       }
       lines.push('')
     }

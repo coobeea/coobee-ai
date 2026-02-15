@@ -1,4 +1,11 @@
 /**
+ * ⚠️ OpenAI SDK 专用模块
+ *
+ * 本模块直接依赖 @openai/agents SDK，不可用于 PiMono Runtime。
+ * 计划在未来版本中通过 IAgentFactory 接口抽象，实现 SDK 无关。
+ */
+
+/**
  * Team 类型定义
  */
 
