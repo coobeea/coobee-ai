@@ -414,4 +414,88 @@ describe('HitlApprovalManager', () => {
       expect(result).toEqual(decisions)
     })
   })
+
+  // ========== Per-call 单工具审批（新 API） ==========
+
+  describe('单工具审批（per-call）', () => {
+    it('waitForSingleDecision + submitSingleDecision 基本流程', async () => {
+      const promise = manager.waitForSingleDecision('session-1:0')
+      manager.submitSingleDecision('session-1:0', 'approve-once')
+      const result = await promise
+      expect(result).toBe('approve-once')
+    })
+
+    it('多个独立审批互不干扰', async () => {
+      const p1 = manager.waitForSingleDecision('session-1:0')
+      const p2 = manager.waitForSingleDecision('session-1:1')
+      const p3 = manager.waitForSingleDecision('session-2:0')
+
+      manager.submitSingleDecision('session-1:1', 'reject')
+      manager.submitSingleDecision('session-2:0', 'approve-always')
+      manager.submitSingleDecision('session-1:0', 'approve-once')
+
+      expect(await p1).toBe('approve-once')
+      expect(await p2).toBe('reject')
+      expect(await p3).toBe('approve-always')
+    })
+
+    it('超时返回 null', async () => {
+      const promise = manager.waitForSingleDecision('session-1:0', 500)
+      vi.advanceTimersByTime(501)
+      expect(await promise).toBeNull()
+    })
+
+    it('超时后 submit 返回 false', async () => {
+      const promise = manager.waitForSingleDecision('session-1:0', 100)
+      vi.advanceTimersByTime(101)
+      await promise
+      expect(manager.submitSingleDecision('session-1:0', 'approve-once')).toBe(false)
+    })
+
+    it('无 pending 时 submit 返回 false', () => {
+      expect(manager.submitSingleDecision('no-such:0', 'reject')).toBe(false)
+    })
+
+    it('hasSinglePending 正确反映状态', () => {
+      expect(manager.hasSinglePending('session-1:0')).toBe(false)
+      manager.waitForSingleDecision('session-1:0')
+      expect(manager.hasSinglePending('session-1:0')).toBe(true)
+      manager.submitSingleDecision('session-1:0', 'approve-once')
+      expect(manager.hasSinglePending('session-1:0')).toBe(false)
+    })
+
+    it('cleanupSession 清理指定 session 的所有 single pending', async () => {
+      const p1 = manager.waitForSingleDecision('session-1:0')
+      const p2 = manager.waitForSingleDecision('session-1:1')
+      const p3 = manager.waitForSingleDecision('session-2:0')
+
+      manager.cleanupSession('session-1')
+
+      expect(await p1).toBeNull()
+      expect(await p2).toBeNull()
+      // session-2 不受影响
+      expect(manager.hasSinglePending('session-2:0')).toBe(true)
+      manager.submitSingleDecision('session-2:0', 'approve-once')
+      expect(await p3).toBe('approve-once')
+    })
+
+    it('cleanupAll 清理所有 single pending', async () => {
+      const p1 = manager.waitForSingleDecision('session-1:0')
+      const p2 = manager.waitForSingleDecision('session-2:0')
+
+      manager.cleanupAll()
+
+      expect(await p1).toBeNull()
+      expect(await p2).toBeNull()
+    })
+
+    it('重复 waitForSingleDecision 同一 approvalId 会清理旧的', async () => {
+      const p1 = manager.waitForSingleDecision('session-1:0')
+      const p2 = manager.waitForSingleDecision('session-1:0')
+
+      expect(await p1).toBeNull() // 旧的被清理
+      manager.submitSingleDecision('session-1:0', 'reject')
+      expect(await p2).toBe('reject')
+    })
+  })
 })

@@ -1,10 +1,13 @@
 /**
  * Gateway HITL Approval 方法组
  *
- * 对应旧 api/chat/approval.ts。
- *
  * 方法：
  *   hitl.decide — 提交审批决策
+ *
+ * 审批模型（per-tool-call）：
+ *   tool-approval Extension 为每个需要审批的工具调用生成唯一的 approvalId（格式：sessionId:index）。
+ *   前端通过 hitl:required 事件获取 index，然后调用此方法提交决策。
+ *   HitlApprovalManager 使用 approvalId 作为 key 进行 per-call 等待/唤醒。
  */
 
 import { log } from '@main/common/logger'
@@ -42,13 +45,15 @@ export const approvalMethods: MethodGroup = {
         )
       }
 
-      log.info(`[hitl.decide] sessionId=${sessionId}, index=${index}, decision=${decision}`)
+      // 构造 approvalId（与 tool-approval Extension 约定的格式一致）
+      const approvalId = `${sessionId}:${index}`
+      log.info(`[hitl.decide] approvalId=${approvalId}, decision=${decision}`)
 
-      const success = hitlApprovalManager.submitDecision(sessionId, index, decision)
+      const success = hitlApprovalManager.submitSingleDecision(approvalId, decision)
       if (!success) {
         throw new GatewayMethodError(
           GatewayErrorCode.INTERNAL_ERROR,
-          'No pending approval for this session or invalid index'
+          'No pending approval for this approvalId'
         )
       }
 

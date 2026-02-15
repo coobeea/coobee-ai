@@ -111,6 +111,8 @@ export interface BeforeToolCallEvent {
   sessionId: string
   toolName: string
   params: Record<string, unknown>
+  /** 工具定义中是否标记需要用户确认（needUserConfirm） */
+  needUserConfirm?: boolean
 }
 export interface BeforeToolCallResult {
   block?: boolean

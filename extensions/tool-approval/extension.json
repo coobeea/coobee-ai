@@ -1,0 +1,6 @@
+{
+  "id": "tool-approval",
+  "name": "Tool Approval",
+  "version": "1.0.0",
+  "description": "统一工具审批 Extension — 通过 before_tool_call Hook 实现 SDK 无关的 HITL 审批逻辑"
+}

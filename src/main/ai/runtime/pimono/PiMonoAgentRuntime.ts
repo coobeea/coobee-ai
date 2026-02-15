@@ -887,13 +887,15 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
    * 将统一 ToolDefinition 转换为 pi-coding-agent SDK 原生 PiToolDefinition
    *
    * 核心映射：
+   *   - execute 前通过 before_tool_call Hook 处理审批（tool-approval Extension）
    *   - execute 前检查工具策略（isToolAllowed，sandbox 级别拦截）
    *   - yield 的 ToolStreamUpdate 通过 PiMono 的 onUpdate 回调发送增量输出
    *   - return 的 ToolResult.llmContent 作为 AgentToolResult 返回
    *   - 自动注入 SandboxContext（路径边界、工具策略、Docker 等）
    *
-   * 注意：PiMono SDK 不支持 HITL（needsApproval），工具直接执行。
-   * 安全由工具策略（sandbox tool-policy）和路径守卫保障。
+   * HITL 审批：
+   *   由 tool-approval Extension 在 before_tool_call Hook 中统一处理，
+   *   PiMono 现在也支持 HITL（通过 Hook 异步等待用户审批）。
    */
   private convertTools(defs: ToolDefinition[]): PiToolDefinition[] {
     if (!defs.length) return []
@@ -926,6 +928,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
             const toolStartTime = Date.now()
 
             // === Extension Hook: before_tool_call ===
+            // tool-approval Extension 在此 Hook 中处理 HITL 审批和 ExecPolicy
             try {
               const { ExtensionManager } = await import('../../../common/extension')
               const runner = ExtensionManager.getHookRunner()
@@ -933,15 +936,14 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
                 const hookResult = await runner.runModifyingHook('before_tool_call', {
                   sessionId: sandboxContext.sessionId || '',
                   toolName: def.name,
-                  params: typedParams
+                  params: typedParams,
+                  needUserConfirm: def.needUserConfirm ?? false
                 })
                 if (hookResult) {
                   if (hookResult.block) {
                     const reason = hookResult.blockReason || 'no reason'
                     return {
-                      content: [
-                        { type: 'text', text: `Error: Tool blocked by extension — ${reason}` }
-                      ],
+                      content: [{ type: 'text', text: `Error: Tool blocked — ${reason}` }],
                       details: { name: def.name }
                     }
                   }
@@ -965,26 +967,6 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
               return {
                 content: [{ type: 'text', text: `Error: ${msg}` }],
                 details: { name: def.name }
-              }
-            }
-
-            // 命令安全策略：PiMono 无 HITL，在 Runtime wrapper 中过滤危险命令
-            if (def.name === 'exec' && typedParams.command) {
-              const { checkExecPolicy } = await import('../../sandbox/exec-policy')
-              const policy = checkExecPolicy(typedParams.command as string)
-              if (policy.action === 'deny') {
-                log.warn(
-                  `[ExecPolicy] Command rejected in PiMono: "${(typedParams.command as string).slice(0, 50)}", reason=${policy.reason}`
-                )
-                return {
-                  content: [
-                    {
-                      type: 'text',
-                      text: `Error: Command rejected by security policy: ${policy.reason}`
-                    }
-                  ],
-                  details: { name: def.name }
-                }
               }
             }
 

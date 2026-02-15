@@ -13,7 +13,7 @@
  */
 
 import { run, Agent, tool } from '@openai/agents'
-import type { StreamedRunResult, RunState, RunToolApprovalItem, Tool } from '@openai/agents'
+import type { StreamedRunResult, Tool } from '@openai/agents'
 import { FileSession } from './FileSession'
 import { SessionCompressor } from './SessionCompressor'
 import { ThinkTagParser, stripThinkTags } from './ThinkTagParser'
@@ -25,7 +25,6 @@ import {
   type ExecutionResult,
   type StreamChunk,
   type SessionInfo,
-  type ToolApprovalInfo,
   type ToolDefinition
 } from '../types'
 import type { OpenAIAgentRuntimeOptions, ContextSnapshot, CompressionResult } from './types'
@@ -97,12 +96,6 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
   // Session 压缩器
   private compressor?: SessionCompressor
 
-  // HITL 状态
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private pendingState?: RunState<any, any>
-  private pendingInterruptions: RunToolApprovalItem[] = []
-  private _interrupted = false
-
   // 时间
   private createdAt: number
 
@@ -119,11 +112,12 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
   }
 
   get interrupted(): boolean {
-    return this._interrupted
+    return false
   }
 
   get supportsHITL(): boolean {
-    return true
+    // HITL 现在由 tool-approval Extension 统一处理，Runtime 不再管理 HITL 状态
+    return false
   }
 
   // ========== 生命周期 ==========
@@ -180,9 +174,6 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
   }
 
   async destroy(): Promise<void> {
-    this.pendingState = undefined
-    this.pendingInterruptions = []
-    this._interrupted = false
     log.info(`Destroyed: ${this.name}`)
   }
 
@@ -237,31 +228,8 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
       // 4. 等待完成
       await streamResult.completed
 
-      // 5. 检查 HITL 中断
-      if (streamResult.interruptions && streamResult.interruptions.length > 0) {
-        const interruptResult = this.handleInterruptions(
-          streamResult.state,
-          streamResult.interruptions,
-          startTime
-        )
-        // 发送 hitl:required 事件
-        for (let i = 0; i < streamResult.interruptions.length; i++) {
-          const item = streamResult.interruptions[i]
-          yield {
-            type: 'hitl:required',
-            content: `Approval required: ${item.name || 'unknown'}`,
-            data: {
-              index: i,
-              toolName: item.name || 'unknown',
-              arguments: item.arguments,
-              approvalItem: item
-            }
-          }
-        }
-        // run:interrupted
-        yield { type: 'run:interrupted', content: '' }
-        return interruptResult
-      }
+      // HITL 审批现在由 tool-approval Extension 在 before_tool_call Hook 中处理，
+      // 不再依赖 SDK 的 interruptions 机制。
 
       const rawOutput = (streamResult.finalOutput as string) || fullOutput
       const output = stripThinkTags(rawOutput) || rawOutput
@@ -292,159 +260,7 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
   }
 
   // runStream() 由基类 AbstractAgentRuntime 提供
-
-  // ========== HITL 工具审批 ==========
-
-  /**
-   * 批准工具调用
-   */
-  approveToolCall(index: number, options?: { alwaysApprove?: boolean }): void {
-    if (!this._interrupted || !this.pendingState) {
-      throw new Error('No pending interruption to approve')
-    }
-    const item = this.pendingInterruptions[index]
-    if (!item) {
-      throw new Error(`Invalid interruption index: ${index}`)
-    }
-    this.pendingState.approve(item, options)
-    log.info(`Approved tool call: ${item.name} (index: ${index})`)
-  }
-
-  /**
-   * 拒绝工具调用
-   */
-  rejectToolCall(index: number, options?: { alwaysReject?: boolean }): void {
-    if (!this._interrupted || !this.pendingState) {
-      throw new Error('No pending interruption to reject')
-    }
-    const item = this.pendingInterruptions[index]
-    if (!item) {
-      throw new Error(`Invalid interruption index: ${index}`)
-    }
-    this.pendingState.reject(item, options)
-    log.info(`Rejected tool call: ${item.name} (index: ${index})`)
-  }
-
-  /**
-   * 恢复被中断的执行（同步模式）
-   */
-  async resume(): Promise<ExecutionResult> {
-    if (!this._interrupted || !this.pendingState) {
-      throw new Error('No pending interruption to resume')
-    }
-
-    const startTime = Date.now()
-    const maxTurns = this.options.maxTurns ?? DEFAULT_MAX_TURNS
-
-    log.info(`Resuming execution: ${this.name}`)
-
-    try {
-      // 传入之前的 RunState 继续执行
-      const result = await run(this.agent, this.pendingState, {
-        session: this.session,
-        maxTurns
-      })
-
-      // 清除中断状态
-      this._interrupted = false
-      this.pendingState = undefined
-      this.pendingInterruptions = []
-
-      // 检查是否再次中断
-      if (result.interruptions && result.interruptions.length > 0) {
-        return this.handleInterruptions(result.state, result.interruptions, startTime)
-      }
-
-      const rawOutput = (result.finalOutput as string) || ''
-      return {
-        output: stripThinkTags(rawOutput) || rawOutput,
-        toolCalls: this.extractToolCalls(result.newItems),
-        duration: Date.now() - startTime,
-        metadata: {
-          agentId: this.id,
-          sessionId: this.sessionId
-        }
-      }
-    } catch (error: unknown) {
-      log.error(`Resume failed:`, error)
-      throw error
-    }
-  }
-
-  /**
-   * 恢复被中断的流式执行（AsyncGenerator 模式）
-   */
-  async *resumeStream(
-    config?: ExecutionConfig
-  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
-    if (!this._interrupted || !this.pendingState) {
-      throw new Error('No pending interruption to resume')
-    }
-
-    const startTime = Date.now()
-    const maxTurns = config?.maxTurns ?? this.options.maxTurns ?? DEFAULT_MAX_TURNS
-
-    log.info(`Resuming stream execution: ${this.name}`)
-
-    try {
-      yield { type: 'run:resumed', content: '' }
-
-      const streamRunResult = await run(this.agent, this.pendingState, {
-        stream: true,
-        session: this.session,
-        maxTurns
-      })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const streamResult = streamRunResult as StreamedRunResult<unknown, any>
-
-      // 清除中断状态
-      this._interrupted = false
-      this.pendingState = undefined
-      this.pendingInterruptions = []
-
-      let fullOutput = ''
-      for await (const chunk of this.generateStreamEvents(streamResult, (text) => {
-        fullOutput += text
-      })) {
-        yield chunk
-      }
-
-      await streamResult.completed
-
-      // 检查是否再次中断
-      if (streamResult.interruptions && streamResult.interruptions.length > 0) {
-        const interruptResult = this.handleInterruptions(
-          streamResult.state,
-          streamResult.interruptions,
-          startTime
-        )
-        yield { type: 'run:interrupted', content: '' }
-        return interruptResult
-      }
-
-      const rawOutput = (streamResult.finalOutput as string) || fullOutput
-      const output = stripThinkTags(rawOutput) || rawOutput
-
-      yield { type: 'run:done', content: '' }
-
-      return {
-        output,
-        toolCalls: this.extractToolCalls(streamResult.newItems),
-        duration: Date.now() - startTime,
-        metadata: {
-          agentId: this.id,
-          sessionId: this.sessionId
-        }
-      }
-    } catch (error: unknown) {
-      yield {
-        type: 'run:error',
-        content: error instanceof Error ? error.message : String(error),
-        data: { message: error instanceof Error ? error.message : String(error) }
-      }
-      throw error
-    }
-  }
+  // HITL 审批由 tool-approval Extension 在 before_tool_call Hook 中处理
 
   // ========== 会话管理 ==========
 
@@ -720,20 +536,7 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
             })
           }
 
-          // hitl: 审批请求
-          if (eventName === 'tool_approval_requested' && item.type === 'tool_approval_item') {
-            const approvalItem = item as RunToolApprovalItem
-            emit({
-              type: 'hitl:required',
-              content: `Approval required: ${approvalItem.name || 'unknown'}`,
-              data: {
-                index: this.pendingInterruptions.length,
-                toolName: approvalItem.name || 'unknown',
-                arguments: approvalItem.arguments,
-                approvalItem
-              }
-            })
-          }
+          // hitl 审批现在由 tool-approval Extension 处理，不再在 SDK 事件层拦截
 
           break
         }
@@ -762,40 +565,6 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         yield chunk
       }
       yield { type: 'turn:done', content: '', data: { turnIndex } }
-    }
-  }
-
-  /**
-   * 处理 HITL 中断
-   */
-  private handleInterruptions(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    state: RunState<any, any>,
-    interruptions: RunToolApprovalItem[],
-    startTime: number
-  ): ExecutionResult {
-    this._interrupted = true
-    this.pendingState = state
-    this.pendingInterruptions = interruptions
-
-    const approvalInfos: ToolApprovalInfo[] = interruptions.map((item, index) => ({
-      index,
-      toolName: item.name || 'unknown',
-      arguments: item.arguments || '{}'
-    }))
-
-    log.info(`Execution interrupted: ${interruptions.length} tool(s) need approval`)
-
-    return {
-      output: '',
-      interrupted: true,
-      interruptions: approvalInfos,
-      duration: Date.now() - startTime,
-      metadata: {
-        agentId: this.id,
-        sessionId: this.sessionId,
-        interruptionCount: interruptions.length
-      }
     }
   }
 
@@ -836,11 +605,15 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
    * 将统一 ToolDefinition 转换为 @openai/agents SDK 原生 Tool
    *
    * 核心映射：
-   *   - needUserConfirm → SDK needsApproval（HITL 审批触发）
+   *   - execute 前通过 before_tool_call Hook 处理审批（tool-approval Extension）
    *   - execute 前检查工具策略（isToolAllowed，sandbox 级别拦截）
    *   - yield 的 ToolStreamUpdate 通过 StreamEmitter 发送 tool:delta 事件给前端
    *   - return 的 ToolResult.llmContent 作为工具返回值发送回 LLM
    *   - 自动注入 SandboxContext（路径边界、工具策略、Docker 等）
+   *
+   * HITL 审批：
+   *   不再使用 SDK 的 needsApproval 机制，改由 tool-approval Extension
+   *   在 before_tool_call Hook 中统一处理（适用于所有 Runtime）。
    */
   private convertTools(defs: ToolDefinition[]): Tool[] {
     if (!defs.length) return []
@@ -859,15 +632,13 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         name: def.name,
         description: def.description,
         parameters: def.parameters,
-        // HITL: 将工具定义的 needUserConfirm 映射为 SDK 的 needsApproval
-        // needsApproval=true → SDK 自动触发 tool_approval_requested 事件
-        needsApproval: def.needUserConfirm ?? false,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         execute: async (params: any) => {
           let typedParams = params as Record<string, unknown>
           const toolStartTime = Date.now()
 
           // === Extension Hook: before_tool_call ===
+          // tool-approval Extension 在此 Hook 中处理 HITL 审批和 ExecPolicy
           try {
             const { ExtensionManager } = await import('../../../common/extension')
             const runner = ExtensionManager.getHookRunner()
@@ -875,11 +646,12 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
               const hookResult = await runner.runModifyingHook('before_tool_call', {
                 sessionId: sandboxContext.sessionId || '',
                 toolName: def.name,
-                params: typedParams
+                params: typedParams,
+                needUserConfirm: def.needUserConfirm ?? false
               })
               if (hookResult) {
                 if (hookResult.block) {
-                  return `Error: Tool blocked by extension — ${hookResult.blockReason || 'no reason'}`
+                  return `Error: Tool blocked — ${hookResult.blockReason || 'no reason'}`
                 }
                 if (hookResult.params) {
                   typedParams = { ...typedParams, ...hookResult.params }
@@ -899,19 +671,6 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
             )
             log.warn(`[Tool Policy] ${msg}`)
             return `Error: ${msg}`
-          }
-
-          // 命令安全策略：黑名单命令在 execute 前兜底拦截
-          // 主逻辑在 AgentExecutor HITL 循环中自动决策；此处为纵深防御
-          if (def.name === 'exec' && typedParams.command) {
-            const { checkExecPolicy } = await import('../../sandbox/exec-policy')
-            const policy = checkExecPolicy(typedParams.command as string)
-            if (policy.action === 'deny') {
-              log.warn(
-                `[ExecPolicy] Command rejected (defense-in-depth): "${(typedParams.command as string).slice(0, 50)}", reason=${policy.reason}`
-              )
-              return `Error: Command rejected by security policy: ${policy.reason}`
-            }
           }
 
           const gen = def.execute(typedParams, undefined, sandboxContext)
