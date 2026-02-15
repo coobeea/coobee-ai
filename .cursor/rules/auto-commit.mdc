@@ -1,0 +1,58 @@
+---
+description: 代码变更完成后自动提交 — 覆盖默认的「不主动提交」行为
+globs:
+alwaysApply: true
+---
+
+# 自动提交规则
+
+## 何时提交
+
+当完成一组有意义的代码变更后（如完成一个功能、修复一个 bug、完成一次重构），**自动提交代码**，无需等待用户要求。
+
+以下情况**不提交**：
+
+- 仅探索/阅读代码，未做任何修改
+- 变更尚未完成（正在进行中的多步任务）
+- 仅修改了 .env 或其他敏感文件
+
+## Commit Message 格式
+
+项目使用 `simple-git-hooks` + `verify-commit.js` 校验 commit message，格式必须为：
+
+```
+type(scope): description
+```
+
+type 可选值：`feat|fix|docs|dx|style|refactor|perf|test|workflow|build|ci|chore|types|wip|release`
+
+示例：
+
+- `feat(tools): add session_status and context_inspect tools`
+- `fix(sandbox): resolve symlink traversal in path-guard`
+- `refactor(agent): extract Builder classes from AgentExecutor`
+- `test(tools): add comprehensive observability tools tests`
+
+## Pre-commit Hook 处理
+
+项目 pre-commit 会依次执行：
+
+1. `lint-staged`：对暂存文件跑 prettier + eslint
+2. `typecheck`：全量 TypeScript 类型检查（`tsc --noEmit` + `vue-tsc --noEmit`）
+
+**如果 hook 失败**：
+
+1. 读取错误输出，分析失败原因
+2. 修复 lint/类型错误
+3. 重新 `git add` 修改的文件
+4. 创建**新的** commit（不要 amend）
+5. 如果多次失败（>3 次），停下来告知用户
+
+## 操作步骤
+
+```
+1. git add -A（或精确 add 相关文件）
+2. git commit -m "type(scope): message"
+3. 如果失败 → 读取错误 → 修复 → git add → 新 commit
+4. git status 确认成功
+```
