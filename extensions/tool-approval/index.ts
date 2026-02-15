@@ -60,8 +60,7 @@ export default {
       'session_end',
       async (event) => {
         try {
-          const { hitlApprovalManager } = await import('../../src/main/ai/hitl/HitlApprovalManager')
-          hitlApprovalManager.cleanupSession(event.sessionId)
+          await api.services.hitl.cleanupSession(event.sessionId)
           resetSessionCounter(event.sessionId)
         } catch {
           // 清理失败不阻断
@@ -139,15 +138,9 @@ async function requestApproval(
 
   api.logger.info(`[tool-approval] Requesting approval: approvalId=${approvalId}, tool=${toolName}`)
 
-  // 1. 发送 hitl:required 事件到前端
+  // 1. 发送 hitl:required 事件到前端（通过 services.events）
   try {
-    const { createStreamEmitter } = await import('../../src/main/ai/streaming/StreamEmitter')
-    const emitter = createStreamEmitter(sessionId, {
-      type: 'agent',
-      id: 'tool-approval',
-      name: 'tool-approval'
-    })
-    emitter.forward({
+    api.services.events.emit(sessionId, {
       type: 'hitl:required',
       content: `Approval required: ${toolName}`,
       data: {
@@ -161,10 +154,9 @@ async function requestApproval(
     api.logger.warn(`[tool-approval] Failed to emit hitl:required: ${err}`)
   }
 
-  // 2. 等待用户决策
+  // 2. 等待用户决策（通过 services.hitl）
   try {
-    const { hitlApprovalManager } = await import('../../src/main/ai/hitl/HitlApprovalManager')
-    const decision = await hitlApprovalManager.waitForSingleDecision(
+    const decision = await api.services.hitl.waitForSingleDecision(
       approvalId,
       DEFAULT_APPROVAL_TIMEOUT_MS
     )
@@ -206,6 +198,11 @@ async function requestApproval(
 
 /**
  * 发送审批结果事件（hitl:approved / hitl:rejected）
+ *
+ * 注意：此函数需要 api 引用才能使用 services.events。
+ * 但因为它在 requestApproval 的回调中使用，且 api 已在闭包中可用，
+ * 这里保留 sessionId 参数 + 动态 import 作为独立辅助函数的 fallback。
+ * 后续可考虑将 api 传入此函数。
  */
 async function emitDecisionEvent(
   sessionId: string,

@@ -17,6 +17,8 @@ import { editTool } from './edit'
 import { execTool } from './exec'
 import { processTool } from './process'
 import { memoryTool } from './memory'
+import { searchTool } from './search'
+import { globTool } from './glob'
 import { sessionStatusTool } from './session_status'
 import { sessionHistoryTool } from './session_history'
 import { contextInspectTool } from './context_inspect'
@@ -29,6 +31,8 @@ export { editTool } from './edit'
 export { execTool } from './exec'
 export { processTool } from './process'
 export { memoryTool } from './memory'
+export { searchTool } from './search'
+export { globTool } from './glob'
 export { sessionStatusTool } from './session_status'
 export { sessionHistoryTool } from './session_history'
 export { contextInspectTool } from './context_inspect'
@@ -51,6 +55,9 @@ export { skillListTool } from './skill_list'
  *   session_status  — 会话状态，低风险
  *   session_history — 对话历史，低风险
  *   context_inspect — 上下文查看，低风险
+ *   --- 搜索 ---
+ *   search          — 文件内容搜索，低风险
+ *   glob            — 文件名搜索，低风险
  *   --- 发现 ---
  *   skill_list      — Skill 发现，低风险
  */
@@ -61,6 +68,8 @@ export const builtinTools: ToolDefinition[] = [
   execTool,
   processTool,
   memoryTool,
+  searchTool,
+  globTool,
   sessionStatusTool,
   sessionHistoryTool,
   contextInspectTool,

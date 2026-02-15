@@ -634,94 +634,20 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         parameters: def.parameters,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         execute: async (params: any) => {
-          let typedParams = params as Record<string, unknown>
-          const toolStartTime = Date.now()
-
-          // === Extension Hook: before_tool_call ===
-          // tool-approval Extension 在此 Hook 中处理 HITL 审批和 ExecPolicy
-          try {
-            const { ExtensionManager } = await import('../../../common/extension')
-            const runner = ExtensionManager.getHookRunner()
-            if (runner) {
-              const hookResult = await runner.runModifyingHook('before_tool_call', {
-                sessionId: sandboxContext.sessionId || '',
-                toolName: def.name,
-                params: typedParams,
-                needUserConfirm: def.needUserConfirm ?? false
+          // 使用共享管线：hook + policy + execute + post-hooks
+          const { executeToolPipeline } = await import('../shared/ToolExecutionPipeline')
+          const result = await executeToolPipeline(def, params as Record<string, unknown>, {
+            sandboxContext,
+            onUpdate: (update) => {
+              // 桥接到 StreamChunk: tool:delta → forward 自动映射为 StreamMessage
+              this.streamEmitter?.forward({
+                type: 'tool:delta',
+                content: update.content,
+                data: { delta: update.content }
               })
-              if (hookResult) {
-                if (hookResult.block) {
-                  return `Error: Tool blocked — ${hookResult.blockReason || 'no reason'}`
-                }
-                if (hookResult.params) {
-                  typedParams = { ...typedParams, ...hookResult.params }
-                }
-              }
             }
-          } catch {
-            // Extension hook 失败不阻断工具执行
-          }
-
-          // 工具策略检查：sandbox 级别拦截
-          const { isToolAllowed, formatToolBlockedMessage } = await import('../../sandbox')
-          if (!isToolAllowed(def.name, sandboxContext.toolPolicy)) {
-            const msg = formatToolBlockedMessage(
-              def.name,
-              sandboxContext.toolPolicy as import('../../sandbox/types').ResolvedToolPolicy
-            )
-            log.warn(`[Tool Policy] ${msg}`)
-            return `Error: ${msg}`
-          }
-
-          const gen = def.execute(typedParams, undefined, sandboxContext)
-          let iterResult = await gen.next()
-
-          // 消费 AsyncGenerator 的增量输出
-          while (!iterResult.done) {
-            const update = iterResult.value
-            // 桥接到 StreamChunk: tool:delta → forward 自动映射为 StreamMessage
-            this.streamEmitter?.forward({
-              type: 'tool:delta',
-              content: update.content,
-              data: { delta: update.content }
-            })
-            iterResult = await gen.next()
-          }
-
-          // 最终结果
-          const toolResult = iterResult.value
-          let resultText =
-            toolResult.llmContent ||
-            (toolResult.success ? 'Success' : `Error: ${toolResult.error?.message || 'unknown'}`)
-
-          // === Extension Hook: after_tool_call (void) + tool_result_persist (modifying) ===
-          try {
-            const { ExtensionManager } = await import('../../../common/extension')
-            const runner = ExtensionManager.getHookRunner()
-            if (runner) {
-              const toolDuration = Date.now() - toolStartTime
-              await runner.runVoidHook('after_tool_call', {
-                sessionId: sandboxContext.sessionId || '',
-                toolName: def.name,
-                params: typedParams,
-                result: resultText,
-                durationMs: toolDuration
-              })
-
-              const persistResult = await runner.runModifyingHook('tool_result_persist', {
-                sessionId: sandboxContext.sessionId || '',
-                toolName: def.name,
-                result: resultText
-              })
-              if (persistResult?.result) {
-                resultText = persistResult.result
-              }
-            }
-          } catch {
-            // Extension hook 失败不阻断
-          }
-
-          return resultText
+          })
+          return result.resultText
         }
       })
     )

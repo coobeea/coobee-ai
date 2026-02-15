@@ -24,7 +24,7 @@ import type {
   SessionInfo
 } from './types'
 import { saveContextSnapshot } from './ContextSnapshot'
-import { defaultRecoveryChain } from './ErrorRecoveryChain'
+import { defaultRecoveryChain, type RecoveryContext } from './ErrorRecoveryChain'
 
 // ==================== Logger 工具 ====================
 
@@ -151,11 +151,12 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
       } catch (error: unknown) {
         if (!(error instanceof Error)) throw error
 
-        // 渐进式错误恢复
+        // 渐进式错误恢复 — 注入 runtime 引用，供 ContextCompression / ThinkingLevel 策略使用
         const recovery = await defaultRecoveryChain.recover(error, {
           attempt,
           maxAttempts,
-          sessionId: config?.sessionId as string | undefined
+          sessionId: config?.sessionId as string | undefined,
+          runtime: this.buildRecoveryRuntime()
         })
 
         if (recovery.action === 'retry') {
@@ -175,6 +176,36 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
 
         // 不可恢复，抛出原错误
         throw error
+      }
+    }
+  }
+
+  // ========== Recovery 辅助 ==========
+
+  /**
+   * 构建 RecoveryContext.runtime 对象
+   *
+   * 子类若有 sessionCompressor / thinkingLevel 等字段，
+   * 会通过此方法自动注入到恢复策略中。
+   * 使用 `any` 安全访问子类特有字段，基类本身不强制依赖。
+   */
+  protected buildRecoveryRuntime(): RecoveryContext['runtime'] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const self = this as any
+
+    const compressor = self.sessionCompressor
+    const thinkingLevel: string | undefined = self.options?.thinkingLevel
+
+    return {
+      compressor:
+        compressor && typeof compressor.compress === 'function'
+          ? { compress: () => compressor.compress() }
+          : undefined,
+      thinkingLevel,
+      setThinkingLevel: (level: string) => {
+        if (self.options) {
+          self.options.thinkingLevel = level
+        }
       }
     }
   }

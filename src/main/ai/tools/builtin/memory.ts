@@ -32,7 +32,8 @@ import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolCategory } from '../types'
 import { log } from '@main/common/logger'
-import { updateIndexEntry } from './memory-index'
+import { updateIndexEntry, getOrBuildIndex, searchIndex } from './memory-index'
+import { resolveSandboxPath } from '../../sandbox'
 
 /** 支持的记忆文件扩展名 */
 const MEMORY_EXTENSIONS = ['.md', '.json', '.txt', '.yaml', '.yml']
@@ -282,9 +283,31 @@ export const memoryTool: ToolDefinition = {
         percentage: 0
       }
 
+      // 两阶段搜索：先索引预过滤，再全文搜索
+      const keywords = query
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((k) => k.length > 0)
+
+      // Phase 1: 索引层快速匹配（标题/标签/摘要）
+      let indexHints: Set<string> | undefined
+      try {
+        const indexEntries = getOrBuildIndex(roots.memorySubDir)
+        if (indexEntries.length > 0) {
+          const indexResults = searchIndex(indexEntries, keywords)
+          if (indexResults.length > 0) {
+            indexHints = new Set(indexResults.map((e) => e.file))
+          }
+        }
+      } catch {
+        // 索引不可用，降级到全文搜索
+      }
+
+      // Phase 2: 全文搜索（有索引提示时优先搜索匹配文件）
       const results = searchMemoryFiles(roots, query, {
         maxResults,
-        minScore: DEFAULT_MIN_SCORE
+        minScore: DEFAULT_MIN_SCORE,
+        indexHints
       })
 
       if (results.length === 0) {
@@ -540,6 +563,8 @@ export interface MemorySearchResult {
 interface SearchOptions {
   maxResults?: number
   minScore?: number
+  /** 索引层预过滤的文件名集合，命中的文件评分加权 */
+  indexHints?: Set<string>
 }
 
 /**
@@ -618,6 +643,11 @@ export function searchMemoryFiles(
     //    归一化到 0-1 范围
     let score = Math.min(1, (weightedScore / keywords.length) * (1 / Math.log2(totalWords + 2)))
 
+    // 索引命中加权（索引层标题/标签匹配的文件提升权重）
+    if (options?.indexHints?.has(path.basename(fileInfo.absolutePath))) {
+      score *= 1.3
+    }
+
     // 主记忆文件加权
     if (fileInfo.isPrimary) {
       score *= 1.5
@@ -681,45 +711,18 @@ function findSection(lines: string[], lineIndex: number): string | undefined {
 // ==================== 路径安全 ====================
 
 /**
- * 解析记忆文件路径（防止路径穿越 + 符号链接穿越）
+ * 解析记忆文件路径（复用 path-guard 统一逻辑）
  *
- * 1. path.resolve 后检查是否在 memoryRoot 内
- * 2. 如果文件/目录存在，用 realpathSync 解析符号链接再次检查
- * 3. 如果文件不存在，检查最近存在的祖先目录
+ * 委托给 resolveSandboxPath，以 memoryRoot 作为 workspaceRoot，
+ * 统一享受路径穿越 + 符号链接穿越的双重保护。
  */
 function resolveMemoryPath(memoryRoot: string, file: string): string | null {
-  const resolved = path.resolve(memoryRoot, file)
-
-  // 1. 字符串级检查
-  if (!resolved.startsWith(memoryRoot + path.sep) && resolved !== memoryRoot) {
+  const result = resolveSandboxPath(file, { workspaceRoot: memoryRoot })
+  if (result.error) {
+    log.warn(`[memory] Path guard blocked: "${file}" — ${result.error.message}`)
     return null
   }
-
-  // 2. 符号链接穿越检查
-  try {
-    let realTarget: string
-    if (fs.existsSync(resolved)) {
-      realTarget = fs.realpathSync(resolved)
-    } else {
-      let current = path.dirname(resolved)
-      while (!fs.existsSync(current) && current !== path.dirname(current)) {
-        current = path.dirname(current)
-      }
-      realTarget = fs.existsSync(current) ? fs.realpathSync(current) : current
-    }
-
-    const realMemoryRoot = fs.existsSync(memoryRoot) ? fs.realpathSync(memoryRoot) : memoryRoot
-    if (!realTarget.startsWith(realMemoryRoot + path.sep) && realTarget !== realMemoryRoot) {
-      log.warn(
-        `[memory] Symlink traversal blocked: "${file}" → "${realTarget}" outside "${realMemoryRoot}"`
-      )
-      return null
-    }
-  } catch {
-    return null
-  }
-
-  return resolved
+  return result.path
 }
 
 // ==================== 索引更新辅助 ====================

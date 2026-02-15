@@ -1,0 +1,168 @@
+/**
+ * 工具执行管线 — 共享公共逻辑
+ *
+ * 将 OpenAI 和 PiMono 两个 Runtime 中重复的工具执行流程提取到此模块：
+ *   1. before_tool_call Hook（审批 / 参数修改 / 拦截）
+ *   2. sandbox toolPolicy 策略检查
+ *   3. 执行工具 AsyncGenerator
+ *   4. after_tool_call Hook + tool_result_persist Hook
+ *
+ * 各 Runtime 只需关注：
+ *   - SDK 特有的 Tool 格式转换
+ *   - 增量输出的桥接方式（StreamEmitter / onUpdate 回调）
+ *
+ * @module runtime/shared/ToolExecutionPipeline
+ */
+
+import type { ToolDefinition, ToolResult, ToolStreamUpdate } from '../../tools/types'
+
+// ==================== Types ====================
+
+/** 管线执行结果 */
+export interface PipelineResult {
+  /** 最终文本结果（经过 hook 修改后） */
+  resultText: string
+  /** 工具是否被拦截（before_tool_call block 或 policy deny） */
+  blocked: boolean
+  /** 拦截原因 */
+  blockReason?: string
+  /** 原始 ToolResult（未经 hook 修改） */
+  rawResult?: ToolResult
+}
+
+/** 增量输出回调 */
+export type OnToolUpdate = (update: ToolStreamUpdate) => void
+
+/** 管线选项 */
+export interface PipelineOptions {
+  /** 沙箱上下文（包含 sessionId, toolPolicy 等） */
+  sandboxContext: {
+    sessionId?: string
+    toolPolicy?: unknown
+    workspaceRoot: string
+    sandboxRoot?: string
+    mode?: string
+  }
+  /** 增量输出回调（由各 Runtime 桥接到 SDK 特定的机制） */
+  onUpdate?: OnToolUpdate
+  /** AbortSignal（可选） */
+  signal?: AbortSignal
+}
+
+// ==================== Core ====================
+
+/**
+ * 执行工具的完整管线
+ *
+ * @param def    - 工具定义
+ * @param params - 工具参数（来自 LLM）
+ * @param opts   - 管线选项
+ * @returns 管线执行结果
+ */
+export async function executeToolPipeline(
+  def: ToolDefinition,
+  params: Record<string, unknown>,
+  opts: PipelineOptions
+): Promise<PipelineResult> {
+  let typedParams = params
+  const toolStartTime = Date.now()
+  const sessionId = opts.sandboxContext.sessionId || ''
+
+  // === Phase 1: before_tool_call Hook ===
+  try {
+    const { ExtensionManager } = await import('../../../common/extension')
+    const runner = ExtensionManager.getHookRunner()
+    if (runner) {
+      const hookResult = await runner.runModifyingHook('before_tool_call', {
+        sessionId,
+        toolName: def.name,
+        params: typedParams,
+        needUserConfirm: def.needUserConfirm ?? false
+      })
+      if (hookResult) {
+        if (hookResult.block) {
+          return {
+            resultText: `Error: Tool blocked — ${hookResult.blockReason || 'no reason'}`,
+            blocked: true,
+            blockReason: hookResult.blockReason || 'no reason'
+          }
+        }
+        if (hookResult.params) {
+          typedParams = { ...typedParams, ...hookResult.params }
+        }
+      }
+    }
+  } catch {
+    // Extension hook 失败不阻断工具执行
+  }
+
+  // === Phase 2: sandbox toolPolicy 检查 ===
+  try {
+    const { isToolAllowed, formatToolBlockedMessage } = await import('../../sandbox')
+    const toolPolicy = opts.sandboxContext.toolPolicy as
+      | import('../../sandbox/types').ResolvedToolPolicy
+      | undefined
+    if (toolPolicy && !isToolAllowed(def.name, toolPolicy)) {
+      const msg = formatToolBlockedMessage(def.name, toolPolicy)
+      return {
+        resultText: `Error: ${msg}`,
+        blocked: true,
+        blockReason: msg
+      }
+    }
+  } catch {
+    // sandbox 导入失败不阻断
+  }
+
+  // === Phase 3: 执行工具 ===
+  const gen = def.execute(typedParams, opts.signal, opts.sandboxContext as never)
+  let iterResult = await gen.next()
+
+  // 消费 AsyncGenerator 的增量输出
+  while (!iterResult.done) {
+    const update = iterResult.value
+    if (opts.onUpdate) {
+      opts.onUpdate(update)
+    }
+    iterResult = await gen.next()
+  }
+
+  // 最终结果
+  const toolResult = iterResult.value
+  let resultText =
+    toolResult.llmContent ||
+    (toolResult.success ? 'Success' : `Error: ${toolResult.error?.message || 'unknown'}`)
+
+  // === Phase 4: after_tool_call + tool_result_persist Hooks ===
+  try {
+    const { ExtensionManager } = await import('../../../common/extension')
+    const runner = ExtensionManager.getHookRunner()
+    if (runner) {
+      const toolDuration = Date.now() - toolStartTime
+      await runner.runVoidHook('after_tool_call', {
+        sessionId,
+        toolName: def.name,
+        params: typedParams,
+        result: resultText,
+        durationMs: toolDuration
+      })
+
+      const persistResult = await runner.runModifyingHook('tool_result_persist', {
+        sessionId,
+        toolName: def.name,
+        result: resultText
+      })
+      if (persistResult?.result) {
+        resultText = persistResult.result
+      }
+    }
+  } catch {
+    // Extension hook 失败不阻断
+  }
+
+  return {
+    resultText,
+    blocked: false,
+    rawResult: toolResult
+  }
+}

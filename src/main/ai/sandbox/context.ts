@@ -11,6 +11,9 @@
 import type { SandboxConfig, SandboxContext, SandboxDockerInfo } from './types'
 import { resolveToolPolicy } from './tool-policy'
 import { isDockerAvailable, ensureContainer } from './docker'
+import { createLogger } from '@main/common/logger'
+
+const log = createLogger('sandbox')
 
 /**
  * 构建沙箱运行时上下文
@@ -61,7 +64,7 @@ export async function resolveSandboxContext(
     const dockerAvailable = await isDockerAvailable()
     if (!dockerAvailable) {
       // Docker 不可用时降级为 path-only
-      console.warn(
+      log.warn(
         '[Sandbox] Docker not available, falling back to path-only mode. ' +
           'Install Docker or switch to mode: "path-only".'
       )
@@ -82,7 +85,7 @@ export async function resolveSandboxContext(
       })
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
-      console.warn(`[Sandbox] Docker container creation failed, falling back to path-only: ${msg}`)
+      log.warn(`[Sandbox] Docker container creation failed, falling back to path-only: ${msg}`)
       return {
         mode: 'path-only',
         workspaceRoot: config.workspaceRoot,

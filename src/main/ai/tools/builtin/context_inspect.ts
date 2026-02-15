@@ -17,6 +17,7 @@ import path from 'node:path'
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types'
 import { ToolCategory } from '../types'
+import { resolveSandboxPath, pathGuardErrorToToolResult } from '../../sandbox'
 
 export const contextInspectTool: ToolDefinition = {
   name: 'context_inspect',
@@ -71,7 +72,12 @@ export const contextInspectTool: ToolDefinition = {
       filename = filename + '.json'
     }
 
-    const filePath = path.join(contextsDir, filename)
+    // 路径安全校验：限制在 contexts/ 目录内，防止路径穿越
+    const resolved = resolveSandboxPath(filename, { workspaceRoot: contextsDir })
+    if (resolved.error) {
+      return pathGuardErrorToToolResult(resolved.error)
+    }
+    const filePath = resolved.path
 
     if (!fs.existsSync(filePath)) {
       return { success: false, llmContent: `Context snapshot not found: ${filename}` }

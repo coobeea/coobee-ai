@@ -28,6 +28,7 @@ import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext
 import { ToolCategory } from '../types'
 import { resolveWorkingDirectory } from '../../sandbox'
 import { ProcessRegistry } from '../../process/ProcessRegistry'
+import { checkExecPolicy } from '../../sandbox/exec-policy'
 
 /** 默认超时（ms） */
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -76,6 +77,18 @@ export const execTool: ToolDefinition = {
         success: false,
         llmContent: 'Error: command must be a non-empty string',
         error: { code: 'INVALID_PARAM', message: 'command must be a non-empty string' }
+      }
+    }
+
+    // 安全兜底：即使 Extension 未加载，黑名单命令仍被拦截
+    // Extension hook (tool-approval) 提供完整的 allow/ask/deny 逻辑，
+    // 这里仅做 deny 级别的最后防线
+    const policyResult = checkExecPolicy(command)
+    if (policyResult.action === 'deny') {
+      return {
+        success: false,
+        llmContent: `Error: ${policyResult.reason}`,
+        error: { code: 'EXEC_POLICY_DENY', message: policyResult.reason }
       }
     }
 
