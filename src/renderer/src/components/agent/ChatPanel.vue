@@ -43,10 +43,16 @@ watch(
 
 async function handleSend(): Promise<void> {
   const text = inputText.value.trim()
-  if (!text || chatStore.isStreaming) return
+  if (!text) return
+
+  // 如果正在流式但用户继续输入 → 允许（管线排队）
   inputText.value = ''
   resetTextareaHeight()
   await chatStore.sendMessage(text)
+}
+
+async function handleAbort(): Promise<void> {
+  await chatStore.abortSession()
 }
 
 function handleKeydown(event: KeyboardEvent): void {
@@ -415,6 +421,18 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- 队列状态提示 -->
+    <div
+      v-if="chatStore.isQueued && chatStore.queueStatus"
+      class="flex items-center gap-1.5 border-t border-amber-200/80 bg-amber-50/60 px-3 py-1.5"
+    >
+      <span class="i-carbon-queue inline-block h-3 w-3 text-amber-500"></span>
+      <span class="text-[10px] text-amber-600">
+        消息已排队 (位置:
+        {{ chatStore.queueStatus.queueLength }})
+      </span>
+    </div>
+
     <!-- 输入区域 -->
     <div class="shrink-0 border-t border-gray-200/80 bg-white px-3 pb-3 pt-2">
       <div
@@ -425,26 +443,35 @@ onMounted(() => {
           v-model="inputText"
           class="max-h-[160px] min-h-[20px] flex-1 resize-none bg-transparent text-xs leading-relaxed text-gray-800 outline-none placeholder:text-gray-400"
           rows="1"
-          placeholder="输入消息... (Enter 发送)"
-          :disabled="chatStore.isStreaming"
+          :placeholder="
+            chatStore.isStreaming ? '可继续输入（消息将排队处理）' : '输入消息... (Enter 发送)'
+          "
           @keydown="handleKeydown"
           @input="autoResize"
         ></textarea>
+
+        <!-- 中断按钮（流式执行中显示） -->
+        <button
+          v-if="chatStore.isStreaming"
+          class="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-red-500 text-white transition hover:bg-red-600"
+          title="中断当前执行"
+          @click="handleAbort"
+        >
+          <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5"></span>
+        </button>
+
+        <!-- 发送按钮 -->
         <button
           class="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition"
           :class="
-            inputText.trim() && !chatStore.isStreaming
+            inputText.trim()
               ? 'bg-primary text-white hover:bg-primary/90'
               : 'bg-gray-100 text-gray-300'
           "
-          :disabled="!inputText.trim() || chatStore.isStreaming"
+          :disabled="!inputText.trim()"
           @click="handleSend"
         >
-          <span
-            v-if="chatStore.isStreaming"
-            class="i-carbon-stop-filled inline-block h-3.5 w-3.5"
-          ></span>
-          <span v-else class="i-carbon-send-alt inline-block h-3.5 w-3.5"></span>
+          <span class="i-carbon-send-alt inline-block h-3.5 w-3.5"></span>
         </button>
       </div>
       <p

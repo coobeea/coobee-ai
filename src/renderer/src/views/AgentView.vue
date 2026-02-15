@@ -62,6 +62,15 @@ const rightCollapsed = ref(false)
           日志
         </button>
 
+        <!-- 设置 -->
+        <button
+          class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+          @click="router.push('/settings')"
+        >
+          <span class="i-carbon-settings inline-block h-3.5 w-3.5"></span>
+          设置
+        </button>
+
         <!-- 右栏折叠/展开 -->
         <button
           v-if="rightCollapsed"

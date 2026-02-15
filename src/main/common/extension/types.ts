@@ -110,7 +110,7 @@ export interface ExtensionApi {
 
 // ==================== Extension Hook ====================
 
-/** 12 种 Agent 生命周期钩子 */
+/** 17 种 Agent 生命周期钩子 */
 export type ExtensionHookName =
   | 'before_agent_start' // modifying：注入上下文 / 替换提示词
   | 'agent_end' // void：Agent 执行完成
@@ -125,6 +125,12 @@ export type ExtensionHookName =
   | 'turn_end' // void：轮次完成
   | 'before_compaction' // modifying：压缩前（可自定义压缩 / Memory Flush）
   | 'after_compaction' // void：压缩完成
+  // Phase 2 新增（Pipeline + Provider）
+  | 'message_queued' // void：消息入队
+  | 'message_dequeued' // void：消息出队（即将执行）
+  | 'queue_drain_start' // void：队列排水开始
+  | 'model_resolved' // void：模型选择完成
+  | 'model_fallback' // void：模型回退触发
 
 /** 执行模式 */
 export type ExtensionHookMode = 'void' | 'modifying'
@@ -142,7 +148,13 @@ export const EXTENSION_HOOK_MODE: Record<ExtensionHookName, ExtensionHookMode> =
   turn_start: 'void',
   turn_end: 'void',
   before_compaction: 'modifying',
-  after_compaction: 'void'
+  after_compaction: 'void',
+  // Phase 2 新增（Pipeline + Provider）
+  message_queued: 'void',
+  message_dequeued: 'void',
+  queue_drain_start: 'void',
+  model_resolved: 'void',
+  model_fallback: 'void'
 }
 
 // ---- 各 Hook 的 Event / Result ----
@@ -255,6 +267,56 @@ export interface AfterCompactionEvent {
   duration: number
 }
 
+// ---- Phase 2 新增：Pipeline + Provider ----
+
+export interface MessageQueuedEvent {
+  sessionId: string
+  /** 入队的消息内容 */
+  message: string
+  /** 当前队列模式 */
+  mode: string
+  /** 入队后队列深度 */
+  queueLength: number
+}
+
+export interface MessageDequeuedEvent {
+  sessionId: string
+  /** 出队的消息内容 */
+  message: string
+  /** 出队后剩余队列深度 */
+  remainingLength: number
+}
+
+export interface QueueDrainStartEvent {
+  sessionId: string
+  /** 排水策略 */
+  strategy: 'followup' | 'collect'
+  /** 待排水消息数 */
+  pendingCount: number
+}
+
+export interface ModelResolvedEvent {
+  sessionId: string
+  /** 解析后的 provider ID */
+  providerId: string
+  /** 解析后的 model ID */
+  modelId: string
+  /** 解析来源层级 */
+  source: string
+}
+
+export interface ModelFallbackEvent {
+  sessionId: string
+  /** 失败的 provider/model */
+  failedRef: string
+  /** 回退到的 provider/model */
+  fallbackRef: string
+  /** 失败原因 */
+  error: string
+  /** 已尝试次数 */
+  attemptIndex: number
+}
+
 /** Event 映射 */
 export type ExtensionHookEventMap = {
   before_agent_start: BeforeAgentStartEvent
@@ -270,6 +332,12 @@ export type ExtensionHookEventMap = {
   turn_end: TurnEndEvent
   before_compaction: BeforeCompactionEvent
   after_compaction: AfterCompactionEvent
+  // Phase 2 新增（Pipeline + Provider）
+  message_queued: MessageQueuedEvent
+  message_dequeued: MessageDequeuedEvent
+  queue_drain_start: QueueDrainStartEvent
+  model_resolved: ModelResolvedEvent
+  model_fallback: ModelFallbackEvent
 }
 
 /** Result 映射 */
@@ -287,6 +355,12 @@ export type ExtensionHookResultMap = {
   turn_end: void
   before_compaction: BeforeCompactionResult | void
   after_compaction: void
+  // Phase 2 新增（Pipeline + Provider）
+  message_queued: void
+  message_dequeued: void
+  queue_drain_start: void
+  model_resolved: void
+  model_fallback: void
 }
 
 /** Handler 签名 */

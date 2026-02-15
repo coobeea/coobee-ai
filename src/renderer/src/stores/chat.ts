@@ -58,11 +58,22 @@ export interface ChatMessage {
 
 // ==================== Store ====================
 
+/** 队列状态 */
+export interface QueueStatusInfo {
+  isRunning: boolean
+  queueLength: number
+  mode: string
+}
+
 export const useChatStore = defineStore('chat', () => {
   // ---- 状态 ----
   const sessionId = ref<string | null>(null)
   const messages = ref<ChatMessage[]>([])
   const isStreaming = ref(false)
+  /** 当前消息是否已排队（而非立即执行） */
+  const isQueued = ref(false)
+  /** 队列状态信息 */
+  const queueStatus = ref<QueueStatusInfo | null>(null)
 
   // ---- 内部辅助 ----
 
@@ -237,8 +248,9 @@ export const useChatStore = defineStore('chat', () => {
       // 通过 Gateway RPC 调用 chat.send
       const result = await gateway.request<{
         sessionId: string
-        status: 'streaming' | 'error'
+        status: string
         error?: string
+        queuePosition?: number
       }>('chat.send', { message: text, sessionId: sessionId.value })
 
       if (result) {
@@ -258,6 +270,18 @@ export const useChatStore = defineStore('chat', () => {
 
         // 更新 sessionId
         sessionId.value = sid
+
+        // 处理管线排队状态
+        if (status === 'queued' || status === 'merged') {
+          isQueued.value = true
+          queueStatus.value = {
+            isRunning: true,
+            queueLength: result.queuePosition ?? 1,
+            mode: status
+          }
+        } else {
+          isQueued.value = false
+        }
 
         // 通过 useStreamWs 订阅流式事件
         streamSubscribe(sid, handleStreamMessage)
@@ -310,12 +334,36 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
+   * 中断当前会话
+   */
+  async function abortSession(): Promise<void> {
+    if (!sessionId.value) return
+    try {
+      await gateway.request<{ sessionId: string; aborted: boolean }>('chat.abort', {
+        sessionId: sessionId.value
+      })
+      // 中断后更新本地状态
+      const lastMsg = messages.value[messages.value.length - 1]
+      if (lastMsg?.role === 'assistant' && lastMsg.status === 'streaming') {
+        lastMsg.status = 'interrupted'
+      }
+      isStreaming.value = false
+      isQueued.value = false
+      queueStatus.value = null
+    } catch (err: unknown) {
+      console.error('[chatStore] abortSession error:', err)
+    }
+  }
+
+  /**
    * 清空对话
    */
   function clearMessages(): void {
     messages.value = []
     sessionId.value = null
     isStreaming.value = false
+    isQueued.value = false
+    queueStatus.value = null
     streamUnsubscribe()
   }
 
@@ -324,9 +372,12 @@ export const useChatStore = defineStore('chat', () => {
     sessionId,
     messages,
     isStreaming,
+    isQueued,
+    queueStatus,
 
     // Actions
     sendMessage,
+    abortSession,
     submitDecision,
     clearMessages
   }

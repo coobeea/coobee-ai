@@ -31,9 +31,9 @@ import type {
 } from '../types'
 
 describe('EXTENSION_HOOK_MODE', () => {
-  it('包含全部 12 种 Hook', () => {
+  it('包含全部 17 种 Hook', () => {
     const keys = Object.keys(EXTENSION_HOOK_MODE)
-    expect(keys).toHaveLength(12)
+    expect(keys).toHaveLength(17)
     // 原始 8 种
     expect(keys).toContain('before_agent_start')
     expect(keys).toContain('agent_end')
@@ -48,6 +48,12 @@ describe('EXTENSION_HOOK_MODE', () => {
     expect(keys).toContain('turn_end')
     expect(keys).toContain('before_compaction')
     expect(keys).toContain('after_compaction')
+    // Phase 2 新增 5 种
+    expect(keys).toContain('message_queued')
+    expect(keys).toContain('message_dequeued')
+    expect(keys).toContain('queue_drain_start')
+    expect(keys).toContain('model_resolved')
+    expect(keys).toContain('model_fallback')
   })
 
   it('modifying 类型正确 — before_agent_start', () => {
@@ -92,11 +98,11 @@ describe('EXTENSION_HOOK_MODE', () => {
     )
   })
 
-  it('void 共 8 种', () => {
+  it('void 共 13 种', () => {
     const voidHooks = Object.entries(EXTENSION_HOOK_MODE)
       .filter(([, mode]) => mode === 'void')
       .map(([name]) => name)
-    expect(voidHooks).toHaveLength(8)
+    expect(voidHooks).toHaveLength(13)
     expect(voidHooks.sort()).toEqual(
       [
         'agent_end',
@@ -106,7 +112,13 @@ describe('EXTENSION_HOOK_MODE', () => {
         'session_start',
         'session_end',
         'turn_start',
-        'turn_end'
+        'turn_end',
+        // Phase 2 新增
+        'message_queued',
+        'message_dequeued',
+        'queue_drain_start',
+        'model_resolved',
+        'model_fallback'
       ].sort()
     )
   })

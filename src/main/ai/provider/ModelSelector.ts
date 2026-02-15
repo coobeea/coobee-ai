@@ -8,6 +8,7 @@
  * 4. 内置默认 (fallbackDefault)
  */
 import type { CoobeeConfig } from '@main/common/config/schema'
+import { ExtensionManager } from '@main/common/extension/ExtensionManager'
 
 import type { ModelRef, ModelSelectionConfig } from './types'
 import { parseModelRef } from './types'
@@ -72,30 +73,65 @@ export class ModelSelector {
    * @returns 解析后的 ModelRef
    */
   resolve(opts: { sessionId?: string; agentId?: string } = {}): ModelRef {
+    let source = 'builtin'
+
     // Level 1: 会话覆盖
     if (opts.sessionId) {
       const sessionRef = this.sessionOverrides.get(opts.sessionId)
-      if (sessionRef) return parseModelRef(sessionRef)
+      if (sessionRef) {
+        const ref = parseModelRef(sessionRef)
+        this.fireModelResolved(opts.sessionId ?? '', ref, 'session')
+        return ref
+      }
     }
 
     // Level 2a: Agent 运行时覆盖
     if (opts.agentId) {
       const agentRef = this.agentOverrides.get(opts.agentId)
-      if (agentRef) return parseModelRef(agentRef)
+      if (agentRef) {
+        const ref = parseModelRef(agentRef)
+        this.fireModelResolved(opts.sessionId ?? '', ref, 'agent-runtime')
+        return ref
+      }
     }
 
     // Level 2b: Agent 配置覆盖
     if (opts.agentId && this.config.agents?.list) {
       const agentEntry = this.config.agents.list.find((a) => a.agentId === opts.agentId)
-      if (agentEntry?.model) return parseModelRef(agentEntry.model)
+      if (agentEntry?.model) {
+        const ref = parseModelRef(agentEntry.model)
+        this.fireModelResolved(opts.sessionId ?? '', ref, 'agent-config')
+        return ref
+      }
     }
 
     // Level 3: 全局默认
     const globalDefault = this.config.agents?.defaults?.model?.primary
-    if (globalDefault) return parseModelRef(globalDefault)
+    if (globalDefault) {
+      source = 'global'
+      const ref = parseModelRef(globalDefault)
+      this.fireModelResolved(opts.sessionId ?? '', ref, source)
+      return ref
+    }
 
     // Level 4: 内置默认
-    return parseModelRef(this.fallbackDefault)
+    const ref = parseModelRef(this.fallbackDefault)
+    this.fireModelResolved(opts.sessionId ?? '', ref, 'builtin')
+    return ref
+  }
+
+  /** 触发 model_resolved 扩展钩子 */
+  private fireModelResolved(sessionId: string, ref: ModelRef, source: string): void {
+    ExtensionManager.getHookRunner()
+      ?.runVoidHook('model_resolved', {
+        sessionId,
+        providerId: ref.provider,
+        modelId: ref.model,
+        source
+      })
+      .catch(() => {
+        /* hook 错误不影响主流程 */
+      })
   }
 
   /**

@@ -4,6 +4,7 @@
  * 替代 AgentExecutor.submit 的 busySessions 简单锁，
  * 提供排队、合并、中断等完整消息处理能力。
  */
+import { ExtensionManager } from '../../common/extension/ExtensionManager'
 import { AbortManager } from './AbortManager'
 import { drainCollect, drainFollowup } from './DrainStrategy'
 import { SessionQueue } from './SessionQueue'
@@ -126,6 +127,7 @@ export class MessagePipeline {
     // steer 模式：将消息作为"注入"处理
     // 基础实现：入队，等当前 run 结束后作为下一条处理
     queue.enqueue(sessionId, message, opts?.metadata)
+    this.fireMessageQueued(sessionId, message, queue)
     return { status: 'merged', sessionId }
   }
 
@@ -136,6 +138,7 @@ export class MessagePipeline {
     opts?: SubmitOptions
   ): SubmitResult {
     queue.enqueue(sessionId, message, opts?.metadata)
+    this.fireMessageQueued(sessionId, message, queue)
     return {
       status: 'queued',
       sessionId,
@@ -178,9 +181,15 @@ export class MessagePipeline {
   private async drainQueue(queue: SessionQueue, sessionId: string): Promise<void> {
     queue.draining = true
     const mode = queue.settings.mode
+    const strategy = mode === 'collect' ? 'collect' : 'followup'
+
+    // 触发 queue_drain_start 钩子
+    this.fireQueueDrainStart(sessionId, strategy, queue.length)
 
     try {
       const drainExecutor = async (_sid: string, msg: string): Promise<void> => {
+        // 触发 message_dequeued 钩子
+        this.fireMessageDequeued(sessionId, msg, queue)
         const signal = this.abortManager.create(sessionId)
         try {
           await this.executor(sessionId, msg, signal)
@@ -210,5 +219,48 @@ export class MessagePipeline {
       this.queues.set(sessionId, queue)
     }
     return queue
+  }
+
+  // ─── Extension Hook 触发 ──────────────────────
+
+  private fireMessageQueued(sessionId: string, message: string, queue: SessionQueue): void {
+    ExtensionManager.getHookRunner()
+      ?.runVoidHook('message_queued', {
+        sessionId,
+        message,
+        mode: queue.settings.mode,
+        queueLength: queue.length
+      })
+      .catch(() => {
+        /* hook 错误不影响主流程 */
+      })
+  }
+
+  private fireMessageDequeued(sessionId: string, message: string, queue: SessionQueue): void {
+    ExtensionManager.getHookRunner()
+      ?.runVoidHook('message_dequeued', {
+        sessionId,
+        message,
+        remainingLength: queue.length
+      })
+      .catch(() => {
+        /* hook 错误不影响主流程 */
+      })
+  }
+
+  private fireQueueDrainStart(
+    sessionId: string,
+    strategy: 'followup' | 'collect',
+    pendingCount: number
+  ): void {
+    ExtensionManager.getHookRunner()
+      ?.runVoidHook('queue_drain_start', {
+        sessionId,
+        strategy,
+        pendingCount
+      })
+      .catch(() => {
+        /* hook 错误不影响主流程 */
+      })
   }
 }

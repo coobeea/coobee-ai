@@ -3,6 +3,8 @@
  *
  * 按顺序尝试候选模型，遇到可重试错误时自动切换。
  */
+import { ExtensionManager } from '@main/common/extension/ExtensionManager'
+
 import type { FallbackResult, ModelRef } from './types'
 import { formatModelRef, parseModelRef } from './types'
 
@@ -81,6 +83,15 @@ export class ModelFallback {
 
         failedModels.push(refStr)
 
+        // 触发 model_fallback 钩子
+        const nextIdx = candidates.indexOf(candidate) + 1
+        if (nextIdx < candidates.length) {
+          const nextCandidate = candidates[nextIdx]
+          const nextRef =
+            typeof nextCandidate === 'string' ? parseModelRef(nextCandidate) : nextCandidate
+          this.fireModelFallback(refStr, formatModelRef(nextRef), error, attempts)
+        }
+
         // 最后一个候选 → 抛出原始错误
         if (candidates.indexOf(candidate) === candidates.length - 1) {
           throw error
@@ -100,6 +111,27 @@ export class ModelFallback {
 
     // 不应到达这里
     throw new Error('No candidates provided for fallback')
+  }
+
+  /** 触发 model_fallback 扩展钩子 */
+  private fireModelFallback(
+    failedRef: string,
+    fallbackRef: string,
+    error: unknown,
+    attemptIndex: number
+  ): void {
+    const errMsg = error instanceof Error ? error.message : String(error)
+    ExtensionManager.getHookRunner()
+      ?.runVoidHook('model_fallback', {
+        sessionId: '', // Fallback 层不一定有 sessionId
+        failedRef,
+        fallbackRef,
+        error: errMsg,
+        attemptIndex
+      })
+      .catch(() => {
+        /* hook 错误不影响主流程 */
+      })
   }
 }
 
