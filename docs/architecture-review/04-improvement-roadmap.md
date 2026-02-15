@@ -216,101 +216,149 @@ skillManager.scanSkills(agentEnv.skillPaths) // 已包含 Extension Skill 目录
 
 ---
 
-## Phase 2: Memory 系统升级
+## Phase 2: Memory 系统升级（文件驱动）
 
-### P2-1 memory 工具接入 LongTermMemoryStore
+> 设计参考：OpenClaw memory-core 方案 — 以 Markdown 文件为记忆源，不引入 SQLite 索引
+> 核心原则：**文件即记忆**，Agent 通过 write 工具和 memory 工具直接操作 Markdown 文件
+
+### P2-1 Memory 存储结构重构
 
 #### 问题
 
-memory 工具使用文件系统存储 + `string.includes()` 搜索，能力极弱。而 `memory/LongTermMemoryStore.ts` 提供了 SQLite + 类型 + importance + embedding 的完整设计但未被使用。
+当前 memory 工具使用 `memory/user/` 和 `memory/agent/` 两层扁平目录 + `string.includes()` 搜索，结构不够清晰，搜索能力极弱。
 
-#### 方案
+#### 方案：参考 OpenClaw memory-core 文件结构
 
-**分步实施**：
+**每个 Agent 工作空间的记忆结构**：
 
-##### Step 1: 双后端适配
-
-```typescript
-// memory 工具保持当前接口不变
-// 内部根据配置选择后端
-
-class MemoryBackend {
-  // 文件后端（当前实现，作为 fallback）
-  static file(): MemoryBackend
-
-  // SQLite 后端（新增）
-  static sqlite(store: LongTermMemoryStore): MemoryBackend
-}
+```
+{workspace}/
+├── MEMORY.md              ← 主记忆文件（核心知识、用户偏好、关键经验）
+└── memory/
+    ├── preferences.md     ← 用户偏好
+    ├── lessons.md         ← 经验教训
+    ├── knowledge.md       ← 项目/领域知识
+    ├── 2026-02-15.md      ← 按日期的记忆（Memory Flush 自动生成）
+    └── {custom}.md        ← Agent 自定义分类
 ```
 
-##### Step 2: 增强搜索
+**全局记忆（跨 Agent 共享）**：
 
-| 搜索方式       | 优先级 | 说明                              |
-| -------------- | ------ | --------------------------------- |
-| 关键字（LIKE） | P0     | SQLite LIKE 查询（替代 includes） |
-| BM25           | P1     | SQLite FTS5 全文搜索              |
-| 向量搜索       | P2     | sqlite-vec 或外部 embedding 服务  |
-
-##### Step 3: 记忆类型化
-
-```typescript
-// memory 工具新增 type 参数
-parameters: z.object({
-  action: z.enum(['list', 'get', 'write', 'search']),
-  scope: z.enum(['user', 'agent']).optional(),
-  type: z.enum(['semantic', 'episodic', 'procedural', 'preference', 'lesson']).optional(),
-  importance: z.number().min(0).max(1).optional()
-  // ... 其他参数
-})
+```
+{userHome}/memory/
+├── MEMORY.md              ← 全局主记忆
+└── global/
+    ├── preferences.md     ← 全局偏好
+    └── {custom}.md
 ```
 
-**变更范围**：`tools/builtin/memory.ts`（适配层）、`memory/LongTermMemoryStore.ts`（完善查询）
-**工作量**：2-3 天
+**与当前 memory 工具的映射**：
+
+| 当前 scope | 新路径                                          | 说明                    |
+| ---------- | ----------------------------------------------- | ----------------------- |
+| `user`     | `{userHome}/memory/`                            | 全局记忆，跨 Agent 共享 |
+| `agent`    | `{workspace}/memory/` + `{workspace}/MEMORY.md` | Agent 专属记忆          |
+
+**memory 工具改动**：
+
+- `list` — 同时扫描 `MEMORY.md` 和 `memory/` 目录
+- `get` — 支持读取 `MEMORY.md`
+- `write` — 支持写入 `MEMORY.md`（追加模式可选）
+- `search` — 增强搜索（见 P2-2）
+
+**变更范围**：`tools/builtin/memory.ts`
+**工作量**：1 天
 
 ---
 
-### P2-2 自动记忆提取（agent_end Hook）
+### P2-2 增强型关键字搜索
 
 #### 问题
 
-LLM 需要主动调用 `memory(write)` 才能存储记忆。大多数情况下 LLM 不会主动这样做。
+当前搜索仅用 `line.toLowerCase().includes(query)`，不支持多关键字、不返回相关度评分。
+
+#### 方案：文件级轻量搜索（纯文件，不依赖 SQLite）
+
+```typescript
+interface MemorySearchResult {
+  file: string // 文件路径
+  score: number // 相关度评分 (0-1)
+  snippet: string // 匹配片段（带上下文）
+  section?: string // 所在章节标题
+}
+```
+
+**搜索增强**：
+
+1. **多关键字支持**：query 按空格拆词，每个词独立匹配
+2. **评分机制**：
+   - 词频（TF）：关键字在文件中出现次数 / 文件总词数
+   - 文件长度归一化：避免长文件偏好
+   - 标题加权：出现在 `#` 标题行中的匹配 ×2 权重
+   - MEMORY.md 加权：主记忆文件匹配 ×1.5 权重
+3. **片段提取**：返回匹配行 ± 2 行上下文
+4. **Markdown Section 感知**：返回匹配所在的 `##` 章节标题
+
+**实现方式**：纯 TypeScript，遍历 Markdown 文件，无外部依赖。
+
+**变更范围**：`tools/builtin/memory.ts`（search action 重写）
+**工作量**：1 天
+
+---
+
+### P2-3 记忆自动提取 — 提示词引导 + agent_end Hook
+
+#### 问题
+
+LLM 需要主动调用 `memory(write)` 才能存储记忆。大多数情况下 LLM 不会主动存储。
 
 #### 方案
 
-创建内置 Extension `memory-auto`，在 `agent_end` Hook 中自动提取有价值的信息：
+**方式 1：execution_protocol 提示词引导（零代码成本，立即生效）**
+
+在第 5 步增加记忆存储提示：
+
+```
+5. **Report & Memorize**
+   - Summarize what was accomplished
+   - If you discovered valuable knowledge, save it:
+     · User preferences → memory(write, scope='agent', file='preferences.md')
+     · Lessons learned → memory(write, scope='agent', file='lessons.md')
+     · Core knowledge → write MEMORY.md directly
+   - Only save durable, reusable knowledge — not session-specific details
+```
+
+**方式 2：内置 Extension 自动触发（agent_end Hook）**
 
 ```typescript
 // extensions/builtin/memory-auto/index.ts
 
 api.on('agent_end', async (event) => {
-  const { sessionId, output, success, durationMs } = event
+  const { sessionId, output, success } = event
 
-  // 1. 提取关键信息（简单规则 + 启发式）
-  const memories = extractMemories(output, {
-    // 错误教训
-    extractLessons: !success,
-    // 用户偏好（从对话中推断）
-    extractPreferences: true,
-    // 项目知识
-    extractKnowledge: true
-  })
+  // 简单规则匹配：检测输出中的记忆信号词
+  const signals = detectMemorySignals(output)
+  // signals: 'remember', 'prefer', 'always', 'never', 'important',
+  //          'learned', 'note to self', 电话号码, 邮箱地址等
 
-  // 2. 写入记忆
-  for (const mem of memories) {
-    await memoryStore.store(mem)
-  }
+  if (signals.length === 0) return
+
+  // 提取相关段落，追加到 memory/{date}.md
+  const today = new Date().toISOString().slice(0, 10)
+  const memoryFile = path.join(workspace, 'memory', `${today}.md`)
+  const entries = signals.map((s) => `- ${s.text}\n`)
+  fs.appendFileSync(memoryFile, entries.join(''), 'utf-8')
 })
 ```
 
-**初始版本**：使用规则匹配提取关键信息（不依赖额外 LLM 调用）
-**进阶版本**：使用 LLM 自身做记忆提取（需要额外 API 调用成本评估）
+**实施优先级**：方式 1（本次立即做）→ 方式 2（本次尝试做）
 
-**变更范围**：新增内置 Extension
-**工作量**：2 天
+**变更范围**：`AgentEnvInjector.ts`（方式1）、新增内置 Extension（方式2）
+**工作量**：1.5 天
 
 ---
 
-### P2-3 会话启动记忆注入
+### P2-4 会话启动记忆注入（before_agent_start Hook）
 
 #### 问题
 
@@ -318,7 +366,7 @@ api.on('agent_end', async (event) => {
 
 #### 方案
 
-在 `before_agent_start` Hook 中注入相关记忆：
+在 `before_agent_start` Hook 中读取 MEMORY.md 摘要注入：
 
 ```typescript
 // extensions/builtin/memory-auto/index.ts
@@ -326,37 +374,53 @@ api.on('agent_end', async (event) => {
 api.on('before_agent_start', async (event) => {
   const { sessionId, prompt } = event
 
-  // 1. 基于用户消息搜索相关记忆
-  const relevantMemories = await memoryStore.search({
-    query: prompt,
-    limit: 5,
-    minImportance: 0.3
+  // 1. 读取主记忆文件（MEMORY.md）的前 N 字符作为核心记忆
+  const coreMemory = readMemoryMdHead(workspace, 2000)
+
+  // 2. 基于用户消息关键字搜索相关记忆
+  const keywords = extractKeywords(prompt)
+  const relevantMemories = searchMemoryFiles([path.join(workspace, 'memory')], keywords.join(' '), {
+    maxResults: 5,
+    minScore: 0.3
   })
 
-  if (relevantMemories.length === 0) return {}
+  if (!coreMemory && relevantMemories.length === 0) return {}
 
-  // 2. 格式化为上下文前缀
-  const memoryBlock = formatMemoryBlock(relevantMemories)
-
-  return {
-    prependContext: memoryBlock
+  // 3. 格式化注入
+  const blocks: string[] = []
+  if (coreMemory) {
+    blocks.push(`<core_memory>\n${coreMemory}\n</core_memory>`)
   }
+  if (relevantMemories.length > 0) {
+    const items = relevantMemories.map((r) => `- [${r.file}] ${r.snippet}`).join('\n')
+    blocks.push(`<recalled_memories>\n${items}\n</recalled_memories>`)
+  }
+
+  return { prependContext: blocks.join('\n\n') }
 })
 ```
 
-**输出格式**：
+**注入格式**：
 
 ```xml
-<relevant_memories>
-You have recalled the following from past sessions:
-- [preference] User prefers TypeScript with strict mode
-- [lesson] exec timeout needs to be > 30s for npm install
-- [knowledge] Project uses Tailwind CSS 4 with CSS-based config
-</relevant_memories>
+<core_memory>
+## User Preferences
+- Prefers Chinese responses
+- Uses TypeScript strict mode
+
+## Key Lessons
+- exec timeout should be > 30s for npm install
+- Always commit after code changes
+</core_memory>
+
+<recalled_memories>
+- [memory/2026-02-14.md] HITL should be SDK-independent
+- [memory/lessons.md] Extension Skill dirs not included in scanSkills
+</recalled_memories>
 ```
 
-**变更范围**：同 P2-2 的内置 Extension
-**工作量**：1 天（与 P2-2 一起）
+**变更范围**：同 P2-3 的内置 Extension
+**工作量**：1 天（与 P2-3 一起）
 
 ---
 
@@ -370,21 +434,7 @@ self-reflection Skill 指导 LLM 做自我评估，但评估结果存在上下�
 
 #### 方案
 
-在 `execution_protocol` 的第 5 步（Report）中提示 LLM 将评估结果写入记忆：
-
-```
-5. **Report**
-   - Summarize what was accomplished vs. original goals
-   - Note any unresolved issues or caveats
-   - **If evaluation revealed insights or lessons, save them to memory:**
-     · Use `memory(write, 'lessons-learned.md', ...)` for errors and workarounds
-     · Use `memory(write, 'preferences.md', ...)` for user preferences discovered
-```
-
-这是提示词级别的改动，无需代码变更。配合 P2-2 的自动记忆提取形成双保险。
-
-**变更范围**：`AgentEnvInjector.ts` 中的 `buildExecutionProtocol()`
-**工作量**：0.5 天
+已合并到 P2-3 方式 1 中（execution_protocol 第 5 步增加记忆存储提示）。
 
 ---
 
@@ -609,12 +659,13 @@ async function backupBeforeWrite(filePath: string, workspaceRoot: string): Promi
 **影响**：OpenAI Runtime 不再使用 SDK 的中断/恢复机制  
 **风险**：SDK 工具执行超时处理需要验证
 
-### ADR-002: Memory 后端演进
+### ADR-002: Memory 存储方案
 
-**决定**：memory 工具保持当前接口，内部切换到 LongTermMemoryStore  
-**原因**：向后兼容 + 能力增强  
-**影响**：需要数据迁移（文件→SQLite）  
-**风险**：SQLite 在 Electron 中的 native module 兼容性
+**决定**：Memory 系统完全基于 Markdown 文件，不引入 SQLite 索引  
+**参考**：OpenClaw memory-core 方案（MEMORY.md + memory/\*.md）  
+**原因**：文件驱动更简单、可读、可调试；Agent 可直接用 write 工具操作  
+**影响**：搜索能力受限于文件遍历（未来可引入 SQLite 索引层作为增强）  
+**风险**：大量记忆文件时搜索性能可能不足（通过 MEMORY.md 主文件 + 分类文件缓解）
 
 ### ADR-003: 自我进化策略
 

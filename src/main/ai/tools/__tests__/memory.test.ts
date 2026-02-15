@@ -15,6 +15,16 @@ import os from 'node:os'
 import type { ToolStreamUpdate, ToolResult } from '../types'
 import { ToolCategory } from '../types'
 import { memoryTool } from '../builtin/memory'
+import type { ToolExecutionContext } from '../types'
+
+/** 创建最小的 ToolExecutionContext（SandboxContext）用于测试 */
+function makeContext(workspaceRoot: string): ToolExecutionContext {
+  return {
+    workspaceRoot,
+    mode: 'off',
+    toolPolicy: { allow: [], deny: [] }
+  }
+}
 
 vi.mock('@main/common/logger', () => ({
   log: {
@@ -407,6 +417,7 @@ describe('memoryTool', () => {
       expect(result.llmContent).toContain('Search results')
       expect(result.llmContent).toContain('notes.md')
       expect(result.llmContent).toContain('keyword')
+      // 新的搜索格式使用 > L2: 标记匹配行
       expect(result.llmContent).toContain('L2:')
       expect(result.llmContent).toContain('L4:')
     })
@@ -504,7 +515,7 @@ describe('memoryTool', () => {
       expect(fs.existsSync(agentPath)).toBe(true)
     })
 
-    it('默认 scope 为 user', async () => {
+    it('默认 scope 为 agent（fallback 到 agentMemoryDir）', async () => {
       const { result } = await consumeGenerator(
         memoryTool.execute({
           action: 'write',
@@ -514,8 +525,8 @@ describe('memoryTool', () => {
       )
 
       expect(result.success).toBe(true)
-      const userPath = path.join(TEST_BASE, 'user', 'default-scope.md')
-      expect(fs.existsSync(userPath)).toBe(true)
+      const agentPath = path.join(TEST_BASE, 'agent', 'default-scope.md')
+      expect(fs.existsSync(agentPath)).toBe(true)
     })
   })
 
@@ -570,7 +581,9 @@ describe('memoryTool', () => {
     })
 
     it('未知 action 返回错误', async () => {
-      const { result } = await consumeGenerator(memoryTool.execute({ action: 'invalid_action' }))
+      const { result } = await consumeGenerator(
+        memoryTool.execute({ action: 'invalid_action', scope: 'user' })
+      )
 
       expect(result.success).toBe(false)
       expect(result.error?.code).toBe('UNKNOWN_ACTION')
@@ -614,6 +627,185 @@ describe('memoryTool', () => {
       )
 
       expect(updates.some((u) => u.type === 'progress')).toBe(true)
+    })
+  })
+
+  // ==================== MEMORY.md 主记忆文件 ====================
+
+  describe('MEMORY.md 主记忆文件', () => {
+    it('agent scope 有 workspaceRoot 时支持 MEMORY.md', async () => {
+      const workspace = path.join(TEST_BASE, 'workspace')
+      fs.mkdirSync(path.join(workspace, 'memory'), { recursive: true })
+
+      // 写入 MEMORY.md
+      const { result: writeResult } = await consumeGenerator(
+        memoryTool.execute(
+          {
+            action: 'write',
+            scope: 'agent',
+            file: 'MEMORY.md',
+            content: '# Core Knowledge\n\nUser prefers Chinese responses.'
+          },
+          undefined,
+          makeContext(workspace)
+        )
+      )
+      expect(writeResult.success).toBe(true)
+      expect(fs.existsSync(path.join(workspace, 'MEMORY.md'))).toBe(true)
+
+      // 读取 MEMORY.md
+      const { result: getResult } = await consumeGenerator(
+        memoryTool.execute(
+          { action: 'get', scope: 'agent', file: 'MEMORY.md' },
+          undefined,
+          makeContext(workspace)
+        )
+      )
+      expect(getResult.success).toBe(true)
+      expect(getResult.llmContent).toContain('Core Knowledge')
+    })
+
+    it('list 中 MEMORY.md 标记为主记忆文件并置顶', async () => {
+      const workspace = path.join(TEST_BASE, 'workspace')
+      fs.mkdirSync(path.join(workspace, 'memory'), { recursive: true })
+      fs.writeFileSync(path.join(workspace, 'MEMORY.md'), '# Core')
+      fs.writeFileSync(path.join(workspace, 'memory', 'lessons.md'), '# Lessons')
+
+      const { result } = await consumeGenerator(
+        memoryTool.execute({ action: 'list', scope: 'agent' }, undefined, makeContext(workspace))
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.llmContent).toContain('MEMORY.md')
+      expect(result.llmContent).toContain('★')
+      expect(result.llmContent).toContain('memory/lessons.md')
+    })
+
+    it('MEMORY.md 不添加 frontmatter', async () => {
+      const workspace = path.join(TEST_BASE, 'workspace')
+      fs.mkdirSync(path.join(workspace, 'memory'), { recursive: true })
+
+      await consumeGenerator(
+        memoryTool.execute(
+          {
+            action: 'write',
+            scope: 'agent',
+            file: 'MEMORY.md',
+            content: '# My Memory'
+          },
+          undefined,
+          makeContext(workspace)
+        )
+      )
+
+      const content = fs.readFileSync(path.join(workspace, 'MEMORY.md'), 'utf-8')
+      expect(content).toBe('# My Memory')
+      expect(content).not.toContain('---')
+    })
+  })
+
+  // ==================== append 模式 ====================
+
+  describe('append 模式', () => {
+    it('append=true 追加而非覆盖', async () => {
+      const userDir = path.join(TEST_BASE, 'user')
+      fs.writeFileSync(path.join(userDir, 'log.md'), 'Line 1\n')
+
+      const { result } = await consumeGenerator(
+        memoryTool.execute({
+          action: 'write',
+          scope: 'user',
+          file: 'log.md',
+          content: 'Line 2',
+          append: true
+        })
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.llmContent).toContain('appended')
+      const content = fs.readFileSync(path.join(userDir, 'log.md'), 'utf-8')
+      expect(content).toContain('Line 1')
+      expect(content).toContain('Line 2')
+    })
+
+    it('append=true 文件不存在时降级为创建', async () => {
+      const { result } = await consumeGenerator(
+        memoryTool.execute({
+          action: 'write',
+          scope: 'user',
+          file: 'new-append.md',
+          content: 'First entry',
+          append: true
+        })
+      )
+
+      // append 目标不存在时 → 按普通 write 处理（因为 exists 为 false）
+      expect(result.success).toBe(true)
+    })
+  })
+
+  // ==================== 增强搜索 ====================
+
+  describe('增强搜索', () => {
+    it('多关键字搜索', async () => {
+      const userDir = path.join(TEST_BASE, 'user')
+      fs.writeFileSync(
+        path.join(userDir, 'notes.md'),
+        '# TypeScript Config\n\nUse strict mode with TypeScript.\nPrefer Tailwind CSS.'
+      )
+
+      const { result } = await consumeGenerator(
+        memoryTool.execute({
+          action: 'search',
+          scope: 'user',
+          query: 'TypeScript strict'
+        })
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.llmContent).toContain('notes.md')
+      expect(result.llmContent).toContain('relevance:')
+    })
+
+    it('搜索返回 section 信息', async () => {
+      const userDir = path.join(TEST_BASE, 'user')
+      fs.writeFileSync(
+        path.join(userDir, 'knowledge.md'),
+        '# Project Info\n\n## Tech Stack\n\nElectron + Vue 3 + TypeScript\n\n## Build\n\npnpm build'
+      )
+
+      const { result } = await consumeGenerator(
+        memoryTool.execute({
+          action: 'search',
+          scope: 'user',
+          query: 'Electron'
+        })
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.llmContent).toContain('Tech Stack')
+    })
+
+    it('搜索中 MEMORY.md 评分加权', async () => {
+      const workspace = path.join(TEST_BASE, 'workspace')
+      fs.mkdirSync(path.join(workspace, 'memory'), { recursive: true })
+      fs.writeFileSync(path.join(workspace, 'MEMORY.md'), 'important keyword here')
+      fs.writeFileSync(path.join(workspace, 'memory', 'other.md'), 'important keyword here')
+
+      const { result } = await consumeGenerator(
+        memoryTool.execute(
+          { action: 'search', scope: 'agent', query: 'keyword' },
+          undefined,
+          makeContext(workspace)
+        )
+      )
+
+      expect(result.success).toBe(true)
+      // MEMORY.md 应排在前面（加权）
+      const content = result.llmContent || ''
+      const memoryIdx = content.indexOf('MEMORY.md')
+      const otherIdx = content.indexOf('other.md')
+      expect(memoryIdx).toBeLessThan(otherIdx)
     })
   })
 

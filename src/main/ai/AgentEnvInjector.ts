@@ -128,11 +128,16 @@ When you receive a user request, follow this protocol:
      c. Report remaining issues to user with clear explanation
    - **Stop condition**: all criteria pass, OR score doesn't improve after 2 consecutive rounds
 
-5. **Report**
+5. **Report & Memorize**
    - Summarize what was accomplished vs. original goals
    - Note any unresolved issues or caveats
-   - For complex tasks, include a brief evaluation summary
+   - **Save valuable knowledge to memory** (only if durable and reusable):
+     · User preferences discovered → \`memory(write, scope='agent', file='memory/preferences.md')\`
+     · Lessons learned from errors → \`memory(write, scope='agent', file='memory/lessons.md')\`
+     · Core project knowledge → \`memory(write, scope='agent', file='MEMORY.md')\`
+     · Use \`append=true\` to add to existing memory files
+   - Do NOT save session-specific details — only knowledge that helps in future sessions
 
-NOTE: For simple/trivial requests (greetings, quick facts, single-step tasks), skip steps 1 and 3-4 — just answer directly.
+NOTE: For simple/trivial requests (greetings, quick facts, single-step tasks), skip steps 1 and 3-5 — just answer directly.
 </execution_protocol>`
 }
