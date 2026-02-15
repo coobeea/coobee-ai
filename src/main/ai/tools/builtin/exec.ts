@@ -17,7 +17,8 @@
  *   - 工作目录限制在 workspaceRoot 内
  *   - 支持 AbortSignal 取消
  *   - 超时自动终止（前台模式）
- *   - 审批/HITL 由上层统一处理
+ *   - 命令安全策略（黑名单/白名单）由 HITL 审批层处理，工具层不参与安全判断
+ *   - HITL 审批由上层 AgentExecutor 统一编排
  *
  * 分类：Execute | 风险：高（可执行任意系统命令）
  */
@@ -25,7 +26,7 @@ import { spawn } from 'node:child_process'
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolCategory } from '../types'
-import { resolveWorkingDirectory, checkExecPolicy } from '../../sandbox'
+import { resolveWorkingDirectory } from '../../sandbox'
 import { ProcessRegistry } from '../../process/ProcessRegistry'
 
 /** 默认超时（ms） */
@@ -75,16 +76,6 @@ export const execTool: ToolDefinition = {
         success: false,
         llmContent: 'Error: command must be a non-empty string',
         error: { code: 'INVALID_PARAM', message: 'command must be a non-empty string' }
-      }
-    }
-
-    // 命令安全策略检查（黑名单命令始终拒绝，不进入 HITL）
-    const policy = checkExecPolicy(command)
-    if (policy.action === 'deny') {
-      return {
-        success: false,
-        llmContent: `Command rejected by security policy: ${policy.reason}`,
-        error: { code: 'POLICY_DENIED', message: policy.reason }
       }
     }
 

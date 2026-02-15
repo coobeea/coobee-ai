@@ -1,15 +1,30 @@
 /**
  * exec 命令安全策略
  *
- * 提供命令级过滤，防止 LLM 执行危险命令。
+ * 提供命令级安全过滤，防止 LLM 执行危险命令。
  *
  * 三层防护：
  *   1. 危险命令黑名单（始终拒绝，不可覆盖）
  *   2. 安全命令白名单（始终允许，不触发 HITL）
  *   3. 动态 allowlist 学习（approve-always 时记住命令模式）
  *
- * 工作流：
- *   command → blacklist check → whitelist check → allowlist check → HITL
+ * 集成架构（策略与 HITL 审批层协同）：
+ *
+ *   OpenAI Runtime 路径（有 HITL）：
+ *     LLM 调用 exec → SDK needsApproval 触发中断
+ *     → AgentExecutor.computePolicyDecisions() 自动决策
+ *     → 白名单命令自动放行（approve-once），黑名单自动拒绝（reject）
+ *     → 未知命令交给用户通过前端 HITL 审批
+ *     → approve-always 时 learnExecCommand() 学习到动态 allowlist
+ *
+ *   PiMono Runtime 路径（无 HITL）：
+ *     LLM 调用 exec → convertTools 执行包装器中检查 checkExecPolicy()
+ *     → 黑名单命令直接拒绝（无 HITL 回退）
+ *     → 白名单 & 未知命令放行（PiMono 信任工具策略 + 路径守卫）
+ *
+ *   两条路径的 Runtime execute 回调中都有黑名单兜底检查（纵深防御）。
+ *
+ * 注意：策略不在 exec 工具内部，工具层是纯执行逻辑。
  *
  * @module sandbox/exec-policy
  */

@@ -901,6 +901,19 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
             return `Error: ${msg}`
           }
 
+          // 命令安全策略：黑名单命令在 execute 前兜底拦截
+          // 主逻辑在 AgentExecutor HITL 循环中自动决策；此处为纵深防御
+          if (def.name === 'exec' && typedParams.command) {
+            const { checkExecPolicy } = await import('../../sandbox/exec-policy')
+            const policy = checkExecPolicy(typedParams.command as string)
+            if (policy.action === 'deny') {
+              log.warn(
+                `[ExecPolicy] Command rejected (defense-in-depth): "${(typedParams.command as string).slice(0, 50)}", reason=${policy.reason}`
+              )
+              return `Error: Command rejected by security policy: ${policy.reason}`
+            }
+          }
+
           const gen = def.execute(typedParams, undefined, sandboxContext)
           let iterResult = await gen.next()
 

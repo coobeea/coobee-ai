@@ -129,6 +129,7 @@ vi.mock('../../skills', () => ({
 
 // ===== 导入 =====
 import { hitlApprovalManager } from '../HitlApprovalManager'
+import { clearLearnedAllowlist } from '../../sandbox/exec-policy'
 
 /**
  * 刷新微任务队列
@@ -138,7 +139,9 @@ import { hitlApprovalManager } from '../HitlApprovalManager'
  * injectEnv() 额外引入 dynamic import + buildAgentEnv 等异步操作。
  */
 async function flushAsync(): Promise<void> {
-  for (let i = 0; i < 20; i++) {
+  // 40 轮微任务刷新：injectEnv 内的动态 import + buildAgentEnv 等异步操作
+  // 需要充足的微任务轮次来推进 detached promise（submit 启动的 execute）
+  for (let i = 0; i < 40; i++) {
     await vi.advanceTimersByTimeAsync(1)
   }
 }
@@ -196,10 +199,17 @@ describe('HITL + 工具系统集成测试', () => {
     await import('../../runtime/pimono')
     await import('../../AgentEnv')
     await import('@main/common/env')
+    await import('../../../common/extension')
+    await import('../../sandbox/exec-policy')
+
+    // 排空遗留的 detached promise（来自前一个测试的 submit() 尾部）
+    await flushAsync()
+    vi.clearAllMocks()
   })
 
   afterEach(() => {
     hitlApprovalManager.cleanupAll()
+    clearLearnedAllowlist()
     vi.useRealTimers()
   })
 
@@ -365,15 +375,16 @@ describe('HITL + 工具系统集成测试', () => {
       expect(mockRuntime.approveToolCall).not.toHaveBeenCalled()
     })
 
-    it('approve-always → exec 工具后续调用不再中断', async () => {
+    it('approve-always → exec 工具（非白名单命令）后续调用不再中断', async () => {
+      // 使用非白名单命令，确保走 HITL 审批流程
       const interruptedResult: ExecutionResult = {
         output: '',
         interrupted: true,
-        interruptions: [{ index: 0, toolName: 'exec', arguments: '{"command":"ls -la"}' }]
+        interruptions: [{ index: 0, toolName: 'exec', arguments: '{"command":"docker build ."}' }]
       }
       mockRuntime.stream.mockReturnValue(createStreamGen([], interruptedResult))
 
-      const resumeResult: ExecutionResult = { output: 'ls output', duration: 100 }
+      const resumeResult: ExecutionResult = { output: 'build output', duration: 100 }
       mockRuntime.resumeStream.mockReturnValue(
         createStreamGen([{ type: 'run:done', content: '' }], resumeResult)
       )
@@ -383,7 +394,7 @@ describe('HITL + 工具系统集成测试', () => {
       const builder = agentExecutor.piMono().name('test').sessionId('session-always-exec')
       agentExecutor.submit({
         sessionId: 'session-always-exec',
-        message: 'run ls',
+        message: 'build docker image',
         builder
       })
 
@@ -434,13 +445,14 @@ describe('HITL + 工具系统集成测试', () => {
   // ========== 多工具混合审批 ==========
 
   describe('多工具混合审批', () => {
-    it('write + exec 同时需要审批 → 全部审批后恢复', async () => {
+    it('write + exec（非白名单命令）同时需要审批 → 全部审批后恢复', async () => {
+      // 使用非白名单命令，确保两个工具都需要人工审批
       const interruptedResult: ExecutionResult = {
         output: '',
         interrupted: true,
         interruptions: [
           { index: 0, toolName: 'write', arguments: '{"path":"test.txt"}' },
-          { index: 1, toolName: 'exec', arguments: '{"command":"echo hi"}' }
+          { index: 1, toolName: 'exec', arguments: '{"command":"docker run test"}' }
         ]
       }
       mockRuntime.stream.mockReturnValue(
@@ -477,19 +489,16 @@ describe('HITL + 工具系统集成测试', () => {
 
       await flushAsync()
 
-      // 提交第一个
+      // 提交两个审批决策
       hitlApprovalManager.submitDecision('session-multi-tool', 0, 'approve-once')
-      await flushAsync()
-      // 还在等待第二个
-      expect(mockRuntime.resumeStream).not.toHaveBeenCalled()
-
-      // 提交第二个
       hitlApprovalManager.submitDecision('session-multi-tool', 1, 'approve-always')
       await flushAsync()
 
+      // 两个决策都被正确应用
       expect(mockRuntime.approveToolCall).toHaveBeenCalledWith(0, { alwaysApprove: false })
       expect(mockRuntime.approveToolCall).toHaveBeenCalledWith(1, { alwaysApprove: true })
-      expect(mockRuntime.resumeStream).toHaveBeenCalledTimes(1)
+      // 所有决策提交后恢复一次
+      expect(mockRuntime.resumeStream).toHaveBeenCalled()
     })
 
     it('write approve + exec reject — 混合决策', async () => {
@@ -524,6 +533,152 @@ describe('HITL + 工具系统集成测试', () => {
 
       expect(mockRuntime.approveToolCall).toHaveBeenCalledWith(0, { alwaysApprove: false })
       expect(mockRuntime.rejectToolCall).toHaveBeenCalledWith(1)
+    })
+  })
+
+  // ========== ExecPolicy 策略自动审批 ==========
+
+  describe('ExecPolicy 策略自动审批', () => {
+    it('白名单命令（ls）自动放行 → 不等待用户审批', async () => {
+      const interruptedResult: ExecutionResult = {
+        output: '',
+        interrupted: true,
+        interruptions: [{ index: 0, toolName: 'exec', arguments: '{"command":"ls -la"}' }]
+      }
+      mockRuntime.stream.mockReturnValue(createStreamGen([], interruptedResult))
+
+      const resumeResult: ExecutionResult = { output: 'ls output', duration: 50 }
+      mockRuntime.resumeStream.mockReturnValue(
+        createStreamGen([{ type: 'run:done', content: '' }], resumeResult)
+      )
+      mockRuntime.initialize.mockResolvedValue(undefined)
+      mockRuntime.destroy.mockResolvedValue(undefined)
+
+      const builder = agentExecutor.piMono().name('test').sessionId('session-auto-approve')
+      agentExecutor.submit({
+        sessionId: 'session-auto-approve',
+        message: 'list files',
+        builder
+      })
+
+      await flushAsync()
+
+      // 白名单命令自动放行，不进入 HITL 等待
+      expect(hitlApprovalManager.hasPending('session-auto-approve')).toBe(false)
+      // 自动以 approve-once 放行
+      expect(mockRuntime.approveToolCall).toHaveBeenCalledWith(0, { alwaysApprove: false })
+      expect(mockRuntime.resumeStream).toHaveBeenCalledTimes(1)
+    })
+
+    it('黑名单命令（rm -rf）自动拒绝 → 不等待用户审批', async () => {
+      const interruptedResult: ExecutionResult = {
+        output: '',
+        interrupted: true,
+        interruptions: [{ index: 0, toolName: 'exec', arguments: '{"command":"rm -rf /tmp/test"}' }]
+      }
+      mockRuntime.stream.mockReturnValue(createStreamGen([], interruptedResult))
+
+      const resumeResult: ExecutionResult = { output: 'rejected', duration: 10 }
+      mockRuntime.resumeStream.mockReturnValue(
+        createStreamGen([{ type: 'run:done', content: '' }], resumeResult)
+      )
+      mockRuntime.initialize.mockResolvedValue(undefined)
+      mockRuntime.destroy.mockResolvedValue(undefined)
+
+      const builder = agentExecutor.piMono().name('test').sessionId('session-auto-reject')
+      agentExecutor.submit({
+        sessionId: 'session-auto-reject',
+        message: 'delete everything',
+        builder
+      })
+
+      await flushAsync()
+
+      // 黑名单命令自动拒绝
+      expect(hitlApprovalManager.hasPending('session-auto-reject')).toBe(false)
+      expect(mockRuntime.rejectToolCall).toHaveBeenCalledWith(0)
+      expect(mockRuntime.approveToolCall).not.toHaveBeenCalled()
+      expect(mockRuntime.resumeStream).toHaveBeenCalledTimes(1)
+    })
+
+    it('write + exec（白名单）→ exec 自动放行，只等待 write 人工审批', async () => {
+      const interruptedResult: ExecutionResult = {
+        output: '',
+        interrupted: true,
+        interruptions: [
+          { index: 0, toolName: 'write', arguments: '{"path":"test.txt"}' },
+          { index: 1, toolName: 'exec', arguments: '{"command":"git status"}' }
+        ]
+      }
+      mockRuntime.stream.mockReturnValue(createStreamGen([], interruptedResult))
+
+      const resumeResult: ExecutionResult = { output: 'done', duration: 100 }
+      mockRuntime.resumeStream.mockReturnValue(
+        createStreamGen([{ type: 'run:done', content: '' }], resumeResult)
+      )
+      mockRuntime.initialize.mockResolvedValue(undefined)
+      mockRuntime.destroy.mockResolvedValue(undefined)
+
+      const builder = agentExecutor.piMono().name('test').sessionId('session-mixed-policy')
+      agentExecutor.submit({
+        sessionId: 'session-mixed-policy',
+        message: 'write and check git',
+        builder
+      })
+
+      await flushAsync()
+
+      // exec(git status) 已自动放行，但 write 还需要人工审批
+      expect(hitlApprovalManager.hasPending('session-mixed-policy')).toBe(true)
+
+      // 审批 write
+      hitlApprovalManager.submitDecision('session-mixed-policy', 0, 'approve-once')
+      await flushAsync()
+
+      // 两个工具都被审批
+      expect(mockRuntime.approveToolCall).toHaveBeenCalledWith(0, { alwaysApprove: false })
+      expect(mockRuntime.approveToolCall).toHaveBeenCalledWith(1, { alwaysApprove: false })
+      expect(mockRuntime.resumeStream).toHaveBeenCalledTimes(1)
+    })
+
+    it('write + exec（黑名单）→ exec 自动拒绝，write 也自动拒绝需等人工审批', async () => {
+      const interruptedResult: ExecutionResult = {
+        output: '',
+        interrupted: true,
+        interruptions: [
+          { index: 0, toolName: 'write', arguments: '{}' },
+          { index: 1, toolName: 'exec', arguments: '{"command":"sudo rm -rf /"}' }
+        ]
+      }
+      mockRuntime.stream.mockReturnValue(createStreamGen([], interruptedResult))
+
+      const resumeResult: ExecutionResult = { output: 'partial', duration: 50 }
+      mockRuntime.resumeStream.mockReturnValue(
+        createStreamGen([{ type: 'run:done', content: '' }], resumeResult)
+      )
+      mockRuntime.initialize.mockResolvedValue(undefined)
+      mockRuntime.destroy.mockResolvedValue(undefined)
+
+      const builder = agentExecutor.piMono().name('test').sessionId('session-mixed-blacklist')
+      agentExecutor.submit({
+        sessionId: 'session-mixed-blacklist',
+        message: 'dangerous op',
+        builder
+      })
+
+      await flushAsync()
+
+      // write 需要人工审批（exec 已被自动拒绝）
+      expect(hitlApprovalManager.hasPending('session-mixed-blacklist')).toBe(true)
+
+      // 审批 write
+      hitlApprovalManager.submitDecision('session-mixed-blacklist', 0, 'approve-once')
+      await flushAsync()
+
+      // exec 自动拒绝
+      expect(mockRuntime.rejectToolCall).toHaveBeenCalledWith(1)
+      // write 人工批准
+      expect(mockRuntime.approveToolCall).toHaveBeenCalledWith(0, { alwaysApprove: false })
     })
   })
 

@@ -33,6 +33,9 @@ import type { StreamSource } from './streaming/types'
 import { hitlApprovalManager, DEFAULT_HITL_TIMEOUT_MS } from './hitl/HitlApprovalManager'
 import { injectEnv } from './AgentEnvInjector'
 import { AgentEventWriter } from './AgentEventWriter'
+import { checkExecPolicy, learnExecCommand } from './sandbox/exec-policy'
+import type { HitlApprovalDecision } from '@shared/stream-protocol'
+import type { ToolApprovalInfo } from './runtime/types'
 
 // ==================== 类型定义 ====================
 
@@ -261,26 +264,55 @@ class AgentExecutor {
       const gen = runtime.stream(message)
       let result = await this.consumeAndForward(gen, emitter, eventWriter, onChunk)
 
-      // 3. HITL 循环
+      // 3. HITL 循环（含策略驱动的自动审批）
       while (result.interrupted && result.interruptions?.length) {
         log.info(
           `[AgentExecutor] HITL interrupted: sessionId=${sessionId}, tools=${result.interruptions.length}`
         )
 
-        emitter.forward({ type: 'run:interrupted', content: '' })
+        // 3a. ExecPolicy 自动决策
+        const autoDecisions = this.computePolicyDecisions(result.interruptions)
+        const needsHumanCount = autoDecisions.filter((d) => d === null).length
 
-        const decisions = await hitlApprovalManager.waitForDecisions(
-          sessionId,
-          result.interruptions.length,
-          DEFAULT_HITL_TIMEOUT_MS
-        )
+        let decisions: HitlApprovalDecision[]
 
-        if (!decisions) {
-          log.warn(`[AgentExecutor] HITL timeout: sessionId=${sessionId}`)
-          emitter.forward({ type: 'run:error', content: 'HITL approval timeout' })
-          return { ...result, output: 'HITL approval timeout' }
+        if (needsHumanCount === 0) {
+          // 全部由策略自动决策，跳过 HITL 等待
+          decisions = autoDecisions as HitlApprovalDecision[]
+          log.info(
+            `[AgentExecutor] All auto-decided by policy: sessionId=${sessionId}, ` +
+              `decisions=${JSON.stringify(decisions)}`
+          )
+        } else {
+          // 部分需要人工审批
+          emitter.forward({ type: 'run:interrupted', content: '' })
+
+          // 启动等待（创建 PendingApproval，此时 pending 已注册）
+          const decisionsPromise = hitlApprovalManager.waitForDecisions(
+            sessionId,
+            result.interruptions.length,
+            DEFAULT_HITL_TIMEOUT_MS
+          )
+
+          // 立即提交策略已决定的项（减少用户需要审批的数量）
+          for (let i = 0; i < autoDecisions.length; i++) {
+            if (autoDecisions[i] !== null) {
+              hitlApprovalManager.submitDecision(sessionId, i, autoDecisions[i]!)
+            }
+          }
+
+          const humanDecisions = await decisionsPromise
+
+          if (!humanDecisions) {
+            log.warn(`[AgentExecutor] HITL timeout: sessionId=${sessionId}`)
+            emitter.forward({ type: 'run:error', content: 'HITL approval timeout' })
+            return { ...result, output: 'HITL approval timeout' }
+          }
+
+          decisions = humanDecisions
         }
 
+        // 3b. 应用决策到 Runtime
         for (let i = 0; i < decisions.length; i++) {
           if (decisions[i] === 'reject') {
             runtime.rejectToolCall(i)
@@ -288,6 +320,22 @@ class AgentExecutor {
             runtime.approveToolCall(i, {
               alwaysApprove: decisions[i] === 'approve-always'
             })
+          }
+        }
+
+        // 3c. 学习：用户 approve-always 的 exec 命令加入动态 allowlist
+        if (result.interruptions) {
+          for (let i = 0; i < result.interruptions.length; i++) {
+            if (decisions[i] === 'approve-always' && result.interruptions[i].toolName === 'exec') {
+              try {
+                const args = JSON.parse(result.interruptions[i].arguments)
+                if (args.command) {
+                  learnExecCommand(args.command)
+                }
+              } catch {
+                // JSON 解析失败忽略
+              }
+            }
           }
         }
 
@@ -316,6 +364,53 @@ class AgentExecutor {
       await this.destroyRuntime(runtime)
       runtime = null
     }
+  }
+
+  // ========== ExecPolicy 集成 ==========
+
+  /**
+   * 为每个 HITL 中断项计算策略决策
+   *
+   * 策略只对 exec 工具生效：
+   *   - 黑名单命令 → 'reject'（自动拒绝，不打扰用户）
+   *   - 白名单命令 → 'approve-once'（自动放行，不打扰用户）
+   *   - 未知命令   → null（需用户决策）
+   *
+   * 非 exec 工具一律返回 null（交给用户决策）
+   */
+  private computePolicyDecisions(
+    interruptions: ToolApprovalInfo[]
+  ): (HitlApprovalDecision | null)[] {
+    return interruptions.map((item) => {
+      if (item.toolName !== 'exec') return null
+
+      try {
+        const args = JSON.parse(item.arguments)
+        if (!args.command || typeof args.command !== 'string') return null
+
+        const policy = checkExecPolicy(args.command)
+
+        if (policy.action === 'allow') {
+          log.info(
+            `[AgentExecutor] ExecPolicy auto-approve: command="${args.command.slice(0, 50)}", reason=${policy.reason}`
+          )
+          return 'approve-once' as HitlApprovalDecision
+        }
+
+        if (policy.action === 'deny') {
+          log.warn(
+            `[AgentExecutor] ExecPolicy auto-reject: command="${args.command.slice(0, 50)}", reason=${policy.reason}`
+          )
+          return 'reject' as HitlApprovalDecision
+        }
+
+        // action === 'ask' → 需用户决策
+        return null
+      } catch {
+        // JSON 解析失败 → 交给用户
+        return null
+      }
+    })
   }
 
   // ========== 辅助方法 ==========

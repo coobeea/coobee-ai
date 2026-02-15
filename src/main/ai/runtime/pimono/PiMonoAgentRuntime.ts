@@ -968,6 +968,26 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
               }
             }
 
+            // 命令安全策略：PiMono 无 HITL，在 Runtime wrapper 中过滤危险命令
+            if (def.name === 'exec' && typedParams.command) {
+              const { checkExecPolicy } = await import('../../sandbox/exec-policy')
+              const policy = checkExecPolicy(typedParams.command as string)
+              if (policy.action === 'deny') {
+                log.warn(
+                  `[ExecPolicy] Command rejected in PiMono: "${(typedParams.command as string).slice(0, 50)}", reason=${policy.reason}`
+                )
+                return {
+                  content: [
+                    {
+                      type: 'text',
+                      text: `Error: Command rejected by security policy: ${policy.reason}`
+                    }
+                  ],
+                  details: { name: def.name }
+                }
+              }
+            }
+
             const gen = def.execute(typedParams, signal, sandboxContext)
             let iterResult = await gen.next()
 
