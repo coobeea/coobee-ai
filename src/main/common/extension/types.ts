@@ -110,7 +110,7 @@ export interface ExtensionApi {
 
 // ==================== Extension Hook ====================
 
-/** 8 种 Agent 生命周期钩子 */
+/** 12 种 Agent 生命周期钩子 */
 export type ExtensionHookName =
   | 'before_agent_start' // modifying：注入上下文 / 替换提示词
   | 'agent_end' // void：Agent 执行完成
@@ -120,6 +120,11 @@ export type ExtensionHookName =
   | 'message_received' // void：收到用户消息
   | 'session_start' // void：会话开始
   | 'session_end' // void：会话结束
+  // Phase 1 新增（Turn + Compaction）
+  | 'turn_start' // void：轮次开始
+  | 'turn_end' // void：轮次完成
+  | 'before_compaction' // modifying：压缩前（可自定义压缩 / Memory Flush）
+  | 'after_compaction' // void：压缩完成
 
 /** 执行模式 */
 export type ExtensionHookMode = 'void' | 'modifying'
@@ -132,7 +137,12 @@ export const EXTENSION_HOOK_MODE: Record<ExtensionHookName, ExtensionHookMode> =
   tool_result_persist: 'modifying',
   message_received: 'void',
   session_start: 'void',
-  session_end: 'void'
+  session_end: 'void',
+  // Phase 1 新增
+  turn_start: 'void',
+  turn_end: 'void',
+  before_compaction: 'modifying',
+  after_compaction: 'void'
 }
 
 // ---- 各 Hook 的 Event / Result ----
@@ -193,6 +203,58 @@ export interface SessionEvent {
   sessionId: string
 }
 
+// ---- Phase 1 新增：Turn + Compaction ----
+
+export interface TurnStartEvent {
+  sessionId: string
+  /** 轮次索引（从 1 开始） */
+  turnIndex: number
+}
+
+export interface TurnEndEvent {
+  sessionId: string
+  /** 轮次索引 */
+  turnIndex: number
+  /** 本轮耗时（ms） */
+  durationMs: number
+  /** 本轮工具调用次数 */
+  toolCallCount: number
+  /** 本轮 token 用量（如果底层 Runtime 提供） */
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+  }
+}
+
+export interface BeforeCompactionEvent {
+  sessionId: string
+  /** 待压缩消息数 */
+  messageCount: number
+  /** 当前 token 总数 */
+  totalTokens: number
+  /** 触发阈值 */
+  threshold: number
+}
+
+export interface BeforeCompactionResult {
+  /** 跳过默认压缩（由扩展自行实现压缩） */
+  skipDefault?: boolean
+  /** 自定义压缩摘要（替换默认摘要） */
+  customSummary?: string
+}
+
+export interface AfterCompactionEvent {
+  sessionId: string
+  /** 压缩前 token 数 */
+  originalTokens: number
+  /** 压缩后 token 数 */
+  compressedTokens: number
+  /** 压缩比 */
+  compressionRatio: number
+  /** 压缩耗时（ms） */
+  duration: number
+}
+
 /** Event 映射 */
 export type ExtensionHookEventMap = {
   before_agent_start: BeforeAgentStartEvent
@@ -203,6 +265,11 @@ export type ExtensionHookEventMap = {
   message_received: MessageReceivedEvent
   session_start: SessionEvent
   session_end: SessionEvent
+  // Phase 1 新增
+  turn_start: TurnStartEvent
+  turn_end: TurnEndEvent
+  before_compaction: BeforeCompactionEvent
+  after_compaction: AfterCompactionEvent
 }
 
 /** Result 映射 */
@@ -215,6 +282,11 @@ export type ExtensionHookResultMap = {
   message_received: void
   session_start: void
   session_end: void
+  // Phase 1 新增
+  turn_start: void
+  turn_end: void
+  before_compaction: BeforeCompactionResult | void
+  after_compaction: void
 }
 
 /** Handler 签名 */

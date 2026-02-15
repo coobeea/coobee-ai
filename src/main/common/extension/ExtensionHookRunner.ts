@@ -21,7 +21,8 @@ import {
   type ExtensionHookResultMap,
   type BeforeAgentStartResult,
   type BeforeToolCallResult,
-  type ToolResultPersistResult
+  type ToolResultPersistResult,
+  type BeforeCompactionResult
 } from './types'
 
 export class ExtensionHookRunner {
@@ -136,6 +137,12 @@ function mergeResult(
         next as ToolResultPersistResult
       ) as unknown as Record<string, unknown>
 
+    case 'before_compaction':
+      return mergeBeforeCompaction(
+        prev as BeforeCompactionResult,
+        next as BeforeCompactionResult
+      ) as unknown as Record<string, unknown>
+
     default:
       // 默认：后覆盖前
       return { ...prev, ...next }
@@ -169,6 +176,18 @@ function mergeToolResultPersist(
 ): ToolResultPersistResult {
   return {
     result: next.result ?? prev.result
+  }
+}
+
+function mergeBeforeCompaction(
+  prev: BeforeCompactionResult,
+  next: BeforeCompactionResult
+): BeforeCompactionResult {
+  return {
+    // 任一扩展要求跳过默认压缩 → 则跳过（同 block 语义）
+    skipDefault: prev.skipDefault || next.skipDefault,
+    // 自定义摘要：后者覆盖前者
+    customSummary: next.customSummary ?? prev.customSummary
   }
 }
 

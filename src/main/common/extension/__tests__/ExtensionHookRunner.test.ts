@@ -531,6 +531,100 @@ describe('ExtensionHookRunner', () => {
     })
   })
 
+  // ---- Phase 1: before_compaction 合并 ----
+
+  it('before_compaction 合并 — skipDefault 任一为 true', async () => {
+    registry.registerHook({
+      extensionId: 'ext-a',
+      hookName: 'before_compaction',
+      handler: async () => ({ skipDefault: false }),
+      priority: 50
+    })
+    registry.registerHook({
+      extensionId: 'ext-b',
+      hookName: 'before_compaction',
+      handler: async () => ({ skipDefault: true, customSummary: 'my summary' }),
+      priority: 10
+    })
+
+    const result = await runner.runModifyingHook('before_compaction', {
+      sessionId: 's1',
+      messageCount: 10,
+      totalTokens: 50000,
+      threshold: 40000
+    })
+    expect(result!.skipDefault).toBe(true)
+    expect(result!.customSummary).toBe('my summary')
+  })
+
+  it('before_compaction 合并 — customSummary 后覆盖前', async () => {
+    registry.registerHook({
+      extensionId: 'ext-a',
+      hookName: 'before_compaction',
+      handler: async () => ({ customSummary: 'first' }),
+      priority: 50
+    })
+    registry.registerHook({
+      extensionId: 'ext-b',
+      hookName: 'before_compaction',
+      handler: async () => ({ customSummary: 'second' }),
+      priority: 10
+    })
+
+    const result = await runner.runModifyingHook('before_compaction', {
+      sessionId: 's1',
+      messageCount: 5,
+      totalTokens: 30000,
+      threshold: 25000
+    })
+    expect(result!.customSummary).toBe('second')
+  })
+
+  it('turn_start / turn_end / after_compaction — void hook 正常执行', async () => {
+    const calls: string[] = []
+    registry.registerHook({
+      extensionId: 'ext-a',
+      hookName: 'turn_start',
+      handler: async () => {
+        calls.push('turn_start')
+      },
+      priority: 0
+    })
+    registry.registerHook({
+      extensionId: 'ext-b',
+      hookName: 'turn_end',
+      handler: async () => {
+        calls.push('turn_end')
+      },
+      priority: 0
+    })
+    registry.registerHook({
+      extensionId: 'ext-c',
+      hookName: 'after_compaction',
+      handler: async () => {
+        calls.push('after_compaction')
+      },
+      priority: 0
+    })
+
+    await runner.runVoidHook('turn_start', { sessionId: 's1', turnIndex: 1 })
+    await runner.runVoidHook('turn_end', {
+      sessionId: 's1',
+      turnIndex: 1,
+      durationMs: 500,
+      toolCallCount: 2
+    })
+    await runner.runVoidHook('after_compaction', {
+      sessionId: 's1',
+      originalTokens: 50000,
+      compressedTokens: 15000,
+      compressionRatio: 0.3,
+      duration: 200
+    })
+
+    expect(calls).toEqual(['turn_start', 'turn_end', 'after_compaction'])
+  })
+
   // 中间 handler 抛错但前后 handler 结果正常合并
   it('三个 handler 中间抛错 — 前后结果正常合并', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})

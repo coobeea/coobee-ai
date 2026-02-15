@@ -176,17 +176,35 @@ class AgentExecutor {
       runtime = await builder.sessionId(sessionId).build()
       const emitter = this.createEmitter(sessionId, runtime)
 
-      // 2. 透传 stream()
+      // 2. 透传 stream()（同步触发 Extension Hook）
       const gen = runtime.stream(message)
       let eventSeq = 0
+      let turnStartTime = 0
+      let turnToolCallCount = 0
+
       let r = await gen.next()
       while (!r.done) {
-        emitter.forward(r.value)
-        eventWriter.append(r.value, ++eventSeq)
-        if (r.value.type === 'run:error') {
-          log.error(`[AgentExecutor] API error: sessionId=${sessionId}, error=${r.value.content}`)
+        const chunk = r.value
+        emitter.forward(chunk)
+        eventWriter.append(chunk, ++eventSeq)
+        if (chunk.type === 'run:error') {
+          log.error(`[AgentExecutor] API error: sessionId=${sessionId}, error=${chunk.content}`)
         }
-        yield r.value
+
+        // Extension Hook 触发（与 consumeAndForward 一致）
+        this.fireChunkHooks(chunk, sessionId, {
+          getTurnStartTime: () => turnStartTime,
+          getTurnToolCallCount: () => turnToolCallCount
+        })
+
+        if (chunk.type === 'turn:start') {
+          turnStartTime = Date.now()
+          turnToolCallCount = 0
+        } else if (chunk.type === 'tool:done') {
+          turnToolCallCount++
+        }
+
+        yield chunk
         r = await gen.next()
       }
 
@@ -207,25 +225,140 @@ class AgentExecutor {
 
   /**
    * 消费 AsyncGenerator 并 forward 到 EventBus + 写入 events.jsonl
+   *
+   * 同时在关键流式事件上触发 Extension Hook：
+   *   - turn:start → turn_start (void)
+   *   - turn:done  → turn_end (void)
+   *   - compression:start → before_compaction (void, 通知型；modifying 在 OpenAI Runtime 内部处理)
+   *   - compression:done  → after_compaction (void)
    */
   private async consumeAndForward(
     gen: AsyncGenerator<StreamChunk, ExecutionResult, unknown>,
     emitter: IStreamEmitter,
     eventWriter: AgentEventWriter,
+    sessionId: string,
     onChunk?: (chunk: StreamChunk) => void
   ): Promise<ExecutionResult> {
     let eventSeq = 0
+
+    // Turn 状态跟踪（用于 turn_end 事件数据）
+    let turnStartTime = 0
+    let turnToolCallCount = 0
+
     let r = await gen.next()
     while (!r.done) {
-      emitter.forward(r.value)
-      eventWriter.append(r.value, ++eventSeq)
-      if (r.value.type === 'run:error') {
-        log.error(`[AgentExecutor] API error in execute: error=${r.value.content}`)
+      const chunk = r.value
+
+      emitter.forward(chunk)
+      eventWriter.append(chunk, ++eventSeq)
+
+      if (chunk.type === 'run:error') {
+        log.error(`[AgentExecutor] API error in execute: error=${chunk.content}`)
       }
-      onChunk?.(r.value)
+
+      // === Extension Hook 触发（fire-and-forget，不阻塞流） ===
+      this.fireChunkHooks(chunk, sessionId, {
+        getTurnStartTime: () => turnStartTime,
+        getTurnToolCallCount: () => turnToolCallCount
+      })
+
+      // Turn 状态更新
+      if (chunk.type === 'turn:start') {
+        turnStartTime = Date.now()
+        turnToolCallCount = 0
+      } else if (chunk.type === 'tool:done') {
+        turnToolCallCount++
+      }
+
+      onChunk?.(chunk)
       r = await gen.next()
     }
     return r.value
+  }
+
+  /**
+   * 根据 StreamChunk 类型触发对应的 Extension Hook
+   *
+   * 全部 fire-and-forget（不阻塞流式输出）。
+   *
+   * before_compaction：
+   *   - 在此仅作为通知（PiMono 的 SDK 内置压缩无法拦截）
+   *   - OpenAI Runtime 在 compressSessionWithChunks 中单独处理 modifying 逻辑
+   *   - 为避免重复触发，OpenAI 会在 chunk.data 中标记 hookHandled: true
+   */
+  private fireChunkHooks(
+    chunk: StreamChunk,
+    sessionId: string,
+    turnState: {
+      getTurnStartTime: () => number
+      getTurnToolCallCount: () => number
+    }
+  ): void {
+    // 只关心这 4 种事件类型
+    if (
+      chunk.type !== 'turn:start' &&
+      chunk.type !== 'turn:done' &&
+      chunk.type !== 'compression:start' &&
+      chunk.type !== 'compression:done'
+    ) {
+      return
+    }
+
+    const fire = async (): Promise<void> => {
+      const { ExtensionManager } = await import('../common/extension')
+      const runner = ExtensionManager.getHookRunner()
+      if (!runner) return
+
+      const data = chunk.data as Record<string, unknown> | undefined
+
+      switch (chunk.type) {
+        case 'turn:start':
+          await runner.runVoidHook('turn_start', {
+            sessionId,
+            turnIndex: (data?.turnIndex as number) || 1
+          })
+          break
+
+        case 'turn:done':
+          await runner.runVoidHook('turn_end', {
+            sessionId,
+            turnIndex: (data?.turnIndex as number) || 1,
+            durationMs: Date.now() - turnState.getTurnStartTime(),
+            toolCallCount: turnState.getTurnToolCallCount()
+          })
+          break
+
+        case 'compression:start': {
+          // 如果 OpenAI Runtime 已在压缩前调用过 modifying Hook，跳过
+          if (data?.hookHandled) break
+          // 通知型：扩展可在此做 Memory Flush 等操作
+          // 注意：对 PiMono 来说 skipDefault 无效（SDK 自行管理压缩）
+          await runner.run('before_compaction', {
+            sessionId,
+            messageCount: 0, // PiMono 不提供此信息
+            totalTokens: (data?.totalTokens as number) || 0,
+            threshold: (data?.threshold as number) || 0
+          })
+          break
+        }
+
+        case 'compression:done': {
+          await runner.runVoidHook('after_compaction', {
+            sessionId,
+            originalTokens: (data?.originalTokens as number) || 0,
+            compressedTokens: (data?.summaryTokens as number) || 0,
+            compressionRatio: (data?.compressionRatio as number) || 0,
+            duration: (data?.duration as number) || 0
+          })
+          break
+        }
+      }
+    }
+
+    // Fire-and-forget：Hook 执行不阻塞流式输出
+    fire().catch((err) => {
+      log.warn(`[AgentExecutor] Chunk hook failed for ${chunk.type}:`, err)
+    })
   }
 
   /**
@@ -263,7 +396,7 @@ class AgentExecutor {
 
       // 2. 流式执行（HITL 在 before_tool_call Hook 中自动处理）
       const gen = runtime.stream(message)
-      const result = await this.consumeAndForward(gen, emitter, eventWriter, onChunk)
+      const result = await this.consumeAndForward(gen, emitter, eventWriter, sessionId, onChunk)
 
       const duration = Date.now() - startTime
 
