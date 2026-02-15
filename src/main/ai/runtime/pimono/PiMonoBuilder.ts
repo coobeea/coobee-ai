@@ -6,6 +6,9 @@
  */
 
 import path from 'node:path'
+
+import type { ProviderConfig } from '@main/ai/provider/types'
+
 import type { AgentRuntime } from '../AgentRuntime'
 import type { AgentMode, ToolDefinition, SkillDefinition } from '../types'
 import type { PiMonoAgentRuntimeOptions, ThinkingLevel } from './types'
@@ -31,6 +34,8 @@ export class PiMonoBuilder {
   private _retry?: { enabled?: boolean; maxRetries?: number; baseDelayMs?: number }
   private _contextDir?: string
   private _sandboxContext?: import('../../sandbox/types').SandboxContext
+  private _providerConfig?: ProviderConfig
+  private _providerModelId?: string
 
   /** Agent 名称 */
   name(name: string): this {
@@ -167,19 +172,34 @@ export class PiMonoBuilder {
     return this
   }
 
+  /**
+   * 从 ProviderConfig 设置模型参数
+   *
+   * 自动设置 apiKey、baseURL、model（从 ProviderConfig 中提取）。
+   * 优先级高于 .env 环境变量。
+   */
+  fromProviderConfig(config: ProviderConfig, modelId?: string): this {
+    this._providerConfig = config
+    this._providerModelId = modelId
+    return this
+  }
+
   /** 构建并初始化 Runtime（内部方法，由 Executor 调用） */
   async build(defaultSessionDir?: string): Promise<AgentRuntime> {
-    const apiKey = this._apiKey || process.env.VITE_LLM_API_KEY
+    // 解析 API Key: providerConfig > 显式设置 > 环境变量
+    const apiKey = this.resolveApiKey()
     if (!apiKey) {
-      throw new Error('API Key 未配置：请通过 .apiKey() 或 VITE_LLM_API_KEY 环境变量设置')
+      throw new Error(
+        'API Key 未配置：请通过 .fromProviderConfig() / .apiKey() 或 VITE_LLM_API_KEY 环境变量设置'
+      )
     }
 
     const opts: PiMonoAgentRuntimeOptions = {
       name: this._name,
       instructions: this._instructions,
       apiKey,
-      model: this._model || process.env.VITE_LLM_MODEL || 'MiniMax-M2.1',
-      baseURL: this._baseURL || process.env.VITE_LLM_BASE_URL || 'https://api.minimaxi.com/v1'
+      model: this.resolveModel(),
+      baseURL: this.resolveBaseURL()
     }
 
     // 可选字段：仅在设置时传入，避免覆盖 Runtime 的默认值
@@ -208,6 +228,35 @@ export class PiMonoBuilder {
     await runtime.initialize()
 
     return runtime
+  }
+
+  // ─── 解析辅助方法（ProviderConfig > 显式设置 > 环境变量） ───
+
+  private resolveApiKey(): string | undefined {
+    if (this._apiKey) return this._apiKey
+    if (this._providerConfig?.apiKey) {
+      // 如果 apiKey 是 ${VAR} 模板，尝试从 env 解析
+      const key = this._providerConfig.apiKey
+      const match = key.match(/^\$\{([A-Za-z_][A-Za-z0-9_]*)}$/)
+      if (match) {
+        return process.env[match[1]] || key
+      }
+      return key
+    }
+    return process.env.VITE_LLM_API_KEY
+  }
+
+  private resolveModel(): string {
+    if (this._model) return this._model
+    if (this._providerConfig && this._providerModelId) return this._providerModelId
+    if (this._providerConfig?.models?.[0]) return this._providerConfig.models[0].id
+    return process.env.VITE_LLM_MODEL || 'MiniMax-M2.1'
+  }
+
+  private resolveBaseURL(): string {
+    if (this._baseURL) return this._baseURL
+    if (this._providerConfig?.baseUrl) return this._providerConfig.baseUrl
+    return process.env.VITE_LLM_BASE_URL || 'https://api.minimaxi.com/v1'
   }
 }
 

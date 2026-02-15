@@ -33,6 +33,8 @@ import type { StreamSource } from './streaming/types'
 import { hitlApprovalManager } from './hitl/HitlApprovalManager'
 import { injectEnv } from './AgentEnvInjector'
 import { AgentEventWriter } from './AgentEventWriter'
+import type { ProviderRegistry } from './provider/ProviderRegistry'
+import type { ModelSelector } from './provider/ModelSelector'
 
 // ==================== 类型定义 ====================
 
@@ -61,9 +63,34 @@ export interface SessionStatus {
 
 // ==================== AgentExecutor ====================
 
+/** Provider 系统接口 */
+export interface ProviderSystem {
+  registry: ProviderRegistry
+  selector: ModelSelector
+}
+
 class AgentExecutor {
   /** 正在执行的 session 集合 */
   private busySessions = new Map<string, { startedAt: number }>()
+
+  /** Provider 系统（初始化后注入） */
+  private providerSystem: ProviderSystem | null = null
+
+  // ========== Provider 系统 ==========
+
+  /**
+   * 注入 Provider 系统（应用初始化时调用）
+   */
+  setProviderSystem(system: ProviderSystem): void {
+    this.providerSystem = system
+  }
+
+  /**
+   * 获取 Provider 系统（chat.ts 等消费者使用）
+   */
+  getProviderSystem(): ProviderSystem | null {
+    return this.providerSystem
+  }
 
   // ========== Builder 工厂 ==========
 

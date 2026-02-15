@@ -15,7 +15,10 @@ export interface AgentConfigData {
   name: string
   description?: string
   instructions: string
+  /** @deprecated 使用 modelRef 代替。仍向后兼容，优先读取 modelRef */
   model?: string
+  /** 模型引用（"provider/model" 格式，如 "aliyun/qwen3-max"） */
+  modelRef?: string
   tools?: string[] // 工具 ID 列表
   skills?: string[] // 技能 ID 列表
   metadata?: Record<string, unknown>
@@ -71,7 +74,7 @@ export class AgentConfigStore implements IAgentConfigStore {
   }
 
   /**
-   * 初始化存储（创建表）
+   * 初始化存储（创建表 + 迁移）
    */
   async initialize(): Promise<void> {
     const schemaPath = path.join(__dirname, 'schemas', 'agent_configs.sql')
@@ -85,6 +88,20 @@ export class AgentConfigStore implements IAgentConfigStore {
 
     for (const statement of statements) {
       await this.db.execute(statement)
+    }
+
+    // 迁移：添加 model_ref 列（如果不存在）
+    await this.migrateModelRef()
+  }
+
+  /**
+   * 迁移：添加 model_ref 列
+   */
+  private async migrateModelRef(): Promise<void> {
+    try {
+      await this.db.execute(`ALTER TABLE agent_configs ADD COLUMN model_ref TEXT`)
+    } catch {
+      // 列已存在，忽略
     }
   }
 
@@ -141,6 +158,10 @@ export class AgentConfigStore implements IAgentConfigStore {
     if (config.model !== undefined) {
       updates.push('model = ?')
       values.push(config.model)
+    }
+    if (config.modelRef !== undefined) {
+      updates.push('model_ref = ?')
+      values.push(config.modelRef)
     }
     if (config.tools !== undefined) {
       updates.push('tools = ?')
@@ -211,6 +232,7 @@ export class AgentConfigStore implements IAgentConfigStore {
       description: (row.description as string | undefined) || undefined,
       instructions: row.instructions as string,
       model: (row.model as string | undefined) || 'gpt-4o',
+      modelRef: (row.model_ref as string | undefined) || undefined,
       tools: row.tools ? JSON.parse(row.tools as string) : undefined,
       metadata: row.metadata ? JSON.parse(row.metadata as string) : undefined,
       createdAt: row.created_at as number,

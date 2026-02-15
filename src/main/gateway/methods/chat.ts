@@ -13,6 +13,7 @@
 import { log } from '@main/common/logger'
 import { agentExecutor } from '@main/ai/AgentExecutor'
 import { builtinTools } from '@main/ai/tools'
+import { resolveApiKey } from '@main/ai/provider/ApiKeyResolver'
 import { GatewayErrorCode, GatewayMethodError } from '../protocol'
 import type { MethodGroup } from '../protocol'
 import type { AgentMode } from '@main/ai/runtime/types'
@@ -33,7 +34,14 @@ function generateSessionId(): string {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-/** 创建 Builder（根据模式决定工具集合） */
+/**
+ * 创建 Builder（根据模式决定工具集合）
+ *
+ * 模型解析优先级：
+ * 1. ModelSelector（如果配置系统已初始化）
+ * 2. ProviderRegistry（如果有匹配的 Provider）
+ * 3. .env 环境变量（兜底，向后兼容）
+ */
 function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.piMono> {
   const builder = agentExecutor
     .piMono()
@@ -49,7 +57,35 @@ function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.pi
     builder.instructions(CHAT_INSTRUCTIONS).tools(chatTools)
   }
 
+  // 尝试从 Provider 系统获取模型配置
+  applyProviderConfig(builder)
+
   return builder
+}
+
+/**
+ * 尝试从 Provider 系统注入模型配置
+ *
+ * 如果 Provider 系统未初始化或无可用配置，则不做任何操作（使用 .env 兜底）。
+ */
+function applyProviderConfig(builder: ReturnType<typeof agentExecutor.piMono>): void {
+  try {
+    const providerSystem = agentExecutor.getProviderSystem?.()
+    if (!providerSystem) return
+
+    const { selector, registry } = providerSystem
+    const ref = selector.resolve()
+    const provider = registry.get(ref.provider)
+    if (!provider) return
+
+    // 解析 API Key
+    const apiKey = resolveApiKey(provider.apiKey, provider.id)
+    if (!apiKey) return
+
+    builder.fromProviderConfig(provider, ref.model)
+  } catch {
+    // Provider 系统未就绪，静默回退到 .env
+  }
 }
 
 export const chatMethods: MethodGroup = {

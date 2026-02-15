@@ -76,6 +76,20 @@ export class ConfigStore {
   }
 }
 
+/**
+ * 全局 ConfigStore 实例（应用初始化时设置）
+ *
+ * Gateway 方法通过此变量访问 ConfigStore。
+ */
+export let configStoreInstance: ConfigStore | null = null
+
+/**
+ * 设置全局 ConfigStore 实例
+ */
+export function setConfigStoreInstance(store: ConfigStore): void {
+  configStoreInstance = store
+}
+
 /** 递归深度合并 */
 function deepMerge(
   target: Record<string, unknown>,
