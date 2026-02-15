@@ -1,0 +1,132 @@
+/**
+ * 配置文件监听器
+ *
+ * 使用 chokidar 监听配置文件变更，自动 diff 并触发回调。
+ */
+import { watch, type FSWatcher } from 'chokidar'
+
+import { ConfigLoader } from './ConfigLoader'
+import { buildReloadPlan, diffConfigPaths } from './ConfigDiff'
+import type { ReloadPlan } from './types'
+
+/** 默认去抖时间 */
+const DEFAULT_DEBOUNCE_MS = 300
+
+export class ConfigWatcher {
+  private watcher: FSWatcher | null = null
+  private handlers: Array<(plan: ReloadPlan) => void> = []
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null
+  private debounceMs: number
+  private lastHash: string | null = null
+  private lastConfig: unknown = null
+
+  constructor(
+    private loader: ConfigLoader,
+    opts?: { debounceMs?: number }
+  ) {
+    this.debounceMs = opts?.debounceMs ?? DEFAULT_DEBOUNCE_MS
+  }
+
+  /**
+   * 启动监听
+   */
+  start(): void {
+    if (this.watcher) return
+
+    // 记录当前状态
+    const snap = this.loader.snapshot()
+    this.lastHash = snap.hash
+    this.lastConfig = snap.config
+
+    this.watcher = watch(this.loader.configPath, {
+      persistent: true,
+      ignoreInitial: true,
+      awaitWriteFinish: {
+        stabilityThreshold: 100,
+        pollInterval: 50
+      }
+    })
+
+    this.watcher.on('change', () => this.onFileChange())
+    this.watcher.on('add', () => this.onFileChange())
+  }
+
+  /**
+   * 停止监听
+   */
+  stop(): void {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer)
+      this.debounceTimer = null
+    }
+    if (this.watcher) {
+      void this.watcher.close()
+      this.watcher = null
+    }
+  }
+
+  /**
+   * 注册变更回调
+   */
+  onReload(handler: (plan: ReloadPlan) => void): void {
+    this.handlers.push(handler)
+  }
+
+  /**
+   * 移除变更回调
+   */
+  offReload(handler: (plan: ReloadPlan) => void): void {
+    this.handlers = this.handlers.filter((h) => h !== handler)
+  }
+
+  /** 是否正在监听 */
+  get isWatching(): boolean {
+    return this.watcher !== null
+  }
+
+  // ─── 私有方法 ─────────────────────────────────────
+
+  private onFileChange(): void {
+    // 去抖
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer)
+    }
+    this.debounceTimer = setTimeout(() => {
+      this.processChange()
+    }, this.debounceMs)
+  }
+
+  private processChange(): void {
+    // 保存旧配置
+    const prevConfig = this.lastConfig
+
+    // 清除缓存，重新读取
+    this.loader.clearCache()
+    const nextSnap = this.loader.snapshot()
+
+    // 如果 hash 没变，跳过
+    if (nextSnap.hash === this.lastHash) return
+
+    this.lastHash = nextSnap.hash
+    this.lastConfig = nextSnap.config
+
+    // 如果新配置无效，不触发回调
+    if (!nextSnap.valid) return
+
+    // Diff
+    const changedPaths = diffConfigPaths(prevConfig, nextSnap.config)
+    if (changedPaths.length === 0) return
+
+    // 生成重载计划
+    const plan = buildReloadPlan(changedPaths)
+
+    // 触发回调
+    for (const handler of this.handlers) {
+      try {
+        handler(plan)
+      } catch {
+        // 回调错误不影响其他回调
+      }
+    }
+  }
+}
