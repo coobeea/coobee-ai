@@ -2,8 +2,8 @@
  * Gateway Chat 方法组
  *
  * 支持两种运行模式：
- *   - chat: 纯对话 — 无工具、无执行协议，快速响应
- *   - agent: 完整 Agent — 工具 + 执行协议 + Skill + HITL
+ *   - chat: 对话 + 文件操作 — 禁用 exec（脚本执行），保留文件读写等工具
+ *   - agent: 完整 Agent — 全部工具 + 执行协议 + Skill + HITL
  *
  * 方法：
  *   chat.send  — 发送消息并启动流式处理（支持 mode 参数）
@@ -17,8 +17,12 @@ import { GatewayErrorCode, GatewayMethodError } from '../protocol'
 import type { MethodGroup } from '../protocol'
 import type { AgentMode } from '@main/ai/runtime/types'
 
-/** 默认 Chat 模式指令（简洁，无工具提示） */
-const CHAT_INSTRUCTIONS = '你是一个友好、专业的 AI 助手。请用中文回答用户的问题。'
+/** Chat 模式禁用的工具名称列表 */
+const CHAT_MODE_BLOCKED_TOOLS = new Set(['exec'])
+
+/** 默认 Chat 模式指令（有文件工具，但无脚本执行） */
+const CHAT_INSTRUCTIONS =
+  '你是一个友好、专业的 AI 助手。你可以读写文件来辅助回答问题，但不能执行脚本命令。请用中文回答用户的问题。'
 
 /** 默认 Agent 模式指令（完整，有工具能力） */
 const AGENT_INSTRUCTIONS =
@@ -29,7 +33,7 @@ function generateSessionId(): string {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-/** 创建 Builder（根据模式决定是否加载工具） */
+/** 创建 Builder（根据模式决定工具集合） */
 function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.piMono> {
   const builder = agentExecutor
     .piMono()
@@ -40,8 +44,9 @@ function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.pi
   if (agentMode === 'agent') {
     builder.instructions(AGENT_INSTRUCTIONS).tools(builtinTools)
   } else {
-    builder.instructions(CHAT_INSTRUCTIONS)
-    // Chat 模式：不设置 tools，LLM 只做纯对话
+    // Chat 模式：加载工具但排除 exec（脚本执行）
+    const chatTools = builtinTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name))
+    builder.instructions(CHAT_INSTRUCTIONS).tools(chatTools)
   }
 
   return builder

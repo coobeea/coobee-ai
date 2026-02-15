@@ -32,6 +32,7 @@ import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolCategory } from '../types'
 import { log } from '@main/common/logger'
+import { updateIndexEntry } from './memory-index'
 
 /** 支持的记忆文件扩展名 */
 const MEMORY_EXTENSIONS = ['.md', '.json', '.txt', '.yaml', '.yml']
@@ -237,6 +238,8 @@ export const memoryTool: ToolDefinition = {
         const separator = existing.endsWith('\n') ? '\n' : '\n\n'
         fs.writeFileSync(filePath, existing + separator + content, 'utf-8')
         log.info(`[memory] Appended: ${scope}/${file}`)
+        // 更新记忆索引
+        tryUpdateIndex(roots.memorySubDir, file, filePath)
         return {
           success: true,
           llmContent: `Memory file appended: ${scope}/${file}`
@@ -254,6 +257,8 @@ export const memoryTool: ToolDefinition = {
       fs.writeFileSync(filePath, finalContent, 'utf-8')
 
       log.info(`[memory] ${exists ? 'Updated' : 'Created'}: ${scope}/${file}`)
+      // 更新记忆索引
+      tryUpdateIndex(roots.memorySubDir, file, filePath)
 
       return {
         success: true,
@@ -715,4 +720,24 @@ function resolveMemoryPath(memoryRoot: string, file: string): string | null {
   }
 
   return resolved
+}
+
+// ==================== 索引更新辅助 ====================
+
+/**
+ * 安全更新记忆索引（不阻塞主流程）
+ *
+ * 在写入记忆文件后调用。如果文件在 memorySubDir 中，更新索引。
+ * 如果是 MEMORY.md 在 primaryDir 中，跳过索引更新（不在子目录中）。
+ */
+function tryUpdateIndex(memorySubDir: string, file: string, filePath: string): void {
+  try {
+    const dir = path.dirname(filePath)
+    // 只索引 memorySubDir 下的文件
+    if (dir === memorySubDir) {
+      updateIndexEntry(memorySubDir, path.basename(filePath))
+    }
+  } catch (err) {
+    log.warn(`[memory] Index update failed for ${file}:`, err)
+  }
 }

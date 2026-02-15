@@ -13,15 +13,15 @@
 | ---- | ---------------------------------- | ------ | ------ | --------- |
 | P1-1 | 工具策略分层（Tool Policy Layers） | 高     | 中     | ✅ 已完成 |
 | P1-2 | 工具管线标准化（Tool Pipeline）    | 高     | 中     | ✅ 已完成 |
-| P1-3 | PiMonoAgentRuntime 拆分            | 中     | 中     | 待实施    |
+| P1-3 | PiMonoAgentRuntime 拆分            | 中     | 中     | ✅ 已完成 |
 | P2-1 | 死代码清理与模块边界标注           | 中     | 低     | ✅ 已完成 |
 | P2-2 | HitlApprovalManager 清理           | 低     | 低     | ✅ 已完成 |
 | P2-3 | Skill 命名统一 + 文档更新          | 低     | 低     | ✅ 已完成 |
-| P3-1 | ErrorRecoveryChain 增强            | 中     | 中     | 待实施    |
-| P3-2 | 记忆索引层（Memory Index）         | 中     | 高     | 待实施    |
+| P3-1 | ErrorRecoveryChain 增强            | 中     | 中     | ✅ 已完成 |
+| P3-2 | 记忆索引层（Memory Index）         | 中     | 高     | ✅ 已完成 |
 | P3-3 | Hook 容错机制                      | 中     | 低     | ✅ 已完成 |
 | P4-1 | 多 Agent 路线评估                  | 高     | 高     | ⏸️ 暂缓   |
-| P4-2 | Extension API 解耦                 | 中     | 中     | 待实施    |
+| P4-2 | Extension API 解耦                 | 中     | 中     | ✅ 已完成 |
 | P4-3 | 并发控制升级                       | 低     | 中     | ⏸️ 暂缓   |
 | NEW  | Chat/Agent 双模式支持              | 高     | 中     | ✅ 已完成 |
 
@@ -364,22 +364,26 @@ interface LaneConfig {
 
 > 以下为前两轮路线图（04-improvement-roadmap.md）中已完成的改进项
 
-| 编号      | 改进项                                                          | 完成日期   |
-| --------- | --------------------------------------------------------------- | ---------- |
-| R2-P1-1   | HITL 独立于 SDK（tool-approval Extension）                      | 2026-02-14 |
-| R2-P1-2   | path-guard 符号链接测试补充                                     | 2026-02-14 |
-| R2-P1-3   | Extension Skill 发现 + 优先级覆盖                               | 2026-02-14 |
-| R2-P2-1~4 | Memory 文件驱动系统                                             | 2026-02-13 |
-| R2-P3-1   | 评估结果 → 记忆                                                 | 2026-02-13 |
-| R2-P3-2   | self-reflection 经验沉淀                                        | 2026-02-14 |
-| R2-P3-3   | 执行协议 Skill 化                                               | 2026-02-14 |
-| R2-P4-1   | Extension 来源校验                                              | 2026-02-14 |
-| R2-P4-2   | ErrorRecoveryChain 基础框架                                     | 2026-02-14 |
-| R2-P4-3   | write/edit 版本追踪                                             | 2026-02-14 |
-| R3-P1-1   | 工具策略分层（group: 支持 + confirm + mergeToolPolicies）       | 2026-02-15 |
-| R3-P1-2   | 工具管线标准化（pipeline.ts + 消除 read/write/edit 样板）       | 2026-02-15 |
-| R3-P2-1   | 死代码标注（memory/ orchestration/ swarm/ @experimental）       | 2026-02-15 |
-| R3-P2-2   | HitlApprovalManager 批量 API @deprecated + exec-policy 注释更新 | 2026-02-15 |
-| R3-P2-3   | Skill 命名统一 kebab-case + 删除重复 self-reflection            | 2026-02-15 |
-| R3-P3-3   | Hook 执行时间监控（warn >1s, error >5s）                        | 2026-02-15 |
-| R3-NEW    | Chat/Agent 双模式（AgentMode 类型 + Builder.mode() + 条件注入） | 2026-02-15 |
+| 编号      | 改进项                                                                                | 完成日期   |
+| --------- | ------------------------------------------------------------------------------------- | ---------- |
+| R2-P1-1   | HITL 独立于 SDK（tool-approval Extension）                                            | 2026-02-14 |
+| R2-P1-2   | path-guard 符号链接测试补充                                                           | 2026-02-14 |
+| R2-P1-3   | Extension Skill 发现 + 优先级覆盖                                                     | 2026-02-14 |
+| R2-P2-1~4 | Memory 文件驱动系统                                                                   | 2026-02-13 |
+| R2-P3-1   | 评估结果 → 记忆                                                                       | 2026-02-13 |
+| R2-P3-2   | self-reflection 经验沉淀                                                              | 2026-02-14 |
+| R2-P3-3   | 执行协议 Skill 化                                                                     | 2026-02-14 |
+| R2-P4-1   | Extension 来源校验                                                                    | 2026-02-14 |
+| R2-P4-2   | ErrorRecoveryChain 基础框架                                                           | 2026-02-14 |
+| R2-P4-3   | write/edit 版本追踪                                                                   | 2026-02-14 |
+| R3-P1-1   | 工具策略分层（group: 支持 + confirm + mergeToolPolicies）                             | 2026-02-15 |
+| R3-P1-2   | 工具管线标准化（pipeline.ts + 消除 read/write/edit 样板）                             | 2026-02-15 |
+| R3-P2-1   | 死代码标注（memory/ orchestration/ swarm/ @experimental）                             | 2026-02-15 |
+| R3-P2-2   | HitlApprovalManager 批量 API @deprecated + exec-policy 注释更新                       | 2026-02-15 |
+| R3-P2-3   | Skill 命名统一 kebab-case + 删除重复 self-reflection                                  | 2026-02-15 |
+| R3-P3-3   | Hook 执行时间监控（warn >1s, error >5s）                                              | 2026-02-15 |
+| R3-NEW    | Chat/Agent 双模式（AgentMode 类型 + Builder.mode() + 条件注入）                       | 2026-02-15 |
+| R3-P3-1   | ErrorRecoveryChain 增强（ContextCompressionStrategy + ThinkingLevelFallbackStrategy） | 2026-02-15 |
+| R3-P3-2   | 记忆索引层（memory-index.ts 元数据索引 + memory.ts 增量更新集成）                     | 2026-02-15 |
+| R3-P4-2   | Extension API 解耦（ExtensionServices 接口 + 懒加载注入 hitl/events）                 | 2026-02-15 |
+| R3-P1-3   | PiMonoAgentRuntime 拆分（1059→482 行 + ToolConverter 181 行 + StreamAdapter 480 行）  | 2026-02-15 |

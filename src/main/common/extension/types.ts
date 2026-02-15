@@ -45,6 +45,38 @@ export interface ExtensionLogger {
 
 // ==================== ExtensionApi ====================
 
+/**
+ * Extension Services — 核心能力的结构化访问接口
+ *
+ * Extension 通过 api.services 访问系统服务，避免直接 import 核心模块。
+ * 服务实例由 ExtensionManager 在注册时注入。
+ */
+export interface ExtensionServices {
+  /** HITL 审批服务 */
+  hitl: {
+    /** 等待单个工具调用的审批决策 */
+    waitForSingleDecision(
+      approvalId: string,
+      timeoutMs?: number
+    ): Promise<import('@shared/stream-protocol').HitlApprovalDecision | null>
+    /** 提交单个工具调用的审批决策 */
+    submitSingleDecision(
+      approvalId: string,
+      decision: import('@shared/stream-protocol').HitlApprovalDecision
+    ): boolean
+    /** 清理指定 session 的所有审批 */
+    cleanupSession(sessionId: string): void
+  }
+  /** 事件发送服务 */
+  events: {
+    /** 向指定 session 广播流式事件（前端 + EventBus） */
+    emit(
+      sessionId: string,
+      chunk: { type: string; content: string; data?: Record<string, unknown> }
+    ): void
+  }
+}
+
 /** Extension 与系统交互的唯一接口 */
 export interface ExtensionApi {
   /** Extension ID */
@@ -55,6 +87,14 @@ export interface ExtensionApi {
   origin: ExtensionOrigin
   /** 日志 */
   logger: ExtensionLogger
+
+  /**
+   * 核心服务接口（解耦 Extension 与核心模块的直接依赖）
+   *
+   * Extension 应通过 api.services 访问 HITL、事件等能力，
+   * 而非直接 import 内部模块路径。
+   */
+  services: ExtensionServices
 
   /** 注册工具 */
   registerTool(tool: ToolDefinition): void

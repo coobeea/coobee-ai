@@ -41,6 +41,19 @@ export interface RecoveryContext {
   maxAttempts: number
   /** Agent 会话 ID */
   sessionId?: string
+  /**
+   * Runtime 引用（可选）
+   *
+   * 允许恢复策略访问 Runtime 能力：
+   *   - compressor: 上下文压缩器（ContextCompressionStrategy 使用）
+   *   - thinkingLevel: 当前思考级别（ThinkingLevelFallbackStrategy 使用）
+   *   - setThinkingLevel: 修改思考级别
+   */
+  runtime?: {
+    compressor?: { compress(): Promise<void> }
+    thinkingLevel?: string
+    setThinkingLevel?: (level: string) => void
+  }
 }
 
 // ==================== Strategies ====================
@@ -94,13 +107,13 @@ export class SimpleRetryStrategy implements RecoveryStrategy {
 }
 
 /**
- * 策略 2: 上下文过长恢复
+ * 策略 2: 上下文压缩恢复
  *
  * 匹配：context_length_exceeded、tokens exceed 等错误
- * 恢复：建议截断工具结果或启用压缩（由调用方执行）
+ * 恢复：如果 runtime 提供了 compressor，主动触发压缩后重试
  */
-export class ContextLengthStrategy implements RecoveryStrategy {
-  readonly name = 'context-length'
+export class ContextCompressionStrategy implements RecoveryStrategy {
+  readonly name = 'context-compression'
 
   canHandle(error: Error): boolean {
     const msg = error.message.toLowerCase()
@@ -115,16 +128,93 @@ export class ContextLengthStrategy implements RecoveryStrategy {
   }
 
   async recover(_error: Error, context: RecoveryContext): Promise<RecoveryAction> {
+    if (context.attempt >= 2) {
+      return {
+        action: 'throw',
+        reason: 'Context still too long after 2 compression attempts'
+      }
+    }
+
+    // 有 compressor → 主动压缩后重试
+    if (context.runtime?.compressor) {
+      try {
+        log.info('[ErrorRecovery] Triggering context compression...')
+        await context.runtime.compressor.compress()
+        return {
+          action: 'retry',
+          reason: 'Context compressed, retrying'
+        }
+      } catch (compressErr) {
+        log.warn('[ErrorRecovery] Compression failed:', compressErr)
+        return {
+          action: 'throw',
+          reason: `Compression failed: ${compressErr instanceof Error ? compressErr.message : String(compressErr)}`
+        }
+      }
+    }
+
+    // 无 compressor → 只重试一次（期望调用方在重试前自行处理）
     if (context.attempt >= 1) {
       return {
         action: 'throw',
-        reason: 'Context still too long after truncation attempt'
+        reason: 'Context too long and no compressor available'
       }
     }
-    // 只重试一次（期望调用方在重试前进行上下文压缩）
     return {
       action: 'retry',
-      reason: 'Context too long — will attempt with compressed context'
+      reason: 'Context too long — will attempt with truncated context'
+    }
+  }
+}
+
+/**
+ * 策略 2.5: 思考级别降级
+ *
+ * 匹配：context_length_exceeded（在压缩失败后）、thinking_budget 相关错误
+ * 恢复：将思考级别从 high → medium → low → off 逐级降低
+ */
+export class ThinkingLevelFallbackStrategy implements RecoveryStrategy {
+  readonly name = 'thinking-level-fallback'
+
+  private static readonly LEVELS = ['high', 'medium', 'low', 'off'] as const
+
+  canHandle(error: Error): boolean {
+    const msg = error.message.toLowerCase()
+    return (
+      msg.includes('context_length_exceeded') ||
+      msg.includes('tokens exceed') ||
+      msg.includes('thinking_budget') ||
+      msg.includes('reasoning_tokens')
+    )
+  }
+
+  async recover(_error: Error, context: RecoveryContext): Promise<RecoveryAction> {
+    const currentLevel = context.runtime?.thinkingLevel || 'medium'
+    const levels = ThinkingLevelFallbackStrategy.LEVELS
+    const currentIdx = levels.indexOf(currentLevel as (typeof levels)[number])
+
+    // 已经是最低级别或找不到当前级别
+    if (currentIdx < 0 || currentIdx >= levels.length - 1) {
+      return {
+        action: 'throw',
+        reason: `Thinking level already at "${currentLevel}", cannot downgrade further`
+      }
+    }
+
+    const nextLevel = levels[currentIdx + 1]
+
+    if (context.runtime?.setThinkingLevel) {
+      context.runtime.setThinkingLevel(nextLevel)
+      log.info(`[ErrorRecovery] Downgraded thinking level: ${currentLevel} → ${nextLevel}`)
+      return {
+        action: 'retry',
+        reason: `Thinking level downgraded from ${currentLevel} to ${nextLevel}`
+      }
+    }
+
+    return {
+      action: 'throw',
+      reason: 'Cannot change thinking level — no runtime access'
     }
   }
 }
@@ -173,8 +263,10 @@ export class ErrorRecoveryChain {
     this.strategies = strategies ?? [
       // 认证错误优先匹配（不可恢复，避免无意义重试）
       new AuthenticationStrategy(),
-      // 上下文过长
-      new ContextLengthStrategy(),
+      // 上下文压缩（优先于思考级别降级）
+      new ContextCompressionStrategy(),
+      // 思考级别降级（压缩后仍不够时触发）
+      new ThinkingLevelFallbackStrategy(),
       // 简单重试（兜底）
       new SimpleRetryStrategy()
     ]
