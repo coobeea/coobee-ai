@@ -12,7 +12,7 @@ import type { ToolStreamUpdate, ToolResult } from '../types'
 import { ToolCategory } from '../types'
 import { processTool } from '../builtin/process'
 import { execTool } from '../builtin/exec'
-import { ProcessRegistry } from '../builtin/ProcessRegistry'
+import { ProcessRegistry } from '../../process/ProcessRegistry'
 
 vi.mock('@main/common/logger', () => ({
   log: {

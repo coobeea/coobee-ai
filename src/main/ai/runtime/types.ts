@@ -46,6 +46,8 @@ export interface SkillDefinition {
   description: string
   /** 技能内容（通常是 markdown 格式的指令/知识） */
   content: string
+  /** SKILL.md 文件的绝对路径（用于按需读取） */
+  filePath?: string
 }
 
 // ========== Agent 运行时通用选项 ==========

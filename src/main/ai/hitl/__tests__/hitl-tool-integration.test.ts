@@ -116,9 +116,15 @@ vi.mock('../../AgentEnv', () => ({
 }))
 
 vi.mock('../../skills', () => ({
-  SkillManager: class MockSkillManager {
-    scanSkills = (): [] => []
-  }
+  SkillManager: Object.assign(
+    class MockSkillManager {
+      scanSkills = (): [] => []
+      get size(): number {
+        return 0
+      }
+    },
+    { setCurrent: vi.fn(), getCurrent: vi.fn() }
+  )
 }))
 
 // ===== 导入 =====

@@ -26,7 +26,7 @@ import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
 import { ToolCategory } from '../types'
 import { resolveWorkingDirectory } from '../../sandbox'
-import { ProcessRegistry } from './ProcessRegistry'
+import { ProcessRegistry } from '../../process/ProcessRegistry'
 
 /** 默认超时（ms） */
 const DEFAULT_TIMEOUT_MS = 30_000

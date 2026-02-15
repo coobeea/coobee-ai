@@ -1,8 +1,7 @@
 /**
  * 内置工具
  *
- * 5 个基础编码工具 + 1 个进程管理工具，使用统一 ToolDefinition 格式定义，
- * 可被任何 Runtime（OpenAI / PiMono）使用。
+ * 使用统一 ToolDefinition 格式定义，可被任何 Runtime（OpenAI / PiMono）使用。
  *
  * 工具 execute 使用 AsyncGenerator 模式：
  *   - yield ToolStreamUpdate — 增量输出（进度、中间结果）
@@ -18,6 +17,10 @@ import { editTool } from './edit'
 import { execTool } from './exec'
 import { processTool } from './process'
 import { memoryTool } from './memory'
+import { sessionStatusTool } from './session_status'
+import { sessionHistoryTool } from './session_history'
+import { contextInspectTool } from './context_inspect'
+import { skillListTool } from './skill_list'
 
 // 单独导出
 export { readTool } from './read'
@@ -26,19 +29,31 @@ export { editTool } from './edit'
 export { execTool } from './exec'
 export { processTool } from './process'
 export { memoryTool } from './memory'
-export { ProcessRegistry } from './ProcessRegistry'
-// 沙箱工具已迁移到 src/main/ai/sandbox/ — 从那里导入
+export { sessionStatusTool } from './session_status'
+export { sessionHistoryTool } from './session_history'
+export { contextInspectTool } from './context_inspect'
+export { skillListTool } from './skill_list'
+export { ProcessRegistry } from '../../process/ProcessRegistry'
 
 /**
  * 所有内置工具
  *
- * 按风险等级排列（低 → 高）：
- *   read    — 只读，低风险，needUserConfirm: false
- *   write   — 写文件，中风险，needUserConfirm: true
- *   edit    — 编辑文件，中风险，needUserConfirm: true
- *   exec    — 执行命令，高风险，needUserConfirm: true
- *   process — 管理后台进程，中风险，needUserConfirm: false
- *   memory  — 记忆管理，低风险，needUserConfirm: false
+ * 按功能分组：
+ *   --- 文件操作 ---
+ *   read           — 只读，低风险
+ *   write          — 写文件，中风险
+ *   edit           — 编辑文件，中风险
+ *   --- 执行 ---
+ *   exec           — 执行命令，高风险
+ *   process        — 管理后台进程，中风险
+ *   --- 记忆 ---
+ *   memory         — 记忆管理，低风险
+ *   --- 可观测性 ---
+ *   session_status  — 会话状态，低风险
+ *   session_history — 对话历史，低风险
+ *   context_inspect — 上下文查看，低风险
+ *   --- 发现 ---
+ *   skill_list      — Skill 发现，低风险
  */
 export const builtinTools: ToolDefinition[] = [
   readTool,
@@ -46,5 +61,9 @@ export const builtinTools: ToolDefinition[] = [
   editTool,
   execTool,
   processTool,
-  memoryTool
+  memoryTool,
+  sessionStatusTool,
+  sessionHistoryTool,
+  contextInspectTool,
+  skillListTool
 ]

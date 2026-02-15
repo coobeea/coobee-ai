@@ -521,20 +521,32 @@ class AgentExecutor {
       // 2. 构建 AgentEnv
       const agentEnv = await buildAgentEnv(sessionId, workspace)
 
-      // 3. 加载所有 Skill（内置 → 用户 → 工作空间）
+      // 3. 扫描 Skill 并存储到 SkillManager（供 skill_list 工具按需查询）
       const skillManager = new SkillManager()
-      const skills = skillManager.scanSkills([
+      skillManager.scanSkills([
         Env.paths.builtinSkillsDir,
         Env.paths.userSkillsDir,
         path.join(workspace, 'skills')
       ])
-      if (skills.length > 0) {
-        builder.skills(skills)
-      }
+      SkillManager.setCurrent(skillManager)
 
-      // 4. 注入 <runtime_paths> 到 appendInstructions
+      // 4. 注入 <runtime_paths> + Skill 发现提示到 appendInstructions
+      //    Skill 内容不再注入系统提示词，改为按需发现：
+      //    Agent 通过 skill_list 工具查看可用 Skill → read 工具读取 SKILL.md
       const runtimePathsBlock = formatRuntimePaths(agentEnv)
-      builder.appendInstructions(runtimePathsBlock)
+      const skillDiscoveryHint =
+        skillManager.size > 0
+          ? `<skill_discovery>\n` +
+            `You have ${skillManager.size} Skills available. ` +
+            `Use the \`skill_list\` tool to discover them. ` +
+            `When you find a relevant Skill, use the \`read\` tool to read its SKILL.md file, ` +
+            `then follow the instructions within.\n` +
+            `</skill_discovery>`
+          : ''
+      builder.appendInstructions(
+        runtimePathsBlock,
+        ...(skillDiscoveryHint ? [skillDiscoveryHint] : [])
+      )
 
       // 5. 设置会话存储目录（指向 workspace 内的 sessions/）
       builder.sessionDir(path.join(workspace, 'sessions'))

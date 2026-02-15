@@ -23,6 +23,10 @@ export {
   execTool,
   processTool,
   memoryTool,
+  sessionStatusTool,
+  sessionHistoryTool,
+  contextInspectTool,
+  skillListTool,
   ProcessRegistry
 } from './builtin'
 

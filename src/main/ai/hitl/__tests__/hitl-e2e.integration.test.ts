@@ -116,9 +116,15 @@ vi.mock('../../AgentEnv', () => ({
 }))
 
 vi.mock('../../skills', () => ({
-  SkillManager: class MockSkillManager {
-    scanSkills = (): [] => []
-  }
+  SkillManager: Object.assign(
+    class MockSkillManager {
+      scanSkills = (): [] => []
+      get size(): number {
+        return 0
+      }
+    },
+    { setCurrent: vi.fn(), getCurrent: vi.fn() }
+  )
 }))
 
 // ===== 导入真实模块 =====
@@ -183,7 +189,7 @@ describe('HITL 全链路集成测试', () => {
    * injectEnv() 额外引入 dynamic import + buildAgentEnv 等异步操作。
    */
   async function flushAsync(): Promise<void> {
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 50; i++) {
       await vi.advanceTimersByTimeAsync(1)
     }
   }
@@ -208,6 +214,7 @@ describe('HITL 全链路集成测试', () => {
     // 预热动态 import 缓存（避免首次 import 的额外微任务延迟）
     await import('../../runtime/pimono')
     await import('../../AgentEnv')
+    await import('../../skills')
     await import('@main/common/env')
   })
 

@@ -15,7 +15,7 @@ export const BeforeQuitProcessHook: LifecycleHook = {
   async execute(_context: LifecycleContext): Promise<void> {
     try {
       // 延迟导入避免循环依赖
-      const { ProcessRegistry } = await import('../ai/tools/builtin/ProcessRegistry')
+      const { ProcessRegistry } = await import('../ai/process/ProcessRegistry')
       const registry = ProcessRegistry.getInstance()
 
       const runningCount = registry.runningCount

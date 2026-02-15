@@ -64,6 +64,19 @@ export function parseSkillMd(
 // ==================== SkillManager ====================
 
 export class SkillManager {
+  /** 当前活跃的 SkillManager 实例（供 skill_list 工具访问） */
+  private static currentInstance: SkillManager | null = null
+
+  /** 设置当前活跃实例（由 AgentExecutor 在 injectEnv 时调用） */
+  static setCurrent(manager: SkillManager): void {
+    SkillManager.currentInstance = manager
+  }
+
+  /** 获取当前活跃实例 */
+  static getCurrent(): SkillManager | null {
+    return SkillManager.currentInstance
+  }
+
   /** 已加载的 Skill（name → SkillDefinition） */
   private skills = new Map<string, SkillDefinition>()
 
@@ -106,7 +119,8 @@ export class SkillManager {
           const skill: SkillDefinition = {
             name: parsed.name,
             description: parsed.description,
-            content: parsed.content
+            content: parsed.content,
+            filePath: skillPath
           }
 
           this.skills.set(parsed.name, skill)

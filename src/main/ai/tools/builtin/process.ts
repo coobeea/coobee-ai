@@ -16,7 +16,7 @@
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types'
 import { ToolCategory } from '../types'
-import { ProcessRegistry } from './ProcessRegistry'
+import { ProcessRegistry } from '../../process/ProcessRegistry'
 
 export const processTool: ToolDefinition = {
   name: 'process',

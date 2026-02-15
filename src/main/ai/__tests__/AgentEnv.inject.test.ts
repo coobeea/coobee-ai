@@ -57,11 +57,21 @@ vi.mock('../AgentEnv', () => ({
 
 // ===== Mock SkillManager =====
 const mockScanSkills = vi.fn()
+const mockSetCurrent = vi.fn()
 
 vi.mock('../skills', () => ({
-  SkillManager: class MockSkillManager {
-    scanSkills = mockScanSkills
-  }
+  SkillManager: Object.assign(
+    class MockSkillManager {
+      scanSkills = mockScanSkills
+      get size(): number {
+        return mockScanSkills()?.length ?? 0
+      }
+    },
+    {
+      setCurrent: (...args: unknown[]): void => mockSetCurrent(...args),
+      getCurrent: vi.fn()
+    }
+  )
 }))
 
 // ===== Mock StreamEmitter =====
@@ -137,7 +147,7 @@ describe('AgentExecutor — 环境注入', () => {
   })
 
   describe('stream() 中的环境注入', () => {
-    it('成功注入 runtime-env Skill 和 <runtime_paths>', async () => {
+    it('成功注入 <runtime_paths> 和 Skill 发现提示', async () => {
       // mock runtime.stream() 返回的 generator
       const result = { output: 'done', duration: 50 }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -174,6 +184,7 @@ describe('AgentExecutor — 环境注入', () => {
         '/mock/.home/skills',
         '/mock/.home/workspaces/session-1/skills'
       ])
+      expect(mockSetCurrent).toHaveBeenCalled()
       expect(mockFormatRuntimePaths).toHaveBeenCalled()
     })
 

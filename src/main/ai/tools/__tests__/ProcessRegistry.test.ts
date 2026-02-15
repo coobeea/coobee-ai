@@ -16,7 +16,7 @@ vi.mock('@main/common/logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
 }))
 
-import { ProcessRegistry } from '../builtin/ProcessRegistry'
+import { ProcessRegistry } from '../../process/ProcessRegistry'
 
 function spawnAndRegister(
   registry: ProcessRegistry,

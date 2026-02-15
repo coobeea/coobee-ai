@@ -28,7 +28,11 @@ export enum ToolCategory {
   /** 文档 */
   Documentation = 'documentation',
   /** 扩展（第三方工具） */
-  Extension = 'extension'
+  Extension = 'extension',
+  /** 可观测性（session_status, session_history, context_inspect） */
+  Observability = 'observability',
+  /** 发现（skill_list） */
+  Discovery = 'discovery'
 }
 
 // ========== 工具执行结果 ==========

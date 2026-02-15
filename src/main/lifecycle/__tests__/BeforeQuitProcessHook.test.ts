@@ -22,7 +22,7 @@ vi.mock('@main/common/logger', () => ({
 const mockCleanup = vi.fn()
 const mockRunningCount = vi.fn().mockReturnValue(0)
 
-vi.mock('../../ai/tools/builtin/ProcessRegistry', () => ({
+vi.mock('../../ai/process/ProcessRegistry', () => ({
   ProcessRegistry: {
     getInstance: () => ({
       cleanup: mockCleanup,
@@ -122,7 +122,7 @@ describe('BeforeQuitProcessHook', () => {
 
   it('ProcessRegistry 导入失败时能捕获', async () => {
     vi.resetModules()
-    vi.doMock('../../ai/tools/builtin/ProcessRegistry', () => {
+    vi.doMock('../../ai/process/ProcessRegistry', () => {
       throw new Error('ProcessRegistry import failed')
     })
 

@@ -47,7 +47,7 @@ vi.mock('node:fs/promises', () => ({
 
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises'
 import { readTool, writeTool, editTool, execTool, builtinTools } from '../builtin'
-import { ProcessRegistry } from '../builtin/ProcessRegistry'
+import { ProcessRegistry } from '../../process/ProcessRegistry'
 import { resolveSandboxPath, createPathOnlyContext } from '../../sandbox'
 
 /** 测试用 context：允许 /tmp 目录下的操作 */
@@ -1138,13 +1138,24 @@ describe('execTool', () => {
 // ═══════════════════════════════════════════
 
 describe('builtinTools 集合', () => {
-  it('包含 6 个内置工具', () => {
-    expect(builtinTools).toHaveLength(6)
+  it('包含 10 个内置工具', () => {
+    expect(builtinTools).toHaveLength(10)
   })
 
   it('按正确顺序包含所有工具', () => {
     const names = builtinTools.map((t) => t.name)
-    expect(names).toEqual(['read', 'write', 'edit', 'exec', 'process', 'memory'])
+    expect(names).toEqual([
+      'read',
+      'write',
+      'edit',
+      'exec',
+      'process',
+      'memory',
+      'session_status',
+      'session_history',
+      'context_inspect',
+      'skill_list'
+    ])
   })
 
   it('所有工具都符合 ToolDefinition 接口', () => {
