@@ -12,6 +12,7 @@
  */
 
 import fs from 'node:fs'
+import fsPromises from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
@@ -182,7 +183,7 @@ export const searchTool: ToolDefinition = {
       filesSearched++
 
       try {
-        const content = fs.readFileSync(filePath, 'utf-8')
+        const content = await fsPromises.readFile(filePath, 'utf-8')
         const lines = content.split('\n')
         let fileMatches = 0
 

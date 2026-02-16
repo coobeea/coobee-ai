@@ -4,6 +4,8 @@
  * 提供类型安全的 get/set/patch，读写 coobee.json5。
  */
 import fs from 'fs'
+import path from 'path'
+import crypto from 'crypto'
 import JSON5 from 'json5'
 
 import { ConfigLoader } from './ConfigLoader'
@@ -77,7 +79,13 @@ export class ConfigStore {
     }
     this.loader.ensureConfigFile()
     const content = JSON5.stringify(sanitized, null, 2)
-    fs.writeFileSync(this.loader.configPath, content, 'utf-8')
+    // 原子写入：先写临时文件再 rename，防止写入中断导致配置文件损坏
+    const tmpPath = path.join(
+      path.dirname(this.loader.configPath),
+      `.coobee.json5.${crypto.randomBytes(4).toString('hex')}.tmp`
+    )
+    fs.writeFileSync(tmpPath, content, 'utf-8')
+    fs.renameSync(tmpPath, this.loader.configPath)
   }
 
   /**

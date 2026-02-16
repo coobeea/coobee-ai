@@ -4,6 +4,7 @@
  * 替代 AgentExecutor.submit 的 busySessions 简单锁，
  * 提供排队、合并、中断等完整消息处理能力。
  */
+import { log } from '@main/common/logger'
 import { ExtensionManager } from '../../common/extension/ExtensionManager'
 import { AbortManager } from './AbortManager'
 import { drainCollect, drainFollowup } from './DrainStrategy'
@@ -153,8 +154,8 @@ export class MessagePipeline {
     const signal = this.abortManager.create(sessionId)
 
     // 异步执行（不阻塞）
-    this.doExecute(queue, sessionId, message, signal).catch(() => {
-      // 错误已在 doExecute 内处理
+    this.doExecute(queue, sessionId, message, signal).catch((err) => {
+      log.error(`[MessagePipeline] Unhandled error in session ${sessionId}:`, err)
     })
   }
 

@@ -111,11 +111,14 @@ export class ConfigWatcher {
     // 如果 hash 没变，跳过
     if (nextSnap.hash === this.lastHash) return
 
+    // 如果新配置无效，只更新 hash（避免重复处理），不更新 lastConfig
+    if (!nextSnap.valid) {
+      this.lastHash = nextSnap.hash
+      return
+    }
+
     this.lastHash = nextSnap.hash
     this.lastConfig = nextSnap.config
-
-    // 如果新配置无效，不触发回调
-    if (!nextSnap.valid) return
 
     // Diff
     const changedPaths = diffConfigPaths(prevConfig, nextSnap.config)

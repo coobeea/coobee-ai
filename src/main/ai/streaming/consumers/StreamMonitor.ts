@@ -89,7 +89,7 @@ export class StreamMonitor {
       }
     })
 
-    // 监听流结束
+    // 监听流结束 — 记录统计后延迟清理，防止 Map 无限增长
     eventBus.on(StreamEventType.END, (event: StreamEvent) => {
       const stats = this.sessionStats.get(event.sessionId)
       if (stats && stats.startTime) {
@@ -97,6 +97,11 @@ export class StreamMonitor {
         stats.duration = stats.endTime - stats.startTime
       }
       log.info(`[StreamMonitor] Stream ended: ${event.sessionId}`, stats)
+
+      // 延迟 60 秒后清理，保留一段时间供查询
+      setTimeout(() => {
+        this.sessionStats.delete(event.sessionId)
+      }, 60_000)
     })
 
     // 监听错误

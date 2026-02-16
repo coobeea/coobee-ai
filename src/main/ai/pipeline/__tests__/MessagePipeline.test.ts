@@ -1,5 +1,14 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 
+vi.mock('@main/common/logger', () => ({
+  log: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  }
+}))
+
 import { MessagePipeline } from '../MessagePipeline'
 
 describe('MessagePipeline', () => {

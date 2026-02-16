@@ -49,9 +49,14 @@ export const streamMethods: MethodGroup = {
         return { ok: false, error: 'sessionId and fromSequence are required' }
       }
 
-      const messages = await streamStore.getMessages(sessionId, fromSequence, 100)
-      log.info(`[stream.resend] ${sessionId} from #${fromSequence} → ${messages.length} msgs`)
-      return { messages }
+      try {
+        const messages = await streamStore.getMessages(sessionId, fromSequence, 100)
+        log.info(`[stream.resend] ${sessionId} from #${fromSequence} → ${messages.length} msgs`)
+        return { ok: true, messages }
+      } catch (err) {
+        log.error(`[stream.resend] Failed for ${sessionId}:`, err)
+        return { ok: false, error: 'Failed to resend messages' }
+      }
     },
 
     latestSeq: async (params) => {
@@ -60,8 +65,13 @@ export const streamMethods: MethodGroup = {
         return { ok: false, error: 'sessionId is required' }
       }
 
-      const sequence = await streamStore.getLatestSequence(sessionId)
-      return { sequence }
+      try {
+        const sequence = await streamStore.getLatestSequence(sessionId)
+        return { ok: true, sequence }
+      } catch (err) {
+        log.error(`[stream.latestSeq] Failed for ${sessionId}:`, err)
+        return { ok: false, error: 'Failed to get latest sequence' }
+      }
     }
   }
 }

@@ -18,7 +18,13 @@ vi.mock('@main/common/logger', () => ({
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn()
-  })
+  }),
+  log: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  }
 }))
 
 // Mock HITL

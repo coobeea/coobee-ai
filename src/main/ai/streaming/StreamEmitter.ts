@@ -81,7 +81,7 @@ const LIFECYCLE_EVENT_MAP: Partial<Record<StreamChunkType, StreamEventType>> = {
 
 export class StreamEmitter implements IStreamEmitter {
   private idGenerator: SnowflakeIdGenerator
-  private sequenceCounters = new Map<string, number>()
+  private sequence = 0
 
   constructor(
     private readonly sessionId: string,
@@ -124,9 +124,9 @@ export class StreamEmitter implements IStreamEmitter {
       }
       eventBus.emit(lifecycleType, lifecycleEvent)
 
-      // run 结束时清理 sequenceCounter，防止 Map 无限增长
+      // run 结束时重置 sequence
       if (chunk.type === 'run:done' || chunk.type === 'run:error') {
-        this.sequenceCounters.delete(this.sessionId)
+        this.sequence = 0
       }
     }
   }
@@ -158,10 +158,7 @@ export class StreamEmitter implements IStreamEmitter {
     data?: Record<string, unknown>
   ): StreamMessage {
     const id = this.idGenerator.nextId()
-
-    let sequence = this.sequenceCounters.get(this.sessionId) || 0
-    sequence++
-    this.sequenceCounters.set(this.sessionId, sequence)
+    const sequence = ++this.sequence
 
     return {
       id,

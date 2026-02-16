@@ -67,6 +67,17 @@ export class SkillManager {
   /** 当前活跃的 SkillManager 实例（供 skill_list 工具访问） */
   private static currentInstance: SkillManager | null = null
 
+  /** 全局 Skill 缓存（searchPaths key → { skills, timestamp }） */
+  private static cache: {
+    key: string
+    skills: Map<string, SkillDefinition>
+    dirMap: Map<string, string>
+    ts: number
+  } | null = null
+
+  /** 缓存有效期（毫秒），默认 30 秒 */
+  private static CACHE_TTL_MS = 30_000
+
   /** 设置当前活跃实例（由 AgentExecutor 在 injectEnv 时调用） */
   static setCurrent(manager: SkillManager): void {
     SkillManager.currentInstance = manager
@@ -75,6 +86,11 @@ export class SkillManager {
   /** 获取当前活跃实例 */
   static getCurrent(): SkillManager | null {
     return SkillManager.currentInstance
+  }
+
+  /** 清除全局缓存（热重载时调用） */
+  static invalidateCache(): void {
+    SkillManager.cache = null
   }
 
   /** 已加载的 Skill（name → SkillDefinition） */
@@ -96,6 +112,35 @@ export class SkillManager {
    * @returns 最终有效的 SkillDefinition 数组
    */
   scanSkills(searchPaths: string[]): SkillDefinition[] {
+    // 尝试使用缓存（同样的搜索路径 + 未过期）
+    const cacheKey = searchPaths.join('|')
+    const cached = SkillManager.cache
+    if (cached && cached.key === cacheKey && Date.now() - cached.ts < SkillManager.CACHE_TTL_MS) {
+      this.skills = new Map(cached.skills)
+      this.dirNameToSkillName = new Map(cached.dirMap)
+      log.debug(`[SkillManager] 使用缓存，${this.skills.size} 个 Skill`)
+      return this.getAll()
+    }
+
+    // 缓存未命中，执行完整扫描
+    this.doScan(searchPaths)
+
+    // 写入缓存
+    SkillManager.cache = {
+      key: cacheKey,
+      skills: new Map(this.skills),
+      dirMap: new Map(this.dirNameToSkillName),
+      ts: Date.now()
+    }
+
+    log.info(
+      `[SkillManager] 扫描加载 ${this.skills.size} 个 Skill: ${[...this.skills.keys()].join(', ')}`
+    )
+    return this.getAll()
+  }
+
+  /** 内部执行实际的文件系统扫描 */
+  private doScan(searchPaths: string[]): void {
     for (const searchDir of searchPaths) {
       try {
         if (!fs.existsSync(searchDir)) continue
@@ -104,17 +149,16 @@ export class SkillManager {
 
         for (const entry of entries) {
           if (!entry.isDirectory()) continue
-          if (entry.name.startsWith('.')) continue // 跳过隐藏目录
+          if (entry.name.startsWith('.')) continue
 
           const skillPath = path.join(searchDir, entry.name, 'SKILL.md')
           const parsed = parseSkillMd(skillPath)
 
           if (!parsed) continue
 
-          // 后到覆盖：同名目录从更高优先级的路径中覆盖先前加载的
           const existingName = this.dirNameToSkillName.get(entry.name)
           if (existingName !== undefined) {
-            this.skills.delete(existingName) // 移除旧版本
+            this.skills.delete(existingName)
           }
           this.dirNameToSkillName.set(entry.name, parsed.name)
 
@@ -131,11 +175,6 @@ export class SkillManager {
         log.warn(`[SkillManager] 扫描目录失败: ${searchDir}`, error)
       }
     }
-
-    log.info(
-      `[SkillManager] 加载 ${this.skills.size} 个 Skill: ${[...this.skills.keys()].join(', ')}`
-    )
-    return this.getAll()
   }
 
   // ========== 动态注册/注销 ==========

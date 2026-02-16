@@ -297,7 +297,7 @@ class AgentExecutor {
     this.busySessions.set(sessionId, { startedAt: Date.now() })
     let runtime: AgentRuntime | null = null
 
-    log.info(`[AgentExecutor] Stream: sessionId=${sessionId}, message="${message.slice(0, 50)}..."`)
+    log.info(`[AgentExecutor] Stream: sessionId=${sessionId}, messageLen=${message.length}`)
 
     try {
       // 0. 注入运行时环境
