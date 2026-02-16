@@ -16,7 +16,7 @@
 
 import path from 'node:path'
 import { createLogger } from '@main/common/logger'
-import { formatRuntimePaths, buildAgentEnv } from './AgentEnv'
+import { formatRuntimePaths, buildAgentEnv, type AgentEnv } from './AgentEnv'
 import { SkillManager } from './skills'
 import { createPathOnlyContext } from './sandbox'
 import type { AgentBuilder } from './AgentExecutor'
@@ -73,7 +73,9 @@ export async function injectEnv(
       )
 
       // 5. 设置沙箱上下文（由 Runtime 的 convertTools 使用）
-      const sandboxCtx = createPathOnlyContext(workspace, { sessionId })
+      //    注入 COOBEE_* 环境变量，供 Skill 脚本读取配置和上下文
+      const envVars = buildSkillEnvVars(agentEnv)
+      const sandboxCtx = createPathOnlyContext(workspace, { sessionId, envVars })
       builder.sandboxContext(sandboxCtx)
     }
 
@@ -159,4 +161,26 @@ When you receive a user request, follow this protocol:
 
 NOTE: For simple/trivial requests (greetings, quick facts, single-step tasks), skip steps 1 and 3-5 — just answer directly.
 </execution_protocol>`
+}
+
+// ==================== Skill 上下文环境变量 ====================
+
+/**
+ * 构建注入子进程的 COOBEE_* 环境变量
+ *
+ * Skill 脚本通过这些变量获取运行时上下文：
+ *   - COOBEE_CONFIG_DIR     — 配置目录（读取 skills.json5 等）
+ *   - COOBEE_WORKSPACE      — 工作空间目录
+ *   - COOBEE_SESSION_ID     — 当前会话 ID
+ *   - COOBEE_USER_HOME      — 应用主目录
+ *   - COOBEE_MEMORY_DIR     — 记忆目录
+ */
+function buildSkillEnvVars(env: AgentEnv): Record<string, string> {
+  return {
+    COOBEE_CONFIG_DIR: env.configDir,
+    COOBEE_WORKSPACE: env.workspace,
+    COOBEE_SESSION_ID: env.sessionId,
+    COOBEE_USER_HOME: env.userHome,
+    COOBEE_MEMORY_DIR: env.memoryDir
+  }
 }

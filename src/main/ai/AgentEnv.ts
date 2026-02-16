@@ -43,6 +43,8 @@ export interface AgentEnv {
   systemHome: string
   /** 系统临时目录 */
   temp: string
+  /** 配置目录（存放 coobee.json5、secrets.json5、skills.json5） */
+  configDir: string
 
   // --- Skill 系统 ---
   /** Skill 搜索路径（按优先级从低到高） */
@@ -134,6 +136,7 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
     userHome: Env.paths.userHome,
     systemHome: Env.paths.home,
     temp: Env.paths.temp,
+    configDir: Env.paths.configDir,
 
     // Skill 系统
     skillPaths,
@@ -176,6 +179,7 @@ export function formatRuntimePaths(env: AgentEnv): string {
 <paths>
   <userHome>${env.userHome}</userHome>
   <systemHome>${env.systemHome}</systemHome>
+  <configDir>${env.configDir}</configDir>
   <temp>${env.temp}</temp>
   <memoryDir>${env.memoryDir}</memoryDir>
 </paths>

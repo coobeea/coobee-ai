@@ -129,10 +129,13 @@ export const execTool: ToolDefinition = {
     if (background) {
       yield { type: 'progress', content: `[background] $ ${command}`, percentage: 0 }
 
+      // 合并上下文环境变量（COOBEE_* 等），供 Skill 脚本读取配置
+      const childEnv = { ...process.env, ...context?.envVars }
+
       const child = spawn(command, {
         shell: true,
         cwd,
-        env: { ...process.env },
+        env: childEnv,
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: false // 不脱离父进程，确保可管理
       })
@@ -185,11 +188,14 @@ export const execTool: ToolDefinition = {
       let stderrTruncated = false
       let timedOut = false
 
+      // 合并上下文环境变量（COOBEE_* 等），供 Skill 脚本读取配置
+      const fgEnv = { ...process.env, ...context?.envVars }
+
       const child = spawn(command, {
         shell: true,
         timeout,
         cwd,
-        env: { ...process.env },
+        env: fgEnv,
         stdio: ['ignore', 'pipe', 'pipe']
       })
 

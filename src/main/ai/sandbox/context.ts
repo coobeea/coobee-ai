@@ -118,6 +118,7 @@ export function createPathOnlyContext(
     sandboxRoot?: string
     toolPolicy?: { allow?: string[]; deny?: string[] }
     sessionId?: string
+    envVars?: Record<string, string>
   }
 ): SandboxContext {
   return {
@@ -125,6 +126,7 @@ export function createPathOnlyContext(
     workspaceRoot,
     sandboxRoot: options?.sandboxRoot,
     toolPolicy: resolveToolPolicy(options?.toolPolicy),
-    sessionId: options?.sessionId
+    sessionId: options?.sessionId,
+    envVars: options?.envVars
   }
 }

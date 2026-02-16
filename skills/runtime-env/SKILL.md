@@ -173,8 +173,48 @@ config:
 }
 ```
 
-- **Agent** 读取 SKILL.md 后知道需要哪些配置，可以帮用户创建和填写
-- 运行时通过 `SkillManager.getSkillRuntimeConfig(skillName)` 获取配置值
+**Skill 脚本获取配置的流程**：
+
+1. 脚本通过环境变量 `COOBEE_CONFIG_DIR` 获取配置目录路径
+2. 读取 `$COOBEE_CONFIG_DIR/skills.json5` 获取自己的配置
+3. 如果缺少必要配置，脚本抛出清晰的错误信息
+4. Agent 看到错误 → 告诉用户需要什么配置
+5. 用户提供信息 → Agent 帮忙写入 `skills.json5`
+6. Agent 重新执行 → 成功
+
+**脚本可用的环境变量**（`exec` 工具自动注入）：
+
+| 变量                | 说明                          |
+| ------------------- | ----------------------------- |
+| `COOBEE_CONFIG_DIR` | 配置目录（读取 skills.json5） |
+| `COOBEE_WORKSPACE`  | 当前工作空间目录              |
+| `COOBEE_SESSION_ID` | 当前会话 ID                   |
+| `COOBEE_USER_HOME`  | 应用主目录                    |
+| `COOBEE_MEMORY_DIR` | 记忆目录                      |
+
+**Shell 脚本示例**：
+
+```bash
+#!/bin/bash
+# 读取 Skill 配置
+CONFIG_FILE="$COOBEE_CONFIG_DIR/skills.json5"
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo "Error: 配置文件不存在: $CONFIG_FILE" >&2
+  echo "请在 $CONFIG_FILE 中添加 paddle-ocr 的配置" >&2
+  exit 1
+fi
+```
+
+**Python 脚本示例**：
+
+```python
+import os, json
+config_dir = os.environ.get("COOBEE_CONFIG_DIR")
+if not config_dir:
+    raise RuntimeError("COOBEE_CONFIG_DIR 环境变量未设置")
+# 读取 skills.json5 中自己的配置...
+```
+
 - 配置修改后自动热重载生效
 
 ---
@@ -277,26 +317,27 @@ export default {
 
 ## `<runtime_environment>` 字段参考
 
-| 块           | 键                     | 说明                          |
-| ------------ | ---------------------- | ----------------------------- |
-| `system`     | `platform`             | 操作系统                      |
-| `system`     | `arch`                 | CPU 架构                      |
-| `system`     | `appVersion`           | 应用版本                      |
-| `system`     | `isDev`                | 是否开发模式                  |
-| `session`    | `sessionId`            | 当前会话 ID                   |
-| `session`    | `workspace`            | 工作空间根目录                |
-| `paths`      | `userHome`             | 应用主目录                    |
-| `paths`      | `systemHome`           | 系统用户目录（如 /Users/xxx） |
-| `paths`      | `temp`                 | 系统临时目录                  |
-| `paths`      | `memoryDir`            | 记忆总根目录                  |
-| `skills`     | `builtinSkillsDir`     | 内置 Skill 目录               |
-| `skills`     | `userSkillsDir`        | 用户 Skill 目录               |
-| `skills`     | `searchPaths`          | Skill 搜索路径列表            |
-| `extensions` | `builtinExtensionsDir` | 内置 Extension 目录           |
-| `extensions` | `userExtensionsDir`    | 用户 Extension 目录           |
-| `extensions` | `searchPaths`          | Extension 搜索路径列表        |
-| `extensions` | `loaded`               | 已加载的 Extension ID         |
-| `tools`      | `tool`                 | 可用工具名称                  |
+| 块           | 键                     | 说明                                                |
+| ------------ | ---------------------- | --------------------------------------------------- |
+| `system`     | `platform`             | 操作系统                                            |
+| `system`     | `arch`                 | CPU 架构                                            |
+| `system`     | `appVersion`           | 应用版本                                            |
+| `system`     | `isDev`                | 是否开发模式                                        |
+| `session`    | `sessionId`            | 当前会话 ID                                         |
+| `session`    | `workspace`            | 工作空间根目录                                      |
+| `paths`      | `userHome`             | 应用主目录                                          |
+| `paths`      | `systemHome`           | 系统用户目录（如 /Users/xxx）                       |
+| `paths`      | `configDir`            | 配置目录（coobee.json5/secrets.json5/skills.json5） |
+| `paths`      | `temp`                 | 系统临时目录                                        |
+| `paths`      | `memoryDir`            | 记忆总根目录                                        |
+| `skills`     | `builtinSkillsDir`     | 内置 Skill 目录                                     |
+| `skills`     | `userSkillsDir`        | 用户 Skill 目录                                     |
+| `skills`     | `searchPaths`          | Skill 搜索路径列表                                  |
+| `extensions` | `builtinExtensionsDir` | 内置 Extension 目录                                 |
+| `extensions` | `userExtensionsDir`    | 用户 Extension 目录                                 |
+| `extensions` | `searchPaths`          | Extension 搜索路径列表                              |
+| `extensions` | `loaded`               | 已加载的 Extension ID                               |
+| `tools`      | `tool`                 | 可用工具名称                                        |
 
 ---
 

@@ -104,6 +104,7 @@ describe('AgentEnv', () => {
         userHome: '/mock/.home',
         systemHome: '/Users/mock',
         temp: '/tmp/mock',
+        configDir: '/mock/.home/config',
         skillPaths: mockSkillPaths,
         builtinSkillsDir: '/mock/skills',
         userSkillsDir: '/mock/.home/skills',
@@ -244,6 +245,7 @@ describe('AgentEnv', () => {
       userHome: '/home/test',
       systemHome: '/Users/test',
       temp: '/tmp',
+      configDir: '/home/test/config',
       skillPaths: [
         '/builtin/skills',
         '/home/test/skills',

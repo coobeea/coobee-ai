@@ -144,6 +144,13 @@ export interface SandboxContext {
   docker?: SandboxDockerInfo
   /** 会话标识 */
   sessionId?: string
+  /**
+   * 注入到子进程的环境变量
+   *
+   * Skill 脚本通过这些变量获取运行时上下文（配置目录、工作空间等）。
+   * exec 工具在 spawn 子进程时会将这些变量合并到 process.env 中。
+   */
+  envVars?: Record<string, string>
 }
 
 /**

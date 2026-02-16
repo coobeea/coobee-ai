@@ -133,6 +133,7 @@ describe('AgentExecutor — 环境注入', () => {
       workspace: '/mock/.home/workspaces/session-1',
       userHome: '/mock/.home',
       temp: '/tmp/mock',
+      configDir: '/mock/.home/config',
       platform: 'darwin',
       isDev: true,
       skillPaths: ['/mock/builtin-skills', '/mock/.home/skills'],
