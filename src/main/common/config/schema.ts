@@ -22,22 +22,42 @@ export const ModelConfigSchema = z.object({
   name: z.string(),
   api: ModelApiSchema.optional(),
   reasoning: z.boolean().optional().default(false),
+  vision: z.boolean().optional().default(false),
+  functionCalling: z.boolean().optional().default(false),
+  webSearch: z.boolean().optional().default(false),
   input: z
     .array(z.enum(['text', 'image']))
     .optional()
     .default(['text']),
   contextWindow: z.number().optional(),
+  maxInputTokens: z.number().optional(),
+  maxOutputTokens: z.number().optional(),
+  maxThinkingTokens: z.number().optional(),
+  /** @deprecated 使用 maxOutputTokens */
   maxTokens: z.number().optional(),
+  free: z.boolean().optional().default(false),
+  features: z.array(z.string()).optional(),
   cost: ModelCostSchema.optional()
 })
 
+export const ProviderWebsitesSchema = z.object({
+  official: z.string().optional(),
+  apiKey: z.string().optional(),
+  docs: z.string().optional(),
+  models: z.string().optional()
+})
+
 export const ProviderConfigSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().optional(),
+  description: z.string().optional(),
   baseUrl: z.string(),
   apiKey: z.string().optional(),
   api: ModelApiSchema.default('openai-compatible'),
   headers: z.record(z.string(), z.string()).optional(),
   models: z.array(ModelConfigSchema),
-  enabled: z.boolean().optional().default(true)
+  enabled: z.boolean().optional().default(true),
+  websites: ProviderWebsitesSchema.optional()
 })
 
 // ─── 模型选择 ───────────────────────────────────────

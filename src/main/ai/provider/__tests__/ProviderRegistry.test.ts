@@ -80,14 +80,34 @@ describe('ProviderRegistry', () => {
             baseUrl: 'https://api.openai.com/v1',
             apiKey: 'sk-test',
             api: 'openai-compatible',
-            models: [{ id: 'gpt-4o', name: 'GPT-4o', reasoning: false, input: ['text'] }],
+            models: [
+              {
+                id: 'gpt-4o',
+                name: 'GPT-4o',
+                reasoning: false,
+                vision: false,
+                functionCalling: false,
+                webSearch: false,
+                free: false,
+                input: ['text']
+              }
+            ],
             enabled: true
           },
           aliyun: {
             baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
             api: 'openai-compatible',
             models: [
-              { id: 'qwen3-max', name: 'Qwen3 Max', reasoning: true, input: ['text', 'image'] }
+              {
+                id: 'qwen3-max',
+                name: 'Qwen3 Max',
+                reasoning: true,
+                vision: false,
+                functionCalling: false,
+                webSearch: false,
+                free: false,
+                input: ['text', 'image']
+              }
             ],
             enabled: true
           }
@@ -114,7 +134,18 @@ describe('ProviderRegistry', () => {
           new: {
             baseUrl: 'https://new.example.com',
             api: 'openai-compatible',
-            models: [{ id: 'm1', name: 'M1', reasoning: false, input: ['text'] }],
+            models: [
+              {
+                id: 'm1',
+                name: 'M1',
+                reasoning: false,
+                vision: false,
+                functionCalling: false,
+                webSearch: false,
+                free: false,
+                input: ['text']
+              }
+            ],
             enabled: true
           }
         }
