@@ -39,6 +39,22 @@ type ToolDefinition = _ToolDefinition
  *   - OpenAI：格式化后拼接到 Agent.instructions
  *   - PiMono：通过 resourceLoader.getSkills() 返回，由 SDK 内部组装
  */
+/**
+ * Skill 配置项描述（定义在 SKILL.md frontmatter 的 config 字段中）
+ *
+ * 告诉 Agent 该 Skill 需要哪些配置，Agent 可据此帮用户填写 skills.json5。
+ */
+export interface SkillConfigField {
+  /** 配置项键名 */
+  key: string
+  /** 配置项描述 */
+  description: string
+  /** 是否必填 */
+  required?: boolean
+  /** 默认值 */
+  default?: unknown
+}
+
 export interface SkillDefinition {
   /** 技能名称（唯一标识） */
   name: string
@@ -48,6 +64,10 @@ export interface SkillDefinition {
   content: string
   /** SKILL.md 文件的绝对路径（用于按需读取） */
   filePath?: string
+  /** Skill 所需配置项描述（来自 SKILL.md frontmatter） */
+  configSchema?: SkillConfigField[]
+  /** 运行时注入的配置值（来自 skills.json5，不含敏感信息的摘要供 prompt 使用） */
+  configStatus?: 'configured' | 'missing' | 'partial'
 }
 
 // ========== 运行模式 ==========

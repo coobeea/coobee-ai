@@ -192,8 +192,11 @@ describe('AgentExecutor — 环境注入', () => {
         'session-1',
         '/mock/.home/workspaces/session-1'
       )
-      // 现在使用 agentEnv.skillPaths（包含 Extension 贡献的 Skill 目录）
-      expect(mockScanSkills).toHaveBeenCalledWith(['/mock/builtin-skills', '/mock/.home/skills'])
+      // 现在使用 agentEnv.skillPaths（包含 Extension 贡献的 Skill 目录）+ configDir
+      expect(mockScanSkills).toHaveBeenCalledWith(
+        ['/mock/builtin-skills', '/mock/.home/skills'],
+        '/mock/.home/config'
+      )
       expect(mockSetCurrent).toHaveBeenCalled()
       expect(mockFormatRuntimePaths).toHaveBeenCalled()
     })

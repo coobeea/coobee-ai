@@ -6,6 +6,7 @@
 import { watch, type FSWatcher } from 'chokidar'
 
 import { log } from '@main/common/logger'
+import { SkillManager } from '@main/ai/skills/SkillManager'
 import { ConfigLoader } from './ConfigLoader'
 import { buildReloadPlan, diffConfigPaths } from './ConfigDiff'
 import type { ReloadPlan } from './types'
@@ -39,8 +40,12 @@ export class ConfigWatcher {
     this.lastHash = snap.hash
     this.lastConfig = snap.config
 
-    // 同时监听 coobee.json5 和 secrets.json5
-    const watchPaths = [this.loader.configPath, this.loader.secretsFilePath]
+    // 同时监听 coobee.json5、secrets.json5 和 skills.json5
+    const watchPaths = [
+      this.loader.configPath,
+      this.loader.secretsFilePath,
+      this.loader.skillConfigFilePath
+    ]
     this.watcher = watch(watchPaths, {
       persistent: true,
       ignoreInitial: true,
@@ -107,6 +112,7 @@ export class ConfigWatcher {
 
     // 清除缓存，重新读取
     this.loader.clearCache()
+    SkillManager.invalidateCache() // skills.json5 变更时重新加载配置状态
     const nextSnap = this.loader.snapshot()
 
     // 如果 hash 没变，跳过

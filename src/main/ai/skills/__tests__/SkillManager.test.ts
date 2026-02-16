@@ -2,15 +2,17 @@
  * SkillManager 单元测试
  *
  * 测试：
- *   - parseSkillMd: SKILL.md 文件解析（frontmatter + 正文）
+ *   - parseSkillMd: SKILL.md 文件解析（frontmatter + 正文 + config）
  *   - scanSkills: 多路径扫描与去重
  *   - register / unregister: 动态增删
  *   - getAll / getByName / size: 查询
  *   - toPromptBlocks: XML 格式化输出
+ *   - Skill 配置注入：configSchema + configStatus
  *   - clear: 清理状态
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
+import JSON5 from 'json5'
 import path from 'path'
 
 // ===== Mock logger =====
@@ -118,6 +120,58 @@ Content.`
       expect(result).not.toBeNull()
       expect(result!.name).toBe('test-skill')
       expect(result!.content).toBe('')
+    })
+
+    it('解析 frontmatter 中的 config 字段', () => {
+      const content = `---
+name: paddle-ocr
+description: OCR tool
+config:
+  - key: apiKey
+    description: PaddleOCR API Key
+    required: true
+  - key: baseUrl
+    description: API 地址
+    required: false
+    default: https://api.example.com
+---
+
+# PaddleOCR`
+      const filePath = path.join(tmpDir, 'test-skill', 'SKILL.md')
+      fs.writeFileSync(filePath, content)
+
+      const result = parseSkillMd(filePath)
+
+      expect(result).not.toBeNull()
+      expect(result!.configSchema).toBeDefined()
+      expect(result!.configSchema).toHaveLength(2)
+      expect(result!.configSchema![0]).toEqual({
+        key: 'apiKey',
+        description: 'PaddleOCR API Key',
+        required: true
+      })
+      expect(result!.configSchema![1]).toEqual({
+        key: 'baseUrl',
+        description: 'API 地址',
+        required: false,
+        default: 'https://api.example.com'
+      })
+    })
+
+    it('无 config 字段时 configSchema 为 undefined', () => {
+      const content = `---
+name: simple-skill
+description: No config needed
+---
+
+Content.`
+      const filePath = path.join(tmpDir, 'test-skill', 'SKILL.md')
+      fs.writeFileSync(filePath, content)
+
+      const result = parseSkillMd(filePath)
+
+      expect(result).not.toBeNull()
+      expect(result!.configSchema).toBeUndefined()
     })
   })
 
@@ -364,6 +418,140 @@ Content.`
       const blocks = manager.toPromptBlocks()
 
       expect(blocks).toContain('</skill>\n\n<skill')
+    })
+  })
+
+  // ==================== Skill 配置注入 ====================
+
+  describe('Skill 配置注入', () => {
+    let tmpDir: string
+    let configDir: string
+    let manager: SkillManager
+
+    beforeEach(() => {
+      tmpDir = path.join(
+        '/tmp',
+        `skillmanager-config-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      )
+      configDir = path.join(tmpDir, 'config')
+      fs.mkdirSync(path.join(tmpDir, 'skills'), { recursive: true })
+      fs.mkdirSync(configDir, { recursive: true })
+      SkillManager.invalidateCache()
+      manager = new SkillManager()
+    })
+
+    afterEach(() => {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    })
+
+    function createSkillWithConfig(dirName: string, name: string, configFields: string): void {
+      const dir = path.join(tmpDir, 'skills', dirName)
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(
+        path.join(dir, 'SKILL.md'),
+        `---\nname: ${name}\ndescription: Test\nconfig:\n${configFields}---\n\n# ${name}`
+      )
+    }
+
+    it('配置齐全时 configStatus 为 configured', () => {
+      createSkillWithConfig(
+        'ocr',
+        'paddle-ocr',
+        '  - key: apiKey\n    description: Key\n    required: true\n'
+      )
+      fs.writeFileSync(
+        path.join(configDir, 'skills.json5'),
+        JSON5.stringify({ 'paddle-ocr': { apiKey: 'sk-xxx' } })
+      )
+
+      const skills = manager.scanSkills([path.join(tmpDir, 'skills')], configDir)
+
+      expect(skills).toHaveLength(1)
+      expect(skills[0].configStatus).toBe('configured')
+    })
+
+    it('配置缺失时 configStatus 为 missing', () => {
+      createSkillWithConfig(
+        'ocr',
+        'paddle-ocr',
+        '  - key: apiKey\n    description: Key\n    required: true\n'
+      )
+      // 空的 skills.json5
+      fs.writeFileSync(path.join(configDir, 'skills.json5'), '{}')
+
+      const skills = manager.scanSkills([path.join(tmpDir, 'skills')], configDir)
+
+      expect(skills[0].configStatus).toBe('missing')
+    })
+
+    it('部分配置时 configStatus 为 partial', () => {
+      createSkillWithConfig(
+        'ocr',
+        'paddle-ocr',
+        '  - key: apiKey\n    description: Key\n    required: true\n  - key: secret\n    description: Secret\n    required: true\n'
+      )
+      // 只填了一个 required 字段
+      fs.writeFileSync(
+        path.join(configDir, 'skills.json5'),
+        JSON5.stringify({ 'paddle-ocr': { apiKey: 'sk-xxx' } })
+      )
+
+      const skills = manager.scanSkills([path.join(tmpDir, 'skills')], configDir)
+
+      expect(skills[0].configStatus).toBe('partial')
+    })
+
+    it('无配置需求的 Skill 没有 configStatus', () => {
+      const dir = path.join(tmpDir, 'skills', 'simple')
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(
+        path.join(dir, 'SKILL.md'),
+        '---\nname: simple\ndescription: No config\n---\n\nContent'
+      )
+
+      const skills = manager.scanSkills([path.join(tmpDir, 'skills')], configDir)
+
+      expect(skills[0].configStatus).toBeUndefined()
+    })
+
+    it('getSkillRuntimeConfig 返回正确的配置', () => {
+      createSkillWithConfig(
+        'ocr',
+        'paddle-ocr',
+        '  - key: apiKey\n    description: Key\n    required: true\n'
+      )
+      fs.writeFileSync(
+        path.join(configDir, 'skills.json5'),
+        JSON5.stringify({ 'paddle-ocr': { apiKey: 'sk-xxx', baseUrl: 'https://api.example.com' } })
+      )
+
+      manager.scanSkills([path.join(tmpDir, 'skills')], configDir)
+      const config = manager.getSkillRuntimeConfig('paddle-ocr')
+
+      expect(config).toEqual({ apiKey: 'sk-xxx', baseUrl: 'https://api.example.com' })
+    })
+
+    it('getSkillRuntimeConfig 未配置时返回 undefined', () => {
+      fs.writeFileSync(path.join(configDir, 'skills.json5'), '{}')
+
+      manager.scanSkills([path.join(tmpDir, 'skills')], configDir)
+      const config = manager.getSkillRuntimeConfig('nonexistent')
+
+      expect(config).toBeUndefined()
+    })
+
+    it('toPromptBlocks 包含配置状态属性', () => {
+      createSkillWithConfig(
+        'ocr',
+        'paddle-ocr',
+        '  - key: apiKey\n    description: Key\n    required: true\n'
+      )
+      fs.writeFileSync(path.join(configDir, 'skills.json5'), '{}')
+
+      manager.scanSkills([path.join(tmpDir, 'skills')], configDir)
+      const blocks = manager.toPromptBlocks()
+
+      expect(blocks).toContain('config-status="missing"')
     })
   })
 

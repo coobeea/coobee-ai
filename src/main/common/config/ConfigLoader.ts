@@ -19,6 +19,7 @@ import path from 'path'
 import { resolveEnvVars } from './ConfigEnv'
 import { mergeWithDefaults } from './ConfigDefaults'
 import { loadSecrets, mergeSecrets, secretsPath, ensureSecretsFile } from './ConfigSecrets'
+import { skillConfigPath, ensureSkillConfigFile } from '@main/ai/skills/SkillConfig'
 import type { CoobeeConfig } from './schema'
 import { CoobeeConfigSchema } from './schema'
 import type { ConfigSnapshot, ConfigValidationIssue } from './types'
@@ -45,6 +46,11 @@ export class ConfigLoader {
   /** secrets.json5 绝对路径 */
   get secretsFilePath(): string {
     return secretsPath(this.configDir)
+  }
+
+  /** skills.json5 绝对路径 */
+  get skillConfigFilePath(): string {
+    return skillConfigPath(this.configDir)
   }
 
   /**
@@ -92,11 +98,15 @@ export class ConfigLoader {
       ])
     }
 
-    // hash 包含 coobee.json5 + secrets.json5，任一变更都触发热重载
+    // hash 包含 coobee.json5 + secrets.json5 + skills.json5，任一变更都触发热重载
     const hasher = crypto.createHash('md5').update(raw)
     const secretsFile = this.secretsFilePath
     if (fs.existsSync(secretsFile)) {
       hasher.update(fs.readFileSync(secretsFile, 'utf-8'))
+    }
+    const skillsFile = this.skillConfigFilePath
+    if (fs.existsSync(skillsFile)) {
+      hasher.update(fs.readFileSync(skillsFile, 'utf-8'))
     }
     const hash = hasher.digest('hex')
 
@@ -202,8 +212,9 @@ export class ConfigLoader {
       fs.writeFileSync(this.configPath, defaultContent, 'utf-8')
     }
 
-    // 同时确保 secrets.json5 存在
+    // 同时确保 secrets.json5 和 skills.json5 存在
     ensureSecretsFile(this.configDir)
+    ensureSkillConfigFile(this.configDir)
   }
 
   // ─── 私有方法 ─────────────────────────────────────

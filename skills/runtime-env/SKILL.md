@@ -38,6 +38,9 @@ description: 描述 Agent 运行时环境的目录结构、路径约定和可用
 {systemHome}/                         # 系统用户目录（如 /Users/xxx）
 {userHome}/                           # 应用主目录（如 ~/.coobee-ai）
 ├── config/                           # 用户配置
+│   ├── coobee.json5                  # 主配置文件
+│   ├── secrets.json5                 # API Key 密钥配置
+│   └── skills.json5                  # Skill 专属配置（API Key、参数等）
 ├── memory/                           # 记忆存储
 │   ├── user/                         # 用户级记忆（跨 Agent 共享）
 │   │   └── *.json / *.md             # 偏好、长期经验、学习成果
@@ -139,6 +142,40 @@ description: 一句话描述，告诉系统何时使用此 Skill
 
 - 注意事项...
 ```
+
+### Skill 配置
+
+需要外部资源（如 API Key）的 Skill 可以在 SKILL.md 的 frontmatter 中声明 `config` 字段，描述所需配置项：
+
+```markdown
+---
+name: paddle-ocr
+description: 使用 PaddleOCR 进行文字识别
+config:
+  - key: apiKey
+    description: PaddleOCR API Key
+    required: true
+  - key: baseUrl
+    description: API 地址
+    required: false
+    default: https://api.example.com
+---
+```
+
+配置值统一存放在 `{userHome}/config/skills.json5`（不在 Skill 目录中），格式：
+
+```json5
+{
+  'paddle-ocr': {
+    apiKey: 'your-api-key',
+    baseUrl: 'https://custom-api.example.com'
+  }
+}
+```
+
+- **Agent** 读取 SKILL.md 后知道需要哪些配置，可以帮用户创建和填写
+- 运行时通过 `SkillManager.getSkillRuntimeConfig(skillName)` 获取配置值
+- 配置修改后自动热重载生效
 
 ---
 

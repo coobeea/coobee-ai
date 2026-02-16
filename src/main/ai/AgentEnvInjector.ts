@@ -48,8 +48,9 @@ export async function injectEnv(
     if (mode === 'agent') {
       // 3. 扫描 Skill 并存储到 SkillManager（供 skill_list 工具按需查询）
       //    使用 agentEnv.skillPaths（已包含 Extension 贡献的 Skill 目录）
+      //    传入 configDir 以加载 skills.json5 中的 Skill 配置
       const skillManager = new SkillManager()
-      skillManager.scanSkills(agentEnv.skillPaths)
+      skillManager.scanSkills(agentEnv.skillPaths, Env.paths.configDir)
       SkillManager.setCurrent(skillManager)
 
       // 4. 注入核心执行协议 + 运行时环境 + Skill 发现提示到 appendInstructions
