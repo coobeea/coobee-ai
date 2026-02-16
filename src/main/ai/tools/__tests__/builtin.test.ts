@@ -38,6 +38,16 @@ vi.mock('@main/common/env', () => ({
   }
 }))
 
+// Mock extension system（exec 工具检查 tool-approval 是否加载）
+vi.mock('../../../common/extension', () => ({
+  ExtensionManager: {
+    getRegistry: (): { getExtensionIds: () => string[] } => ({
+      getExtensionIds: (): string[] => ['tool-approval']
+    }),
+    getHookRunner: (): null => null
+  }
+}))
+
 // Mock fs 模块
 vi.mock('node:fs/promises', () => ({
   readFile: vi.fn(),

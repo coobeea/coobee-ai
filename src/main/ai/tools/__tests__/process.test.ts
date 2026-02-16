@@ -24,6 +24,16 @@ vi.mock('@main/common/logger', () => {
   return { log, createLogger: vi.fn(() => log) }
 })
 
+// Mock extension system（exec 工具检查 tool-approval 是否加载）
+vi.mock('../../../common/extension', () => ({
+  ExtensionManager: {
+    getRegistry: (): { getExtensionIds: () => string[] } => ({
+      getExtensionIds: (): string[] => ['tool-approval']
+    }),
+    getHookRunner: (): null => null
+  }
+}))
+
 /**
  * 消费 AsyncGenerator，收集 yield 的更新和最终结果
  */

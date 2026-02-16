@@ -11,6 +11,7 @@ export default defineConfig({
       'src/main/gateway/__tests__/**/*.test.ts',
       'src/main/common/extension/__tests__/**/*.test.ts',
       'src/main/common/config/__tests__/**/*.test.ts',
+      'src/main/common/middleware/__tests__/**/*.test.ts',
       'src/main/lifecycle/__tests__/**/*.test.ts'
     ],
     // 自动加载 .env 文件中的环境变量

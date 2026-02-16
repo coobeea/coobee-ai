@@ -68,10 +68,10 @@ export class ConfigStore {
     }
   }
 
-  /** 写入 JSON5 配置文件 */
+  /** 写入 JSON5 配置文件（保持 JSON5 格式一致性） */
   private writeRawConfig(config: Record<string, unknown>): void {
     this.loader.ensureConfigFile()
-    const content = JSON.stringify(config, null, 2)
+    const content = JSON5.stringify(config, null, 2)
     fs.writeFileSync(this.loader.configPath, content, 'utf-8')
   }
 }
