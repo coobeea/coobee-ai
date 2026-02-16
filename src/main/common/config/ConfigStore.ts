@@ -114,6 +114,10 @@ export class ConfigStore {
       if (originalProviders[id]) {
         // 还原为原始配置文件中的 apiKey（通常是 ${VAR} 模板）
         provider.apiKey = originalProviders[id].apiKey
+      } else if (provider.apiKey && typeof provider.apiKey === 'string') {
+        // 新增的 Provider：清空 apiKey，防止真实 key 泄漏到主配置文件
+        // 用户应将新 Provider 的 key 放入 secrets.json5
+        provider.apiKey = ''
       }
     }
 
