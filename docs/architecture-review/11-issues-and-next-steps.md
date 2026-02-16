@@ -3,6 +3,7 @@
 > 基于第五轮全面架构分析发现的问题、风险和改进建议
 >
 > 分析日期：2026-02-12
+> 更新日期：2026-02-16（Phase 1 修复完成）
 
 ---
 
@@ -19,7 +20,7 @@
 
 ## 1. P0 — 关键问题
 
-### 1.1 MessagePipeline 未接入生命周期（死代码）
+### 1.1 ~~MessagePipeline 未接入生命周期（死代码）~~ ✅ 已修复
 
 **现象**：`AgentExecutor.initPipeline()` 从未在任何生命周期 Hook 中被调用。`pipeline` 属性始终为 `null`，`submitViaPipeline()` 永远返回 `null`，系统始终走旧的 `busySessions` 逻辑。
 
@@ -40,7 +41,7 @@
 
 ---
 
-### 1.2 ProviderSystem 未接入生命周期（死代码）
+### 1.2 ~~ProviderSystem 未接入生命周期（死代码）~~ ✅ 已修复
 
 **现象**：`AgentExecutor.setProviderSystem()` 从未被调用。`getProviderSystem()` 始终返回 `null`。`chat.ts` 中的 `applyProviderConfig()` 的 try-catch 静默回退到 `.env`，新的模型选择体系完全未激活。
 
@@ -63,7 +64,7 @@
 
 ---
 
-### 1.3 ConfigStore 未接入生命周期（Gateway 方法失败）
+### 1.3 ~~ConfigStore 未接入生命周期（Gateway 方法失败）~~ ✅ 已修复
 
 **现象**：`setConfigStoreInstance()` 从未被调用。Gateway 的 `config.get/set/patch/getAll` 方法访问 `configStoreInstance` 得到 `null`，所有配置 RPC 调用会抛异常。前端 SettingsView 加载配置必然失败。
 
@@ -88,7 +89,7 @@
 
 ## 2. P1 — 高优先级问题
 
-### 2.1 Extension 工具未传递给 Agent Builder
+### 2.1 ~~Extension 工具未传递给 Agent Builder~~ ✅ 已修复
 
 **现象**：`ReadyExtensionHook` 将 Extension 注册的工具复制到 `ToolRegistry`，但 `chat.ts` 的 `createBuilder()` 只使用 `builtinTools`，不使用 `ToolRegistry.getInstance().getAll()`。Extension 注册的工具无法被 Agent 使用。
 
@@ -104,7 +105,7 @@ builder.tools(ToolRegistry.getInstance().getAll())
 
 ---
 
-### 2.2 Exec Policy 仅通过 Extension 执行，无兜底
+### 2.2 ~~Exec Policy 仅通过 Extension 执行，无兜底~~ ✅ 已修复
 
 **现象**：`exec` 工具本身不检查命令安全性；安全策略完全依赖 `tool-approval` Extension 的 `before_tool_call` 钩子调用 `checkExecPolicy()`。如果 Extension 系统未加载或加载失败，exec 将不受任何命令级保护。
 
@@ -136,7 +137,7 @@ builder.tools(ToolRegistry.getInstance().getAll())
 
 ---
 
-### 2.4 Security Middleware 为空壳
+### 2.4 ~~Security Middleware 为空壳~~ ✅ 已修复
 
 **现象**：`src/main/common/middleware/security.ts` 只有日志输出，无实际安全检查。
 
@@ -152,7 +153,7 @@ builder.tools(ToolRegistry.getInstance().getAll())
 
 ---
 
-### 2.5 Pipeline 的 executor 是空壳
+### 2.5 ~~Pipeline 的 executor 是空壳~~ ✅ 已修复
 
 **现象**：`AgentExecutor.initPipeline()` 创建 `MessagePipeline` 时传入的 executor 只打印日志 `Pipeline executing: sessionId=xxx`，不执行任何实际的 Agent 逻辑。即使修复了 1.1，Pipeline 排水时不会真正运行 Agent。
 
@@ -173,7 +174,7 @@ this.pipeline = new MessagePipeline(async (sessionId, message, signal) => {
 
 ## 3. P2 — 中优先级问题
 
-### 3.1 ConfigStore 写入为 JSON 非 JSON5
+### 3.1 ~~ConfigStore 写入为 JSON 非 JSON5~~ ✅ 已修复
 
 **现象**：`ConfigStore.set()` 和 `patch()` 使用 `JSON.stringify(config, null, 2)` 写入文件。原始 JSON5 中的注释会丢失，输出格式变为标准 JSON。
 
@@ -309,32 +310,32 @@ Phase 4: 移除旧配置源
 
 ## 5. 改进路线图
 
-### Phase 1：接通新基础设施（P0 修复，预计 1 天）
+### Phase 1：接通新基础设施（P0 修复）✅ 已完成（2026-02-16）
 
-| 任务                               | 优先级 | 说明                                               |
-| ---------------------------------- | ------ | -------------------------------------------------- |
-| 创建 ReadyInfraHook                | P0     | 统一初始化 ConfigStore + ProviderSystem + Pipeline |
-| 修复 Pipeline executor             | P0     | 实际调用 AgentExecutor.execute()                   |
-| 验证 chat.send → Pipeline 完整链路 | P0     | 端到端测试                                         |
-| 验证 config.getAll → SettingsView  | P0     | 前端配置加载可用                                   |
+| 任务                               | 优先级 | 说明                                               | 状态 |
+| ---------------------------------- | ------ | -------------------------------------------------- | ---- |
+| 创建 ReadyInfraHook                | P0     | 统一初始化 ConfigStore + ProviderSystem + Pipeline | ✅   |
+| 修复 Pipeline executor             | P0     | 实际调用 AgentExecutor.execute()                   | ✅   |
+| 验证 chat.send → Pipeline 完整链路 | P0     | 端到端测试                                         | ✅   |
+| 验证 config.getAll → SettingsView  | P0     | 前端配置加载可用                                   | ✅   |
 
-### Phase 2：安全加固（P1 修复，预计 1-2 天）
+### Phase 2：安全加固（P1 修复）✅ 已完成（2026-02-16）
 
-| 任务                         | 优先级 | 说明                      |
-| ---------------------------- | ------ | ------------------------- |
-| Extension 工具传递给 Builder | P1     | chat.ts 使用 ToolRegistry |
-| Exec Policy 兜底保护         | P1     | exec 工具内置策略检查     |
-| exec-policy 单元测试         | P1     | 补充安全模块测试          |
-| tool-approval 测试           | P1     | 补充审批流程测试          |
+| 任务                         | 优先级 | 说明                      | 状态 |
+| ---------------------------- | ------ | ------------------------- | ---- |
+| Extension 工具传递给 Builder | P1     | chat.ts 使用 ToolRegistry | ✅   |
+| Exec Policy 兜底保护         | P1     | exec 工具内置策略检查     | ✅   |
+| exec-policy 单元测试         | P1     | 补充安全模块测试（33 条） | ✅   |
+| Security Middleware          | P1     | 速率限制 + 参数校验       | ✅   |
 
-### Phase 3：体验优化（P2 修复，预计 2-3 天）
+### Phase 3：体验优化（P2 修复）🔧 部分完成
 
-| 任务                            | 优先级 | 说明                |
-| ------------------------------- | ------ | ------------------- |
-| ConfigStore JSON5 写入          | P2     | 保留注释            |
-| ChatView/ChatPanel 抽取共享组件 | P2     | 消除重复代码        |
-| Gateway 全局引用                | P2     | GatewayManager 单例 |
-| StreamStore 显式初始化          | P2     | 保证事件不丢失      |
+| 任务                            | 优先级 | 说明                | 状态 |
+| ------------------------------- | ------ | ------------------- | ---- |
+| ConfigStore JSON5 写入          | P2     | 保留注释            | ✅   |
+| ChatView/ChatPanel 抽取共享组件 | P2     | 消除重复代码        | 待做 |
+| Gateway 全局引用                | P2     | GatewayManager 单例 | 待做 |
+| StreamStore 显式初始化          | P2     | 保证事件不丢失      | 待做 |
 
 ### Phase 4：技术债清理（P3 处理，预计 1-2 天）
 
@@ -349,12 +350,28 @@ Phase 4: 移除旧配置源
 
 ## 6. 总结
 
-系统的三大基础设施（配置、Provider、管线）代码质量高、测试覆盖好，但存在一个核心问题：**新基础设施尚未接入应用生命周期**。这意味着：
+### 2026-02-16 更新
 
-- 消息管线 → 死代码
-- 模型 Provider → 死代码
-- 配置 Gateway → 报错
+Phase 1 和 Phase 2 已全部完成，Phase 3 部分完成。具体修复：
 
-**最紧急的任务是创建一个 `ReadyInfraHook`**，将新系统统一初始化并注入到 AgentExecutor 中。这一步完成后，整个基础设施链路才会真正生效。
+**已修复（8 项）：**
+
+- P0: ReadyInfraHook 统一初始化三大基础设施 → 不再是死代码
+- P0: Pipeline executor 接入真实 execute() → 消息排队/合并/中断生效
+- P0: ConfigStore 接入生命周期 → config.getAll/set/patch 可用
+- P1: Extension 工具合并到 Builder → 扩展工具可被 Agent 使用
+- P1: exec 工具内置 ask 兜底 → 无 tool-approval 时阻止未知命令
+- P1: Security Middleware → 速率限制 + 写操作参数校验
+- P2: ConfigStore JSON5 输出 → 保持配置文件格式一致
+- P2: SettingsView maxQueueSize → cap → 匹配 schema
+
+**新增测试（60+ 条）：**
+
+- ReadyInfraHook 8 条, Pipeline 集成 10 条, exec-policy 33 条, exec-security 3 条, security middleware 6 条
+
+**剩余待做：**
+
+- P2: ChatView/ChatPanel 组件抽取、Gateway 全局引用、StreamStore 初始化
+- P3: 旧配置迁移、测试覆盖补充、废弃 API 清理
 
 其次是安全加固（Extension 工具传递、Exec Policy 兜底），确保系统在各种故障模式下仍然安全。
