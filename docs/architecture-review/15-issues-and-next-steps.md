@@ -3,6 +3,7 @@
 > 基于第七轮全新独立源码分析
 >
 > 分析日期：2026-02-16
+> 更新日期：2026-02-16（P0/P1 修复完成）
 
 ---
 
@@ -19,23 +20,22 @@
 
 ## 1. P0 — 关键问题
 
-### 1.1 Abort Signal 未传递到 Runtime
+### 1.1 ✅ Abort Signal 未传递到 Runtime
 
 - **位置**：`AgentExecutor.ts:125`
-- **现象**：Pipeline executor 忽略 `signal`，用户中止后 Agent 仍在后台运行
-- **修复**：`ExecuteRequest` 增加 `signal?: AbortSignal`；在 `execute()` 中传递给 `runtime.stream()`
+- **修复**：`ExecuteRequest` 增加 `signal?: AbortSignal`；Pipeline executor 传入 signal；`consumeAndForward` 在每次循环检测 `signal.aborted`，提前退出并调用 `gen.return()`
 
-### 1.2 Builtin Providers 从未加载
+### 1.2 ⏬ Builtin Providers 从未加载（降级为 P2）
 
 - **位置**：`ReadyInfraHook.ts:60`，`ProviderRegistry.ts`
-- **现象**：Registry 为空，模型元数据全部丢失，回退到 `.env`
-- **修复**：`loadFromConfig` 时先加载 `builtinProviders`，再用用户配置覆盖
+- **说明**：`.env` 回退正常工作，app 功能不受影响。仅缺少模型元数据（cost/context window），属锦上添花
+- **修复**：需要时在 `loadFromConfig` 中 merge builtin
 
-### 1.3 Extension Gateway 方法未注册到 Gateway
+### 1.3 ⏬ Extension Gateway 方法未注册到 Gateway（降级为 P3）
 
 - **位置**：`ReadyExtensionHook.ts`
-- **现象**：`registerGatewayMethod` 调用无效
-- **修复**：`ReadyExtensionHook` 中获取 Gateway 实例，注册 Extension 方法
+- **说明**：目前内置 Extension（memory-auto、tool-approval）均未使用 `registerGatewayMethod`，无实际消费者
+- **修复**：需要时在 `ReadyExtensionHook` 中获取 Gateway 实例注册
 
 ---
 
@@ -46,20 +46,20 @@
 - **位置**：`ExtensionLoader.ts:169`
 - **修复**：`unload()` 中同步调用 `ToolRegistry.getInstance().unregister(toolName)`
 
-### 2.2 ConfigStore 写入无 Schema 校验
+### 2.2 ✅ ConfigStore 写入无 Schema 校验
 
 - **位置**：`ConfigStore.ts:41-47`
-- **修复**：`set()`/`patch()` 写入前用 `CoobeeConfigSchema.safeParse()` 校验
+- **修复**：`writeRawConfig` 写入前用 `CoobeeConfigSchema.safeParse()` 校验，失败抛异常
 
-### 2.3 ConfigStore 解析失败返回空对象
+### 2.3 ✅ ConfigStore 解析失败返回空对象
 
 - **位置**：`ConfigStore.ts:63-68`
-- **修复**：解析失败抛异常或返回原始 raw string，不吞掉数据
+- **修复**：移除 try-catch，解析失败直接抛出 `JSON5.parse` 异常
 
-### 2.4 builderFactory 为空时前端无响应
+### 2.4 ✅ builderFactory 为空时前端无响应
 
 - **位置**：`AgentExecutor.ts:128`
-- **修复**：emit `run:error` 事件到 EventBus，让前端显示错误
+- **修复**：emit `run:error` 事件到 EventBus，前端可显示错误信息
 
 ### 2.5 前端 stream 监听器泄漏
 

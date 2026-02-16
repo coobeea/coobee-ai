@@ -7,7 +7,7 @@ import fs from 'fs'
 import JSON5 from 'json5'
 
 import { ConfigLoader } from './ConfigLoader'
-import type { CoobeeConfig } from './schema'
+import { CoobeeConfigSchema, type CoobeeConfig } from './schema'
 
 /** 深度部分类型 */
 type DeepPartial<T> = {
@@ -61,15 +61,17 @@ export class ConfigStore {
       return {}
     }
     const raw = fs.readFileSync(filePath, 'utf-8')
-    try {
-      return JSON5.parse(raw) as Record<string, unknown>
-    } catch {
-      return {}
-    }
+    // 解析失败抛出异常，避免静默丢弃用户配置
+    return JSON5.parse(raw) as Record<string, unknown>
   }
 
-  /** 写入 JSON5 配置文件（保持 JSON5 格式一致性） */
+  /** 写入 JSON5 配置文件（校验 → 序列化 → 写入） */
   private writeRawConfig(config: Record<string, unknown>): void {
+    // 写入前校验，防止畸形数据破坏配置文件
+    const result = CoobeeConfigSchema.safeParse(config)
+    if (!result.success) {
+      throw new Error(`Config validation failed: ${result.error.message}`)
+    }
     this.loader.ensureConfigFile()
     const content = JSON5.stringify(config, null, 2)
     fs.writeFileSync(this.loader.configPath, content, 'utf-8')

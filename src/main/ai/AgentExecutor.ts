@@ -53,6 +53,8 @@ export interface ExecuteRequest {
   builder: AgentBuilder
   /** 流式事件回调（可选） */
   onChunk?: (chunk: StreamChunk) => void
+  /** 中止信号（Pipeline 传入，用于提前终止流式消费） */
+  signal?: AbortSignal
 }
 
 /** 执行状态 */
@@ -122,16 +124,28 @@ class AgentExecutor {
    * 管线的执行器委托给内部 execute() 方法，使用 builderFactory 创建 Builder。
    */
   initPipeline(settings?: Partial<QueueSettings>): void {
-    this.pipeline = new MessagePipeline(async (sessionId, message, _signal) => {
+    this.pipeline = new MessagePipeline(async (sessionId, message, signal) => {
       const mode = this.sessionModes.get(sessionId) ?? 'agent'
 
       if (!this.builderFactory) {
         log.error(`[AgentExecutor] Pipeline executor: no builderFactory registered`)
+        // 通知前端：发射 run:error 到 EventBus
+        try {
+          const { eventBus } = await import('@main/common/eventbus')
+          const { StreamEventType } = await import('./streaming/types')
+          eventBus.emit(StreamEventType.MESSAGE, {
+            sessionId,
+            type: 'run:error',
+            content: 'Internal error: builderFactory not registered'
+          })
+        } catch {
+          // eventBus 不可用时静默
+        }
         return
       }
 
       const builder = this.builderFactory(mode)
-      const request: ExecuteRequest = { sessionId, message, builder }
+      const request: ExecuteRequest = { sessionId, message, builder, signal }
 
       this.busySessions.set(sessionId, { startedAt: Date.now() })
       try {
@@ -355,7 +369,8 @@ class AgentExecutor {
     emitter: IStreamEmitter,
     eventWriter: AgentEventWriter,
     sessionId: string,
-    onChunk?: (chunk: StreamChunk) => void
+    onChunk?: (chunk: StreamChunk) => void,
+    signal?: AbortSignal
   ): Promise<ExecutionResult> {
     let eventSeq = 0
 
@@ -365,6 +380,13 @@ class AgentExecutor {
 
     let r = await gen.next()
     while (!r.done) {
+      // 检测中止信号：提前退出循环，通知 generator 结束
+      if (signal?.aborted) {
+        log.info(`[AgentExecutor] Aborted: sessionId=${sessionId}`)
+        await gen.return({ output: '', error: 'Aborted by user' } as ExecutionResult)
+        return { output: '', error: 'Aborted by user' }
+      }
+
       const chunk = r.value
 
       emitter.forward(chunk)
@@ -492,7 +514,7 @@ class AgentExecutor {
    *   这使得 HITL 成为 SDK 无关的能力，OpenAI / PiMono 等所有 Runtime 均可使用。
    */
   private async execute(request: ExecuteRequest): Promise<ExecutionResult> {
-    const { sessionId, message, builder, onChunk } = request
+    const { sessionId, message, builder, onChunk, signal } = request
     let runtime: AgentRuntime | null = null
 
     log.info(
@@ -514,7 +536,14 @@ class AgentExecutor {
 
       // 2. 流式执行（HITL 在 before_tool_call Hook 中自动处理）
       const gen = runtime.stream(message)
-      const result = await this.consumeAndForward(gen, emitter, eventWriter, sessionId, onChunk)
+      const result = await this.consumeAndForward(
+        gen,
+        emitter,
+        eventWriter,
+        sessionId,
+        onChunk,
+        signal
+      )
 
       const duration = Date.now() - startTime
 
