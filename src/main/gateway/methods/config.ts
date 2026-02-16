@@ -12,10 +12,27 @@ import { GatewayErrorCode, GatewayMethodError } from '../protocol'
 import type { MethodGroup } from '../protocol'
 
 import { configStoreInstance } from '@main/common/config/ConfigStore'
+import type { CoobeeConfig } from '@main/common/config/schema'
 
 /** 获取 ConfigStore 实例 */
 function getConfigStore(): typeof configStoreInstance {
   return configStoreInstance
+}
+
+/** 脱敏配置中的 API Key，防止泄露到前端 */
+function maskApiKeys(config: CoobeeConfig): CoobeeConfig {
+  const cloned = structuredClone(config)
+  const providers = cloned.models?.providers
+  if (!providers) return cloned
+
+  for (const provider of Object.values(providers)) {
+    if (provider.apiKey && provider.apiKey.length > 0) {
+      // 保留前4位，其余用 * 替代
+      const key = provider.apiKey
+      provider.apiKey = key.length > 8 ? key.slice(0, 4) + '***' + key.slice(-4) : '***'
+    }
+  }
+  return cloned
 }
 
 export const configMethods: MethodGroup = {
@@ -35,7 +52,7 @@ export const configMethods: MethodGroup = {
         )
       }
 
-      const config = store.getAll()
+      const config = maskApiKeys(store.getAll())
       const value = config[key as keyof typeof config]
       return { key, value: value ?? null }
     },
@@ -48,7 +65,7 @@ export const configMethods: MethodGroup = {
           'Config system not initialized'
         )
       }
-      return store.getAll()
+      return maskApiKeys(store.getAll())
     },
 
     set: async (params) => {

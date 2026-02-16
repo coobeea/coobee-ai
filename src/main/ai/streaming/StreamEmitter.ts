@@ -123,6 +123,11 @@ export class StreamEmitter implements IStreamEmitter {
         timestamp: Date.now()
       }
       eventBus.emit(lifecycleType, lifecycleEvent)
+
+      // run 结束时清理 sequenceCounter，防止 Map 无限增长
+      if (chunk.type === 'run:done' || chunk.type === 'run:error') {
+        this.sequenceCounters.delete(this.sessionId)
+      }
     }
   }
 

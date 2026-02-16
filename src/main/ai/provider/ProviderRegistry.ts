@@ -63,7 +63,7 @@ export class ProviderRegistry {
     for (const [id, providerConf] of Object.entries(providers)) {
       this.register({
         id,
-        name: id, // 使用 key 作为默认名称
+        name: providerConf.name ?? id,
         baseUrl: providerConf.baseUrl,
         apiKey: providerConf.apiKey,
         api: providerConf.api,
@@ -73,9 +73,12 @@ export class ProviderRegistry {
           name: m.name,
           api: m.api,
           reasoning: m.reasoning ?? false,
+          vision: m.vision ?? false,
+          functionCalling: m.functionCalling ?? false,
+          free: m.free ?? false,
           input: m.input ?? ['text'],
           contextWindow: m.contextWindow,
-          maxTokens: m.maxTokens,
+          maxTokens: m.maxOutputTokens ?? m.maxTokens,
           cost: m.cost
         })),
         enabled: providerConf.enabled ?? true

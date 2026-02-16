@@ -6,6 +6,7 @@
 
 export class AbortManager {
   private controllers = new Map<string, AbortController>()
+  private abortedSessions = new Set<string>()
 
   /**
    * 为 session 创建新的 AbortController
@@ -16,6 +17,9 @@ export class AbortManager {
   create(sessionId: string): AbortSignal {
     // 先中断旧的
     this.abort(sessionId)
+
+    // 新 run 清除已 abort 标记
+    this.abortedSessions.delete(sessionId)
 
     const controller = new AbortController()
     this.controllers.set(sessionId, controller)
@@ -32,6 +36,7 @@ export class AbortManager {
     if (!controller) return false
 
     controller.abort()
+    this.abortedSessions.add(sessionId)
     this.controllers.delete(sessionId)
     return true
   }
@@ -45,8 +50,11 @@ export class AbortManager {
 
   /**
    * 检查 session 是否已被中断
+   *
+   * 在 abort() 后 controller 被删除，但仍能通过 abortedSessions 追踪状态。
    */
   isAborted(sessionId: string): boolean {
+    if (this.abortedSessions.has(sessionId)) return true
     const controller = this.controllers.get(sessionId)
     return controller?.signal.aborted ?? false
   }
@@ -56,6 +64,7 @@ export class AbortManager {
    */
   cleanup(sessionId: string): void {
     this.controllers.delete(sessionId)
+    this.abortedSessions.delete(sessionId)
   }
 
   /**
@@ -66,6 +75,7 @@ export class AbortManager {
       controller.abort()
     }
     this.controllers.clear()
+    this.abortedSessions.clear()
   }
 
   /** 当前管理的 session 数 */

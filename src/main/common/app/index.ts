@@ -97,19 +97,32 @@ export class AppManager implements IAppManager {
     })
 
     // 应用退出前清理
-    app.on(ElectronAppEvents.BEFORE_QUIT, async () => {
+    // Electron before-quit 不会等待 async handler，必须用 preventDefault 阻止退出
+    let quitting = false
+    app.on(ElectronAppEvents.BEFORE_QUIT, (event) => {
+      if (quitting) return // 清理完成后的二次退出，放行
+      event.preventDefault()
+      quitting = true
+
       log.info('[App] 应用准备退出，开始清理资源...')
 
       // 设置应用退出状态
-      const { stateManager } = await import('@main/common/state')
-      stateManager.setIsQuitting(true)
+      import('@main/common/state')
+        .then(({ stateManager }) => {
+          stateManager.setIsQuitting(true)
+        })
+        .catch(() => {
+          /* ignore */
+        })
 
       // 发送 app:before-quit 事件
       eventBus.emit(EventTypes.APP_BEFORE_QUIT, {
         timestamp: Date.now()
       })
 
-      await this.cleanup()
+      this.cleanup().finally(() => {
+        app.quit() // 清理完成，真正退出
+      })
     })
 
     // 第二个实例启动时的处理

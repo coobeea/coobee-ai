@@ -65,16 +65,51 @@ export class ConfigStore {
     return JSON5.parse(raw) as Record<string, unknown>
   }
 
-  /** 写入 JSON5 配置文件（校验 → 序列化 → 写入） */
+  /** 写入 JSON5 配置文件（脱敏 → 校验 → 序列化 → 写入） */
   private writeRawConfig(config: Record<string, unknown>): void {
+    // 写入前剥离 secrets 中的 API Key，避免泄漏到主配置文件
+    const sanitized = this.stripSecretsApiKeys(config)
+
     // 写入前校验，防止畸形数据破坏配置文件
-    const result = CoobeeConfigSchema.safeParse(config)
+    const result = CoobeeConfigSchema.safeParse(sanitized)
     if (!result.success) {
       throw new Error(`Config validation failed: ${result.error.message}`)
     }
     this.loader.ensureConfigFile()
-    const content = JSON5.stringify(config, null, 2)
+    const content = JSON5.stringify(sanitized, null, 2)
     fs.writeFileSync(this.loader.configPath, content, 'utf-8')
+  }
+
+  /**
+   * 剥离通过 secrets.json5 注入的 API Key
+   *
+   * 读取原始 coobee.json5 中的 apiKey 值，写入时恢复为原始占位符，
+   * 避免将 secrets 合并后的真实 key 持久化到主配置文件。
+   */
+  private stripSecretsApiKeys(config: Record<string, unknown>): Record<string, unknown> {
+    const original = this.readRawConfig()
+    const originalProviders = (original.models as Record<string, unknown>)?.providers as
+      | Record<string, Record<string, unknown>>
+      | undefined
+    const configProviders = ((config as Record<string, unknown>).models as Record<string, unknown>)
+      ?.providers as Record<string, Record<string, unknown>> | undefined
+
+    if (!originalProviders || !configProviders) return config
+
+    const cloned = structuredClone(config)
+    const clonedProviders = ((cloned as Record<string, unknown>).models as Record<string, unknown>)
+      ?.providers as Record<string, Record<string, unknown>> | undefined
+
+    if (!clonedProviders) return config
+
+    for (const [id, provider] of Object.entries(clonedProviders)) {
+      if (originalProviders[id]) {
+        // 还原为原始配置文件中的 apiKey（通常是 ${VAR} 模板）
+        provider.apiKey = originalProviders[id].apiKey
+      }
+    }
+
+    return cloned
   }
 }
 

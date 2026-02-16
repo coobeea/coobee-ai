@@ -99,6 +99,8 @@ export class ConfigWatcher {
   }
 
   private processChange(): void {
+    this.debounceTimer = null
+
     // 保存旧配置
     const prevConfig = this.lastConfig
 

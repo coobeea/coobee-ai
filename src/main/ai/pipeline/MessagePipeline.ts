@@ -169,11 +169,15 @@ export class MessagePipeline {
     } finally {
       this.abortManager.cleanup(sessionId)
 
-      // Drain 队列
-      if (!queue.isEmpty()) {
+      // Drain 队列（abort 后跳过 drain，直接清空）
+      if (!queue.isEmpty() && !this.abortManager.isAborted(sessionId)) {
         await this.drainQueue(queue, sessionId)
       } else {
+        if (this.abortManager.isAborted(sessionId)) {
+          queue.clear()
+        }
         queue.isRunning = false
+        this.cleanupSession(sessionId)
       }
     }
   }
@@ -207,6 +211,17 @@ export class MessagePipeline {
     } finally {
       queue.draining = false
       queue.isRunning = false
+      this.cleanupSession(sessionId)
+    }
+  }
+
+  /**
+   * 清理空闲 session 的队列，防止 Map 无限增长
+   */
+  private cleanupSession(sessionId: string): void {
+    const queue = this.queues.get(sessionId)
+    if (queue && !queue.isRunning && queue.isEmpty()) {
+      this.queues.delete(sessionId)
     }
   }
 

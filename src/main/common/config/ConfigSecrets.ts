@@ -59,8 +59,12 @@ export function loadSecrets(configDir: string): SecretsMap {
  */
 export function mergeSecrets<T>(config: T, secrets: SecretsMap): T {
   if (!config || typeof config !== 'object') return config
+  if (Object.keys(secrets).length === 0) return config
 
-  const obj = config as Record<string, unknown>
+  // 深拷贝，避免修改原始对象
+  const cloned = structuredClone(config)
+
+  const obj = cloned as Record<string, unknown>
   const providers = (obj.models as Record<string, unknown>)?.providers as
     | Record<string, Record<string, unknown>>
     | undefined
@@ -73,7 +77,7 @@ export function mergeSecrets<T>(config: T, secrets: SecretsMap): T {
     }
   }
 
-  return config
+  return cloned
 }
 
 /** secrets.json5 文件路径 */

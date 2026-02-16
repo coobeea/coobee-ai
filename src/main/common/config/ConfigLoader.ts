@@ -74,7 +74,14 @@ export class ConfigLoader {
     }
 
     const raw = fs.readFileSync(filePath, 'utf-8')
-    const hash = crypto.createHash('md5').update(raw).digest('hex')
+
+    // hash 包含 coobee.json5 + secrets.json5，任一变更都触发热重载
+    const hasher = crypto.createHash('md5').update(raw)
+    const secretsFile = this.secretsFilePath
+    if (fs.existsSync(secretsFile)) {
+      hasher.update(fs.readFileSync(secretsFile, 'utf-8'))
+    }
+    const hash = hasher.digest('hex')
 
     // Step 3: JSON5 解析
     let parsed: unknown
