@@ -30,6 +30,23 @@ import { resolveWorkingDirectory } from '../../sandbox'
 import { ProcessRegistry } from '../../process/ProcessRegistry'
 import { checkExecPolicy } from '../../sandbox/exec-policy'
 
+/**
+ * 检查 tool-approval Extension 是否可用
+ *
+ * 用于 ask 级别命令的兜底判断：若 tool-approval 未加载，
+ * exec 工具自行拒绝未知命令，防止绕过安全审批。
+ */
+async function isToolApprovalAvailable(): Promise<boolean> {
+  try {
+    const { ExtensionManager } = await import('../../../common/extension')
+    const registry = ExtensionManager.getRegistry()
+    if (!registry) return false
+    return registry.getExtensionIds().includes('tool-approval')
+  } catch {
+    return false
+  }
+}
+
 /** 默认超时（ms） */
 const DEFAULT_TIMEOUT_MS = 30_000
 
@@ -80,15 +97,28 @@ export const execTool: ToolDefinition = {
       }
     }
 
-    // 安全兜底：即使 Extension 未加载，黑名单命令仍被拦截
-    // Extension hook (tool-approval) 提供完整的 allow/ask/deny 逻辑，
-    // 这里仅做 deny 级别的最后防线
+    // 安全兜底：即使 Extension 未加载，黑名单/未知命令仍被拦截
+    // Extension hook (tool-approval) 提供完整的 allow/ask/deny + HITL 逻辑，
+    // 这里做 deny + ask（无审批能力时）的防线
     const policyResult = checkExecPolicy(command)
     if (policyResult.action === 'deny') {
       return {
         success: false,
         llmContent: `Error: ${policyResult.reason}`,
         error: { code: 'EXEC_POLICY_DENY', message: policyResult.reason }
+      }
+    }
+
+    // ask 兜底：若 tool-approval Extension 未加载，阻止未知命令
+    if (policyResult.action === 'ask') {
+      const hasApprovalExtension = await isToolApprovalAvailable()
+      if (!hasApprovalExtension) {
+        const reason = `Unknown command requires user approval, but tool-approval extension is not loaded. Command: ${command}`
+        return {
+          success: false,
+          llmContent: `Error: ${reason}`,
+          error: { code: 'EXEC_POLICY_ASK_NO_APPROVAL', message: reason }
+        }
       }
     }
 

@@ -13,6 +13,7 @@
 import { log } from '@main/common/logger'
 import { agentExecutor } from '@main/ai/AgentExecutor'
 import { builtinTools } from '@main/ai/tools'
+import { ToolRegistry } from '@main/ai/tools/registry'
 import { resolveApiKey } from '@main/ai/provider/ApiKeyResolver'
 import { GatewayErrorCode, GatewayMethodError } from '../protocol'
 import type { MethodGroup } from '../protocol'
@@ -49,11 +50,19 @@ function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.pi
     .mode(agentMode)
     .sessionMode('file')
 
+  // 合并 builtin + Extension 工具（Extension 可覆盖同名 builtin）
+  const extensionTools = ToolRegistry.getInstance().getAll()
+  const toolMap = new Map(builtinTools.map((t) => [t.name, t]))
+  for (const ext of extensionTools) {
+    toolMap.set(ext.name, ext)
+  }
+  const allTools = Array.from(toolMap.values())
+
   if (agentMode === 'agent') {
-    builder.instructions(AGENT_INSTRUCTIONS).tools(builtinTools)
+    builder.instructions(AGENT_INSTRUCTIONS).tools(allTools)
   } else {
     // Chat 模式：加载工具但排除 exec（脚本执行）
-    const chatTools = builtinTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name))
+    const chatTools = allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name))
     builder.instructions(CHAT_INSTRUCTIONS).tools(chatTools)
   }
 
