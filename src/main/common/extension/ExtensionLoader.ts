@@ -26,6 +26,8 @@ export class ExtensionLoader {
   private watchers: fs.FSWatcher[] = []
   /** 防抖定时器 */
   private debounceTimers = new Map<string, NodeJS.Timeout>()
+  /** searchPath → origin 映射（loadAll 时记录） */
+  private pathOrigins = new Map<string, ExtensionOrigin>()
 
   constructor(private registry: ExtensionRegistry) {}
 
@@ -39,6 +41,7 @@ export class ExtensionLoader {
     for (let i = 0; i < searchPaths.length; i++) {
       const searchPath = searchPaths[i]
       const origin = origins[i] ?? 'workspace'
+      this.pathOrigins.set(searchPath, origin)
 
       if (!fs.existsSync(searchPath)) continue
 
@@ -253,9 +256,8 @@ export class ExtensionLoader {
     return undefined
   }
 
-  private inferOrigin(_searchPath: string): ExtensionOrigin {
-    // 简化：默认 workspace，ReadyExtensionHook 会传入正确的搜索路径顺序
-    return 'workspace'
+  private inferOrigin(searchPath: string): ExtensionOrigin {
+    return this.pathOrigins.get(searchPath) ?? 'workspace'
   }
 }
 

@@ -15,6 +15,9 @@
 import { LifecyclePhase, type LifecycleContext, type LifecycleHook } from '@main/common/types'
 import { log } from '@main/common/logger'
 
+/** 模块级引用，供退出时停止 */
+let activeWatcher: { stop(): void } | null = null
+
 export const ReadyInfraHook: LifecycleHook = {
   name: 'ready-infra',
   phase: LifecyclePhase.READY,
@@ -47,6 +50,7 @@ export const ReadyInfraHook: LifecycleHook = {
       // 启动配置热重载
       const watcher = new ConfigWatcher(loader)
       watcher.start()
+      activeWatcher = watcher
       log.info('[ReadyInfraHook] ConfigWatcher started')
 
       // ── Step 2: ProviderSystem ───────────────────────
@@ -94,6 +98,24 @@ export const ReadyInfraHook: LifecycleHook = {
       log.info('[ReadyInfraHook] All infrastructure systems initialized successfully')
     } catch (error) {
       log.error('[ReadyInfraHook] Infrastructure initialization failed:', error)
+    }
+  }
+}
+
+/**
+ * 退出时停止 ConfigWatcher
+ */
+export const BeforeQuitInfraHook: LifecycleHook = {
+  name: 'before-quit-infra',
+  phase: LifecyclePhase.BEFORE_QUIT,
+  priority: 40,
+  critical: false,
+
+  async execute(): Promise<void> {
+    if (activeWatcher) {
+      activeWatcher.stop()
+      activeWatcher = null
+      log.info('[BeforeQuitInfraHook] ConfigWatcher stopped')
     }
   }
 }

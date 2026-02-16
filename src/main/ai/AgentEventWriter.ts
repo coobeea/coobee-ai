@@ -10,7 +10,10 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { createLogger } from '@main/common/logger'
 import type { StreamChunk } from './runtime/types'
+
+const log = createLogger('event-writer')
 
 export class AgentEventWriter {
   private eventsFile: string | null
@@ -37,8 +40,8 @@ export class AgentEventWriter {
         ...(chunk.data ? { data: chunk.data } : {})
       })
       fs.appendFileSync(this.eventsFile, line + '\n')
-    } catch {
-      // 写入失败不阻断流式执行
+    } catch (err) {
+      log.warn(`[AgentEventWriter] Write failed (seq=${seq}):`, err)
     }
   }
 

@@ -14,11 +14,6 @@ const router = createRouter({
           component: () => import('@/views/AgentView.vue')
         },
         {
-          // 兼容旧路由：/chat → /agent
-          path: 'chat',
-          redirect: '/agent'
-        },
-        {
           path: 'logs',
           name: 'logs',
           component: () => import('@/views/LogViewer.vue')

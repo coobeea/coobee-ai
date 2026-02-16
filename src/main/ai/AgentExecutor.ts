@@ -138,6 +138,7 @@ class AgentExecutor {
         await this.execute(request)
       } finally {
         this.busySessions.delete(sessionId)
+        this.sessionModes.delete(sessionId)
       }
     }, settings)
   }
