@@ -5,6 +5,8 @@
  * 提供排队、合并、中断等完整消息处理能力。
  */
 import { log } from '@main/common/logger'
+import { eventBus } from '@main/common/eventbus'
+import { StreamEventType } from '../streaming/types'
 import { ExtensionManager } from '../../common/extension/ExtensionManager'
 import { AbortManager } from './AbortManager'
 import { drainCollect, drainFollowup } from './DrainStrategy'
@@ -24,6 +26,10 @@ export class MessagePipeline {
   private abortManager = new AbortManager()
   private executor: PipelineExecutor
   private globalSettings: QueueSettings
+
+  /** 每个 session 当前活跃的 runId（用于竞态防护） */
+  private currentRunIds = new Map<string, number>()
+  private nextRunId = 0
 
   constructor(executor: PipelineExecutor, settings?: Partial<QueueSettings>) {
     this.executor = executor
@@ -151,11 +157,19 @@ export class MessagePipeline {
 
   private executeWithLifecycle(queue: SessionQueue, sessionId: string, message: string): void {
     queue.isRunning = true
+    const runId = ++this.nextRunId
+    this.currentRunIds.set(sessionId, runId)
     const signal = this.abortManager.create(sessionId)
 
     // 异步执行（不阻塞）
-    this.doExecute(queue, sessionId, message, signal).catch((err) => {
+    this.doExecute(queue, sessionId, message, signal, runId).catch((err) => {
       log.error(`[MessagePipeline] Unhandled error in session ${sessionId}:`, err)
+      eventBus.emit(StreamEventType.ERROR, {
+        type: StreamEventType.ERROR,
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+        timestamp: Date.now()
+      })
     })
   }
 
@@ -163,27 +177,36 @@ export class MessagePipeline {
     queue: SessionQueue,
     sessionId: string,
     message: string,
-    signal: AbortSignal
+    signal: AbortSignal,
+    runId: number
   ): Promise<void> {
     try {
       await this.executor(sessionId, message, signal)
     } finally {
-      this.abortManager.cleanup(sessionId)
+      // 仅当本 run 仍是当前活跃 run 时才执行清理
+      // 被 interrupt 替换后（runId 不匹配），新 run 拥有自己的 controller 和生命周期
+      const isCurrentRun = this.currentRunIds.get(sessionId) === runId
 
-      // Drain 队列（abort 后跳过 drain，直接清空）
-      if (!queue.isEmpty() && !this.abortManager.isAborted(sessionId)) {
-        await this.drainQueue(queue, sessionId)
-      } else {
-        if (this.abortManager.isAborted(sessionId)) {
-          queue.clear()
+      if (isCurrentRun) {
+        // 在 cleanup 前读取 abort 状态（cleanup 会清除 abortedSessions）
+        const wasAborted = this.abortManager.isAborted(sessionId)
+        this.abortManager.cleanup(sessionId)
+
+        // Drain 队列（abort 后跳过 drain，直接清空）
+        if (!queue.isEmpty() && !wasAborted) {
+          await this.drainQueue(queue, sessionId, runId)
+        } else {
+          if (wasAborted) {
+            queue.clear()
+          }
+          queue.isRunning = false
+          this.cleanupSession(sessionId)
         }
-        queue.isRunning = false
-        this.cleanupSession(sessionId)
       }
     }
   }
 
-  private async drainQueue(queue: SessionQueue, sessionId: string): Promise<void> {
+  private async drainQueue(queue: SessionQueue, sessionId: string, runId: number): Promise<void> {
     queue.draining = true
     const mode = queue.settings.mode
     const strategy = mode === 'collect' ? 'collect' : 'followup'
@@ -193,7 +216,11 @@ export class MessagePipeline {
 
     try {
       const drainExecutor = async (_sid: string, msg: string): Promise<void> => {
-        // 触发 message_dequeued 钩子
+        // drain 期间检查 abort 和 runId
+        if (this.abortManager.isAborted(sessionId) || this.currentRunIds.get(sessionId) !== runId) {
+          queue.clear()
+          return
+        }
         this.fireMessageDequeued(sessionId, msg, queue)
         const signal = this.abortManager.create(sessionId)
         try {
@@ -206,13 +233,15 @@ export class MessagePipeline {
       if (mode === 'collect') {
         await drainCollect(queue, drainExecutor)
       } else {
-        // followup / steer / interrupt 都用逐条模式
         await drainFollowup(queue, drainExecutor)
       }
     } finally {
       queue.draining = false
-      queue.isRunning = false
-      this.cleanupSession(sessionId)
+      // 仅当仍是当前 run 时才更新状态
+      if (this.currentRunIds.get(sessionId) === runId) {
+        queue.isRunning = false
+        this.cleanupSession(sessionId)
+      }
     }
   }
 
@@ -223,6 +252,7 @@ export class MessagePipeline {
     const queue = this.queues.get(sessionId)
     if (queue && !queue.isRunning && queue.isEmpty()) {
       this.queues.delete(sessionId)
+      this.currentRunIds.delete(sessionId)
     }
   }
 

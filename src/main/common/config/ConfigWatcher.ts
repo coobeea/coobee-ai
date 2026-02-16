@@ -5,6 +5,7 @@
  */
 import { watch, type FSWatcher } from 'chokidar'
 
+import { log } from '@main/common/logger'
 import { ConfigLoader } from './ConfigLoader'
 import { buildReloadPlan, diffConfigPaths } from './ConfigDiff'
 import type { ReloadPlan } from './types'
@@ -114,6 +115,7 @@ export class ConfigWatcher {
     // 如果新配置无效，只更新 hash（避免重复处理），不更新 lastConfig
     if (!nextSnap.valid) {
       this.lastHash = nextSnap.hash
+      log.warn('[ConfigWatcher] 配置校验失败，保留上次有效配置', nextSnap.issues)
       return
     }
 
@@ -128,11 +130,13 @@ export class ConfigWatcher {
     const plan = buildReloadPlan(changedPaths)
 
     // 触发回调
+    log.info(`[ConfigWatcher] 配置变更，触发重载: ${changedPaths.join(', ')}`)
+
     for (const handler of this.handlers) {
       try {
         handler(plan)
-      } catch {
-        // 回调错误不影响其他回调
+      } catch (err) {
+        log.warn('[ConfigWatcher] Reload handler error:', err)
       }
     }
   }

@@ -343,8 +343,7 @@ class AgentExecutor {
       this.logCompletion(sessionId, r.value)
       return r.value
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error)
-      log.error(`[AgentExecutor] Stream error: sessionId=${sessionId}, ${msg}`)
+      log.error(`[AgentExecutor] Stream error: sessionId=${sessionId}`, error)
       throw error
     } finally {
       await this.destroyRuntime(runtime)
@@ -554,8 +553,7 @@ class AgentExecutor {
       return result
     } catch (error: unknown) {
       const duration = Date.now() - startTime
-      const msg = error instanceof Error ? error.message : String(error)
-      log.error(`[AgentExecutor] Error: sessionId=${sessionId}, duration=${duration}ms, ${msg}`)
+      log.error(`[AgentExecutor] Error: sessionId=${sessionId}, duration=${duration}ms`, error)
       hitlApprovalManager.cleanupSession(sessionId)
       throw error
     } finally {
@@ -582,7 +580,7 @@ class AgentExecutor {
     try {
       await runtime.destroy()
     } catch (e: unknown) {
-      log.warn(`[AgentExecutor] Runtime destroy warning: ${e}`)
+      log.warn('[AgentExecutor] Runtime destroy warning:', e)
     }
   }
 

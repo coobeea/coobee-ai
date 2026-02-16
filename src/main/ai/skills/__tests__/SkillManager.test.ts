@@ -128,8 +128,12 @@ Content.`
     let manager: SkillManager
 
     beforeEach(() => {
-      tmpDir = path.join('/tmp', `skillmanager-scan-${Date.now()}`)
+      tmpDir = path.join(
+        '/tmp',
+        `skillmanager-scan-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      )
       fs.mkdirSync(tmpDir, { recursive: true })
+      SkillManager.invalidateCache()
       manager = new SkillManager()
     })
 

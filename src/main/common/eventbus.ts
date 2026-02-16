@@ -35,7 +35,17 @@ class EventBus extends EventEmitter {
       const listenerCount = this.listenerCount(eventName)
       log.debug(`[EventBus] 发送事件: ${eventName} (${listenerCount} 个监听器)`, args)
     }
-    return super.emit(eventName, ...args)
+    // 逐个调用 listener 并捕获异常，防止单个 listener 抛错阻断其他 listener
+    const listeners = this.rawListeners(eventName)
+    if (listeners.length === 0) return false
+    for (const listener of listeners) {
+      try {
+        ;(listener as (...a: unknown[]) => void)(...args)
+      } catch (err) {
+        log.error(`[EventBus] Listener error on "${eventName}":`, err)
+      }
+    }
+    return true
   }
 }
 
