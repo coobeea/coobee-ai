@@ -1,11 +1,12 @@
 /**
  * 配置加载器
  *
- * 加载管线（简化版 10 步）：
+ * 加载管线：
  * 1. 解析配置文件路径
  * 2. 读取文件内容
  * 3. JSON5 解析
  * 4. ${VAR} 环境变量替换
+ * 4.5. 合并 secrets.json5 中的 API Key
  * 5. Zod schema 校验
  * 6. 默认值填充
  * 7. 缓存结果
@@ -17,6 +18,7 @@ import path from 'path'
 
 import { resolveEnvVars } from './ConfigEnv'
 import { mergeWithDefaults } from './ConfigDefaults'
+import { loadSecrets, mergeSecrets, secretsPath, ensureSecretsFile } from './ConfigSecrets'
 import type { CoobeeConfig } from './schema'
 import { CoobeeConfigSchema } from './schema'
 import type { ConfigSnapshot, ConfigValidationIssue } from './types'
@@ -38,6 +40,11 @@ export class ConfigLoader {
   /** 配置文件绝对路径 */
   get configPath(): string {
     return path.join(this.configDir, CONFIG_FILE_NAME)
+  }
+
+  /** secrets.json5 绝对路径 */
+  get secretsFilePath(): string {
+    return secretsPath(this.configDir)
   }
 
   /**
@@ -82,8 +89,12 @@ export class ConfigLoader {
     // Step 4: 环境变量替换
     const envResolved = resolveEnvVars(parsed)
 
+    // Step 4.5: 合并 secrets.json5 中的 API Key
+    const secrets = loadSecrets(this.configDir)
+    const merged = mergeSecrets(envResolved, secrets)
+
     // Step 5: Zod 校验
-    const result = CoobeeConfigSchema.safeParse(envResolved)
+    const result = CoobeeConfigSchema.safeParse(merged)
 
     if (!result.success) {
       const issues: ConfigValidationIssue[] = result.error.issues.map((issue) => ({
@@ -121,45 +132,43 @@ export class ConfigLoader {
       const defaultContent = `// Coobee AI 配置文件
 // 详细文档: https://github.com/coobee-ai/coobee-ai
 {
-  // 模型与 Provider 配置
   models: {
     providers: {
-      // 阿里云通义千问（默认）
-      aliyun: {
-        id: "aliyun",
-        name: "通义千问",
+      // 阿里云百炼（默认启用）
+      dashscope: {
+        id: "dashscope",
+        name: "百炼",
+        description: "阿里云百炼平台，提供企业级AI模型服务",
         baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
         apiKey: "\${DASHSCOPE_API_KEY}",
-        api: "openai-compatible",
         enabled: true,
+        websites: {
+          official: "https://www.aliyun.com/product/bailian",
+          apiKey: "https://bailian.console.aliyun.com/?tab=model#/api-key",
+          docs: "https://help.aliyun.com/zh/model-studio/getting-started/"
+        },
         models: [
-          { id: "qwen3-max", name: "Qwen3 Max", contextWindow: 32768, maxTokens: 8192 }
+          { id: "qwen3-max", name: "Qwen3 Max", contextWindow: 32768, maxOutputTokens: 8192 },
+          { id: "qwen-plus-latest", name: "qwen-plus-latest", maxInputTokens: 131072, maxOutputTokens: 32768, reasoning: true },
+          { id: "qwen-turbo-latest", name: "qwen-turbo-latest" }
         ]
       }
-      // 其他 Provider 示例:
-      // openai: {
-      //   baseUrl: "https://api.openai.com/v1",
-      //   apiKey: "\${OPENAI_API_KEY}",
-      //   models: [{ id: "gpt-4o" }]
-      // }
+      // 更多 Provider 请参考文档添加: deepseek, silicon, 302ai, ollama, zhipu, doubao 等
     }
   },
 
-  // Agent 默认模型
   agents: {
     defaults: {
-      model: { primary: "aliyun/qwen3-max" }
+      model: { primary: "dashscope/qwen3-max" }
     }
   },
 
-  // UI 偏好
   ui: {
     theme: "auto",
     language: "zh-CN",
     soundEffects: true
   },
 
-  // 日志
   logging: {
     level: "info",
     file: true
@@ -168,6 +177,9 @@ export class ConfigLoader {
 `
       fs.writeFileSync(this.configPath, defaultContent, 'utf-8')
     }
+
+    // 同时确保 secrets.json5 存在
+    ensureSecretsFile(this.configDir)
   }
 
   // ─── 私有方法 ─────────────────────────────────────

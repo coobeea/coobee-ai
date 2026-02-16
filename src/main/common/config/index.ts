@@ -6,6 +6,7 @@ export { ConfigWatcher } from './ConfigWatcher'
 export { ConfigStore } from './ConfigStore'
 export { diffConfigPaths, buildReloadPlan, DEFAULT_RELOAD_RULES } from './ConfigDiff'
 export { resolveEnvVars } from './ConfigEnv'
+export { loadSecrets, mergeSecrets, secretsPath, ensureSecretsFile } from './ConfigSecrets'
 export { DEFAULT_CONFIG, mergeWithDefaults } from './ConfigDefaults'
 export type {
   ConfigSnapshot,

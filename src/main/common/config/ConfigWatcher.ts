@@ -38,7 +38,9 @@ export class ConfigWatcher {
     this.lastHash = snap.hash
     this.lastConfig = snap.config
 
-    this.watcher = watch(this.loader.configPath, {
+    // 同时监听 coobee.json5 和 secrets.json5
+    const watchPaths = [this.loader.configPath, this.loader.secretsFilePath]
+    this.watcher = watch(watchPaths, {
       persistent: true,
       ignoreInitial: true,
       awaitWriteFinish: {
