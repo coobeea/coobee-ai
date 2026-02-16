@@ -25,7 +25,7 @@ import { createLogger } from '@main/common/logger'
 const log = createLogger('ai')
 
 import type { AgentRuntime } from './runtime/AgentRuntime'
-import type { ExecutionResult, StreamChunk } from './runtime/types'
+import type { AgentMode, ExecutionResult, StreamChunk } from './runtime/types'
 import { PiMonoBuilder } from './runtime/pimono/PiMonoBuilder'
 import { OpenAIBuilder } from './runtime/openai/OpenAIBuilder'
 import { createStreamEmitter, type IStreamEmitter } from './streaming/StreamEmitter'
@@ -81,6 +81,12 @@ class AgentExecutor {
   /** 消息管线（可选，初始化后注入） */
   private pipeline: MessagePipeline | null = null
 
+  /** Session → AgentMode 映射（管线执行时用于创建 builder） */
+  private sessionModes = new Map<string, AgentMode>()
+
+  /** Builder 工厂（管线执行时创建 builder；由 chat.ts 注册） */
+  private builderFactory: ((mode: AgentMode) => AgentBuilder) | null = null
+
   // ========== Provider 系统 ==========
 
   /**
@@ -100,16 +106,39 @@ class AgentExecutor {
   // ========== 消息管线 ==========
 
   /**
+   * 注册 Builder 工厂
+   *
+   * 管线执行时通过此工厂创建 Builder（包含工具、指令、Provider 配置等）。
+   * 由 chat.ts 在加载时注册。
+   */
+  setBuilderFactory(factory: (mode: AgentMode) => AgentBuilder): void {
+    this.builderFactory = factory
+  }
+
+  /**
    * 初始化消息管线
    *
    * 创建 MessagePipeline 并注入到当前 AgentExecutor。
-   * 管线的执行器会委托给 submit 方法。
+   * 管线的执行器委托给内部 execute() 方法，使用 builderFactory 创建 Builder。
    */
   initPipeline(settings?: Partial<QueueSettings>): void {
-    this.pipeline = new MessagePipeline(async (sessionId, _message, _signal) => {
-      // 管线执行器直接调用内部 execute 逻辑
-      // 这里不使用 submit 以避免循环
-      log.info(`[AgentExecutor] Pipeline executing: sessionId=${sessionId}`)
+    this.pipeline = new MessagePipeline(async (sessionId, message, _signal) => {
+      const mode = this.sessionModes.get(sessionId) ?? 'agent'
+
+      if (!this.builderFactory) {
+        log.error(`[AgentExecutor] Pipeline executor: no builderFactory registered`)
+        return
+      }
+
+      const builder = this.builderFactory(mode)
+      const request: ExecuteRequest = { sessionId, message, builder }
+
+      this.busySessions.set(sessionId, { startedAt: Date.now() })
+      try {
+        await this.execute(request)
+      } finally {
+        this.busySessions.delete(sessionId)
+      }
     }, settings)
   }
 
@@ -125,9 +154,18 @@ class AgentExecutor {
    *
    * 如果管线已初始化，使用管线的排队/合并/中断能力。
    * 否则回退到原始的 busySessions 逻辑。
+   *
+   * @param sessionId - 会话 ID
+   * @param message - 用户消息
+   * @param mode - Agent 模式（默认 'agent'），管线执行器据此创建 Builder
    */
-  submitViaPipeline(sessionId: string, message: string): SubmitResult | null {
+  submitViaPipeline(
+    sessionId: string,
+    message: string,
+    mode: AgentMode = 'agent'
+  ): SubmitResult | null {
     if (!this.pipeline) return null
+    this.sessionModes.set(sessionId, mode)
     return this.pipeline.submit(sessionId, message)
   }
 

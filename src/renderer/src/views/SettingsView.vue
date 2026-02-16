@@ -88,7 +88,7 @@ const queueMode = computed(() => {
 const maxQueueSize = computed(() => {
   const messages = configData.value?.messages as Record<string, unknown> | undefined
   const queue = messages?.queue as Record<string, unknown> | undefined
-  return (queue?.maxQueueSize as number) ?? 20
+  return (queue?.cap as number) ?? 20
 })
 
 const dropPolicy = computed(() => {

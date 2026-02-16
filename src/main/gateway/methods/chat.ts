@@ -88,6 +88,9 @@ function applyProviderConfig(builder: ReturnType<typeof agentExecutor.piMono>): 
   }
 }
 
+// 注册 Builder 工厂，供 Pipeline executor 使用
+agentExecutor.setBuilderFactory((mode) => createBuilder(mode))
+
 export const chatMethods: MethodGroup = {
   namespace: 'chat',
   methods: {
@@ -115,7 +118,7 @@ export const chatMethods: MethodGroup = {
 
       try {
         // 优先使用管线（支持排队/合并/中断）
-        const pipelineResult = agentExecutor.submitViaPipeline(sid, message)
+        const pipelineResult = agentExecutor.submitViaPipeline(sid, message, mode)
         if (pipelineResult) {
           return {
             sessionId: sid,
