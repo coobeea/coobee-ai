@@ -3,10 +3,17 @@ import { getAppManager } from './common/app'
 
 /**
  * 捕获未处理的异常
+ * 记录错误后尝试优雅退出，而非立即终止
  */
 process.on('uncaughtException', (error: Error) => {
   console.error('未捕获的异常:', error)
-  process.exit(1)
+  // 尝试优雅退出（触发 BEFORE_QUIT 生命周期清理），超时后强制退出
+  try {
+    app.quit()
+  } catch {
+    // quit 失败则直接退出
+  }
+  setTimeout(() => process.exit(1), 5000).unref()
 })
 
 /**
@@ -14,7 +21,6 @@ process.on('uncaughtException', (error: Error) => {
  */
 process.on('unhandledRejection', (reason: unknown) => {
   console.error('未处理的 Promise 拒绝:', reason)
-  process.exit(1)
 })
 
 /**

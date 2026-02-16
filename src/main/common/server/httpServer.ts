@@ -676,6 +676,18 @@ export class HttpServer {
 
     // 显式创建 http.Server，供 GatewayServer 挂载 WebSocket（共享端口）
     this.httpServer = http.createServer(this.app.callback())
+
+    // 监听 server 级别错误（如端口占用 EADDRINUSE）
+    this.httpServer.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        log.error(
+          `[HttpServer] 端口 ${SERVER_PORT} 已被占用，请关闭占用该端口的程序或更改 VITE_HTTP_PORT 配置`
+        )
+      } else {
+        log.error('[HttpServer] Server error:', err)
+      }
+    })
+
     this.httpServer.listen(SERVER_PORT, '127.0.0.1', () => {
       log.info(`[HttpServer] Listening on http://127.0.0.1:${SERVER_PORT} (HTTP + WebSocket)`)
     })

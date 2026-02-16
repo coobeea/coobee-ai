@@ -70,10 +70,27 @@ export class ConfigLoader {
     const exists = fs.existsSync(filePath)
 
     if (!exists) {
+      // 尝试自动重建配置文件
+      try {
+        this.ensureConfigFile()
+        if (fs.existsSync(filePath)) {
+          return this.snapshot() // 重建后重新读取
+        }
+      } catch {
+        // 重建失败，返回默认配置
+      }
       return this.buildEmptySnapshot(filePath)
     }
 
-    const raw = fs.readFileSync(filePath, 'utf-8')
+    let raw: string
+    try {
+      raw = fs.readFileSync(filePath, 'utf-8')
+    } catch (err) {
+      const errCode = (err as NodeJS.ErrnoException).code
+      return this.buildErrorSnapshot(filePath, '', '', [
+        { path: '', message: `文件读取失败 (${errCode}): ${(err as Error).message}` }
+      ])
+    }
 
     // hash 包含 coobee.json5 + secrets.json5，任一变更都触发热重载
     const hasher = crypto.createHash('md5').update(raw)

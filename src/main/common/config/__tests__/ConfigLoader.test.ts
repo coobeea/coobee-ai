@@ -27,11 +27,11 @@ describe('ConfigLoader', () => {
     expect(config.logging?.level).toBe('info')
   })
 
-  it('should return snapshot with exists=false when file missing', () => {
+  it('should auto-create config when file missing and return valid snapshot', () => {
     const snap = loader.snapshot()
-    expect(snap.exists).toBe(false)
+    // 文件不存在时 snapshot() 会自动重建，因此 exists=true
+    expect(snap.exists).toBe(true)
     expect(snap.valid).toBe(true)
-    expect(snap.raw).toBeNull()
   })
 
   // ─── 正常加载 ────────────────────────────────────
