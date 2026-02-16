@@ -41,7 +41,7 @@ function generateSessionId(): string {
  * 模型解析优先级：
  * 1. ModelSelector（如果配置系统已初始化）
  * 2. ProviderRegistry（如果有匹配的 Provider）
- * 3. .env 环境变量（兜底，向后兼容）
+ * 3. 环境变量 / coobee.json5 默认值（兜底）
  */
 function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.piMono> {
   const builder = agentExecutor
@@ -75,7 +75,7 @@ function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.pi
 /**
  * 尝试从 Provider 系统注入模型配置
  *
- * 如果 Provider 系统未初始化或无可用配置，则不做任何操作（使用 .env 兜底）。
+ * 如果 Provider 系统未初始化或无可用配置，则不做任何操作（使用 coobee.json5 / 环境变量兜底）。
  */
 function applyProviderConfig(builder: ReturnType<typeof agentExecutor.piMono>): void {
   try {
@@ -93,7 +93,7 @@ function applyProviderConfig(builder: ReturnType<typeof agentExecutor.piMono>): 
 
     builder.fromProviderConfig(provider, ref.model)
   } catch {
-    // Provider 系统未就绪，静默回退到 .env
+    // Provider 系统未就绪，静默回退到默认配置
   }
 }
 

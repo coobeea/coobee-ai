@@ -29,7 +29,7 @@ export class ConfigLoader {
   private cached: ConfigSnapshot | null = null
 
   /**
-   * @param configDir 配置目录路径（如 ~/.coobee-ai）
+   * @param configDir 配置目录路径（开发: <项目>/.home/config | 生产: ~/.coobee-ai/config）
    */
   constructor(configDir: string) {
     this.configDir = configDir
@@ -122,18 +122,35 @@ export class ConfigLoader {
 // 详细文档: https://github.com/coobee-ai/coobee-ai
 {
   // 模型与 Provider 配置
-  // models: {
-  //   providers: {
-  //     openai: {
-  //       baseUrl: "https://api.openai.com/v1",
-  //       apiKey: "\${OPENAI_API_KEY}",
-  //       api: "openai-compatible",
-  //       models: [
-  //         { id: "gpt-4o", name: "GPT-4o", contextWindow: 128000, maxTokens: 16384 }
-  //       ]
-  //     }
-  //   }
-  // },
+  models: {
+    providers: {
+      // 阿里云通义千问（默认）
+      aliyun: {
+        id: "aliyun",
+        name: "通义千问",
+        baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        apiKey: "\${DASHSCOPE_API_KEY}",
+        api: "openai-compatible",
+        enabled: true,
+        models: [
+          { id: "qwen3-max", name: "Qwen3 Max", contextWindow: 32768, maxTokens: 8192 }
+        ]
+      }
+      // 其他 Provider 示例:
+      // openai: {
+      //   baseUrl: "https://api.openai.com/v1",
+      //   apiKey: "\${OPENAI_API_KEY}",
+      //   models: [{ id: "gpt-4o" }]
+      // }
+    }
+  },
+
+  // Agent 默认模型
+  agents: {
+    defaults: {
+      model: { primary: "aliyun/qwen3-max" }
+    }
+  },
 
   // UI 偏好
   ui: {

@@ -190,7 +190,7 @@ export class PiMonoBuilder {
     const apiKey = this.resolveApiKey()
     if (!apiKey) {
       throw new Error(
-        'API Key 未配置：请通过 .fromProviderConfig() / .apiKey() 或 VITE_LLM_API_KEY 环境变量设置'
+        'API Key 未配置：请在 coobee.json5 中配置 models.providers 或通过 DASHSCOPE_API_KEY 等环境变量设置'
       )
     }
 
@@ -233,9 +233,9 @@ export class PiMonoBuilder {
   // ─── 解析辅助方法（ProviderConfig > 显式设置 > 环境变量） ───
 
   private resolveApiKey(): string | undefined {
+    // 优先级: 显式设置 > ProviderConfig > 环境变量兜底
     if (this._apiKey) return this._apiKey
     if (this._providerConfig?.apiKey) {
-      // 如果 apiKey 是 ${VAR} 模板，尝试从 env 解析
       const key = this._providerConfig.apiKey
       const match = key.match(/^\$\{([A-Za-z_][A-Za-z0-9_]*)}$/)
       if (match) {
@@ -243,20 +243,23 @@ export class PiMonoBuilder {
       }
       return key
     }
-    return process.env.VITE_LLM_API_KEY
+    // 兜底：检查常见 API key 环境变量
+    return (
+      process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY || process.env.VITE_LLM_API_KEY
+    )
   }
 
   private resolveModel(): string {
     if (this._model) return this._model
     if (this._providerConfig && this._providerModelId) return this._providerModelId
     if (this._providerConfig?.models?.[0]) return this._providerConfig.models[0].id
-    return process.env.VITE_LLM_MODEL || 'MiniMax-M2.1'
+    return process.env.VITE_LLM_MODEL || 'qwen3-max'
   }
 
   private resolveBaseURL(): string {
     if (this._baseURL) return this._baseURL
     if (this._providerConfig?.baseUrl) return this._providerConfig.baseUrl
-    return process.env.VITE_LLM_BASE_URL || 'https://api.minimaxi.com/v1'
+    return process.env.VITE_LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
   }
 }
 

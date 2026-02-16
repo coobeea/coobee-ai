@@ -145,7 +145,7 @@ export class OpenAIBuilder {
     const opts: OpenAIAgentRuntimeOptions = {
       name: this._name,
       instructions: this._instructions,
-      model: this._model || process.env.VITE_LLM_MODEL || 'MiniMax-M2.1'
+      model: this._model || process.env.VITE_LLM_MODEL || 'qwen3-max'
     }
 
     if (this._appendInstructions.length > 0) opts.appendInstructions = this._appendInstructions
