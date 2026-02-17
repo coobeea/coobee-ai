@@ -84,10 +84,6 @@ async function handleAiCreate(): Promise<void> {
 
 const confirmDeleteId = ref<string | null>(null);
 
-function handleSelect(agentId: string): void {
-  agentsStore.selectAgent(agentsStore.selectedAgentId === agentId ? null : agentId);
-}
-
 /** 开启任务：选择智能体 → 创建 Thread → 进入工作区 */
 async function handleStartTask(agentId: string): Promise<void> {
   agentsStore.selectAgent(agentId);
@@ -330,11 +326,10 @@ function formatTime(iso: string): string {
             v-for="agent in agentsStore.agents"
             :key="agent.id"
             class="agent-card"
-            :class="{ selected: agentsStore.selectedAgentId === agent.id }"
-            @click="handleSelect(agent.id)">
+            @click="handleStartTask(agent.id)">
             <!-- 卡片头部：头像 + 名称 + 时间 -->
             <div class="card-header">
-              <div class="card-avatar" :class="{ selected: agentsStore.selectedAgentId === agent.id }">
+              <div class="card-avatar">
                 <span class="i-carbon-bot inline-block h-5 w-5" />
               </div>
               <div class="card-title-area">
@@ -359,11 +354,7 @@ function formatTime(iso: string): string {
 
             <!-- 底部操作栏 -->
             <div class="card-footer" @click.stop>
-              <button class="start-task-btn" @click="handleStartTask(agent.id)">
-                <span class="i-carbon-play-filled-alt inline-block h-3 w-3" />
-                <span>开启任务</span>
-              </button>
-              <div class="card-actions">
+              <div class="card-actions-left">
                 <template v-if="confirmDeleteId !== agent.id">
                   <button class="action-icon" title="编辑技能" @click="openSkillsEditor(agent.id)">
                     <span class="i-carbon-edit inline-block h-3.5 w-3.5" />
@@ -925,12 +916,6 @@ function formatTime(iso: string): string {
   transform: translateY(-1px);
 }
 
-.agent-card.selected {
-  background: hsl(var(--primary) / 0.03);
-  border-color: hsl(var(--primary) / 0.2);
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.05);
-}
-
 /* 卡片头部 */
 
 .card-header {
@@ -956,11 +941,6 @@ function formatTime(iso: string): string {
 .agent-card:hover .card-avatar {
   color: hsl(var(--primary) / 0.8);
   background: linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--primary) / 0.2));
-}
-
-.card-avatar.selected {
-  background: linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--primary) / 0.25));
-  color: hsl(var(--primary));
 }
 
 .card-title-area {
@@ -1043,32 +1023,13 @@ function formatTime(iso: string): string {
 .card-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid hsl(var(--border) / 0.15);
 }
 
-.start-task-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: hsl(var(--primary));
-  background: hsl(var(--primary) / 0.08);
-  transition: all 0.15s ease;
-}
-
-.start-task-btn:hover {
-  background: hsl(var(--primary) / 0.14);
-  box-shadow: 0 1px 4px hsl(var(--primary) / 0.1);
-}
-
-.card-actions {
+.card-actions-left {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -1076,7 +1037,7 @@ function formatTime(iso: string): string {
   transition: opacity 0.15s ease;
 }
 
-.agent-card:hover .card-actions {
+.agent-card:hover .card-actions-left {
   opacity: 1;
 }
 
