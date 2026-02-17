@@ -29,6 +29,7 @@ import { manageAgentTool } from './manage-agent';
 import { manageSkillTool } from './manage-skill';
 import { delegateToAgentTool } from './delegate-to-agent';
 import { taskPlanTool } from './task-plan';
+import { todoWriteTool } from './todo-write';
 
 // 单独导出
 export { readTool } from './read';
@@ -49,6 +50,7 @@ export { manageAgentTool } from './manage-agent';
 export { manageSkillTool } from './manage-skill';
 export { delegateToAgentTool } from './delegate-to-agent';
 export { taskPlanTool } from './task-plan';
+export { todoWriteTool } from './todo-write';
 
 /**
  * 所有内置工具
@@ -80,6 +82,7 @@ export { taskPlanTool } from './task-plan';
  *   manage_skill        — Skill 技能 CRUD，中风险
  *   delegate_to_agent   — 委托子任务给专业 Agent，中风险
  *   task_plan           — 任务计划管理，低风险
+ *   todo_write          — 会话级 TODO 管理，低风险
  */
 export const builtinTools: ToolDefinition[] = [
   readTool,
@@ -99,5 +102,6 @@ export const builtinTools: ToolDefinition[] = [
   manageAgentTool,
   manageSkillTool,
   delegateToAgentTool,
-  taskPlanTool
+  taskPlanTool,
+  todoWriteTool
 ];
