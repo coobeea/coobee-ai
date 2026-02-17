@@ -4,11 +4,12 @@
  *
  * 右下角悬浮按钮 + 展开的 mini 对话面板。
  * 所有页面可见，点击即可与「应用管家」Agent 对话。
+ *
+ * 消息布局：统一靠左，角色标签换行展示，内容平铺不浪费空间。
  */
 
 import { ref, nextTick, watch } from 'vue';
-import { useCopilotStore, type CopilotMessage, type CopilotBlock } from '@/stores/copilot';
-import logoSvg from '@/assets/logo.svg';
+import { useCopilotStore, type CopilotBlock } from '@/stores/copilot';
 
 const copilot = useCopilotStore();
 const inputText = ref('');
@@ -65,22 +66,10 @@ function handleKeydown(e: KeyboardEvent): void {
   }
 }
 
-/** 渲染块内容的文本 */
-function blockText(block: CopilotBlock): string {
-  if (block.type === 'text') return block.text;
-  if (block.type === 'thinking') return block.text;
+/** 渲染工具块摘要 */
+function toolSummary(block: CopilotBlock): string {
   if (block.type === 'tool') return `调用 ${block.tool.name}...`;
   return '';
-}
-
-/** 消息时间格式 */
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-}
-
-function isUserMessage(msg: CopilotMessage): boolean {
-  return msg.role === 'user';
 }
 </script>
 
@@ -89,7 +78,7 @@ function isUserMessage(msg: CopilotMessage): boolean {
     <!-- 悬浮气泡按钮 -->
     <Transition name="bubble-pop">
       <button v-if="!copilot.visible" class="copilot-fab" title="应用管家" @click="copilot.open()">
-        <img :src="logoSvg" alt="Coobee" class="fab-logo" />
+        <span class="i-carbon-sparkle inline-block h-5 w-5" />
       </button>
     </Transition>
 
@@ -99,7 +88,7 @@ function isUserMessage(msg: CopilotMessage): boolean {
         <!-- 面板头部 -->
         <div class="panel-header">
           <div class="panel-header-left">
-            <img :src="logoSvg" alt="Coobee" class="panel-header-logo" />
+            <span class="i-carbon-sparkle inline-block h-4 w-4 text-[hsl(var(--primary))]" />
             <span class="panel-title">应用管家</span>
           </div>
           <div class="panel-header-right">
@@ -117,7 +106,7 @@ function isUserMessage(msg: CopilotMessage): boolean {
           <!-- 空状态 -->
           <div v-if="!copilot.hasMessages" class="panel-empty">
             <div class="panel-empty-icon">
-              <img :src="logoSvg" alt="Coobee" class="empty-logo" />
+              <span class="i-carbon-sparkle inline-block h-6 w-6" />
             </div>
             <p class="panel-empty-title">你好，我是应用管家</p>
             <p class="panel-empty-sub"> 告诉我你想做什么，比如创建技能、管理智能体、修改配置... </p>
@@ -129,59 +118,68 @@ function isUserMessage(msg: CopilotMessage): boolean {
           </div>
 
           <!-- 消息列表 -->
-          <div
-            v-for="msg in copilot.messages"
-            :key="msg.id"
-            class="msg-row"
-            :class="{ 'msg-user': isUserMessage(msg), 'msg-assistant': !isUserMessage(msg) }">
-            <!-- 用户消息 -->
-            <div v-if="isUserMessage(msg)" class="msg-bubble msg-bubble-user">
-              {{ msg.content }}
-            </div>
+          <template v-for="msg in copilot.messages" :key="msg.id">
+            <div class="msg-block">
+              <!-- 角色行：图标 + 角色名 + 时间 -->
+              <div class="msg-role-row">
+                <span class="msg-role-icon" :class="msg.role === 'user' ? 'msg-role-user' : 'msg-role-assistant'">
+                  <span
+                    class="inline-block h-3 w-3"
+                    :class="msg.role === 'user' ? 'i-carbon-user' : 'i-carbon-sparkle'" />
+                </span>
+                <span class="msg-role-name">{{ msg.role === 'user' ? '你' : '管家' }}</span>
+                <span class="msg-time">{{
+                  new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+                }}</span>
+              </div>
 
-            <!-- 助手消息 -->
-            <div v-else class="msg-bubble msg-bubble-assistant">
-              <template v-if="msg.blocks.length > 0">
-                <template v-for="(block, idx) in msg.blocks" :key="idx">
-                  <!-- 文本块 -->
-                  <div v-if="block.type === 'text'" class="msg-text" v-text="block.text" />
+              <!-- 用户消息内容 -->
+              <div v-if="msg.role === 'user'" class="msg-content">
+                <div class="msg-text">{{ msg.content }}</div>
+              </div>
 
-                  <!-- 思考块 -->
-                  <div v-else-if="block.type === 'thinking'" class="msg-thinking">
-                    <span class="i-carbon-idea inline-block h-3 w-3 shrink-0" />
-                    <span class="msg-thinking-text">{{ block.text }}</span>
-                  </div>
+              <!-- 助手消息内容 -->
+              <div v-else class="msg-content">
+                <template v-if="msg.blocks.length > 0">
+                  <template v-for="(block, idx) in msg.blocks" :key="idx">
+                    <!-- 文本块 -->
+                    <div v-if="block.type === 'text'" class="msg-text" v-text="block.text" />
 
-                  <!-- 工具调用块 -->
-                  <div v-else-if="block.type === 'tool'" class="msg-tool">
-                    <span
-                      class="inline-block h-3 w-3 shrink-0"
-                      :class="
-                        block.tool.status === 'calling'
-                          ? 'i-carbon-renew animate-spin'
-                          : block.tool.status === 'done'
-                            ? 'i-carbon-checkmark'
-                            : 'i-carbon-warning-alt'
-                      " />
-                    <span>{{ blockText(block) }}</span>
-                  </div>
+                    <!-- 思考块 -->
+                    <div v-else-if="block.type === 'thinking'" class="msg-thinking">
+                      <span class="i-carbon-idea inline-block h-3 w-3 shrink-0" />
+                      <span class="msg-thinking-text">{{ block.text }}</span>
+                    </div>
+
+                    <!-- 工具调用块 -->
+                    <div v-else-if="block.type === 'tool'" class="msg-tool">
+                      <span
+                        class="inline-block h-3 w-3 shrink-0"
+                        :class="
+                          block.tool.status === 'calling'
+                            ? 'i-carbon-renew animate-spin'
+                            : block.tool.status === 'done'
+                              ? 'i-carbon-checkmark'
+                              : 'i-carbon-warning-alt'
+                        " />
+                      <span>{{ toolSummary(block) }}</span>
+                    </div>
+                  </template>
                 </template>
-              </template>
 
-              <!-- 流式中无内容的占位 -->
-              <div v-else-if="msg.status === 'streaming'" class="msg-typing">
-                <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
-              </div>
+                <!-- 流式中无内容的占位 -->
+                <div v-else-if="msg.status === 'streaming'" class="msg-typing">
+                  <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
+                </div>
 
-              <!-- 错误 -->
-              <div v-if="msg.status === 'error' && msg.error" class="msg-error">
-                <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
-                {{ msg.error }}
+                <!-- 错误 -->
+                <div v-if="msg.status === 'error' && msg.error" class="msg-error">
+                  <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
+                  {{ msg.error }}
+                </div>
               </div>
             </div>
-
-            <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
-          </div>
+          </template>
 
           <!-- 流式进行中指示 -->
           <div v-if="copilot.isStreaming" class="stream-indicator">
@@ -229,11 +227,11 @@ function isUserMessage(msg: CopilotMessage): boolean {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: hsl(var(--surface));
-  border: 1px solid hsl(var(--border) / 0.5);
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
   box-shadow:
-    0 4px 14px hsl(var(--shadow) / 0.2),
-    0 2px 6px hsl(var(--shadow) / 0.1);
+    0 4px 14px hsl(var(--primary) / 0.35),
+    0 2px 6px hsl(var(--shadow) / 0.15);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -241,20 +239,12 @@ function isUserMessage(msg: CopilotMessage): boolean {
 .copilot-fab:hover {
   transform: scale(1.08);
   box-shadow:
-    0 6px 20px hsl(var(--shadow) / 0.25),
-    0 3px 8px hsl(var(--shadow) / 0.15);
-  border-color: hsl(var(--primary) / 0.3);
+    0 6px 20px hsl(var(--primary) / 0.4),
+    0 3px 8px hsl(var(--shadow) / 0.2);
 }
 
 .copilot-fab:active {
   transform: scale(0.95);
-}
-
-.fab-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  pointer-events: none;
 }
 
 /* ====== 气泡动画 ====== */
@@ -326,12 +316,6 @@ function isUserMessage(msg: CopilotMessage): boolean {
   gap: 8px;
 }
 
-.panel-header-logo {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-}
-
 .panel-title {
   font-size: 13px;
   font-weight: 600;
@@ -367,7 +351,7 @@ function isUserMessage(msg: CopilotMessage): boolean {
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
 }
 
 /* 空状态 */
@@ -385,17 +369,12 @@ function isUserMessage(msg: CopilotMessage): boolean {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  background: hsl(var(--foreground) / 0.03);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary) / 0.5);
   margin-bottom: 12px;
-}
-
-.empty-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
 }
 
 .panel-empty-title {
@@ -436,47 +415,58 @@ function isUserMessage(msg: CopilotMessage): boolean {
   border-color: hsl(var(--primary) / 0.2);
 }
 
-/* ====== 消息行 ====== */
-.msg-row {
+/* ====== 消息块（统一靠左，角色换行） ====== */
+.msg-block {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
-.msg-user {
-  align-items: flex-end;
+/* 角色行 */
+.msg-role-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.msg-assistant {
-  align-items: flex-start;
+.msg-role-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  flex-shrink: 0;
 }
 
-.msg-bubble {
-  max-width: 85%;
-  padding: 8px 12px;
-  border-radius: 12px;
-  font-size: 13px;
-  line-height: 1.55;
-  word-break: break-word;
+.msg-role-user {
+  background: hsl(var(--foreground) / 0.08);
+  color: hsl(var(--foreground) / 0.5);
 }
 
-.msg-bubble-user {
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-  border-bottom-right-radius: 4px;
+.msg-role-assistant {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
 }
 
-.msg-bubble-assistant {
-  background: hsl(var(--surface));
-  color: hsl(var(--foreground) / 0.85);
-  border: 1px solid hsl(var(--border) / 0.3);
-  border-bottom-left-radius: 4px;
+.msg-role-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.7);
 }
 
 .msg-time {
   font-size: 10px;
   color: hsl(var(--muted-foreground) / 0.3);
-  padding: 0 4px;
+}
+
+/* 消息内容区（全宽） */
+.msg-content {
+  padding-left: 26px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: hsl(var(--foreground) / 0.85);
+  word-break: break-word;
 }
 
 /* 文本块 */
