@@ -45,5 +45,23 @@ export default defineConfig(
       ]
     }
   },
+  // 从旧项目迁移的基础 UI 组件——放宽严格的返回类型要求
+  {
+    files: [
+      'src/renderer/src/components/Message/**',
+      'src/renderer/src/components/Confirm/**',
+      'src/renderer/src/components/ToolTip/**',
+      'src/renderer/src/components/Popover/**',
+      'src/renderer/src/components/Popup/**',
+      'src/renderer/src/components/Form/**',
+      'src/renderer/src/components/OverlayMask/**',
+      'src/renderer/src/components/LoadingOverlay.vue',
+      'src/renderer/src/utils/ZIndexManager.ts'
+    ],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/no-explicit-any': 'warn'
+    }
+  },
   eslintConfigPrettier
 );
