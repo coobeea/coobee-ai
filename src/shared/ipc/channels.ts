@@ -12,13 +12,15 @@
  * 统一的事件通道（主进程 -> 前端）
  * 所有事件都通过这个通道发送，通过 message.type 区分事件类型
  */
-export const IPC_EVENT_CHANNEL = 'ipc:event' as const
+export const IPC_EVENT_CHANNEL = 'ipc:event' as const;
 
 /** Shell 相关通道（invoke 拉取） */
 export const ShellChannels = {
   /** 拉取当前窗口完整信息（windowId、tabs、currentTabId 等） */
-  GET_WINDOW_INFO: 'shell:get-window-info'
-} as const
+  GET_WINDOW_INFO: 'shell:get-window-info',
+  /** 打开目录选择对话框，返回选中的路径或 null */
+  OPEN_DIRECTORY: 'shell:open-directory'
+} as const;
 
 /** 窗口控制通道（invoke） */
 export const WindowChannels = {
@@ -28,7 +30,7 @@ export const WindowChannels = {
   MAXIMIZE: 'window:maximize',
   /** 关闭窗口 */
   CLOSE: 'window:close'
-} as const
+} as const;
 
 /** Tab 操作通道（invoke） */
 export const TabChannels = {
@@ -40,7 +42,7 @@ export const TabChannels = {
   SWITCH: 'tab:switch',
   /** 更新 Tab */
   UPDATE: 'tab:update'
-} as const
+} as const;
 
 /** 事件监听通道（on 监听） */
 export const EventChannels = {
@@ -50,10 +52,10 @@ export const EventChannels = {
   TAB_ACTIVATED: 'event:tab-activated',
   /** Tab 关闭 */
   TAB_CLOSED: 'event:tab-closed'
-} as const
+} as const;
 
 // 类型导出
-export type ShellChannel = (typeof ShellChannels)[keyof typeof ShellChannels]
-export type WindowChannel = (typeof WindowChannels)[keyof typeof WindowChannels]
-export type TabChannel = (typeof TabChannels)[keyof typeof TabChannels]
-export type EventChannel = (typeof EventChannels)[keyof typeof EventChannels]
+export type ShellChannel = (typeof ShellChannels)[keyof typeof ShellChannels];
+export type WindowChannel = (typeof WindowChannels)[keyof typeof WindowChannels];
+export type TabChannel = (typeof TabChannels)[keyof typeof TabChannels];
+export type EventChannel = (typeof EventChannels)[keyof typeof EventChannels];
