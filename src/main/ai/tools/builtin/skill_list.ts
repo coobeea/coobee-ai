@@ -13,26 +13,27 @@
  * 分类：Discovery | 风险：低（只读）
  */
 
-import path from 'node:path'
-import { z } from 'zod'
-import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types'
-import { ToolCategory } from '../types'
-import { SkillManager } from '../../skills'
+import path from 'node:path';
+import { z } from 'zod';
+import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types';
+import { ToolCategory } from '../types';
+import { SkillManager } from '../../skills';
 
 function formatSkillPath(filePath: string, workspaceRoot?: string): string | null {
-  if (!workspaceRoot) return null
-  const rel = path.relative(workspaceRoot, filePath)
+  if (!workspaceRoot) return null;
+  const rel = path.relative(workspaceRoot, filePath);
   if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-    return rel
+    return rel;
   }
-  return null
+  return null;
 }
 
 export const skillListTool: ToolDefinition = {
   name: 'skill_list',
   description:
-    'List all available Skills with name, description, and file path. ' +
-    'Skills are specialized knowledge/instructions you can load on-demand. ' +
+    'Quick discovery of available Skills — lists name, description, and file path. ' +
+    'This is a lightweight read-only discovery tool (no parameters needed). ' +
+    'For full skill management (create/import/delete), use manage_skill instead. ' +
     'After finding a useful Skill, use the `read` tool to read its SKILL.md file, ' +
     'then follow the instructions within.',
   category: ToolCategory.Discovery,
@@ -44,37 +45,35 @@ export const skillListTool: ToolDefinition = {
     _signal?: AbortSignal,
     context?: { workspaceRoot?: string }
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
-    yield { type: 'progress' as const, content: '[skill_list] listing...' }
+    yield { type: 'progress' as const, content: '[skill_list] listing...' };
 
-    const manager = SkillManager.getCurrent()
+    const manager = SkillManager.getCurrent();
 
     if (!manager || manager.size === 0) {
-      return { success: true, llmContent: 'No Skills available.' }
+      return { success: true, llmContent: 'No Skills available.' };
     }
 
-    const skills = manager.getAll()
-    const workspaceRoot = context?.workspaceRoot
+    const skills = manager.getAll();
+    const workspaceRoot = context?.workspaceRoot;
 
-    const lines: string[] = [`Available Skills (${skills.length}):`, '']
+    const lines: string[] = [`Available Skills (${skills.length}):`, ''];
 
     for (const skill of skills) {
-      lines.push(`- **${skill.name}**`)
+      lines.push(`- **${skill.name}**`);
       if (skill.description) {
-        lines.push(`  ${skill.description}`)
+        lines.push(`  ${skill.description}`);
       }
       if (skill.filePath) {
-        const pathDisplay = formatSkillPath(skill.filePath, workspaceRoot)
+        const pathDisplay = formatSkillPath(skill.filePath, workspaceRoot);
         if (pathDisplay !== null) {
-          lines.push(`  Path: ${pathDisplay}`)
+          lines.push(`  Path: ${pathDisplay}`);
         }
       }
-      lines.push('')
+      lines.push('');
     }
 
-    lines.push(
-      'To use a Skill, read its SKILL.md file with the `read` tool, then follow its instructions.'
-    )
+    lines.push('To use a Skill, read its SKILL.md file with the `read` tool, then follow its instructions.');
 
-    return { success: true, llmContent: lines.join('\n') }
+    return { success: true, llmContent: lines.join('\n') };
   }
-}
+};

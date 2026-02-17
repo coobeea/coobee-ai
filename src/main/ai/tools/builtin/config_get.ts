@@ -20,7 +20,9 @@ export const configGetTool: ToolDefinition = {
   description:
     'View current application configuration (coobee.json5). ' +
     'Returns the effective config after schema validation and default values. ' +
-    'Use key parameter to view a specific section (e.g. "security", "agents", "models"). ' +
+    'Use key parameter to view a specific section (e.g. "models", "security", "tools"). ' +
+    'This tool shows system settings only — NOT agent/skill lists. ' +
+    'To list agents use manage_agent(list), to list skills use manage_skill(list). ' +
     'API keys are masked for security.',
   category: ToolCategory.Configuration,
   needUserConfirm: false,
