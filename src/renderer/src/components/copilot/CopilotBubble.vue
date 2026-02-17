@@ -102,7 +102,7 @@ function toolSummary(block: CopilotBlock): string {
         </div>
 
         <!-- 消息区域 -->
-        <div ref="messageContainer" class="panel-messages">
+        <div ref="messageContainer" class="panel-messages selectable">
           <!-- 空状态 -->
           <div v-if="!copilot.hasMessages" class="panel-empty">
             <div class="panel-empty-icon">

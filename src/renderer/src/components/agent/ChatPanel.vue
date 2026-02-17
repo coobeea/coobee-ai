@@ -176,7 +176,7 @@ onMounted(() => {
     </div>
 
     <!-- 消息区域 -->
-    <div ref="messageContainer" class="flex-1 overflow-y-auto" @scroll="handleScroll">
+    <div ref="messageContainer" class="selectable flex-1 overflow-y-auto" @scroll="handleScroll">
       <!-- 空状态 -->
       <div v-if="chatStore.messages.length === 0" class="flex h-full flex-col items-center justify-center px-6">
         <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
