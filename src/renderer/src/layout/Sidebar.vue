@@ -5,14 +5,14 @@
  * 布局：
  *   ┌──────────────────────┐
  *   │  🤖 智能体            │  导航菜单
- *   │  📊 日志              │
+ *   │  🧩 技能              │
  *   ├──────────────────────┤
  *   │  最近任务             │  标题
  *   │  · 任务 A            │  Thread 列表（持久化，可滚动）
  *   │  · 任务 B            │
  *   │  ...                 │
  *   ├──────────────────────┤
- *   │  ⚙  设置              │
+ *   │  🔧 日志  ⚙ 设置      │  底部工具栏
  *   └──────────────────────┘
  *
  * 任务列表从后端 HTTP REST API 获取（.home/threads/），
@@ -38,7 +38,7 @@ const activeMenuId = ref('agent');
 
 const menuItems: MenuItem[] = [
   { id: 'agent', label: '智能体', icon: 'i-carbon-bot', route: '/agent' },
-  { id: 'logs', label: '日志', icon: 'i-carbon-report', route: '/logs' }
+  { id: 'skills', label: '技能', icon: 'i-carbon-skill-level-advanced', route: '/skills' }
 ];
 
 onMounted(() => {
@@ -143,11 +143,21 @@ onMounted(() => updateActiveState());
       </div>
     </div>
 
-    <!-- 底部设置 -->
+    <!-- 底部工具栏 -->
     <div class="nav-footer">
-      <button class="nav-btn" :class="{ active: activeMenuId === 'settings' }" @click="handleSettings">
-        <span class="i-carbon-settings icon-sm settings-icon" />
-        <span>设置</span>
+      <button
+        class="footer-icon-btn"
+        :class="{ active: activeMenuId === 'logs' }"
+        title="日志"
+        @click="router.push('/logs')">
+        <span class="i-carbon-report inline-block h-[15px] w-[15px]" />
+      </button>
+      <button
+        class="footer-icon-btn"
+        :class="{ active: activeMenuId === 'settings' }"
+        title="设置"
+        @click="handleSettings">
+        <span class="i-carbon-settings inline-block h-[15px] w-[15px] settings-icon" />
       </button>
     </div>
   </aside>
@@ -280,11 +290,36 @@ onMounted(() => updateActiveState());
   user-select: none;
 }
 
-/* ====== 底部导航 ====== */
+/* ====== 底部工具栏 ====== */
 
 .nav-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   padding: 8px 8px 12px;
   border-top: 1px solid hsl(var(--border) / 0.3);
+}
+
+.footer-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  color: hsl(var(--muted-foreground) / 0.55);
+  transition: all 0.15s ease;
+}
+
+.footer-icon-btn:hover {
+  background: hsl(var(--foreground) / 0.05);
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.footer-icon-btn.active {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
 }
 
 /* ====== 公共按钮 ====== */
