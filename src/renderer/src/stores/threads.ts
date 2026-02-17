@@ -11,6 +11,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import configManager from '@/config';
+import { generateThreadTitle } from '@/composables/useAiAssist';
 
 /** Thread 索引条目 */
 export interface ThreadEntry {
@@ -107,6 +108,38 @@ export const useThreadsStore = defineStore('threads', () => {
     }
   }
 
+  /**
+   * 创建 Thread 并异步生成标题
+   *
+   * 先以占位标题创建 Thread，然后 fire-and-forget 调用 AI 生成标题。
+   * 标题生成完成后自动更新本地列表。
+   */
+  async function createThreadWithAutoTitle(agentId: string, firstMessage: string): Promise<ThreadEntry | null> {
+    // 先用截断的消息作为临时标题
+    const tempTitle = firstMessage.length > 20 ? firstMessage.slice(0, 20) + '...' : firstMessage;
+    const thread = await createThread(tempTitle, agentId);
+    if (!thread) return null;
+
+    // 异步生成标题（fire-and-forget，不阻塞主流程）
+    generateThreadTitle(thread.id, firstMessage)
+      .then((title) => {
+        if (title) {
+          // 更新本地列表（不需要等 HTTP 确认，先更新 UI）
+          const idx = threads.value.findIndex((t) => t.id === thread.id);
+          if (idx >= 0) {
+            threads.value[idx] = { ...threads.value[idx], title };
+          }
+          // 同步到后端
+          updateThread(thread.id, { title }).catch(() => {});
+        }
+      })
+      .catch((err) => {
+        console.warn('[ThreadsStore] Auto title generation failed:', err);
+      });
+
+    return thread;
+  }
+
   /** 更新 Thread（部分更新，如标题、消息数等） */
   async function updateThread(
     threadId: string,
@@ -164,6 +197,7 @@ export const useThreadsStore = defineStore('threads', () => {
     // Actions
     fetchThreads,
     createThread,
+    createThreadWithAutoTitle,
     updateThread,
     deleteThread,
     selectThread
