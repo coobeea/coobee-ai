@@ -139,8 +139,12 @@ export const searchTool: ToolDefinition = {
       }
     }
 
-    // 解析搜索起点路径
-    const resolved = resolveSandboxPath(searchPath, { workspaceRoot: workspace })
+    // 解析搜索起点路径（读操作不限制目录边界）
+    const resolved = resolveSandboxPath(
+      searchPath,
+      { workspaceRoot: workspace },
+      { readOnly: true }
+    )
     if (resolved.error) return pathGuardErrorToToolResult(resolved.error)
 
     const startPath = resolved.path

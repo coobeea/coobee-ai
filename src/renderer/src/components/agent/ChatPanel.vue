@@ -34,9 +34,12 @@ watch(
 watch(
   () => {
     const msgs = chatStore.messages
-    if (msgs.length === 0) return ''
+    if (msgs.length === 0) return 0
     const last = msgs[msgs.length - 1]
-    return last.content + (last.thinking || '')
+    const blockCount = last.blocks?.length ?? 0
+    const lastBlock = blockCount > 0 ? last.blocks[blockCount - 1] : null
+    const lastLen = lastBlock ? ('text' in lastBlock ? lastBlock.text.length : 0) : 0
+    return last.content.length + blockCount * 1000 + lastLen
   },
   () => scrollToBottom()
 )
@@ -201,35 +204,120 @@ onMounted(() => {
                 <span class="h-px flex-1 bg-gray-200"></span>
               </div>
 
-              <!-- thinking -->
-              <div
-                v-if="msg.thinking"
-                class="rounded-md border-l-2 border-l-violet-300 bg-violet-50/50 px-2 py-1.5"
-              >
-                <div class="mb-0.5 flex items-center gap-1">
-                  <span
-                    class="rounded bg-violet-100 px-1 py-px font-mono text-[9px] font-semibold text-violet-500"
-                  >
-                    thinking
-                  </span>
-                </div>
-                <details>
-                  <summary
-                    class="cursor-pointer text-[10px] text-violet-400 select-none hover:text-violet-500"
-                  >
-                    思考过程
-                  </summary>
-                  <div
-                    class="mt-1 max-h-32 overflow-y-auto font-mono text-[10px] leading-relaxed text-gray-500 whitespace-pre-wrap"
-                  >
-                    {{ msg.thinking }}
+              <!-- 按时序渲染内容块 -->
+              <template v-for="(block, bidx) in msg.blocks" :key="'b-' + bidx">
+                <!-- thinking block -->
+                <div
+                  v-if="block.type === 'thinking'"
+                  class="rounded-md border-l-2 border-l-violet-300 bg-violet-50/50 px-2 py-1.5"
+                >
+                  <div class="mb-0.5 flex items-center gap-1">
+                    <span
+                      class="rounded bg-violet-100 px-1 py-px font-mono text-[9px] font-semibold text-violet-500"
+                    >
+                      thinking
+                    </span>
                   </div>
-                </details>
-              </div>
+                  <details>
+                    <summary
+                      class="cursor-pointer text-[10px] text-violet-400 select-none hover:text-violet-500"
+                    >
+                      思考过程
+                    </summary>
+                    <div
+                      class="mt-1 max-h-32 overflow-y-auto font-mono text-[10px] leading-relaxed text-gray-500 whitespace-pre-wrap"
+                    >
+                      {{ block.text }}
+                    </div>
+                  </details>
+                </div>
 
-              <!-- text -->
+                <!-- text block -->
+                <div
+                  v-else-if="block.type === 'text'"
+                  class="rounded-md border-l-2 border-l-blue-300 bg-white px-2 py-1.5"
+                >
+                  <div class="mb-0.5">
+                    <span
+                      class="rounded bg-blue-100 px-1 py-px font-mono text-[9px] font-semibold text-blue-500"
+                    >
+                      text
+                    </span>
+                  </div>
+                  <div
+                    class="text-xs leading-relaxed text-gray-800 whitespace-pre-wrap break-words"
+                  >
+                    {{ block.text }}
+                    <span
+                      v-if="msg.status === 'streaming' && bidx === msg.blocks.length - 1"
+                      class="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-gray-400 align-text-bottom"
+                    ></span>
+                  </div>
+                </div>
+
+                <!-- tool block -->
+                <div
+                  v-else-if="block.type === 'tool'"
+                  class="overflow-hidden rounded-md border text-[11px] shadow-sm"
+                  :class="{
+                    'border-amber-200': block.tool.status === 'calling',
+                    'border-emerald-200': block.tool.status === 'done',
+                    'border-red-200': block.tool.status === 'error'
+                  }"
+                >
+                  <div
+                    class="flex items-center gap-1.5 px-2 py-1"
+                    :class="{
+                      'bg-amber-50': block.tool.status === 'calling',
+                      'bg-emerald-50': block.tool.status === 'done',
+                      'bg-red-50': block.tool.status === 'error'
+                    }"
+                  >
+                    <span class="i-carbon-tool-box inline-block h-3 w-3 text-gray-500"></span>
+                    <span class="font-mono text-[10px] font-semibold text-gray-700">{{
+                      block.tool.name
+                    }}</span>
+                    <span class="flex-1"></span>
+                    <span
+                      class="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                      :class="{
+                        'bg-amber-100 text-amber-700': block.tool.status === 'calling',
+                        'bg-emerald-100 text-emerald-700': block.tool.status === 'done',
+                        'bg-red-100 text-red-600': block.tool.status === 'error'
+                      }"
+                    >
+                      {{
+                        block.tool.status === 'calling'
+                          ? '执行中'
+                          : block.tool.status === 'done'
+                            ? '完成'
+                            : '失败'
+                      }}
+                    </span>
+                  </div>
+                  <div
+                    v-if="block.tool.arguments"
+                    class="border-t border-gray-100 bg-white px-2 py-1"
+                  >
+                    <div
+                      class="max-h-16 overflow-y-auto rounded bg-gray-50 px-1.5 py-1 font-mono text-[10px] text-gray-500"
+                    >
+                      {{ block.tool.arguments }}
+                    </div>
+                  </div>
+                  <div v-if="block.tool.result" class="border-t border-gray-100 px-2 py-1">
+                    <div
+                      class="max-h-20 overflow-y-auto rounded bg-white px-1.5 py-1 font-mono text-[10px] text-gray-500"
+                    >
+                      {{ block.tool.result }}
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- 等待中（streaming 且无内容块） -->
               <div
-                v-if="msg.content || msg.status === 'streaming'"
+                v-if="msg.status === 'streaming' && msg.blocks.length === 0"
                 class="rounded-md border-l-2 border-l-blue-300 bg-white px-2 py-1.5"
               >
                 <div class="mb-0.5">
@@ -239,81 +327,17 @@ onMounted(() => {
                     text
                   </span>
                 </div>
-                <div class="text-xs leading-relaxed text-gray-800 whitespace-pre-wrap break-words">
-                  {{ msg.content }}
-                  <span v-if="msg.status === 'streaming' && !msg.content" class="inline-flex gap-1">
-                    <span class="h-1 w-1 animate-bounce rounded-full bg-gray-400"></span>
-                    <span
-                      class="h-1 w-1 animate-bounce rounded-full bg-gray-400"
-                      style="animation-delay: 0.15s"
-                    ></span>
-                    <span
-                      class="h-1 w-1 animate-bounce rounded-full bg-gray-400"
-                      style="animation-delay: 0.3s"
-                    ></span>
-                  </span>
+                <span class="inline-flex gap-1">
+                  <span class="h-1 w-1 animate-bounce rounded-full bg-gray-400"></span>
                   <span
-                    v-else-if="msg.status === 'streaming'"
-                    class="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-gray-400 align-text-bottom"
+                    class="h-1 w-1 animate-bounce rounded-full bg-gray-400"
+                    style="animation-delay: 0.15s"
                   ></span>
-                </div>
-              </div>
-
-              <!-- tool calls -->
-              <div
-                v-for="(tool, idx) in msg.toolCalls"
-                :key="'tool-' + idx"
-                class="overflow-hidden rounded-md border text-[11px] shadow-sm"
-                :class="{
-                  'border-amber-200': tool.status === 'calling',
-                  'border-emerald-200': tool.status === 'done',
-                  'border-red-200': tool.status === 'error'
-                }"
-              >
-                <div
-                  class="flex items-center gap-1.5 px-2 py-1"
-                  :class="{
-                    'bg-amber-50': tool.status === 'calling',
-                    'bg-emerald-50': tool.status === 'done',
-                    'bg-red-50': tool.status === 'error'
-                  }"
-                >
-                  <span class="i-carbon-tool-box inline-block h-3 w-3 text-gray-500"></span>
-                  <span class="font-mono text-[10px] font-semibold text-gray-700">{{
-                    tool.name
-                  }}</span>
-                  <span class="flex-1"></span>
                   <span
-                    class="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                    :class="{
-                      'bg-amber-100 text-amber-700': tool.status === 'calling',
-                      'bg-emerald-100 text-emerald-700': tool.status === 'done',
-                      'bg-red-100 text-red-600': tool.status === 'error'
-                    }"
-                  >
-                    {{
-                      tool.status === 'calling'
-                        ? '执行中'
-                        : tool.status === 'done'
-                          ? '完成'
-                          : '失败'
-                    }}
-                  </span>
-                </div>
-                <div v-if="tool.arguments" class="border-t border-gray-100 bg-white px-2 py-1">
-                  <div
-                    class="max-h-16 overflow-y-auto rounded bg-gray-50 px-1.5 py-1 font-mono text-[10px] text-gray-500"
-                  >
-                    {{ tool.arguments }}
-                  </div>
-                </div>
-                <div v-if="tool.result" class="border-t border-gray-100 px-2 py-1">
-                  <div
-                    class="max-h-20 overflow-y-auto rounded bg-white px-1.5 py-1 font-mono text-[10px] text-gray-500"
-                  >
-                    {{ tool.result }}
-                  </div>
-                </div>
+                    class="h-1 w-1 animate-bounce rounded-full bg-gray-400"
+                    style="animation-delay: 0.3s"
+                  ></span>
+                </span>
               </div>
 
               <!-- HITL approvals -->
@@ -406,9 +430,9 @@ onMounted(() => {
                 <span class="h-px flex-1 bg-gray-200"></span>
               </div>
 
-              <!-- streaming -->
+              <!-- streaming (after blocks) -->
               <div
-                v-if="msg.status === 'streaming'"
+                v-if="msg.status === 'streaming' && msg.blocks.length > 0"
                 class="flex items-center gap-1.5 text-[10px] text-blue-400"
               >
                 <span class="i-carbon-in-progress inline-block h-2.5 w-2.5 animate-spin"></span>

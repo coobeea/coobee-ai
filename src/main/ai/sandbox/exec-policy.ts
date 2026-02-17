@@ -25,7 +25,7 @@
  * @module sandbox/exec-policy
  */
 
-import { log } from '@main/common/logger'
+import { log } from '../../common/logger'
 
 // ==================== 类型定义 ====================
 

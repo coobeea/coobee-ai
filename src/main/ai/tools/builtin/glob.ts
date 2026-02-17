@@ -86,8 +86,12 @@ export const globTool: ToolDefinition = {
       }
     }
 
-    // 解析搜索起点
-    const resolved = resolveSandboxPath(searchPath, { workspaceRoot: workspace })
+    // 解析搜索起点（读操作不限制目录边界）
+    const resolved = resolveSandboxPath(
+      searchPath,
+      { workspaceRoot: workspace },
+      { readOnly: true }
+    )
     if (resolved.error) return pathGuardErrorToToolResult(resolved.error)
 
     const startPath = resolved.path

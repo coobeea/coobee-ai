@@ -23,6 +23,8 @@ import { sessionStatusTool } from './session_status'
 import { sessionHistoryTool } from './session_history'
 import { contextInspectTool } from './context_inspect'
 import { skillListTool } from './skill_list'
+import { configPatchTool } from './config_patch'
+import { configGetTool } from './config_get'
 
 // 单独导出
 export { readTool } from './read'
@@ -37,6 +39,8 @@ export { sessionStatusTool } from './session_status'
 export { sessionHistoryTool } from './session_history'
 export { contextInspectTool } from './context_inspect'
 export { skillListTool } from './skill_list'
+export { configPatchTool } from './config_patch'
+export { configGetTool } from './config_get'
 
 /**
  * 所有内置工具
@@ -60,6 +64,9 @@ export { skillListTool } from './skill_list'
  *   glob            — 文件名搜索，低风险
  *   --- 发现 ---
  *   skill_list      — Skill 发现，低风险
+ *   --- 配置 ---
+ *   config_get      — 查看应用配置，低风险
+ *   config_patch    — 修改应用配置，中风险
  */
 export const builtinTools: ToolDefinition[] = [
   readTool,
@@ -73,5 +80,7 @@ export const builtinTools: ToolDefinition[] = [
   sessionStatusTool,
   sessionHistoryTool,
   contextInspectTool,
-  skillListTool
+  skillListTool,
+  configGetTool,
+  configPatchTool
 ]

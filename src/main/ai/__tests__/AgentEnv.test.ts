@@ -258,7 +258,11 @@ describe('AgentEnv', () => {
       userExtensionsDir: '/home/test/extensions',
       loadedExtensions: ['ext-memory', 'ext-translate'],
       memoryDir: '/home/test/memory',
-      availableTools: ['read', 'write', 'edit', 'exec']
+      availableTools: ['read', 'write', 'edit', 'exec'],
+      sandboxMode: 'path-only',
+      execApproval: 'auto',
+      defaultModel: 'dashscope/qwen3.5-plus',
+      thinkingLevel: 'medium'
     }
 
     it('生成包含所有信息的 XML 块', () => {

@@ -178,8 +178,6 @@ export function setupEventSubscription(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const evt = event as any
 
-    log.debug(`[Pi Event] ${event.type}`)
-
     switch (event.type) {
       // ===== Turn（SDK 直接给！无需推断！）=====
       case 'turn_start':
@@ -404,8 +402,6 @@ export function setupEventSubscription(
         break
 
       default:
-        // 未知事件类型，仅记录日志
-        log.debug(`[Pi Event] Unhandled: ${event.type}`)
         break
     }
   })

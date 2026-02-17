@@ -100,16 +100,27 @@ const log = createRuntimeLogger()
  *
  * 不使用 SDK 内置的 getModel() 来获取 anthropic-messages 类型的模型，
  * 而是手动构造一个 openai-completions 类型的 Model 对象，
- * 指向 OpenAI 兼容的后端 API（MiniMax、DeepSeek 等）。
+ * 指向 OpenAI 兼容的后端 API（MiniMax、DeepSeek、DashScope 等）。
+ *
+ * modelMeta 由 coobee.json5 中的模型配置透传，包含 reasoning、contextWindow 等。
+ * 当 reasoning=true 时启用 supportsReasoningEffort，使 SDK 正确解析 reasoning_content。
  */
-function createOpenAICompatModel(modelName: string, baseURL: string): Model<'openai-completions'> {
+function createOpenAICompatModel(
+  modelName: string,
+  baseURL: string,
+  modelMeta?: PiMonoAgentRuntimeOptions['modelMeta']
+): Model<'openai-completions'> {
+  const reasoning = modelMeta?.reasoning ?? true
+  const contextWindow = modelMeta?.contextWindow ?? 204800
+  const maxTokens = modelMeta?.maxOutputTokens ?? 131072
+
   return {
     id: modelName,
     name: modelName,
     api: 'openai-completions',
     provider: CUSTOM_PROVIDER,
     baseUrl: baseURL,
-    reasoning: true,
+    reasoning,
     input: ['text'],
     cost: {
       input: 0.3,
@@ -117,13 +128,12 @@ function createOpenAICompatModel(modelName: string, baseURL: string): Model<'ope
       cacheRead: 0,
       cacheWrite: 0
     },
-    contextWindow: 204800,
-    maxTokens: 131072,
-    // MiniMax OpenAI 兼容端点的特性
+    contextWindow,
+    maxTokens,
     compat: {
       supportsStore: false,
       supportsDeveloperRole: false,
-      supportsReasoningEffort: false,
+      supportsReasoningEffort: reasoning,
       supportsUsageInStreaming: true,
       maxTokensField: 'max_tokens'
     }
@@ -184,8 +194,8 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
     const baseURL = this.options.baseURL || DEFAULT_BASE_URL
     const thinkingLevel = this.options.thinkingLevel || 'medium'
 
-    // 1. 构造 OpenAI 兼容的 Model 对象
-    const model = createOpenAICompatModel(modelName, baseURL)
+    // 1. 构造 OpenAI 兼容的 Model 对象（从 coobee.json5 模型配置透传元数据）
+    const model = createOpenAICompatModel(modelName, baseURL, this.options.modelMeta)
 
     // 2. 认证配置
     //    通过 AuthStorage 注入 API key，使用自定义 provider 名称
@@ -293,6 +303,8 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
         `(api: openai-completions, model: ${modelName}, ` +
         `baseURL: ${baseURL}, ` +
         `thinking: ${thinkingLevel}, ` +
+        `reasoning: ${model.reasoning}, ` +
+        `reasoningEffort: ${model.compat?.supportsReasoningEffort ?? false}, ` +
         `tools: ${allSdkTools.length}, ` +
         `skills: ${piSkills.length}, ` +
         `session: ${this.sessionId})`
@@ -331,7 +343,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
     const startTime = Date.now()
     const queue = new ChunkQueue<StreamChunk>()
 
-    log.info(`Running stream: ${this.name}`)
+    log.info(`[PiMonoRuntime] Running stream: ${this.name}`)
 
     try {
       // 1. run:start

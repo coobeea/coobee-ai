@@ -183,8 +183,18 @@ export class LifecycleManager {
       `[LifecycleManager] 执行 Hook: ${hook.name} (优先级: ${hook.priority}, 关键: ${hook.critical})`
     )
 
+    const HOOK_TIMEOUT_MS = 30_000
+
     try {
-      const result = await hook.execute(context)
+      const result = await Promise.race([
+        hook.execute(context),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Hook "${hook.name}" 超时（${HOOK_TIMEOUT_MS}ms）`)),
+            HOOK_TIMEOUT_MS
+          )
+        )
+      ])
 
       log.info(`[LifecycleManager] Hook 完成: ${hook.name}`)
 

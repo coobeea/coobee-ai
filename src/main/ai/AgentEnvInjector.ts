@@ -18,7 +18,8 @@ import path from 'node:path'
 import { createLogger } from '@main/common/logger'
 import { formatRuntimePaths, buildAgentEnv, type AgentEnv } from './AgentEnv'
 import { SkillManager } from './skills'
-import { createPathOnlyContext } from './sandbox'
+import { createPathOnlyContext, resolveSandboxContext } from './sandbox'
+import type { SandboxContext, SandboxMode } from './sandbox'
 import type { AgentBuilder } from './AgentExecutor'
 
 const log = createLogger('ai')
@@ -63,7 +64,14 @@ export async function injectEnv(
             `You have ${skillManager.size} Skills available. ` +
             `Use the \`skill_list\` tool to discover them. ` +
             `When you find a relevant Skill, use the \`read\` tool to read its SKILL.md file, ` +
-            `then follow the instructions within.\n` +
+            `then follow the instructions within.\n\n` +
+            `Key Skills for self-management:\n` +
+            `- Configuration changes → load "system-config" Skill\n` +
+            `- Creating new Skills → load "skill-creator" Skill\n` +
+            `- Creating Extensions → load "extension-creator" Skill\n` +
+            `- Self-evaluation → load "self-reflection" Skill\n` +
+            `- Environment info → load "runtime-env" Skill\n` +
+            `\nYou can also use \`config_get\` to view current config and \`config_patch\` to modify it.\n` +
             `</skill_discovery>`
           : ''
       builder.appendInstructions(
@@ -73,9 +81,9 @@ export async function injectEnv(
       )
 
       // 5. 设置沙箱上下文（由 Runtime 的 convertTools 使用）
-      //    注入 COOBEE_* 环境变量，供 Skill 脚本读取配置和上下文
+      //    从配置读取 sandbox mode，注入 COOBEE_* 环境变量
       const envVars = buildSkillEnvVars(agentEnv)
-      const sandboxCtx = createPathOnlyContext(workspace, { sessionId, envVars })
+      const sandboxCtx = await buildSandboxContext(workspace, sessionId, envVars)
       builder.sandboxContext(sandboxCtx)
     }
 
@@ -183,4 +191,59 @@ function buildSkillEnvVars(env: AgentEnv): Record<string, string> {
     COOBEE_USER_HOME: env.userHome,
     COOBEE_MEMORY_DIR: env.memoryDir
   }
+}
+
+// ==================== 沙箱上下文构建 ====================
+
+/**
+ * 根据配置构建沙箱上下文
+ *
+ * 从 ConfigStore 读取 security.sandbox.mode 来决定沙箱模式：
+ *   - 'off': 无沙箱保护
+ *   - 'path-only': 路径守卫（默认）
+ *   - 'docker': Docker 容器隔离
+ *
+ * 如果 ConfigStore 不可用，降级为 path-only。
+ */
+async function buildSandboxContext(
+  workspace: string,
+  sessionId: string,
+  envVars: Record<string, string>
+): Promise<SandboxContext> {
+  let mode: SandboxMode = 'path-only'
+
+  try {
+    const { configStoreInstance } = await import('@main/common/config/ConfigStore')
+    if (configStoreInstance) {
+      const security = configStoreInstance.get('security')
+      const configMode = security?.sandbox?.mode
+      if (configMode) {
+        mode = configMode
+        log.info(`[EnvInjector] Sandbox mode from config: ${mode}`)
+      }
+    }
+  } catch {
+    // ConfigStore 不可用时使用默认值
+  }
+
+  // off 模式：返回最小上下文，不启用任何保护
+  if (mode === 'off') {
+    return {
+      mode: 'off',
+      workspaceRoot: workspace,
+      toolPolicy: { allow: [], deny: [] },
+      sessionId,
+      envVars
+    }
+  }
+
+  // docker 模式：委托给 resolveSandboxContext（会处理 Docker 不可用的降级）
+  if (mode === 'docker') {
+    const ctx = await resolveSandboxContext({ mode: 'docker', workspaceRoot: workspace }, sessionId)
+    ctx.envVars = envVars
+    return ctx
+  }
+
+  // path-only 模式（默认）
+  return createPathOnlyContext(workspace, { sessionId, envVars })
 }

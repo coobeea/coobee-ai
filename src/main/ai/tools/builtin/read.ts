@@ -4,7 +4,8 @@
  * 读取指定路径的文件内容，支持 offset/limit 分页读取大文件。
  * 返回带行号的文本，便于 LLM 引用具体行。
  *
- * 安全：路径受沙箱限制，不能读取工作区之外的文件。
+ * 安全：只读操作，不限制读取路径。Agent 需要读取 Skill 文件、
+ * 配置文件等 workspace 外的资源，限制读取只会导致体验下降。
  *
  * 分类：FileSystem | 风险：低（只读操作）
  */
@@ -44,8 +45,8 @@ export const readTool: ToolDefinition = {
     const limit = Math.min((params.limit as number) || DEFAULT_MAX_LINES, DEFAULT_MAX_LINES)
     const startTime = Date.now()
 
-    // 统一路径解析
-    const resolved = resolveToolPath(filePath, context)
+    // 统一路径解析（读操作不限制目录边界）
+    const resolved = resolveToolPath(filePath, context, { readOnly: true })
     if (!resolved.ok) return resolved.error
 
     const absolutePath = resolved.absolutePath

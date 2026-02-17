@@ -71,6 +71,18 @@ export interface AgentEnv {
   // --- 能力清单 ---
   /** 可用工具名称列表 */
   availableTools: string[]
+
+  // --- 安全上下文 ---
+  /** 沙箱模式 */
+  sandboxMode: 'off' | 'path-only' | 'docker'
+  /** 命令审批策略 */
+  execApproval: 'auto' | 'always' | 'never'
+
+  // --- 模型上下文 ---
+  /** 当前默认模型（provider/model 格式） */
+  defaultModel: string
+  /** 思维链级别 */
+  thinkingLevel: string
 }
 
 // ==================== 构建函数 ====================
@@ -121,6 +133,27 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
     // ToolRegistry 未初始化时忽略
   }
 
+  // 安全与模型上下文
+  let sandboxMode: 'off' | 'path-only' | 'docker' = 'path-only'
+  let execApproval: 'auto' | 'always' | 'never' = 'auto'
+  let defaultModel = 'unknown'
+  let thinkingLevel = 'medium'
+
+  try {
+    const { configStoreInstance } = await import('@main/common/config/ConfigStore')
+    if (configStoreInstance) {
+      const security = configStoreInstance.get('security')
+      sandboxMode = security?.sandbox?.mode ?? 'path-only'
+      execApproval = security?.approvals?.exec ?? 'auto'
+
+      const agents = configStoreInstance.get('agents')
+      defaultModel = agents?.defaults?.model?.primary ?? 'unknown'
+      thinkingLevel = agents?.defaults?.thinkingLevel ?? 'medium'
+    }
+  } catch {
+    // ConfigStore 未初始化时使用默认值
+  }
+
   return {
     // 系统信息
     platform: process.platform as 'darwin' | 'win32' | 'linux',
@@ -153,7 +186,15 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
     memoryDir: Env.paths.memoryDir,
 
     // 能力清单
-    availableTools
+    availableTools,
+
+    // 安全上下文
+    sandboxMode,
+    execApproval,
+
+    // 模型上下文
+    defaultModel,
+    thinkingLevel
   }
 }
 
@@ -200,6 +241,14 @@ ${env.extensionPaths.map((p) => `    <path>${p}</path>`).join('\n')}
 ${env.loadedExtensions.map((id) => `    <extension>${id}</extension>`).join('\n')}
   </loaded>
 </extensions>
+<security>
+  <sandboxMode>${env.sandboxMode}</sandboxMode>
+  <execApproval>${env.execApproval}</execApproval>
+</security>
+<model>
+  <default>${env.defaultModel}</default>
+  <thinkingLevel>${env.thinkingLevel}</thinkingLevel>
+</model>
 <tools>
 ${env.availableTools.map((t) => `  <tool>${t}</tool>`).join('\n')}
 </tools>

@@ -216,6 +216,8 @@ export class PiMonoBuilder {
       opts.workspaceRoot = this._cwd
     }
     if (this._thinkingLevel) opts.thinkingLevel = this._thinkingLevel
+    // 从 ProviderConfig 提取模型元数据，透传给 Runtime 用于构造 pi-SDK Model 对象
+    opts.modelMeta = this.resolveModelMeta()
     if (this._sdkTools) opts.sdkTools = this._sdkTools
     if (this._compaction) opts.compaction = this._compaction
     if (this._retry) opts.retry = this._retry
@@ -260,6 +262,33 @@ export class PiMonoBuilder {
     if (this._baseURL) return this._baseURL
     if (this._providerConfig?.baseUrl) return this._providerConfig.baseUrl
     return process.env.VITE_LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+  }
+
+  /**
+   * 从 ProviderConfig 提取模型元数据
+   *
+   * 查找匹配的 ModelConfig，提取 reasoning/contextWindow/maxOutputTokens 等字段，
+   * 用于动态构造 pi-SDK Model 对象（替代硬编码默认值）。
+   */
+  private resolveModelMeta(): PiMonoAgentRuntimeOptions['modelMeta'] {
+    if (!this._providerConfig) return undefined
+
+    const modelId = this._providerModelId || this._model
+    if (!modelId) return undefined
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const modelCfg = this._providerConfig.models?.find((m: any) => m.id === modelId) as
+      | Record<string, unknown>
+      | undefined
+    if (!modelCfg) return undefined
+
+    return {
+      reasoning: (modelCfg.reasoning as boolean) ?? undefined,
+      contextWindow: (modelCfg.contextWindow as number) ?? undefined,
+      maxOutputTokens: (modelCfg.maxOutputTokens as number) ?? undefined,
+      maxThinkingTokens: (modelCfg.maxThinkingTokens as number) ?? undefined,
+      functionCalling: (modelCfg.functionCalling as boolean) ?? undefined
+    }
   }
 }
 

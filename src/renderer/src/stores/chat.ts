@@ -34,18 +34,27 @@ export interface PendingApproval {
   decision?: HitlApprovalDecision
 }
 
+/**
+ * 内容块 — 按时序排列的助手消息内容单元
+ *
+ * 解决了旧模型（content/thinking/toolCalls 独立字段）丢失时序的问题。
+ * 事件到达时按顺序 push 到 blocks 数组，模板按数组顺序渲染即可保持时序。
+ */
+export type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string }
+  | { type: 'tool'; tool: ToolCallInfo }
+
 /** 对话消息 */
 export interface ChatMessage {
   /** 消息 ID */
   id: string
   /** 角色 */
   role: 'user' | 'assistant'
-  /** 文本内容（累积） */
+  /** 文本内容（用户消息的原文 / 助手消息的聚合文本） */
   content: string
-  /** 思维链内容（累积） */
-  thinking?: string
-  /** 工具调用记录 */
-  toolCalls?: ToolCallInfo[]
+  /** 按时序排列的内容块（仅助手消息使用） */
+  blocks: ContentBlock[]
   /** HITL 待审批工具列表 */
   pendingApprovals?: PendingApproval[]
   /** 消息状态 */
@@ -89,8 +98,7 @@ export const useChatStore = defineStore('chat', () => {
       id: `assistant-${Date.now()}`,
       role: 'assistant',
       content: '',
-      thinking: '',
-      toolCalls: [],
+      blocks: [],
       status: 'streaming',
       timestamp: Date.now()
     }
@@ -100,65 +108,78 @@ export const useChatStore = defineStore('chat', () => {
 
   /**
    * 处理流式消息事件
-   * 这是 StreamMessage → ChatMessage 的核心映射
+   *
+   * 这是 StreamMessage → ChatMessage 的核心映射。
+   * 使用 blocks 数组维护时序：事件按到达顺序 push，模板按数组顺序渲染。
    */
   function handleStreamMessage(msg: StreamMessage): void {
     let assistantMsg = getCurrentAssistantMessage()
 
     switch (msg.type) {
       case 'start':
-        // 流开始 —— 创建新的助手消息
         isStreaming.value = true
         if (!assistantMsg) {
           createAssistantMessage()
         }
         break
 
-      case 'text':
-        // 文本增量 —— 追加到内容
+      case 'text': {
         if (!assistantMsg) {
           assistantMsg = createAssistantMessage()
         }
         assistantMsg.content += msg.content
+        const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1]
+        if (lastBlock && lastBlock.type === 'text') {
+          lastBlock.text += msg.content
+        } else {
+          assistantMsg.blocks.push({ type: 'text', text: msg.content })
+        }
         break
+      }
 
-      case 'thinking':
-        // 思维链增量 —— 追加到 thinking
+      case 'thinking': {
         if (!assistantMsg) {
           assistantMsg = createAssistantMessage()
         }
-        assistantMsg.thinking = (assistantMsg.thinking || '') + msg.content
+        const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1]
+        if (lastBlock && lastBlock.type === 'thinking') {
+          lastBlock.text += msg.content
+        } else {
+          assistantMsg.blocks.push({ type: 'thinking', text: msg.content })
+        }
         break
+      }
 
-      case 'tool_call':
-        // 工具调用开始
+      case 'tool_call': {
         if (!assistantMsg) {
           assistantMsg = createAssistantMessage()
         }
-        if (!assistantMsg.toolCalls) {
-          assistantMsg.toolCalls = []
-        }
-        assistantMsg.toolCalls.push({
-          name: (msg.data?.toolName as string) || msg.content,
-          arguments: (msg.data?.arguments as string) || '',
-          status: 'calling'
+        assistantMsg.blocks.push({
+          type: 'tool',
+          tool: {
+            name: (msg.data?.toolName as string) || msg.content,
+            arguments: (msg.data?.arguments as string) || '',
+            status: 'calling'
+          }
         })
         break
+      }
 
       case 'tool_result': {
-        // 工具调用结果
-        if (assistantMsg?.toolCalls?.length) {
-          const lastTool = assistantMsg.toolCalls[assistantMsg.toolCalls.length - 1]
-          if (lastTool.status === 'calling') {
-            lastTool.result = msg.content
-            lastTool.status = 'done'
+        if (assistantMsg) {
+          for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
+            const block = assistantMsg.blocks[i]
+            if (block.type === 'tool' && block.tool.status === 'calling') {
+              block.tool.result = msg.content
+              block.tool.status = 'done'
+              break
+            }
           }
         }
         break
       }
 
       case 'done':
-        // 流结束
         if (assistantMsg) {
           assistantMsg.status = 'done'
         }
@@ -166,16 +187,15 @@ export const useChatStore = defineStore('chat', () => {
         break
 
       case 'error':
-        // 流错误
         if (assistantMsg) {
           assistantMsg.status = 'error'
           assistantMsg.error = msg.content
         } else {
-          // 没有助手消息时，创建一个错误消息
           messages.value.push({
             id: `error-${Date.now()}`,
             role: 'assistant',
             content: '',
+            blocks: [],
             status: 'error',
             error: msg.content,
             timestamp: Date.now()
@@ -185,7 +205,6 @@ export const useChatStore = defineStore('chat', () => {
         break
 
       case 'hitl':
-        // HITL 审批请求 —— 添加到 pendingApprovals
         if (!assistantMsg) {
           assistantMsg = createAssistantMessage()
         }
@@ -202,7 +221,6 @@ export const useChatStore = defineStore('chat', () => {
         break
 
       case 'interrupted':
-        // HITL 中断 —— 流暂停，等待审批
         if (assistantMsg) {
           assistantMsg.status = 'interrupted'
         }
@@ -210,7 +228,6 @@ export const useChatStore = defineStore('chat', () => {
         break
 
       case 'resumed':
-        // HITL 恢复 —— 审批完成，流继续
         if (assistantMsg) {
           assistantMsg.status = 'streaming'
         }
@@ -218,7 +235,6 @@ export const useChatStore = defineStore('chat', () => {
         break
 
       default:
-        // handoff, agent_updated 等暂不处理
         console.log(`[chatStore] Unhandled stream message type: ${msg.type}`, msg)
         break
     }
@@ -240,6 +256,7 @@ export const useChatStore = defineStore('chat', () => {
       id: `user-${Date.now()}`,
       role: 'user',
       content: text,
+      blocks: [],
       status: 'done',
       timestamp: Date.now()
     })
@@ -261,6 +278,7 @@ export const useChatStore = defineStore('chat', () => {
             id: `error-${Date.now()}`,
             role: 'assistant',
             content: '',
+            blocks: [],
             status: 'error',
             error: error || '启动 Agent 失败',
             timestamp: Date.now()
@@ -292,6 +310,7 @@ export const useChatStore = defineStore('chat', () => {
         id: `error-${Date.now()}`,
         role: 'assistant',
         content: '',
+        blocks: [],
         status: 'error',
         error: errMsg,
         timestamp: Date.now()

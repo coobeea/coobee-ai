@@ -27,21 +27,22 @@ export type ResolvePathResult =
 /**
  * 统一工具路径解析
  *
- * 替代各工具中重复的：
- *   const resolved = resolveSandboxPath(filePath, context)
- *   if (resolved.error) return pathGuardErrorToToolResult(resolved.error)
- *   const absolutePath = resolved.path
+ * 沙箱策略：
+ *   - 写操作（默认）：严格限制在 workspace 内
+ *   - 读操作（readOnly=true）：不限制目录边界
  *
  * @example
+ * // 读操作 — 不限制路径
+ * const resolved = resolveToolPath(params.path as string, context, { readOnly: true })
+ * // 写操作 — 限制在 workspace 内
  * const resolved = resolveToolPath(params.path as string, context)
- * if (!resolved.ok) return resolved.error
- * const absolutePath = resolved.absolutePath
  */
 export function resolveToolPath(
   filePath: string,
-  context?: ToolExecutionContext
+  context?: ToolExecutionContext,
+  options?: { readOnly?: boolean }
 ): ResolvePathResult {
-  const resolved = resolveSandboxPath(filePath, context)
+  const resolved = resolveSandboxPath(filePath, context, options)
   if (resolved.error) {
     return { ok: false, error: pathGuardErrorToToolResult(resolved.error) }
   }

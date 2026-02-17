@@ -421,7 +421,8 @@ describe.skipIf(!RUN)('事件流 + Session 完整分析', () => {
       apiKey: apiConfig.apiKey,
       ...(apiConfig.baseURL ? { baseURL: apiConfig.baseURL } : {})
     })
-    setDefaultOpenAIClient(client)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setDefaultOpenAIClient(client as any)
     if (apiConfig.baseURL) {
       setOpenAIAPI('chat_completions')
     }

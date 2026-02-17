@@ -98,7 +98,8 @@ export const CoobeeConfigSchema = z.object({
     .object({
       defaults: z
         .object({
-          model: ModelSelectionSchema.optional()
+          model: ModelSelectionSchema.optional(),
+          thinkingLevel: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional()
         })
         .optional(),
       list: z.array(AgentEntrySchema).optional()

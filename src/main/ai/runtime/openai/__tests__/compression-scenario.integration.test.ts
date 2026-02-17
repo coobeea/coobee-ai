@@ -300,7 +300,8 @@ describe.skipIf(!RUN)('Session 压缩场景：全链路上下文监控', () => {
       apiKey: apiConfig.apiKey,
       ...(apiConfig.baseURL ? { baseURL: apiConfig.baseURL } : {})
     })
-    setDefaultOpenAIClient(client)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setDefaultOpenAIClient(client as any)
     if (apiConfig.baseURL) {
       setOpenAIAPI('chat_completions')
     }
@@ -690,7 +691,8 @@ describe.skipIf(!RUN)('Session 压缩场景：工具调用 + 压缩', () => {
       apiKey: apiConfig.apiKey,
       ...(apiConfig.baseURL ? { baseURL: apiConfig.baseURL } : {})
     })
-    setDefaultOpenAIClient(client)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setDefaultOpenAIClient(client as any)
     if (apiConfig.baseURL) {
       setOpenAIAPI('chat_completions')
     }

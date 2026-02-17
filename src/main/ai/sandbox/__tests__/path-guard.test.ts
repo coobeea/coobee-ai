@@ -10,10 +10,63 @@
  *   - pathGuardErrorToToolResult 转换
  *   - resolveWorkingDirectory 各模式
  */
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import { resolve, join } from 'node:path'
+
+// Mock electron 相关模块（context.ts 通过 logger 间接依赖 electron）
+vi.mock('electron', () => {
+  const base = join(process.cwd(), 'test-results')
+  return {
+    app: {
+      getPath: (name: string) => join(base, name),
+      getAppPath: () => base,
+      getName: () => 'coobee-test',
+      getVersion: () => '0.0.0-test',
+      getLocale: () => 'zh-CN',
+      isPackaged: false
+    },
+    BrowserWindow: vi.fn(),
+    ipcMain: { on: vi.fn(), handle: vi.fn() },
+    session: { defaultSession: { webRequest: { onHeadersReceived: vi.fn() } } }
+  }
+})
+vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
+vi.mock('electron-log', () => {
+  const noop = (): void => {}
+  const mockTransport = {
+    resolvePathFn: null,
+    level: 'info',
+    maxSize: 10 * 1024 * 1024,
+    format: '',
+    getFile: () => ({ path: '/tmp/test.log' })
+  }
+  const mockLogger = {
+    info: noop,
+    warn: noop,
+    error: noop,
+    debug: noop,
+    verbose: noop,
+    transports: {
+      file: { ...mockTransport },
+      console: { level: 'info', format: '' }
+    },
+    create: () => ({
+      info: noop,
+      warn: noop,
+      error: noop,
+      debug: noop,
+      verbose: noop,
+      transports: {
+        file: { ...mockTransport },
+        console: { level: 'info', format: '' }
+      }
+    })
+  }
+  return { default: mockLogger }
+})
+
 import {
   resolveSandboxPath,
   resolveWorkingDirectory,
@@ -192,6 +245,94 @@ describe('resolveSandboxPath', () => {
       expect(result.error).toBeUndefined()
       expect(result.path).toBe(resolve('/home/user/project', 'README.md'))
     })
+  })
+})
+
+// ========== readOnly 模式 ==========
+
+describe('resolveSandboxPath — readOnly 模式', () => {
+  const ctx = { workspaceRoot: '/home/user/project' }
+
+  it('readOnly 模式允许读取 workspace 外的路径', () => {
+    const result = resolveSandboxPath('/etc/hosts', ctx, { readOnly: true })
+    expect(result.error).toBeUndefined()
+    expect(result.path).toBe('/etc/hosts')
+  })
+
+  it('readOnly 模式允许 ../ 穿越（读取父级目录）', () => {
+    const result = resolveSandboxPath('../other-project/file.txt', ctx, { readOnly: true })
+    expect(result.error).toBeUndefined()
+    expect(result.path).toBe(resolve('/home/user/other-project/file.txt'))
+  })
+
+  it('readOnly 模式正确解析相对路径', () => {
+    const result = resolveSandboxPath('src/index.ts', ctx, { readOnly: true })
+    expect(result.error).toBeUndefined()
+    expect(result.path).toBe(resolve('/home/user/project', 'src/index.ts'))
+  })
+
+  it('readOnly 模式正确解析绝对路径', () => {
+    const result = resolveSandboxPath('/tmp/test.txt', ctx, { readOnly: true })
+    expect(result.error).toBeUndefined()
+    expect(result.path).toBe('/tmp/test.txt')
+  })
+
+  it('默认模式仍然拒绝 workspace 外路径', () => {
+    const result = resolveSandboxPath('/etc/hosts', ctx)
+    expect(result.error).toBeDefined()
+    expect(result.error!.code).toBe('SANDBOX_VIOLATION')
+  })
+
+  it('readOnly: false 等同于默认行为', () => {
+    const result = resolveSandboxPath('/etc/hosts', ctx, { readOnly: false })
+    expect(result.error).toBeDefined()
+    expect(result.error!.code).toBe('SANDBOX_VIOLATION')
+  })
+})
+
+// ========== mode='off' 沙箱关闭 ==========
+
+describe('resolveSandboxPath — mode=off 沙箱关闭', () => {
+  const offCtx = {
+    mode: 'off' as const,
+    workspaceRoot: '/home/user/project',
+    toolPolicy: { allow: [] as string[], deny: [] as string[] }
+  }
+
+  it('off 模式允许写入 workspace 外路径', () => {
+    const result = resolveSandboxPath('/etc/config.json', offCtx)
+    expect(result.error).toBeUndefined()
+    expect(result.path).toBe('/etc/config.json')
+  })
+
+  it('off 模式允许 ../ 路径穿越（写操作）', () => {
+    const result = resolveSandboxPath('../other-project/file.txt', offCtx)
+    expect(result.error).toBeUndefined()
+    expect(result.path).toBe(resolve('/home/user/other-project/file.txt'))
+  })
+
+  it('off 模式正确解析相对路径', () => {
+    const result = resolveSandboxPath('src/index.ts', offCtx)
+    expect(result.error).toBeUndefined()
+    expect(result.path).toBe(resolve('/home/user/project', 'src/index.ts'))
+  })
+
+  it('path-only 模式仍然拒绝 workspace 外写操作', () => {
+    const pathOnlyCtx = {
+      mode: 'path-only' as const,
+      workspaceRoot: '/home/user/project',
+      toolPolicy: { allow: [] as string[], deny: [] as string[] }
+    }
+    const result = resolveSandboxPath('/etc/config.json', pathOnlyCtx)
+    expect(result.error).toBeDefined()
+    expect(result.error!.code).toBe('SANDBOX_VIOLATION')
+  })
+
+  it('简单对象（无 mode 字段）仍然检查边界', () => {
+    const simpleCtx = { workspaceRoot: '/home/user/project' }
+    const result = resolveSandboxPath('/etc/config.json', simpleCtx)
+    expect(result.error).toBeDefined()
+    expect(result.error!.code).toBe('SANDBOX_VIOLATION')
   })
 })
 

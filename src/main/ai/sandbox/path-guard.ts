@@ -32,21 +32,22 @@ export interface PathGuardError {
 /**
  * 解析并验证文件路径
  *
- * @param filePath - 原始路径（LLM 传入的）
- * @param context  - 沙箱上下文（包含 workspaceRoot / sandboxRoot）
- * @returns 验证后的绝对路径，或错误信息
+ * 沙箱策略：
+ *   - 写操作（默认）：严格限制在 workspace 目录内（防止误改系统文件）
+ *   - 读操作（readOnly=true）：不限制目录边界，仅做路径解析
+ *     Agent 需要读取 Skill 文件、配置文件等 workspace 外的资源，
+ *     限制读取只会迫使 Agent 用 exec+cat 绕过，体验更差。
  *
- * @example
- * const result = resolveSandboxPath('src/index.ts', sandboxContext)
- * if (result.error) {
- *   // 路径越界
- * } else {
- *   // result.path 是安全的绝对路径
- * }
+ * @param filePath  - 原始路径（LLM 传入的）
+ * @param context   - 沙箱上下文（包含 workspaceRoot / sandboxRoot）
+ * @param options   - 可选配置
+ * @param options.readOnly - 为 true 时跳过目录边界检查（读操作）
+ * @returns 验证后的绝对路径，或错误信息
  */
 export function resolveSandboxPath(
   filePath: string,
-  context?: SandboxContext | { workspaceRoot: string; sandboxRoot?: string }
+  context?: SandboxContext | { workspaceRoot: string; sandboxRoot?: string },
+  options?: { readOnly?: boolean }
 ): PathResolveResult {
   // 没有 context 时降级为 process.cwd()（兼容测试场景）
   const root = context?.sandboxRoot || context?.workspaceRoot || process.cwd()
@@ -59,6 +60,18 @@ export function resolveSandboxPath(
     absolutePath = resolve(root, filePath)
   }
 
+  // 读操作 或 沙箱关闭（mode='off'）：直接返回，不检查边界
+  if (options?.readOnly) {
+    return { path: absolutePath }
+  }
+
+  // 检查沙箱是否关闭（mode='off' 时所有操作都不限制）
+  if (context && 'mode' in context && context.mode === 'off') {
+    return { path: absolutePath }
+  }
+
+  // === 以下为写操作的严格检查 ===
+
   // 1. 字符串级检查（resolve 后的路径）
   const rel = relative(root, absolutePath)
   const isOutside = rel.startsWith('..') || isAbsolute(rel)
@@ -67,7 +80,7 @@ export function resolveSandboxPath(
     return {
       error: {
         code: 'SANDBOX_VIOLATION',
-        message: `Path "${filePath}" is outside the allowed workspace (${root}). File operations are restricted to the workspace directory.`,
+        message: `Path "${filePath}" is outside the allowed workspace (${root}). Write operations are restricted to the workspace directory.`,
         details: { filePath, absolutePath, boundary: root }
       }
     }

@@ -94,4 +94,23 @@ export interface PiMonoAgentRuntimeOptions extends AgentRuntimeOptions {
     maxRetries?: number
     baseDelayMs?: number
   }
+
+  /**
+   * 模型元数据（从 coobee.json5 模型配置透传）
+   *
+   * 用于动态构造 pi-SDK Model 对象，替代硬编码默认值。
+   * 由 PiMonoBuilder.build() 从 ProviderConfig 中提取并注入。
+   */
+  modelMeta?: {
+    /** 是否支持推理/思考模式 */
+    reasoning?: boolean
+    /** 上下文窗口大小 */
+    contextWindow?: number
+    /** 最大输出 token 数 */
+    maxOutputTokens?: number
+    /** 最大思维链 token 数 */
+    maxThinkingTokens?: number
+    /** 是否支持工具调用 */
+    functionCalling?: boolean
+  }
 }

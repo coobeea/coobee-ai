@@ -32,7 +32,9 @@ export enum ToolCategory {
   /** 可观测性（session_status, session_history, context_inspect） */
   Observability = 'observability',
   /** 发现（skill_list） */
-  Discovery = 'discovery'
+  Discovery = 'discovery',
+  /** 配置管理（config_patch） */
+  Configuration = 'configuration'
 }
 
 // ========== 工具执行结果 ==========

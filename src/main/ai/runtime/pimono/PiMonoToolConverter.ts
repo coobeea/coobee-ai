@@ -66,8 +66,9 @@ export function convertTools(
         name: def.name,
         label: def.name,
         description: def.description,
-        // Zod → JSON Schema（PiMono SDK 使用 TypeBox/JSON Schema 格式）
-        parameters: z.toJSONSchema(def.parameters),
+        // Zod → JSON Schema（PiMono SDK 使用 TypeBox/AJV draft-07 格式）
+        // z.toJSONSchema() 输出 draft-2020-12 $schema，AJV 不识别，需移除
+        parameters: stripSchemaRef(z.toJSONSchema(def.parameters)),
         execute: async (
           _toolCallId: string,
           params: Record<string, unknown>,
@@ -102,4 +103,20 @@ export function convertTools(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any as PiToolDefinition
   )
+}
+
+// ========== Internal Helpers ==========
+
+/**
+ * 移除 JSON Schema 的 $schema 元引用
+ *
+ * Zod 4 的 z.toJSONSchema() 默认输出 draft-2020-12 的 $schema 引用，
+ * 但 pi-SDK 内部的 AJV 验证器仅支持 draft-07，遇到 2020-12 会抛出：
+ *   "no schema with key or ref https://json-schema.org/draft/2020-12/schema"
+ *
+ * 解决：移除 $schema 属性，让 AJV 使用其默认的 draft-07 模式验证。
+ */
+function stripSchemaRef(schema: Record<string, unknown>): Record<string, unknown> {
+  const { $schema: _, ...rest } = schema
+  return rest
 }

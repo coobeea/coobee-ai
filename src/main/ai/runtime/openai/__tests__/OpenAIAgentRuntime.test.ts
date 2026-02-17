@@ -533,7 +533,8 @@ describe.skipIf(!RUN)('OpenAIAgentRuntime 真实执行测试（多轮工具调�
       apiKey: apiConfig.apiKey,
       ...(apiConfig.baseURL ? { baseURL: apiConfig.baseURL } : {})
     })
-    setDefaultOpenAIClient(client)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setDefaultOpenAIClient(client as any)
     if (apiConfig.baseURL) {
       setOpenAIAPI('chat_completions')
     }

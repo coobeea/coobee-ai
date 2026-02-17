@@ -15,6 +15,7 @@ import { agentExecutor } from '@main/ai/AgentExecutor'
 import { builtinTools } from '@main/ai/tools'
 import { ToolRegistry } from '@main/ai/tools/registry'
 import { resolveApiKey } from '@main/ai/provider/ApiKeyResolver'
+import { configStoreInstance } from '@main/common/config/ConfigStore'
 import { GatewayErrorCode, GatewayMethodError } from '../protocol'
 import type { MethodGroup } from '../protocol'
 import type { AgentMode } from '@main/ai/runtime/types'
@@ -69,6 +70,9 @@ function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.pi
   // 尝试从 Provider 系统获取模型配置
   applyProviderConfig(builder)
 
+  // 从配置或默认值设置思维链级别
+  applyThinkingLevel(builder)
+
   return builder
 }
 
@@ -95,6 +99,25 @@ function applyProviderConfig(builder: ReturnType<typeof agentExecutor.piMono>): 
   } catch {
     // Provider 系统未就绪，静默回退到默认配置
   }
+}
+
+/**
+ * 从 coobee.json5 配置注入思维链级别
+ *
+ * 读取 agents.defaults.thinkingLevel 配置项，默认 'medium'。
+ */
+function applyThinkingLevel(builder: ReturnType<typeof agentExecutor.piMono>): void {
+  try {
+    const config = configStoreInstance?.getAll?.()
+    const level = config?.agents?.defaults?.thinkingLevel
+    if (level) {
+      builder.thinkingLevel(level)
+      return
+    }
+  } catch {
+    // 静默回退
+  }
+  builder.thinkingLevel('medium')
 }
 
 // 注册 Builder 工厂，供 Pipeline executor 使用
