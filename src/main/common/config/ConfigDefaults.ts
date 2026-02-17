@@ -5,7 +5,7 @@
  * Zod schema 的 .default() 负责字段级默认值；
  * 此处提供完整的"空配置"结构作为兜底。
  */
-import type { CoobeeConfig } from './schema'
+import type { CoobeeConfig } from './schema';
 
 /** 完整的默认配置 */
 export const DEFAULT_CONFIG: CoobeeConfig = {
@@ -15,8 +15,7 @@ export const DEFAULT_CONFIG: CoobeeConfig = {
   agents: {
     defaults: {
       model: undefined
-    },
-    list: []
+    }
   },
   messages: {
     queue: {
@@ -45,7 +44,7 @@ export const DEFAULT_CONFIG: CoobeeConfig = {
     level: 'info',
     file: true
   }
-}
+};
 
 /**
  * 深度合并用户配置和默认配置
@@ -53,24 +52,21 @@ export const DEFAULT_CONFIG: CoobeeConfig = {
  * 用户配置优先；缺失字段从默认值填充。
  */
 export function mergeWithDefaults(userConfig: CoobeeConfig): CoobeeConfig {
-  return deepMerge(DEFAULT_CONFIG, userConfig) as CoobeeConfig
+  return deepMerge(DEFAULT_CONFIG, userConfig) as CoobeeConfig;
 }
 
 /**
  * 递归深度合并，source 覆盖 target
  */
-function deepMerge(
-  target: Record<string, unknown>,
-  source: Record<string, unknown>
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...target }
+function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...target };
 
   for (const key of Object.keys(source)) {
-    const sourceVal = source[key]
-    const targetVal = target[key]
+    const sourceVal = source[key];
+    const targetVal = target[key];
 
     if (sourceVal === undefined) {
-      continue
+      continue;
     }
 
     if (
@@ -81,14 +77,11 @@ function deepMerge(
       typeof targetVal === 'object' &&
       !Array.isArray(targetVal)
     ) {
-      result[key] = deepMerge(
-        targetVal as Record<string, unknown>,
-        sourceVal as Record<string, unknown>
-      )
+      result[key] = deepMerge(targetVal as Record<string, unknown>, sourceVal as Record<string, unknown>);
     } else {
-      result[key] = sourceVal
+      result[key] = sourceVal;
     }
   }
 
-  return result
+  return result;
 }
