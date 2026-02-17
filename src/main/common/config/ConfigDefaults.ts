@@ -34,7 +34,7 @@ export const DEFAULT_CONFIG: CoobeeConfig = {
   },
   security: {
     sandbox: { mode: 'path-only' },
-    approvals: { exec: 'auto' }
+    approvals: { exec: 'auto', timeoutMs: 300_000 }
   },
   ui: {
     theme: 'auto',

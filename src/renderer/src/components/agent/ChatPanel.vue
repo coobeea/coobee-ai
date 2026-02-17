@@ -17,20 +17,41 @@ const messageContainer = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const isCollapsed = defineModel<boolean>('collapsed', { default: false })
 
-// 自动滚动到底部
-function scrollToBottom(): void {
+// ========== 智能滚动：用户往上浏览时不强制拉回底部 ==========
+
+/** 用户是否已手动向上滚动（脱离底部） */
+const userScrolledUp = ref(false)
+
+/** 判断是否在底部附近（容差 60px） */
+function isNearBottom(): boolean {
+  const el = messageContainer.value
+  if (!el) return true
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 60
+}
+
+/** 监听用户滚动 — 检测是否脱离底部 */
+function handleScroll(): void {
+  userScrolledUp.value = !isNearBottom()
+}
+
+/** 滚动到底部（仅在用户没有向上浏览时执行） */
+function scrollToBottom(force = false): void {
+  if (!force && userScrolledUp.value) return
   nextTick(() => {
     if (messageContainer.value) {
       messageContainer.value.scrollTop = messageContainer.value.scrollHeight
+      userScrolledUp.value = false
     }
   })
 }
 
+// 新消息到达 → 自动滚动（除非用户在看上面的内容）
 watch(
   () => chatStore.messages.length,
   () => scrollToBottom()
 )
 
+// 流式内容增量更新 → 自动滚动（除非用户在看上面的内容）
 watch(
   () => {
     const msgs = chatStore.messages
@@ -48,9 +69,10 @@ async function handleSend(): Promise<void> {
   const text = inputText.value.trim()
   if (!text) return
 
-  // 如果正在流式但用户继续输入 → 允许（管线排队）
+  // 用户发送消息 → 强制滚到底部（要看回复）
   inputText.value = ''
   resetTextareaHeight()
+  scrollToBottom(true)
   await chatStore.sendMessage(text)
 }
 
@@ -59,7 +81,7 @@ async function handleAbort(): Promise<void> {
 }
 
 function handleKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Enter' && !event.shiftKey) {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault()
     handleSend()
   }
@@ -160,7 +182,7 @@ onMounted(() => {
     </div>
 
     <!-- 消息区域 -->
-    <div ref="messageContainer" class="flex-1 overflow-y-auto">
+    <div ref="messageContainer" class="flex-1 overflow-y-auto" @scroll="handleScroll">
       <!-- 空状态 -->
       <div
         v-if="chatStore.messages.length === 0"
@@ -340,57 +362,65 @@ onMounted(() => {
                 </span>
               </div>
 
-              <!-- HITL approvals -->
-              <div
-                v-for="approval in msg.pendingApprovals"
-                :key="'hitl-' + approval.index"
-                class="rounded-md border-l-2 px-2 py-2"
-                :class="
-                  approval.decision
-                    ? approval.decision === 'reject'
-                      ? 'border-l-red-400 bg-red-50/50'
-                      : 'border-l-emerald-400 bg-emerald-50/50'
-                    : 'border-l-amber-400 bg-amber-50/60'
-                "
-              >
-                <div class="mb-1 flex items-center gap-1.5">
+              <!-- HITL approvals: 已决策的折叠为摘要行，未决策的完整展开 -->
+              <template v-if="msg.pendingApprovals?.length">
+                <!-- 已决策的审批 — 压缩为单行摘要 -->
+                <div
+                  v-for="approval in msg.pendingApprovals.filter((a) => a.decision)"
+                  :key="'hitl-done-' + approval.index"
+                  class="flex items-center gap-1.5 rounded px-2 py-1 text-[10px]"
+                  :class="
+                    approval.decision === 'reject'
+                      ? 'bg-red-50/40 text-red-400'
+                      : 'bg-emerald-50/40 text-emerald-500'
+                  "
+                >
                   <span
-                    class="inline-block h-3 w-3"
+                    class="inline-block h-2.5 w-2.5"
                     :class="
-                      approval.decision
-                        ? approval.decision === 'reject'
-                          ? 'i-carbon-close-filled text-red-500'
-                          : 'i-carbon-checkmark-filled text-emerald-500'
-                        : 'i-carbon-locked text-amber-600'
+                      approval.decision === 'reject'
+                        ? 'i-carbon-close-filled'
+                        : 'i-carbon-checkmark-filled'
                     "
                   ></span>
-                  <span class="text-[11px] font-medium text-gray-700">
-                    {{ approval.decision ? getDecisionLabel(approval.decision) : '需要审批' }}
-                  </span>
-                  <span class="font-mono text-[10px] text-gray-400">{{ approval.toolName }}</span>
+                  <span>{{ getDecisionLabel(approval.decision!) }}</span>
+                  <span class="font-mono text-gray-400">{{ approval.toolName }}</span>
                 </div>
 
-                <div v-if="!approval.decision" class="mt-2 flex gap-1.5">
-                  <button
-                    class="rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-emerald-600"
-                    @click="handleApproval(approval, 'approve-once')"
-                  >
-                    允许
-                  </button>
-                  <button
-                    class="rounded bg-blue-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-blue-600"
-                    @click="handleApproval(approval, 'approve-always')"
-                  >
-                    始终允许
-                  </button>
-                  <button
-                    class="rounded bg-red-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-600"
-                    @click="handleApproval(approval, 'reject')"
-                  >
-                    拒绝
-                  </button>
+                <!-- 未决策的审批 — 完整展开（通常只有最后一个） -->
+                <div
+                  v-for="approval in msg.pendingApprovals.filter((a) => !a.decision)"
+                  :key="'hitl-pending-' + approval.index"
+                  class="rounded-md border-l-2 border-l-amber-400 bg-amber-50/60 px-2 py-2"
+                >
+                  <div class="mb-1 flex items-center gap-1.5">
+                    <span class="i-carbon-locked inline-block h-3 w-3 text-amber-600"></span>
+                    <span class="text-[11px] font-medium text-gray-700">需要审批</span>
+                    <span class="font-mono text-[10px] text-gray-400">{{ approval.toolName }}</span>
+                  </div>
+
+                  <div class="mt-2 flex gap-1.5">
+                    <button
+                      class="rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-emerald-600"
+                      @click="handleApproval(approval, 'approve-once')"
+                    >
+                      允许
+                    </button>
+                    <button
+                      class="rounded bg-blue-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-blue-600"
+                      @click="handleApproval(approval, 'approve-always')"
+                    >
+                      始终允许
+                    </button>
+                    <button
+                      class="rounded bg-red-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-600"
+                      @click="handleApproval(approval, 'reject')"
+                    >
+                      拒绝
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </template>
 
               <!-- error -->
               <div

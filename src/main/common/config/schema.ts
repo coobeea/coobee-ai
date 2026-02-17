@@ -132,7 +132,8 @@ export const CoobeeConfigSchema = z.object({
         .optional(),
       approvals: z
         .object({
-          exec: z.enum(['auto', 'always', 'never']).default('auto')
+          exec: z.enum(['auto', 'always', 'never']).default('auto'),
+          timeoutMs: z.number().min(10_000).max(3_600_000).default(300_000)
         })
         .optional()
     })

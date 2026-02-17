@@ -299,26 +299,30 @@ class AgentExecutor {
 
     log.info(`[AgentExecutor] Stream: sessionId=${sessionId}, messageLen=${message.length}`)
 
+    let eventWriter: AgentEventWriter | null = null
+
     try {
       // 0. 注入运行时环境
       const workspace = await injectEnv(sessionId, builder)
-      const eventWriter = new AgentEventWriter(workspace)
+      eventWriter = new AgentEventWriter(workspace)
+      eventWriter.register(sessionId)
 
-      // 1. 创建 Runtime
+      // 1. 创建 Runtime + 注册统一分发器
       runtime = await builder.sessionId(sessionId).build()
-      const emitter = this.createEmitter(sessionId, runtime)
+      eventWriter.setEmitter(this.createEmitter(sessionId, runtime))
 
       // 2. 透传 stream()（同步触发 Extension Hook）
       const gen = runtime.stream(message)
-      let eventSeq = 0
       let turnStartTime = 0
       let turnToolCallCount = 0
 
       let r = await gen.next()
       while (!r.done) {
         const chunk = r.value
-        emitter.forward(chunk)
-        eventWriter.append(chunk, ++eventSeq)
+
+        // 统一分发：写文件 + 推前端（唯一入口）
+        eventWriter.dispatch(chunk)
+
         if (chunk.type === 'run:error') {
           log.error(`[AgentExecutor] API error: sessionId=${sessionId}, error=${chunk.content}`)
         }
@@ -346,6 +350,7 @@ class AgentExecutor {
       log.error(`[AgentExecutor] Stream error: sessionId=${sessionId}`, error)
       throw error
     } finally {
+      eventWriter?.unregister(sessionId)
       await this.destroyRuntime(runtime)
       runtime = null
       this.busySessions.delete(sessionId)
@@ -355,24 +360,26 @@ class AgentExecutor {
   // ========== 内部执行 ==========
 
   /**
-   * 消费 AsyncGenerator 并 forward 到 EventBus + 写入 events.jsonl
+   * 消费 AsyncGenerator 并通过统一分发器处理所有事件
+   *
+   * 事件通过 eventWriter.dispatch() 统一处理：
+   *   - 分配唯一 seq（与 Extension 事件共享同一个计数器）
+   *   - 写入 events.jsonl
+   *   - 推送到前端（通过注册的 StreamEmitter）
    *
    * 同时在关键流式事件上触发 Extension Hook：
    *   - turn:start → turn_start (void)
    *   - turn:done  → turn_end (void)
-   *   - compression:start → before_compaction (void, 通知型；modifying 在 OpenAI Runtime 内部处理)
+   *   - compression:start → before_compaction (void)
    *   - compression:done  → after_compaction (void)
    */
   private async consumeAndForward(
     gen: AsyncGenerator<StreamChunk, ExecutionResult, unknown>,
-    emitter: IStreamEmitter,
     eventWriter: AgentEventWriter,
     sessionId: string,
     onChunk?: (chunk: StreamChunk) => void,
     signal?: AbortSignal
   ): Promise<ExecutionResult> {
-    let eventSeq = 0
-
     // Turn 状态跟踪（用于 turn_end 事件数据）
     let turnStartTime = 0
     let turnToolCallCount = 0
@@ -388,8 +395,8 @@ class AgentExecutor {
 
       const chunk = r.value
 
-      emitter.forward(chunk)
-      eventWriter.append(chunk, ++eventSeq)
+      // 统一分发：写文件 + 推前端（唯一入口，seq 全局唯一）
+      eventWriter.dispatch(chunk)
 
       if (chunk.type === 'run:error') {
         log.error(`[AgentExecutor] API error in execute: error=${chunk.content}`)
@@ -521,28 +528,24 @@ class AgentExecutor {
     )
     const startTime = Date.now()
 
+    let eventWriter: AgentEventWriter | null = null
+
     try {
       // 0. 注入运行时环境
       const workspace = await injectEnv(sessionId, builder)
-      const eventWriter = new AgentEventWriter(workspace)
+      eventWriter = new AgentEventWriter(workspace)
+      eventWriter.register(sessionId)
 
       // === Extension Hooks: message_received + session_start + before_agent_start ===
       await this.runExtensionHooks(sessionId, message, builder)
 
-      // 1. 创建 Runtime
+      // 1. 创建 Runtime + 注册统一分发器
       runtime = await builder.sessionId(sessionId).build()
-      const emitter = this.createEmitter(sessionId, runtime)
+      eventWriter.setEmitter(this.createEmitter(sessionId, runtime))
 
       // 2. 流式执行（HITL 在 before_tool_call Hook 中自动处理）
       const gen = runtime.stream(message)
-      const result = await this.consumeAndForward(
-        gen,
-        emitter,
-        eventWriter,
-        sessionId,
-        onChunk,
-        signal
-      )
+      const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal)
 
       const duration = Date.now() - startTime
 
@@ -557,6 +560,7 @@ class AgentExecutor {
       hitlApprovalManager.cleanupSession(sessionId)
       throw error
     } finally {
+      eventWriter?.unregister(sessionId)
       await this.destroyRuntime(runtime)
       runtime = null
     }

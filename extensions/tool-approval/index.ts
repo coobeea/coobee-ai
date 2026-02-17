@@ -20,8 +20,8 @@ import type { ExtensionApi } from '../../src/main/common/extension'
 
 // ==================== 常量 ====================
 
-/** 默认审批超时（120 秒） */
-const DEFAULT_APPROVAL_TIMEOUT_MS = 120_000
+/** 默认审批超时（5 分钟） — 可通过 coobee.json5 security.approvals.timeoutMs 覆盖 */
+const DEFAULT_APPROVAL_TIMEOUT_MS = 300_000
 
 // ==================== 会话级计数器 ====================
 
@@ -156,14 +156,12 @@ async function requestApproval(
 
   // 2. 等待用户决策（通过 services.hitl）
   try {
-    const decision = await api.services.hitl.waitForSingleDecision(
-      approvalId,
-      DEFAULT_APPROVAL_TIMEOUT_MS
-    )
+    const timeoutMs = await getApprovalTimeout()
+    const decision = await api.services.hitl.waitForSingleDecision(approvalId, timeoutMs)
 
     if (!decision) {
       api.logger.warn(`[tool-approval] Timeout: approvalId=${approvalId}`)
-      emitDecisionEvent(sessionId, index, toolName, 'rejected')
+      emitDecisionEvent(sessionId, index, toolName, 'rejected', 'timeout')
       return { block: true, blockReason: 'Approval timeout — tool execution blocked' }
     }
 
@@ -208,22 +206,38 @@ async function emitDecisionEvent(
   sessionId: string,
   index: number,
   toolName: string,
-  action: 'approved' | 'rejected'
+  action: 'approved' | 'rejected',
+  reason?: string
 ): Promise<void> {
+  const chunkType = action === 'approved' ? 'hitl:approved' : 'hitl:rejected'
+  const chunk = {
+    type: chunkType as 'hitl:approved' | 'hitl:rejected',
+    content: `${action}: ${toolName}`,
+    data: { index, toolName, action, ...(reason ? { reason } : {}) }
+  }
+
+  // 统一分发：写文件 + 推前端（单一入口）
   try {
-    const { createStreamEmitter } = await import('../../src/main/ai/streaming/StreamEmitter')
-    const emitter = createStreamEmitter(sessionId, {
-      type: 'agent',
-      id: 'tool-approval',
-      name: 'tool-approval'
-    })
-    const chunkType = action === 'approved' ? 'hitl:approved' : 'hitl:rejected'
-    emitter.forward({
-      type: chunkType,
-      content: `${action}: ${toolName}`,
-      data: { index, toolName, action }
-    })
+    const { AgentEventWriter } = await import('../../src/main/ai/AgentEventWriter')
+    AgentEventWriter.dispatchForSession(sessionId, chunk)
   } catch {
-    // 事件发送失败不阻断
+    // 分发失败不阻断
+  }
+}
+
+/**
+ * 从配置中读取审批超时时间
+ *
+ * 优先使用 coobee.json5 中的 security.approvals.timeoutMs，
+ * 未配置时使用默认值（5 分钟）。
+ */
+async function getApprovalTimeout(): Promise<number> {
+  try {
+    const { ConfigStore } = await import('../../src/main/common/config/ConfigStore')
+    const store = ConfigStore.getInstance()
+    const approvals = store.get('security')?.approvals
+    return approvals?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS
+  } catch {
+    return DEFAULT_APPROVAL_TIMEOUT_MS
   }
 }

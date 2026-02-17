@@ -90,18 +90,14 @@ function createExtensionServices(): ExtensionServices {
     },
     events: {
       emit(sessionId, chunk) {
-        // 异步发送事件，不阻塞调用方
-        import('../../ai/streaming/StreamEmitter')
-          .then(({ createStreamEmitter }) => {
-            const emitter = createStreamEmitter(sessionId, {
-              type: 'agent',
-              id: 'extension',
-              name: 'extension'
-            })
-            emitter.forward(chunk as never)
+        // 统一分发：写文件 + 推前端（通过 AgentEventWriter.dispatch）
+        // 不再需要手动同时调用 StreamEmitter 和 EventWriter
+        import('../../ai/AgentEventWriter')
+          .then(({ AgentEventWriter }) => {
+            AgentEventWriter.dispatchForSession(sessionId, chunk as never)
           })
           .catch(() => {
-            // 事件发送失败不阻断
+            // 分发失败不阻断
           })
       }
     }

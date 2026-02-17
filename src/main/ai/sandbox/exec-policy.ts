@@ -25,6 +25,8 @@
  * @module sandbox/exec-policy
  */
 
+import fs from 'node:fs'
+import path from 'node:path'
 import { log } from '../../common/logger'
 
 // ==================== 类型定义 ====================
@@ -185,15 +187,68 @@ const DANGER_PATTERNS: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
   { pattern: /\/etc\/sudoers/i, reason: 'access /etc/sudoers' }
 ]
 
-// ==================== Allowlist 学习 ====================
+// ==================== Allowlist 持久化 ====================
+
+/** allowlist 文件名（存放在 configDir 中） */
+const ALLOWLIST_FILE = 'learned-commands.json'
+
+/** 内存缓存（与文件保持同步） */
+let learnedAllowlist = new Set<string>()
+
+/** 是否已从文件加载 */
+let loaded = false
 
 /**
- * 动态 allowlist — 从 approve-always 中学习的命令模式
+ * 获取 allowlist 文件路径
  *
- * 存储的是命令前缀模式（二进制名称），而非完整命令。
- * 内存中维护，应用重启后清空（后续可持久化到配置文件）。
+ * 通过 ConfigStore 动态获取 configDir，避免硬编码路径。
  */
-const learnedAllowlist = new Set<string>()
+function getAllowlistPath(): string | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Env } = require('../../common/config')
+    const configDir = Env?.paths?.configDir
+    return configDir ? path.join(configDir, ALLOWLIST_FILE) : null
+  } catch {
+    return null
+  }
+}
+
+/** 从文件加载 allowlist（启动时调用一次） */
+function loadAllowlist(): void {
+  if (loaded) return
+  loaded = true
+
+  const filePath = getAllowlistPath()
+  if (!filePath || !fs.existsSync(filePath)) return
+
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8')
+    const data = JSON.parse(raw)
+    if (Array.isArray(data)) {
+      learnedAllowlist = new Set(data.filter((s: unknown) => typeof s === 'string'))
+      log.info(`[ExecPolicy] Loaded ${learnedAllowlist.size} learned commands from file`)
+    }
+  } catch (err) {
+    log.warn('[ExecPolicy] Failed to load learned-commands.json:', err)
+  }
+}
+
+/** 将 allowlist 同步写入文件 */
+function saveAllowlist(): void {
+  const filePath = getAllowlistPath()
+  if (!filePath) return
+
+  try {
+    const dir = path.dirname(filePath)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+    fs.writeFileSync(filePath, JSON.stringify(Array.from(learnedAllowlist), null, 2), 'utf-8')
+  } catch (err) {
+    log.warn('[ExecPolicy] Failed to save learned-commands.json:', err)
+  }
+}
 
 // ==================== 公共 API ====================
 
@@ -204,6 +259,9 @@ const learnedAllowlist = new Set<string>()
  * @returns 策略决策（allow / deny / ask）
  */
 export function checkExecPolicy(command: string): PolicyDecision {
+  // 确保 allowlist 已从文件加载
+  loadAllowlist()
+
   const trimmed = command.trim()
 
   // 1. 黑名单检查（不可覆盖）
@@ -227,7 +285,7 @@ export function checkExecPolicy(command: string): PolicyDecision {
     }
   }
 
-  // 4. 动态 allowlist
+  // 4. 动态 allowlist（文件持久化）
   if (bin && learnedAllowlist.has(bin)) {
     return {
       action: 'allow',
@@ -244,20 +302,37 @@ export function checkExecPolicy(command: string): PolicyDecision {
 
 /**
  * 将命令模式加入动态 allowlist（approve-always 时调用）
+ *
+ * 同时写入文件持久化，应用重启后仍然有效。
  */
 export function learnExecCommand(command: string): void {
+  loadAllowlist()
   const bin = extractCommandBin(command.trim())
   if (bin && !SAFE_BINS.has(bin)) {
     learnedAllowlist.add(bin)
-    log.info(`[ExecPolicy] Learned allowlist: ${bin}`)
+    saveAllowlist()
+    log.info(`[ExecPolicy] Learned allowlist: ${bin} (persisted)`)
   }
 }
 
 /**
- * 获取当前动态 allowlist 内容（用于调试/显示）
+ * 获取当前动态 allowlist 内容（用于调试/显示/前端展示）
  */
 export function getLearnedAllowlist(): string[] {
+  loadAllowlist()
   return Array.from(learnedAllowlist)
+}
+
+/**
+ * 从 allowlist 中移除指定命令
+ */
+export function unlearnExecCommand(command: string): void {
+  const bin = extractCommandBin(command.trim())
+  if (bin && learnedAllowlist.has(bin)) {
+    learnedAllowlist.delete(bin)
+    saveAllowlist()
+    log.info(`[ExecPolicy] Removed from allowlist: ${bin}`)
+  }
 }
 
 /**
@@ -265,6 +340,8 @@ export function getLearnedAllowlist(): string[] {
  */
 export function clearLearnedAllowlist(): void {
   learnedAllowlist.clear()
+  saveAllowlist()
+  log.info('[ExecPolicy] Allowlist cleared')
 }
 
 // ==================== 内部 ====================

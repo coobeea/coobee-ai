@@ -217,6 +217,15 @@ export const useChatStore = defineStore('chat', () => {
             toolName: (msg.data.toolName as string) || 'unknown',
             arguments: msg.data.arguments as string | undefined
           })
+        } else if (msg.data?.action === 'approved' || msg.data?.action === 'rejected') {
+          // 后端发送的审批结果（含超时 rejected） → 更新对应 approval 的 decision
+          const targetIndex = msg.data.index as number | undefined
+          if (assistantMsg.pendingApprovals && targetIndex != null) {
+            const approval = assistantMsg.pendingApprovals.find((a) => a.index === targetIndex)
+            if (approval && !approval.decision) {
+              approval.decision = msg.data.action === 'approved' ? 'approve-once' : 'reject'
+            }
+          }
         }
         break
 
