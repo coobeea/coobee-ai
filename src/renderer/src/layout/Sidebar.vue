@@ -4,23 +4,24 @@
  *
  * 布局：
  *   ┌──────────────────────┐
- *   │  🤖 Agent            │  导航菜单
+ *   │  🤖 智能体            │  导航菜单
  *   │  📊 日志              │
  *   ├──────────────────────┤
  *   │  最近会话             │  标题
- *   │  · 会话 A            │  会话列表（可滚动）
- *   │  · 会话 B            │
+ *   │  · 线程 A            │  Thread 列表（持久化，可滚动）
+ *   │  · 线程 B            │
  *   │  ...                 │
  *   ├──────────────────────┤
  *   │  ⚙  设置              │
  *   └──────────────────────┘
  *
- * 会话由 Agent 页发消息时自然产生，这里只做展示和切换。
+ * Thread 列表从后端 HTTP REST API 获取（.home/threads/），
+ * 使用 Snowflake ID 有序排列，最新在前。
  */
 
-import { ref, watch, computed, onMounted } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useChatStore } from '@/stores/chat';
+import { useThreadsStore } from '@/stores/threads';
 
 interface MenuItem {
   id: string;
@@ -31,7 +32,7 @@ interface MenuItem {
 
 const router = useRouter();
 const route = useRoute();
-const chatStore = useChatStore();
+const threadsStore = useThreadsStore();
 
 const activeMenuId = ref('agent');
 
@@ -40,21 +41,9 @@ const menuItems: MenuItem[] = [
   { id: 'logs', label: '日志', icon: 'i-carbon-report', route: '/logs' }
 ];
 
-/** 是否有活跃会话 */
-const hasActiveSession = computed(() => !!chatStore.sessionId);
-
-/** 当前会话标题（第一条用户消息前 40 字） */
-const activeSessionTitle = computed(() => {
-  const firstUserMsg = chatStore.messages.find((m) => m.role === 'user');
-  if (firstUserMsg?.content) {
-    const text = firstUserMsg.content.trim();
-    return text.length > 40 ? text.slice(0, 40) + '…' : text;
-  }
-  return '新对话';
+onMounted(() => {
+  threadsStore.fetchThreads();
 });
-
-/** 当前会话消息数 */
-const messageCount = computed(() => chatStore.messages.length);
 
 const handleMenuClick = (item: MenuItem): void => {
   router.push(item.route);
@@ -63,6 +52,27 @@ const handleMenuClick = (item: MenuItem): void => {
 const handleSettings = (): void => {
   router.push('/settings');
 };
+
+const handleThreadClick = (threadId: string): void => {
+  threadsStore.selectThread(threadId);
+  router.push('/agent');
+};
+
+/** 格式化相对时间 */
+function formatRelativeTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = now.getTime() - d.getTime();
+    if (diff < 60_000) return '刚刚';
+    if (diff < 3600_000) return `${Math.floor(diff / 60_000)}分钟前`;
+    if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}小时前`;
+    if (diff < 2592000_000) return `${Math.floor(diff / 86400_000)}天前`;
+    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
+}
 
 const updateActiveState = (): void => {
   const name = route.name as string;
@@ -94,24 +104,41 @@ onMounted(() => updateActiveState());
     <div class="session-section">
       <div class="section-header">
         <span>最近会话</span>
+        <button
+          v-if="threadsStore.threads.length > 0"
+          class="refresh-btn"
+          title="刷新"
+          @click="threadsStore.fetchThreads()">
+          <span class="i-carbon-renew inline-block h-3 w-3" :class="{ 'animate-spin': threadsStore.loading }" />
+        </button>
       </div>
 
       <div class="session-list">
-        <!-- 当前活跃会话 -->
-        <div v-if="hasActiveSession" class="session-item active">
+        <!-- Thread 列表 -->
+        <div
+          v-for="thread in threadsStore.threads"
+          :key="thread.id"
+          class="session-item"
+          :class="{ active: threadsStore.activeThreadId === thread.id }"
+          @click="handleThreadClick(thread.id)">
           <span class="i-carbon-chat icon-xs" />
           <div class="session-info">
-            <span class="session-title">{{ activeSessionTitle }}</span>
-            <span class="session-meta">{{ messageCount }} 条消息</span>
+            <span class="session-title">{{ thread.title }}</span>
+            <span class="session-meta">
+              {{ thread.messageCount }} 条消息 · {{ formatRelativeTime(thread.updatedAt) }}
+            </span>
           </div>
         </div>
 
-        <!-- TODO: 历史会话列表（待接入后端 session list API） -->
-
         <!-- 空态 -->
-        <div v-if="!hasActiveSession" class="empty-state">
+        <div v-if="threadsStore.threads.length === 0 && !threadsStore.loading" class="empty-state">
           <span class="i-carbon-chat inline-block h-6 w-6 opacity-[0.08]" />
-          <p>在 Agent 页发送消息后<br />会话将出现在这里</p>
+          <p>创建智能体并开始对话后<br />会话将出现在这里</p>
+        </div>
+
+        <!-- 加载中 -->
+        <div v-if="threadsStore.loading && threadsStore.threads.length === 0" class="empty-state">
+          <span class="i-carbon-renew inline-block h-4 w-4 animate-spin opacity-20" />
         </div>
       </div>
     </div>
@@ -158,6 +185,9 @@ onMounted(() => updateActiveState());
 }
 
 .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 10px 14px 4px;
   font-size: 11px;
   font-weight: 500;
@@ -165,6 +195,22 @@ onMounted(() => updateActiveState());
   letter-spacing: 0.02em;
   text-transform: uppercase;
   user-select: none;
+}
+
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground) / 0.4);
+  transition: all 0.12s ease;
+}
+
+.refresh-btn:hover {
+  background: hsl(var(--foreground) / 0.05);
+  color: hsl(var(--muted-foreground) / 0.7);
 }
 
 .session-list {

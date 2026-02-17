@@ -17,6 +17,7 @@ import { HttpServer } from '@main/common/server/httpServer';
 import { scanGatewayMethods, scanGatewayEventBridges } from '@main/common/scan';
 import { GatewayServer } from './GatewayServer';
 import { registerAgentRoutes } from './http/agents';
+import { registerThreadRoutes } from './http/threads';
 import { GatewayErrorCode, GatewayMethodError } from './protocol/errors';
 import type {
   GatewayRequest,
@@ -174,6 +175,7 @@ export class Gateway implements GatewayApi {
     if (!this.server) return;
     const router = this.server.getRouter();
     registerAgentRoutes(router);
+    registerThreadRoutes(router);
     log.info('[Gateway] HTTP REST routes registered');
   }
 

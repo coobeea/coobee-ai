@@ -8,6 +8,7 @@
  *   - 单次 OpenAI chat.completions.create（JSON mode）
  *   - 系统提示词融合 agent-creator Skill 的完整分析流程
  *   - 动态注入可用 Tools（name）和 Skills（name + description）
+ *   - 支持进度回调（SSE 流式通知前端）
  *   - 不启动完整 Agent 会话，轻量且快速
  */
 
@@ -27,6 +28,19 @@ const log = createLogger('agent-creator-service');
 export interface AiCreateResult {
   agent: AgentDefinition;
 }
+
+/** 进度步骤 */
+export type AiCreateStep = 'analyzing' | 'generating' | 'validating' | 'saving' | 'done' | 'error';
+
+/** 进度事件 */
+export interface AiCreateProgress {
+  step: AiCreateStep;
+  message: string;
+  detail?: string;
+}
+
+/** 进度回调 */
+export type ProgressCallback = (progress: AiCreateProgress) => void;
 
 /** 工具信息（name + 简要说明） */
 interface ToolInfo {
@@ -183,24 +197,42 @@ function createOpenAIClient(): { client: OpenAI; model: string } {
  * AI 驱动的智能体创建
  *
  * @param requirement 用户的自然语言需求描述
+ * @param onProgress 进度回调（可选，用于 SSE 流式通知前端）
  * @returns 创建好的 AgentDefinition
  */
-export async function aiCreateAgent(requirement: string): Promise<AiCreateResult> {
+export async function aiCreateAgent(requirement: string, onProgress?: ProgressCallback): Promise<AiCreateResult> {
+  const emit = onProgress ?? (() => {});
+
   log.info(`[AgentCreatorService] 开始 AI 创建，需求: "${requirement.slice(0, 100)}..."`);
 
-  // 1. 获取可用资源（含描述信息）
+  // Step 1: 分析阶段 — 收集可用资源
+  emit({
+    step: 'analyzing',
+    message: '正在分析需求...',
+    detail: '收集可用工具和技能信息'
+  });
+
   const tools = getAvailableTools();
   const skills = getAvailableSkills();
   log.debug(`[AgentCreatorService] 可用工具: ${tools.length}, 可用技能: ${skills.length}`);
 
-  // 2. 构建提示词
-  const systemPrompt = buildSystemPrompt(tools, skills);
+  emit({
+    step: 'analyzing',
+    message: '需求分析完成',
+    detail: `发现 ${tools.length} 个工具、${skills.length} 个技能`
+  });
 
-  // 3. 创建 OpenAI 客户端
+  // Step 2: 生成阶段 — 调用 LLM
+  emit({
+    step: 'generating',
+    message: '正在生成智能体定义...',
+    detail: '意图分析 → 能力规划 → 定义生成'
+  });
+
+  const systemPrompt = buildSystemPrompt(tools, skills);
   const { client, model } = createOpenAIClient();
   log.debug(`[AgentCreatorService] 使用模型: ${model}`);
 
-  // 4. 调用 LLM
   const response = await client.chat.completions.create({
     model,
     messages: [
@@ -214,19 +246,26 @@ export async function aiCreateAgent(requirement: string): Promise<AiCreateResult
 
   const content = response.choices[0]?.message?.content;
   if (!content) {
+    emit({ step: 'error', message: 'AI 未返回有效内容' });
     throw new Error('AI 未返回有效内容');
   }
 
-  // 5. 解析 JSON
+  // Step 3: 校验阶段 — 解析和校验
+  emit({
+    step: 'validating',
+    message: '正在校验生成结果...',
+    detail: '解析 JSON、校验字段、过滤无效引用'
+  });
+
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(content);
   } catch {
     log.error(`[AgentCreatorService] JSON 解析失败: ${content.slice(0, 200)}`);
+    emit({ step: 'error', message: 'AI 返回格式异常' });
     throw new Error('AI 返回的内容不是有效的 JSON 格式');
   }
 
-  // 6. 校验必需字段
   const { id, name, description, instructions } = parsed as {
     id?: string;
     name?: string;
@@ -238,10 +277,10 @@ export async function aiCreateAgent(requirement: string): Promise<AiCreateResult
 
   if (!id || !name || !instructions) {
     log.error(`[AgentCreatorService] 缺少必需字段: id=${!!id}, name=${!!name}, instructions=${!!instructions}`);
+    emit({ step: 'error', message: '生成的定义缺少必需字段' });
     throw new Error('AI 生成的 Agent 定义缺少必需字段（id、name、instructions）');
   }
 
-  // 7. 过滤无效的工具和技能名称
   const toolNames = tools.map((t) => t.name);
   const skillNames = skills.map((s) => s.name);
 
@@ -255,7 +294,19 @@ export async function aiCreateAgent(requirement: string): Promise<AiCreateResult
     log.warn(`[AgentCreatorService] 过滤了无效技能: ${rawSkills.filter((s) => !skillNames.includes(s)).join(', ')}`);
   }
 
-  // 8. 创建并保存
+  emit({
+    step: 'validating',
+    message: '校验通过',
+    detail: `${name} — 工具 ${validTools.length} 个，技能 ${validSkills.length} 个`
+  });
+
+  // Step 4: 保存阶段
+  emit({
+    step: 'saving',
+    message: '正在保存智能体...',
+    detail: id
+  });
+
   const createParams: CreateAgentParams = {
     id,
     name,
@@ -272,6 +323,13 @@ export async function aiCreateAgent(requirement: string): Promise<AiCreateResult
   log.info(
     `[AgentCreatorService] AI 创建成功: ${agent.id} (${agent.name}), 工具: ${validTools.length}, 技能: ${validSkills.length}`
   );
+
+  // Step 5: 完成
+  emit({
+    step: 'done',
+    message: '智能体创建成功',
+    detail: `${agent.name}（${agent.id}）`
+  });
 
   return { agent };
 }

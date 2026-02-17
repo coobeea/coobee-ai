@@ -1,8 +1,8 @@
-import { is } from '@electron-toolkit/utils'
-import { app } from 'electron'
-import fs from 'fs'
-import { mkdirp } from 'mkdirp'
-import path from 'path'
+import { is } from '@electron-toolkit/utils';
+import { app } from 'electron';
+import fs from 'fs';
+import { mkdirp } from 'mkdirp';
+import path from 'path';
 
 export const Env = {
   isDev: is.dev,
@@ -36,7 +36,7 @@ export const Env = {
     // === 基础路径计算 ===
     const _userHome = is.dev
       ? path.join(app.getAppPath(), '.home')
-      : path.join(app.getPath('home'), '.' + app.getName())
+      : path.join(app.getPath('home'), '.' + app.getName());
 
     return {
       // === 应用路径（Application Paths）===
@@ -85,6 +85,18 @@ export const Env = {
        */
       agentsDir: path.join(_userHome, 'agents'),
 
+      // === 会话线程目录（Threads）===
+      /**
+       * 会话线程存储目录
+       *
+       * 每个 Thread 一个 JSON 文件：{threadsDir}/{threadId}.json
+       * threadId 使用 Snowflake ID（有序，可按 ID 排序得到时间顺序）。
+       * 由 ThreadStore 管理，通过 HTTP REST 接口暴露给前端。
+       *
+       * @example 开发: <项目>/.home/threads | 生产: ~/.coobee-ai/threads
+       */
+      threadsDir: path.join(_userHome, 'threads'),
+
       // === Agent 工作空间（Workspaces）===
       /**
        * Agent 工作空间总根目录
@@ -110,9 +122,7 @@ export const Env = {
        *
        * @example 开发: <项目>/skills
        */
-      builtinSkillsDir: is.dev
-        ? path.join(app.getAppPath(), 'skills')
-        : path.join(process.resourcesPath, 'skills'),
+      builtinSkillsDir: is.dev ? path.join(app.getAppPath(), 'skills') : path.join(process.resourcesPath, 'skills'),
 
       /**
        * 用户 Skill 目录（可读写，用户自行安装/编写）
@@ -161,9 +171,7 @@ export const Env = {
        *
        * @example 开发: <项目>/workers | 生产: resources/workers
        */
-      workersDir: is.dev
-        ? path.join(app.getAppPath(), 'workers')
-        : path.join(process.resourcesPath, 'workers'),
+      workersDir: is.dev ? path.join(app.getAppPath(), 'workers') : path.join(process.resourcesPath, 'workers'),
 
       /**
        * Worker 虚拟环境目录（可写，每个 Worker 独立 venv）
@@ -179,9 +187,7 @@ export const Env = {
        *
        * @example 开发: <项目>/workers | 生产: ~/.coobee-ai/worker-envs
        */
-      workerEnvsDir: is.dev
-        ? path.join(app.getAppPath(), 'workers')
-        : path.join(_userHome, 'worker-envs'),
+      workerEnvsDir: is.dev ? path.join(app.getAppPath(), 'workers') : path.join(_userHome, 'worker-envs'),
 
       /**
        * 模型仓库目录（可写，所有 Worker 共享）
@@ -209,40 +215,40 @@ export const Env = {
       documents: app.getPath('documents'),
       /** 系统桌面目录 (如: ~/Desktop) */
       desktop: app.getPath('desktop')
-    }
+    };
   })(),
 
   isRendererProcess(): boolean {
-    return typeof process === 'undefined' || !process || process.type === 'renderer'
+    return typeof process === 'undefined' || !process || process.type === 'renderer';
   },
 
   isMainProcess(): boolean {
-    return typeof process !== 'undefined' && process.type === 'browser'
+    return typeof process !== 'undefined' && process.type === 'browser';
   },
 
   isForkedChildProcess(): boolean {
-    return Number(process.env.ELECTRON_RUN_AS_NODE) === 1
+    return Number(process.env.ELECTRON_RUN_AS_NODE) === 1;
   },
 
   getResourcePath(relativePath: string): string {
-    return path.join(this.isDev ? process.cwd() : process.resourcesPath, relativePath)
+    return path.join(this.isDev ? process.cwd() : process.resourcesPath, relativePath);
   },
 
   async getInstallDir(): Promise<string> {
-    const installDir = this.paths.installDir
+    const installDir = this.paths.installDir;
     if (!fs.existsSync(installDir)) {
-      await mkdirp(installDir)
+      await mkdirp(installDir);
     }
-    return installDir
+    return installDir;
   },
 
   async getUpgradeDir(): Promise<string> {
-    const installDir = await this.getInstallDir()
-    const upgradeDir = path.join(installDir, 'upgrade')
+    const installDir = await this.getInstallDir();
+    const upgradeDir = path.join(installDir, 'upgrade');
     if (!fs.existsSync(upgradeDir)) {
-      await mkdirp(upgradeDir)
+      await mkdirp(upgradeDir);
     }
-    return upgradeDir
+    return upgradeDir;
   },
 
   // ==================== 工作空间与 Skill ====================
@@ -276,7 +282,7 @@ export const Env = {
    * @returns 工作空间根路径
    */
   async getAgentWorkspaceDir(id: string): Promise<string> {
-    const workspace = path.join(this.paths.workspacesDir, id)
+    const workspace = path.join(this.paths.workspacesDir, id);
     const subDirs = [
       workspace,
       path.join(workspace, 'sessions'),
@@ -285,13 +291,13 @@ export const Env = {
       path.join(workspace, 'skills'),
       path.join(workspace, 'output'),
       path.join(workspace, 'logs')
-    ]
+    ];
     for (const dir of subDirs) {
       if (!fs.existsSync(dir)) {
-        await mkdirp(dir)
+        await mkdirp(dir);
       }
     }
-    return workspace
+    return workspace;
   },
 
   /**
@@ -315,19 +321,19 @@ export const Env = {
       this.paths.agentMemoryDir,
       this.paths.workspacesDir,
       this.paths.userSkillsDir
-    ]
-    const skillPaths = [this.paths.builtinSkillsDir, this.paths.userSkillsDir]
+    ];
+    const skillPaths = [this.paths.builtinSkillsDir, this.paths.userSkillsDir];
     if (workspace) {
-      const wsSkills = path.join(workspace, 'skills')
-      coreDirs.push(wsSkills)
-      skillPaths.push(wsSkills)
+      const wsSkills = path.join(workspace, 'skills');
+      coreDirs.push(wsSkills);
+      skillPaths.push(wsSkills);
     }
     for (const dir of coreDirs) {
       if (!fs.existsSync(dir)) {
-        await mkdirp(dir)
+        await mkdirp(dir);
       }
     }
-    return skillPaths
+    return skillPaths;
   },
 
   /**
@@ -341,16 +347,16 @@ export const Env = {
    * @param workspace 当前工作空间路径（可选）
    */
   async getExtensionSearchPaths(workspace?: string): Promise<string[]> {
-    const extensionPaths = [this.paths.builtinExtensionsDir, this.paths.userExtensionsDir]
+    const extensionPaths = [this.paths.builtinExtensionsDir, this.paths.userExtensionsDir];
     if (workspace) {
-      extensionPaths.push(path.join(workspace, 'extensions'))
+      extensionPaths.push(path.join(workspace, 'extensions'));
     }
     for (const dir of extensionPaths) {
       if (!fs.existsSync(dir)) {
-        await mkdirp(dir)
+        await mkdirp(dir);
       }
     }
-    return extensionPaths
+    return extensionPaths;
   },
 
   // ==================== 应用运行时 ====================
@@ -367,16 +373,16 @@ export const Env = {
   getAppRuntimeDir(): string {
     // 支持环境变量覆盖（用于测试）
     if (process.env.APP_RUNTIME_DIR) {
-      return process.env.APP_RUNTIME_DIR
+      return process.env.APP_RUNTIME_DIR;
     }
 
     if (this.isDev) {
       // 开发模式：项目根目录/runtime
-      return path.join(process.cwd(), 'runtime')
+      return path.join(process.cwd(), 'runtime');
     }
 
     // 生产模式：resourcesPath/runtime
-    return path.join(process.resourcesPath, 'runtime')
+    return path.join(process.resourcesPath, 'runtime');
   },
 
   /**
@@ -389,11 +395,11 @@ export const Env = {
    * - Linux: /path/to/runtime/linux
    */
   getPlatformRuntimeDir(): string {
-    const runtimeDir = this.getAppRuntimeDir()
-    const platformDir = this.isWindows ? 'win' : this.isMac ? 'macos' : 'linux'
+    const runtimeDir = this.getAppRuntimeDir();
+    const platformDir = this.isWindows ? 'win' : this.isMac ? 'macos' : 'linux';
 
-    return path.join(runtimeDir, platformDir)
+    return path.join(runtimeDir, platformDir);
   }
-}
+};
 
-export default Env
+export default Env;

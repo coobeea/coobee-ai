@@ -3,7 +3,7 @@
  * AgentView — 智能体主视图
  *
  * 两种状态：
- *   1. 未开始会话 → 显示智能体列表 + AI 创建入口
+ *   1. 未开始会话 → 显示智能体列表 + AI 创建入口（含实时进度）
  *   2. 会话进行中 → 三栏工作区（项目空间 | 工作台 | 对话）
  */
 
@@ -38,6 +38,11 @@ const aiInputRef = ref<HTMLTextAreaElement | null>(null);
 /** 是否显示创建区域 */
 const showCreateArea = ref(false);
 
+/** 技能编辑：当前编辑的 Agent ID */
+const editSkillsAgentId = ref<string | null>(null);
+const editSkillsList = ref<string[]>([]);
+const availableSkillNames = ref<string[]>([]);
+
 onMounted(() => {
   agentsStore.fetchAgents();
 });
@@ -52,7 +57,7 @@ function toggleCreateArea(): void {
   showCreateArea.value = !showCreateArea.value;
   if (showCreateArea.value) {
     aiRequirement.value = '';
-    agentsStore.aiCreateError = null;
+    agentsStore.resetAiCreateState();
     nextTick(() => aiInputRef.value?.focus());
   }
 }
@@ -80,6 +85,58 @@ async function handleDelete(agentId: string): Promise<void> {
   }
   confirmDeleteId.value = null;
   await agentsStore.deleteAgent(agentId);
+}
+
+/** 打开技能编辑面板 */
+function openSkillsEditor(agentId: string): void {
+  const agent = agentsStore.agents.find((a) => a.id === agentId);
+  if (!agent) return;
+  editSkillsAgentId.value = agentId;
+  editSkillsList.value = [...(agent.skills ?? [])];
+}
+
+/** 切换技能勾选 */
+function toggleSkill(skillName: string): void {
+  const idx = editSkillsList.value.indexOf(skillName);
+  if (idx >= 0) {
+    editSkillsList.value.splice(idx, 1);
+  } else {
+    editSkillsList.value.push(skillName);
+  }
+}
+
+/** 保存技能 */
+async function saveSkills(): Promise<void> {
+  if (!editSkillsAgentId.value) return;
+  await agentsStore.updateAgent(editSkillsAgentId.value, {
+    skills: editSkillsList.value
+  });
+  editSkillsAgentId.value = null;
+}
+
+/** 取消技能编辑 */
+function cancelSkillsEdit(): void {
+  editSkillsAgentId.value = null;
+}
+
+/** 步骤图标映射 */
+function stepIcon(step: string): string {
+  switch (step) {
+    case 'analyzing':
+      return 'i-carbon-analytics';
+    case 'generating':
+      return 'i-carbon-watson';
+    case 'validating':
+      return 'i-carbon-checkmark-outline';
+    case 'saving':
+      return 'i-carbon-save';
+    case 'done':
+      return 'i-carbon-checkmark-filled';
+    case 'error':
+      return 'i-carbon-warning-alt';
+    default:
+      return 'i-carbon-circle-dash';
+  }
 }
 
 function formatTime(iso: string): string {
@@ -143,20 +200,46 @@ function formatTime(iso: string): string {
               :disabled="agentsStore.aiCreating"
               @keydown.meta.enter="handleAiCreate"
               @keydown.ctrl.enter="handleAiCreate" />
+
+            <!-- AI 创建进度 -->
+            <div v-if="agentsStore.aiCreateSteps.length > 0" class="create-progress">
+              <div
+                v-for="(progress, idx) in agentsStore.aiCreateSteps"
+                :key="idx"
+                class="progress-step"
+                :class="{
+                  active: agentsStore.aiCreateCurrentStep === progress.step,
+                  done: progress.step === 'done',
+                  error: progress.step === 'error'
+                }">
+                <span :class="stepIcon(progress.step)" class="inline-block h-3.5 w-3.5 shrink-0 progress-icon" />
+                <div class="progress-text">
+                  <span class="progress-msg">{{ progress.message }}</span>
+                  <span v-if="progress.detail" class="progress-detail">{{ progress.detail }}</span>
+                </div>
+              </div>
+            </div>
+
             <div class="create-card-footer">
               <div class="create-footer-left">
                 <span v-if="agentsStore.aiCreateError" class="create-error">
                   <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
                   {{ agentsStore.aiCreateError }}
                 </span>
-                <span v-else class="create-tip">
+                <span v-else-if="!agentsStore.aiCreating" class="create-tip">
                   <kbd>{{ isMac ? '⌘' : 'Ctrl' }}</kbd>
                   <kbd>↵</kbd>
                   发送
                 </span>
+                <span v-else class="create-tip">
+                  <span class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
+                  处理中...
+                </span>
               </div>
               <div class="flex items-center gap-2">
-                <button class="text-btn" @click="showCreateArea = false">取消</button>
+                <button class="text-btn" :disabled="agentsStore.aiCreating" @click="showCreateArea = false">
+                  取消
+                </button>
                 <button
                   class="submit-btn"
                   :disabled="!aiRequirement.trim() || agentsStore.aiCreating"
@@ -228,11 +311,21 @@ function formatTime(iso: string): string {
                 </div>
               </div>
               <p class="agent-desc">{{ agent.description }}</p>
+              <!-- 技能标签 -->
+              <div v-if="agent.skills && agent.skills.length > 0" class="agent-skills">
+                <span v-for="skill in agent.skills.slice(0, 3)" :key="skill" class="skill-tag">
+                  {{ skill }}
+                </span>
+                <span v-if="agent.skills.length > 3" class="skill-more"> +{{ agent.skills.length - 3 }} </span>
+              </div>
             </div>
 
             <!-- 操作 -->
             <div class="agent-actions" @click.stop>
               <template v-if="confirmDeleteId !== agent.id">
+                <button class="edit-btn" title="编辑技能" @click="openSkillsEditor(agent.id)">
+                  <span class="i-carbon-edit inline-block h-3.5 w-3.5" />
+                </button>
                 <button class="del-btn" title="删除" @click="handleDelete(agent.id)">
                   <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
                 </button>
@@ -270,6 +363,31 @@ function formatTime(iso: string): string {
 
       <VoicePanel />
     </template>
+
+    <!-- 技能编辑弹窗 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="editSkillsAgentId" class="skills-overlay" @click.self="cancelSkillsEdit">
+          <div class="skills-dialog">
+            <div class="skills-dialog-header">
+              <span class="i-carbon-skill-level-advanced inline-block h-4 w-4" />
+              <span>编辑技能</span>
+            </div>
+            <div class="skills-dialog-body">
+              <p v-if="availableSkillNames.length === 0" class="skills-empty"> 暂无可用技能 </p>
+              <label v-for="skill in availableSkillNames" :key="skill" class="skill-checkbox">
+                <input type="checkbox" :checked="editSkillsList.includes(skill)" @change="toggleSkill(skill)" />
+                <span>{{ skill }}</span>
+              </label>
+            </div>
+            <div class="skills-dialog-footer">
+              <button class="text-btn" @click="cancelSkillsEdit">取消</button>
+              <button class="primary-btn" @click="saveSkills">保存</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -540,6 +658,73 @@ function formatTime(iso: string): string {
   cursor: not-allowed;
 }
 
+/* ====== AI 创建进度 ====== */
+
+.create-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 14px 8px;
+  border-top: 1px solid hsl(var(--border) / 0.1);
+}
+
+.progress-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  transition: color 0.2s ease;
+}
+
+.progress-step.active {
+  color: hsl(var(--primary));
+}
+
+.progress-step.done {
+  color: hsl(var(--success));
+}
+
+.progress-step.error {
+  color: hsl(var(--error));
+}
+
+.progress-icon {
+  margin-top: 1px;
+}
+
+.progress-step.active .progress-icon {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.progress-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.progress-msg {
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.progress-detail {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.4);
+  line-height: 1.3;
+}
+
 /* ====== 内容区 ====== */
 
 .content {
@@ -764,6 +949,31 @@ function formatTime(iso: string): string {
   white-space: nowrap;
 }
 
+/* 技能标签 */
+
+.agent-skills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.skill-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: hsl(var(--info, 210 100% 50%) / 0.08);
+  color: hsl(var(--info, 210 100% 50%) / 0.7);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.skill-more {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground) / 0.4);
+}
+
 /* 操作按钮 */
 
 .agent-actions {
@@ -779,6 +989,7 @@ function formatTime(iso: string): string {
   opacity: 1;
 }
 
+.edit-btn,
 .del-btn {
   display: flex;
   align-items: center;
@@ -788,6 +999,11 @@ function formatTime(iso: string): string {
   border-radius: 6px;
   color: hsl(var(--muted-foreground) / 0.4);
   transition: all 0.12s ease;
+}
+
+.edit-btn:hover {
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
 }
 
 .del-btn:hover {
@@ -875,5 +1091,100 @@ function formatTime(iso: string): string {
   border-radius: 4px;
   background: hsl(var(--primary) / 0.08);
   color: hsl(var(--primary));
+}
+
+/* ====== 技能编辑弹窗 ====== */
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.skills-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: hsl(0 0% 0% / 0.35);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+}
+
+.skills-dialog {
+  width: 380px;
+  max-height: 480px;
+  border-radius: 14px;
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border) / 0.5);
+  box-shadow:
+    0 8px 32px hsl(var(--shadow) / 0.15),
+    0 2px 8px hsl(var(--shadow) / 0.08);
+  display: flex;
+  flex-direction: column;
+}
+
+.skills-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  border-bottom: 1px solid hsl(var(--border) / 0.25);
+}
+
+.skills-dialog-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.skills-empty {
+  text-align: center;
+  padding: 24px 0;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground) / 0.5);
+}
+
+.skill-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: hsl(var(--foreground) / 0.8);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.skill-checkbox:hover {
+  background: hsl(var(--foreground) / 0.04);
+}
+
+.skill-checkbox input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: hsl(var(--primary));
+  cursor: pointer;
+}
+
+.skills-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid hsl(var(--border) / 0.25);
 }
 </style>

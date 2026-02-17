@@ -20,6 +20,7 @@ import type Router from '@koa/router';
 import { createLogger } from '@main/common/logger';
 import { AgentStore } from '@main/ai/agents/AgentStore';
 import { aiCreateAgent } from '@main/ai/services/AgentCreatorService';
+import type { AiCreateProgress } from '@main/ai/services/AgentCreatorService';
 
 const log = createLogger('gateway-http-agents');
 
@@ -105,7 +106,7 @@ export function registerAgentRoutes(router: Router): void {
     }
   });
 
-  // ==================== AI CREATE ====================
+  // ==================== AI CREATE (SSE) ====================
 
   router.post('/agents/ai-create', async (ctx) => {
     const body = ctx.request.body as Record<string, unknown> | undefined;
@@ -117,15 +118,77 @@ export function registerAgentRoutes(router: Router): void {
       return;
     }
 
+    // 设置 SSE 响应头
+    ctx.set('Content-Type', 'text/event-stream');
+    ctx.set('Cache-Control', 'no-cache');
+    ctx.set('Connection', 'keep-alive');
+    ctx.set('X-Accel-Buffering', 'no');
+
+    const { PassThrough } = await import('stream');
+    const stream = new PassThrough();
+    ctx.body = stream;
+    ctx.status = 200;
+
+    /** 发送 SSE 事件 */
+    const sendEvent = (event: string, data: unknown): void => {
+      stream.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    /** 进度回调 → SSE 推送 */
+    const onProgress = (progress: AiCreateProgress): void => {
+      sendEvent('progress', progress);
+    };
+
     try {
-      const result = await aiCreateAgent(requirement.trim());
-      ctx.status = 201;
-      ctx.body = { agent: result.agent };
+      const result = await aiCreateAgent(requirement.trim(), onProgress);
+      sendEvent('result', { agent: result.agent });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.error('[agents.aiCreate] Error:', err);
+      sendEvent('error', { error: msg });
+    } finally {
+      stream.end();
+    }
+  });
+
+  // ==================== UPDATE (PATCH) ====================
+
+  router.patch('/agents/:id', async (ctx) => {
+    const agentId = ctx.params.id;
+    if (!agentId) {
+      ctx.status = 400;
+      ctx.body = { error: 'agentId is required' };
+      return;
+    }
+
+    const body = ctx.request.body as Record<string, unknown> | undefined;
+    if (!body || Object.keys(body).length === 0) {
+      ctx.status = 400;
+      ctx.body = { error: 'Request body is empty' };
+      return;
+    }
+
+    try {
+      const store = await AgentStore.getInstance();
+      const agent = await store.update(agentId, {
+        name: body.name as string | undefined,
+        description: body.description as string | undefined,
+        instructions: body.instructions as string | undefined,
+        tools: body.tools as string[] | undefined,
+        skills: body.skills as string[] | undefined,
+        model: body.model as string | undefined,
+        metadata: body.metadata as Record<string, unknown> | undefined
+      });
+      if (!agent) {
+        ctx.status = 404;
+        ctx.body = { error: `Agent "${agentId}" not found` };
+        return;
+      }
+      ctx.body = { agent };
+    } catch (err) {
+      log.error(`[agents.update] Error (${agentId}):`, err);
       ctx.status = 500;
-      ctx.body = { error: msg };
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
     }
   });
 
