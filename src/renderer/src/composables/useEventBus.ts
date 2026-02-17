@@ -73,6 +73,7 @@ export function useEventBus(): {
 
   /**
    * 单次订阅（触发一次后自动取消）
+   * 组件卸载时如果事件未触发，也会自动清理
    * @param eventType 事件类型
    * @param handler 事件处理器
    */
@@ -80,7 +81,16 @@ export function useEventBus(): {
     eventType: T,
     handler: (data: EventPayloads[T]) => void
   ): void {
-    eventBus.once(eventType, handler)
+    // 包装 handler：触发后从 subscriptions 中移除
+    const wrappedHandler = ((data: EventPayloads[T]) => {
+      const idx = subscriptions.findIndex(
+        (sub) => sub.eventType === eventType && sub.handler === wrappedHandler
+      )
+      if (idx !== -1) subscriptions.splice(idx, 1)
+      handler(data)
+    }) as typeof handler
+    eventBus.once(eventType, wrappedHandler)
+    subscriptions.push({ eventType, handler: wrappedHandler })
   }
 
   /**

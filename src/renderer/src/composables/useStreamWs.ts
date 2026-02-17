@@ -28,6 +28,9 @@ let unregisterMessage: (() => void) | null = null
 let unregisterBatch: (() => void) | null = null
 let unregisterConnect: (() => void) | null = null
 
+/** 已接收到的最新 sequence（用于重连补发） */
+let lastReceivedSeq = 0
+
 // ==================== 初始化 ====================
 
 /**
@@ -43,7 +46,13 @@ function init(): void {
   unregisterMessage = gateway.on('stream.message', (payload) => {
     if (!messageHandler || !payload) return
     const data = payload as { sessionId?: string; message?: StreamMessage }
+    // 过滤非当前订阅会话的消息（防止快速切换会话时消息串台）
+    if (data.sessionId && data.sessionId !== subscribedSessionId) return
     if (data.message) {
+      // 追踪最新 sequence（用于重连后补发）
+      if (data.message.sequence > lastReceivedSeq) {
+        lastReceivedSeq = data.message.sequence
+      }
       messageHandler(data.message)
     }
   })
@@ -57,13 +66,37 @@ function init(): void {
     }
   })
 
-  // 注册连接回调：重连后自动恢复订阅
+  // 注册连接回调：重连后自动恢复订阅 + 补发断连期间的消息
   unregisterConnect = gateway.onConnect(() => {
     if (subscribedSessionId) {
+      const sid = subscribedSessionId
+      const fromSeq = lastReceivedSeq
       gateway
-        .request('stream.subscribe', { sessionId: subscribedSessionId })
+        .request('stream.subscribe', { sessionId: sid })
+        .then(() => {
+          console.log(`[useStreamWs] 重连后恢复订阅: ${sid}`)
+          // 补发断连期间丢失的消息
+          if (fromSeq > 0 && messageHandler) {
+            gateway
+              .request('stream.resend', { sessionId: sid, fromSequence: fromSeq + 1 })
+              .then((res) => {
+                const result = res as { ok?: boolean; messages?: StreamMessage[] }
+                if (result.ok && Array.isArray(result.messages) && result.messages.length > 0) {
+                  console.log(
+                    `[useStreamWs] 补发 ${result.messages.length} 条消息 (from seq ${fromSeq + 1})`
+                  )
+                  for (const msg of result.messages) {
+                    if (msg.sequence > lastReceivedSeq) {
+                      lastReceivedSeq = msg.sequence
+                    }
+                    messageHandler?.(msg)
+                  }
+                }
+              })
+              .catch((err) => console.error('[useStreamWs] 补发消息失败:', err))
+          }
+        })
         .catch((err) => console.error('[useStreamWs] 重连后恢复订阅失败:', err))
-      console.log(`[useStreamWs] 重连后恢复订阅: ${subscribedSessionId}`)
     }
   })
 }
@@ -89,6 +122,7 @@ export function streamSubscribe(sessionId: string, handler: (msg: StreamMessage)
 
   subscribedSessionId = sessionId
   messageHandler = handler
+  lastReceivedSeq = 0
 
   // 已连接则立即发送订阅
   if (gateway.connectionState.value === 'connected') {

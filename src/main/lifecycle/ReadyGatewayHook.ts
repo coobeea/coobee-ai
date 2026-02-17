@@ -13,6 +13,9 @@
 import { LifecyclePhase, type LifecycleContext, type LifecycleHook } from '@main/common/types'
 import { log } from '@main/common/logger'
 
+/** 模块级引用，供退出时清理 */
+let activeGateway: { close(): void } | null = null
+
 export const ReadyGatewayHook: LifecycleHook = {
   name: 'ready-gateway',
   phase: LifecyclePhase.READY,
@@ -26,9 +29,28 @@ export const ReadyGatewayHook: LifecycleHook = {
       const { Gateway } = await import('@main/gateway')
       const gateway = new Gateway()
       gateway.start()
+      activeGateway = gateway
       log.info('[ReadyGatewayHook] Gateway initialized successfully')
     } catch (error) {
       log.error('[ReadyGatewayHook] Failed to initialize Gateway:', error)
+    }
+  }
+}
+
+/**
+ * 退出时关闭 Gateway WebSocket 服务
+ */
+export const BeforeQuitGatewayHook: LifecycleHook = {
+  name: 'before-quit-gateway',
+  phase: LifecyclePhase.BEFORE_QUIT,
+  priority: 20, // 最早清理网络连接
+  critical: false,
+
+  async execute(): Promise<void> {
+    if (activeGateway) {
+      activeGateway.close()
+      activeGateway = null
+      log.info('[BeforeQuitGatewayHook] Gateway closed')
     }
   }
 }

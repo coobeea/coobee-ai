@@ -4,17 +4,25 @@
  *
  * 展示所有已注册的 Agent，支持：
  * - 查看 Agent 列表（名称、描述、创建者、版本）
+ * - 创建新 Agent（简单表单）
  * - 选中 Agent 用于对话
  * - 删除 Agent
- * - 刷新列表
  */
 
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, reactive } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
 
 const isCollapsed = defineModel<boolean>('collapsed', { default: false })
 const agentsStore = useAgentsStore()
 const confirmDeleteId = ref<string | null>(null)
+const showCreateForm = ref(false)
+
+const newAgent = reactive({
+  id: '',
+  name: '',
+  description: '',
+  instructions: ''
+})
 
 onMounted(() => {
   agentsStore.fetchAgents()
@@ -40,6 +48,31 @@ async function handleDelete(agentId: string): Promise<void> {
 function cancelDelete(): void {
   confirmDeleteId.value = null
 }
+
+function toggleCreateForm(): void {
+  showCreateForm.value = !showCreateForm.value
+  if (showCreateForm.value) {
+    newAgent.id = ''
+    newAgent.name = ''
+    newAgent.description = ''
+    newAgent.instructions = ''
+  }
+}
+
+async function handleCreate(): Promise<void> {
+  if (!newAgent.id.trim() || !newAgent.name.trim() || !newAgent.instructions.trim()) return
+
+  const ok = await agentsStore.createAgent({
+    id: newAgent.id.trim(),
+    name: newAgent.name.trim(),
+    description: newAgent.description.trim() || newAgent.name.trim(),
+    instructions: newAgent.instructions.trim()
+  })
+
+  if (ok) {
+    showCreateForm.value = false
+  }
+}
 </script>
 
 <template>
@@ -60,6 +93,19 @@ function cancelDelete(): void {
         </span>
       </div>
       <div class="flex items-center gap-0.5">
+        <!-- 创建按钮 -->
+        <button
+          class="flex h-5 w-5 items-center justify-center rounded transition"
+          :class="[
+            showCreateForm
+              ? 'bg-primary/10 text-primary'
+              : 'text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+          ]"
+          title="创建 Agent"
+          @click="toggleCreateForm"
+        >
+          <span class="i-carbon-add inline-block h-3 w-3"></span>
+        </button>
         <button
           class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
           title="刷新"
@@ -80,8 +126,71 @@ function cancelDelete(): void {
       </div>
     </div>
 
+    <!-- 创建表单 -->
+    <div v-if="showCreateForm" class="shrink-0 border-b border-gray-200/60 bg-white p-2.5">
+      <div class="space-y-2">
+        <div class="flex gap-2">
+          <input
+            v-model="newAgent.id"
+            placeholder="ID (如 code-reviewer)"
+            class="w-1/2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-700 outline-none transition focus:border-primary/40 focus:bg-white"
+          />
+          <input
+            v-model="newAgent.name"
+            placeholder="名称"
+            class="w-1/2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-700 outline-none transition focus:border-primary/40 focus:bg-white"
+          />
+        </div>
+        <input
+          v-model="newAgent.description"
+          placeholder="一句话描述（可选）"
+          class="w-full rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-700 outline-none transition focus:border-primary/40 focus:bg-white"
+        />
+        <textarea
+          v-model="newAgent.instructions"
+          placeholder="系统指令：定义角色、行为规范、输出格式..."
+          rows="3"
+          class="w-full resize-none rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] leading-relaxed text-gray-700 outline-none transition focus:border-primary/40 focus:bg-white"
+        ></textarea>
+        <div class="flex justify-end gap-1">
+          <button
+            class="rounded-md px-2.5 py-1 text-[11px] text-gray-500 transition hover:bg-gray-100"
+            @click="showCreateForm = false"
+          >
+            取消
+          </button>
+          <button
+            class="rounded-md bg-primary px-2.5 py-1 text-[11px] text-white transition hover:bg-primary/90 disabled:opacity-40"
+            :disabled="
+              !newAgent.id.trim() || !newAgent.name.trim() || !newAgent.instructions.trim()
+            "
+            @click="handleCreate"
+          >
+            创建
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 内容区域 -->
     <div class="flex-1 overflow-y-auto p-2">
+      <!-- 错误提示 -->
+      <div
+        v-if="agentsStore.error"
+        class="mb-2 rounded-md bg-red-50 px-2.5 py-2 text-[11px] text-red-600"
+      >
+        <div class="flex items-center gap-1.5">
+          <span class="i-carbon-warning-alt inline-block h-3.5 w-3.5 shrink-0"></span>
+          <span>{{ agentsStore.error }}</span>
+        </div>
+        <button
+          class="mt-1.5 rounded px-2 py-0.5 text-[10px] text-red-500 transition hover:bg-red-100"
+          @click="agentsStore.fetchAgents()"
+        >
+          重试
+        </button>
+      </div>
+
       <!-- 加载中 -->
       <div
         v-if="agentsStore.loading && agentsStore.agents.length === 0"
@@ -100,9 +209,15 @@ function cancelDelete(): void {
           <span class="i-carbon-bot inline-block h-5 w-5 text-gray-400"></span>
         </div>
         <p class="mb-1 text-xs font-medium text-gray-500">暂无 Agent</p>
-        <p class="text-center text-[10px] leading-relaxed text-gray-400">
-          在对话中让 AI 创建专业 Agent<br />或使用 manage_agent 工具
+        <p class="mb-3 text-center text-[10px] leading-relaxed text-gray-400">
+          点击上方 + 手动创建<br />或在对话中让 AI 自动创建
         </p>
+        <button
+          class="rounded-md bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/20"
+          @click="toggleCreateForm"
+        >
+          创建第一个 Agent
+        </button>
       </div>
 
       <!-- Agent 列表 -->

@@ -83,7 +83,7 @@ const stats = computed(() => logStore.stats)
         <button
           class="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
           title="返回聊天"
-          @click="router.push('/chat')"
+          @click="router.push('/agent')"
         >
           <span class="i-carbon-arrow-left inline-block h-4 w-4"></span>
         </button>

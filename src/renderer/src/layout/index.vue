@@ -1,12 +1,32 @@
+<script setup lang="ts">
+/**
+ * Layout — 全局布局容器
+ *
+ * 结构：
+ *   ┌────┬──────────────────────────────────┐
+ *   │    │                                  │
+ *   │ S  │         router-view              │
+ *   │ i  │                                  │
+ *   │ d  │    （各页面自行决定内部布局）       │
+ *   │ e  │                                  │
+ *   │ b  │                                  │
+ *   │ a  │                                  │
+ *   │ r  │                                  │
+ *   │    │                                  │
+ *   └────┴──────────────────────────────────┘
+ */
+
+import Sidebar from './Sidebar.vue'
+</script>
+
 <template>
   <div class="flex h-full w-full">
+    <!-- 左侧窄导航 -->
+    <Sidebar />
+
     <!-- 主内容区域 -->
-    <main class="h-full w-full">
+    <main class="min-w-0 flex-1">
       <router-view />
     </main>
   </div>
 </template>
-
-<script setup lang="ts">
-// Layout — 页面布局容器，后续可扩展侧边栏等
-</script>

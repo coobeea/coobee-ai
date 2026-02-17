@@ -85,6 +85,9 @@ export interface QueueStatusInfo {
   mode: string
 }
 
+/** 聊天消息最大保留数量（防止长会话内存膨胀） */
+const MAX_MESSAGES = 500
+
 export const useChatStore = defineStore('chat', () => {
   // ---- 状态 ----
   const sessionId = ref<string | null>(null)
@@ -94,6 +97,13 @@ export const useChatStore = defineStore('chat', () => {
   const isQueued = ref(false)
   /** 队列状态信息 */
   const queueStatus = ref<QueueStatusInfo | null>(null)
+
+  /** 裁剪过旧的消息（保留最近 MAX_MESSAGES 条） */
+  function trimMessages(): void {
+    if (messages.value.length > MAX_MESSAGES) {
+      messages.value = messages.value.slice(-MAX_MESSAGES)
+    }
+  }
 
   // ---- 内部辅助 ----
 
@@ -114,6 +124,7 @@ export const useChatStore = defineStore('chat', () => {
       timestamp: Date.now()
     }
     messages.value.push(msg)
+    trimMessages()
     return msg
   }
 

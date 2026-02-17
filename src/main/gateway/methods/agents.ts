@@ -14,6 +14,42 @@ import type { MethodGroup } from '../protocol'
 export const agentsMethods: MethodGroup = {
   namespace: 'agents',
   methods: {
+    /** 创建新 Agent（前端 UI 表单） */
+    create: async (params) => {
+      const { id, name, description, instructions, tools, skills } = params as {
+        id: string
+        name: string
+        description: string
+        instructions: string
+        tools?: string[]
+        skills?: string[]
+      }
+
+      if (!id || !name || !description || !instructions) {
+        throw new GatewayMethodError(
+          GatewayErrorCode.INVALID_PARAMS,
+          'id, name, description, instructions are required'
+        )
+      }
+
+      const store = await AgentStore.getInstance()
+      try {
+        const agent = await store.create({
+          id,
+          name,
+          description,
+          instructions,
+          tools,
+          skills,
+          createdBy: 'user'
+        })
+        return { agent }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, msg)
+      }
+    },
+
     list: async () => {
       const store = await AgentStore.getInstance()
       const agents = await store.list()

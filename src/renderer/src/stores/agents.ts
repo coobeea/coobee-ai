@@ -54,6 +54,23 @@ export const useAgentsStore = defineStore('agents', () => {
     }
   }
 
+  /** 创建 Agent */
+  async function createAgent(params: {
+    id: string
+    name: string
+    description: string
+    instructions: string
+  }): Promise<boolean> {
+    try {
+      await gateway.request<{ agent: AgentEntry }>('agents.create', params)
+      await fetchAgents()
+      return true
+    } catch (err) {
+      console.warn('[AgentsStore] Failed to create agent:', err)
+      return false
+    }
+  }
+
   /** 删除 Agent */
   async function deleteAgent(agentId: string): Promise<boolean> {
     try {
@@ -85,6 +102,7 @@ export const useAgentsStore = defineStore('agents', () => {
     selectedAgent,
     // Actions
     fetchAgents,
+    createAgent,
     deleteAgent,
     selectAgent
   }

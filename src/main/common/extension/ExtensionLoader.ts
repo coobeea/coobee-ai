@@ -10,11 +10,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createJiti } from 'jiti'
+import { createLogger } from '@main/common/logger'
 import { ExtensionRegistry } from './ExtensionRegistry'
 import { createExtensionApi } from './ExtensionApi'
 import type { ExtensionManifest, ExtensionModule, ExtensionOrigin } from './types'
 
 const jiti = createJiti(import.meta.url)
+const log = createLogger('extension')
 
 /** 防抖延迟（ms） */
 const DEBOUNCE_MS = 300
@@ -68,7 +70,7 @@ export class ExtensionLoader {
 
     // 读取清单
     if (!fs.existsSync(manifestPath)) {
-      console.warn(`[ExtensionLoader] Skipping "${dir}": no extension.json`)
+      log.warn(`[ExtensionLoader] Skipping "${dir}": no extension.json`)
       return
     }
 
@@ -77,14 +79,14 @@ export class ExtensionLoader {
       const raw = fs.readFileSync(manifestPath, 'utf-8')
       manifest = JSON.parse(raw) as ExtensionManifest
     } catch (err) {
-      console.error(`[ExtensionLoader] Failed to parse extension.json in "${dir}":`, err)
+      log.error(`[ExtensionLoader] Failed to parse extension.json in "${dir}":`, err)
       return
     }
 
     // Manifest 校验
     const validationError = validateManifest(manifest)
     if (validationError) {
-      console.error(`[ExtensionLoader] Invalid manifest in "${dir}": ${validationError}`)
+      log.error(`[ExtensionLoader] Invalid manifest in "${dir}": ${validationError}`)
       return
     }
 
@@ -92,13 +94,13 @@ export class ExtensionLoader {
     if (origin !== 'builtin') {
       const trustResult = verifyExtensionTrust(manifest, dir, origin)
       if (!trustResult.allowed) {
-        console.warn(
+        log.warn(
           `[ExtensionLoader] Blocked untrusted extension "${manifest.id}" (${origin}): ${trustResult.reason}`
         )
         return
       }
       if (trustResult.warning) {
-        console.warn(
+        log.warn(
           `[ExtensionLoader] Loading non-builtin extension "${manifest.id}" (${origin}). ${trustResult.warning}`
         )
       }
@@ -106,7 +108,7 @@ export class ExtensionLoader {
 
     // 同 ID 覆盖：先卸载旧版
     if (this.loadedExtensions.has(manifest.id)) {
-      this.unload(manifest.id)
+      await this.unload(manifest.id)
     }
 
     // Skill 目录路径安全检查：确保 manifest.skills 不会穿越到扩展目录之外
@@ -116,16 +118,16 @@ export class ExtensionLoader {
       // 路径穿越检查
       const rel = path.relative(dir, skillDir)
       if (rel.startsWith('..') || path.isAbsolute(rel)) {
-        console.error(
+        log.error(
           `[ExtensionLoader] Blocked "${manifest.id}": skills path "${manifest.skills}" escapes extension directory`
         )
         return
       }
       if (fs.existsSync(skillDir) && fs.statSync(skillDir).isDirectory()) {
         this.registry.registerSkillDir(manifest.id, skillDir)
-        console.log(`[ExtensionLoader] Registered skill dir for "${manifest.id}": ${skillDir}`)
+        log.info(`[ExtensionLoader] Registered skill dir for "${manifest.id}": ${skillDir}`)
       } else {
-        console.warn(
+        log.warn(
           `[ExtensionLoader] Skill dir declared but not found for "${manifest.id}": ${skillDir}`
         )
       }
@@ -140,7 +142,7 @@ export class ExtensionLoader {
         const imported = await jiti.import(entryPath)
         mod = ((imported as Record<string, unknown>).default || imported) as ExtensionModule
       } catch (err) {
-        console.error(`[ExtensionLoader] Failed to load "${manifest.id}" from "${entryPath}":`, err)
+        log.error(`[ExtensionLoader] Failed to load "${manifest.id}" from "${entryPath}":`, err)
         return
       }
 
@@ -149,28 +151,69 @@ export class ExtensionLoader {
       try {
         mod.register(api)
       } catch (err) {
-        console.error(`[ExtensionLoader] register() failed for "${manifest.id}":`, err)
+        log.error(`[ExtensionLoader] register() failed for "${manifest.id}":`, err)
         // 注册失败，清理已注册的内容
         this.registry.unregisterAll(manifest.id)
         return
       }
     } else if (!manifest.skills) {
       // 既没有代码入口，也没有 Skill 声明 → 无效扩展
-      console.warn(`[ExtensionLoader] No entry file or skills declaration in "${dir}", skipping`)
+      log.warn(`[ExtensionLoader] No entry file or skills declaration in "${dir}", skipping`)
       return
     }
 
     this.loadedExtensions.set(manifest.id, dir)
-    console.log(`[ExtensionLoader] Loaded "${manifest.id}" (${origin}) from ${dir}`)
+
+    // 将该 Extension 新注册的工具同步到 ToolRegistry（热重载场景）
+    const extTools = this.registry.getTools().filter((t) => t.extensionId === manifest.id)
+    if (extTools.length > 0) {
+      try {
+        const { ToolRegistry } = await import('../../ai/tools/registry')
+        for (const { tool } of extTools) {
+          try {
+            ToolRegistry.getInstance().register(tool)
+          } catch {
+            // 工具已存在时跳过（首次加载由 ReadyExtensionHook 注册）
+          }
+        }
+      } catch {
+        // ToolRegistry 不可用时静默
+      }
+    }
+
+    log.info(`[ExtensionLoader] Loaded "${manifest.id}" (${origin}) from ${dir}`)
   }
 
   /**
    * 卸载单个 Extension
+   *
+   * 同时从 ExtensionRegistry 和 ToolRegistry 清理该 Extension 注册的资源。
    */
-  unload(extensionId: string): void {
-    this.registry.unregisterAll(extensionId)
+  async unload(extensionId: string): Promise<void> {
+    // 先获取该 Extension 注册的工具名，用于同步清理 ToolRegistry
+    const removedTools = this.registry.unregisterToolsByExtension(extensionId)
+    // 清理 ExtensionRegistry（hooks、gateway methods、skill dirs，tools 已在上一步清理）
+    this.registry.unregisterHooksByExtension(extensionId)
+    this.registry.unregisterGatewayMethodsByExtension(extensionId)
+    this.registry.unregisterSkillDirsByExtension(extensionId)
+
+    // 同步清理 ToolRegistry（动态 import 避免 common→ai 编译时依赖）
+    if (removedTools.length > 0) {
+      try {
+        const { ToolRegistry } = await import('../../ai/tools/registry')
+        for (const name of removedTools) {
+          ToolRegistry.getInstance().unregister(name)
+        }
+        log.info(
+          `[ExtensionLoader] Removed ${removedTools.length} tool(s) from ToolRegistry: ${removedTools.join(', ')}`
+        )
+      } catch {
+        // ToolRegistry 不可用时静默（应用启动早期阶段）
+      }
+    }
+
     this.loadedExtensions.delete(extensionId)
-    console.log(`[ExtensionLoader] Unloaded "${extensionId}"`)
+    log.info(`[ExtensionLoader] Unloaded "${extensionId}"`)
   }
 
   /**
@@ -188,7 +231,7 @@ export class ExtensionLoader {
         })
         this.watchers.push(watcher)
       } catch (err) {
-        console.error(`[ExtensionLoader] Failed to watch "${searchPath}":`, err)
+        log.error(`[ExtensionLoader] Failed to watch "${searchPath}":`, err)
       }
     }
   }
@@ -233,7 +276,7 @@ export class ExtensionLoader {
           // 新增或修改 → unload + load
           const existingId = this.findExtensionIdByDir(extDir)
           if (existingId) {
-            this.unload(existingId)
+            await this.unload(existingId)
           }
           // 推断 origin
           const origin = this.inferOrigin(searchPath)
@@ -242,7 +285,7 @@ export class ExtensionLoader {
           // 删除 → unload
           const existingId = this.findExtensionIdByDir(extDir)
           if (existingId) {
-            this.unload(existingId)
+            await this.unload(existingId)
           }
         }
       }, DEBOUNCE_MS)

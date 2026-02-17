@@ -57,6 +57,7 @@ export class ConfigWatcher {
 
     this.watcher.on('change', () => this.onFileChange())
     this.watcher.on('add', () => this.onFileChange())
+    this.watcher.on('unlink', (filePath: string) => this.onFileDeleted(filePath))
   }
 
   /**
@@ -93,6 +94,18 @@ export class ConfigWatcher {
   }
 
   // ─── 私有方法 ─────────────────────────────────────
+
+  private onFileDeleted(filePath: string): void {
+    log.warn(`[ConfigWatcher] 配置文件被删除: ${filePath}，尝试自动重建`)
+    try {
+      this.loader.ensureConfigFile()
+      log.info('[ConfigWatcher] 配置文件已自动重建为默认配置')
+    } catch (err) {
+      log.error('[ConfigWatcher] 自动重建配置文件失败:', err)
+    }
+    // 重建后触发一次正常的变更处理流程
+    this.onFileChange()
+  }
 
   private onFileChange(): void {
     // 去抖

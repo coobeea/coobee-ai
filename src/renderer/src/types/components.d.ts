@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AgentsPanel: typeof import('./../components/agent/AgentsPanel.vue')['default']
     ChatPanel: typeof import('./../components/agent/ChatPanel.vue')['default']
     IconMdiClose: typeof import('~icons/mdi/close')['default']
     IconMdiFire: typeof import('~icons/mdi/fire')['default']

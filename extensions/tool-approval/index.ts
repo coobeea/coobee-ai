@@ -233,9 +233,8 @@ async function emitDecisionEvent(
  */
 async function getApprovalTimeout(): Promise<number> {
   try {
-    const { ConfigStore } = await import('../../src/main/common/config/ConfigStore')
-    const store = ConfigStore.getInstance()
-    const approvals = store.get('security')?.approvals
+    const { configStoreInstance } = await import('../../src/main/common/config/ConfigStore')
+    const approvals = configStoreInstance?.get?.('security')?.approvals
     return approvals?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS
   } catch {
     return DEFAULT_APPROVAL_TIMEOUT_MS

@@ -13,6 +13,9 @@
 import { LifecyclePhase, type LifecycleContext, type LifecycleHook } from '@main/common/types'
 import { log } from '@main/common/logger'
 
+/** 模块级引用，供退出时清理 */
+let activeLoader: { stopWatch(): void } | null = null
+
 export const ReadyExtensionHook: LifecycleHook = {
   name: 'ready-extension',
   phase: LifecyclePhase.READY,
@@ -52,6 +55,7 @@ export const ReadyExtensionHook: LifecycleHook = {
 
       // 6. 启动 fs.watch 热插拔
       loader.watch(searchPaths)
+      activeLoader = loader
 
       const extIds = registry.getExtensionIds()
       log.info(
@@ -59,6 +63,24 @@ export const ReadyExtensionHook: LifecycleHook = {
       )
     } catch (error) {
       log.error('[ReadyExtensionHook] Failed to initialize Extension system:', error)
+    }
+  }
+}
+
+/**
+ * 退出时停止 Extension 文件监听
+ */
+export const BeforeQuitExtensionHook: LifecycleHook = {
+  name: 'before-quit-extension',
+  phase: LifecyclePhase.BEFORE_QUIT,
+  priority: 30, // 比 Infra(40) 和 Process(50) 更早清理
+  critical: false,
+
+  async execute(): Promise<void> {
+    if (activeLoader) {
+      activeLoader.stopWatch()
+      activeLoader = null
+      log.info('[BeforeQuitExtensionHook] Extension watchers stopped')
     }
   }
 }
