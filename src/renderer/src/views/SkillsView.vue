@@ -7,17 +7,22 @@
  *   2. AI 创建技能（描述需求，自动生成 SKILL.md）
  *   3. 导入技能（从本地路径导入）
  *   4. 删除用户技能
+ *
+ * 使用项目通用组件：PrimaryButton, SecondaryButton, GhostButton,
+ * DangerButton, TextButton, TextInput, Popup, useConfirmStore
  */
 
 import { ref, onMounted, nextTick } from 'vue';
 import { useSkillsStore } from '@/stores/skills';
+import { useConfirmStore } from '@/components/Confirm/store';
 
 const isMac = navigator.platform?.includes('Mac') ?? false;
 const skillsStore = useSkillsStore();
+const confirmStore = useConfirmStore();
 
 /** AI 创建：用户需求输入 */
 const aiRequirement = ref('');
-const aiInputRef = ref<HTMLTextAreaElement | null>(null);
+const aiInputRef = ref<InstanceType<typeof HTMLTextAreaElement> | null>(null);
 
 /** 是否显示创建区域 */
 const showCreateArea = ref(false);
@@ -25,9 +30,6 @@ const showCreateArea = ref(false);
 /** 导入弹窗 */
 const showImportDialog = ref(false);
 const importPath = ref('');
-
-/** 删除确认 */
-const confirmDeleteName = ref<string | null>(null);
 
 onMounted(() => {
   skillsStore.fetchSkills();
@@ -69,12 +71,14 @@ async function handleImport(): Promise<void> {
 }
 
 async function handleDelete(skillName: string): Promise<void> {
-  if (confirmDeleteName.value !== skillName) {
-    confirmDeleteName.value = skillName;
-    return;
+  const confirmed = await confirmStore.warning(`确定要删除技能「${skillName}」吗？此操作不可恢复。`, {
+    title: '删除技能',
+    confirmText: '删除',
+    cancelText: '取消'
+  });
+  if (confirmed) {
+    await skillsStore.deleteSkill(skillName);
   }
-  confirmDeleteName.value = null;
-  await skillsStore.deleteSkill(skillName);
 }
 
 function stepIcon(step: string): string {
@@ -109,19 +113,14 @@ function stepIcon(step: string): string {
         </span>
       </div>
       <div class="header-right">
-        <button class="icon-btn" title="刷新" @click="skillsStore.fetchSkills()">
-          <span
-            class="i-carbon-renew inline-block h-[15px] w-[15px]"
-            :class="{ 'animate-spin': skillsStore.loading }" />
-        </button>
-        <button class="action-btn" @click="openImportDialog">
-          <span class="i-carbon-download inline-block h-3.5 w-3.5" />
-          <span>导入</span>
-        </button>
-        <button class="create-btn" :class="{ active: showCreateArea }" @click="toggleCreateArea">
-          <span class="i-carbon-add inline-block h-3.5 w-3.5" />
-          <span>创建</span>
-        </button>
+        <GhostButton
+          size="sm"
+          mode="icon"
+          icon="i-carbon-renew"
+          :loading="skillsStore.loading"
+          @click="skillsStore.fetchSkills()" />
+        <SecondaryButton size="sm" left-icon="i-carbon-download" @click="openImportDialog"> 导入 </SecondaryButton>
+        <PrimaryButton size="sm" left-icon="i-carbon-add" @click="toggleCreateArea"> 创建 </PrimaryButton>
       </div>
     </header>
 
@@ -130,8 +129,8 @@ function stepIcon(step: string): string {
       <div v-if="showCreateArea" class="create-section">
         <div class="create-card" :class="{ focused: skillsStore.aiCreating }">
           <div class="create-card-header">
-            <span class="i-carbon-watson inline-block h-4 w-4 create-ai-icon" />
-            <span class="create-card-label">AI 自动创建</span>
+            <span class="i-carbon-watson inline-block h-4 w-4 text-primary" />
+            <span class="text-xs font-medium text-primary tracking-wide">AI 自动创建</span>
           </div>
           <textarea
             ref="aiInputRef"
@@ -179,16 +178,14 @@ function stepIcon(step: string): string {
               </span>
             </div>
             <div class="flex items-center gap-2">
-              <button class="text-btn" :disabled="skillsStore.aiCreating" @click="showCreateArea = false">
-                取消
-              </button>
-              <button
-                class="submit-btn"
-                :disabled="!aiRequirement.trim() || skillsStore.aiCreating"
-                @click="handleAiCreate">
-                <span v-if="skillsStore.aiCreating" class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin" />
-                <span v-else class="i-carbon-send-filled inline-block h-3.5 w-3.5" />
-              </button>
+              <TextButton :disabled="skillsStore.aiCreating" @click="showCreateArea = false"> 取消 </TextButton>
+              <PrimaryButton
+                size="sm"
+                mode="icon"
+                :icon="skillsStore.aiCreating ? 'i-carbon-renew' : 'i-carbon-send-filled'"
+                :loading="skillsStore.aiCreating"
+                :disabled="!aiRequirement.trim()"
+                @click="handleAiCreate" />
             </div>
           </div>
         </div>
@@ -201,7 +198,7 @@ function stepIcon(step: string): string {
       <div v-if="skillsStore.error" class="error-bar">
         <span class="i-carbon-warning-alt inline-block h-3.5 w-3.5 shrink-0" />
         <span class="flex-1 truncate">{{ skillsStore.error }}</span>
-        <button class="error-retry" @click="skillsStore.fetchSkills()">重试</button>
+        <TextButton @click="skillsStore.fetchSkills()">重试</TextButton>
       </div>
 
       <!-- 加载中 -->
@@ -223,14 +220,8 @@ function stepIcon(step: string): string {
         <p class="empty-heading">还没有技能</p>
         <p class="empty-sub">创建或导入技能，让你的智能体拥有更强的专业能力</p>
         <div class="mt-5 flex items-center gap-3">
-          <button class="secondary-btn" @click="openImportDialog">
-            <span class="i-carbon-download inline-block h-3.5 w-3.5" />
-            导入技能
-          </button>
-          <button class="primary-btn" @click="toggleCreateArea">
-            <span class="i-carbon-watson inline-block h-3.5 w-3.5" />
-            AI 创建
-          </button>
+          <SecondaryButton left-icon="i-carbon-download" @click="openImportDialog"> 导入技能 </SecondaryButton>
+          <PrimaryButton left-icon="i-carbon-watson" @click="toggleCreateArea"> AI 创建 </PrimaryButton>
         </div>
       </div>
 
@@ -255,19 +246,12 @@ function stepIcon(step: string): string {
           <!-- 底部操作栏 -->
           <div class="card-footer" @click.stop>
             <div class="card-actions">
-              <template v-if="confirmDeleteName !== skill.name">
-                <button
-                  v-if="skill.source === 'user'"
-                  class="action-icon danger"
-                  title="删除"
-                  @click="handleDelete(skill.name)">
-                  <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
-                </button>
-              </template>
-              <template v-else>
-                <button class="confirm-btn danger" @click="handleDelete(skill.name)">删除</button>
-                <button class="confirm-btn" @click="confirmDeleteName = null">取消</button>
-              </template>
+              <GhostButton
+                v-if="skill.source === 'user'"
+                size="sm"
+                mode="icon"
+                icon="i-carbon-trash-can"
+                @click="handleDelete(skill.name)" />
             </div>
           </div>
         </div>
@@ -275,46 +259,34 @@ function stepIcon(step: string): string {
     </div>
 
     <!-- 导入弹窗 -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="showImportDialog" class="dialog-overlay" @click.self="showImportDialog = false">
-          <div class="import-dialog">
-            <div class="dialog-header">
-              <span class="i-carbon-download inline-block h-4 w-4" />
-              <span>导入技能</span>
-            </div>
-            <div class="dialog-body">
-              <p class="dialog-hint">请输入技能目录路径或 SKILL.md 文件路径：</p>
-              <input
-                v-model="importPath"
-                type="text"
-                class="dialog-input"
-                placeholder="/path/to/my-skill/ 或 /path/to/SKILL.md"
-                :disabled="skillsStore.importing"
-                @keydown.enter="handleImport" />
-              <p v-if="skillsStore.importError" class="dialog-error">
-                <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
-                {{ skillsStore.importError }}
-              </p>
-              <div class="dialog-tips">
-                <p class="dialog-tips-title">支持的格式：</p>
-                <ul>
-                  <li>包含 SKILL.md 的目录路径</li>
-                  <li>单独的 SKILL.md 文件路径</li>
-                </ul>
-              </div>
-            </div>
-            <div class="dialog-footer">
-              <button class="text-btn" @click="showImportDialog = false">取消</button>
-              <button class="primary-btn" :disabled="!importPath.trim() || skillsStore.importing" @click="handleImport">
-                <span v-if="skillsStore.importing" class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin" />
-                <span v-else>导入</span>
-              </button>
-            </div>
-          </div>
+    <Popup v-model:visible="showImportDialog" position="center" transition="zoom" :close-on-esc="true">
+      <div class="import-dialog">
+        <div class="dialog-header">
+          <span class="i-carbon-download inline-block h-4 w-4" />
+          <span>导入技能</span>
         </div>
-      </Transition>
-    </Teleport>
+        <div class="dialog-body">
+          <TextInput
+            v-model="importPath"
+            label="技能路径"
+            placeholder="/path/to/my-skill/ 或 /path/to/SKILL.md"
+            :disabled="skillsStore.importing"
+            :error="skillsStore.importError ?? undefined"
+            help="支持包含 SKILL.md 的目录路径，或单独的 SKILL.md 文件路径"
+            @keydown.enter="handleImport" />
+        </div>
+        <div class="dialog-footer">
+          <GhostButton size="sm" @click="showImportDialog = false">取消</GhostButton>
+          <PrimaryButton
+            size="sm"
+            :disabled="!importPath.trim()"
+            :loading="skillsStore.importing"
+            @click="handleImport">
+            导入
+          </PrimaryButton>
+        </div>
+      </div>
+    </Popup>
   </div>
 </template>
 
@@ -382,64 +354,6 @@ function stepIcon(step: string): string {
   gap: 6px;
 }
 
-.icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
-  color: hsl(var(--muted-foreground));
-  transition: all 0.15s ease;
-}
-
-.icon-btn:hover {
-  background: hsl(var(--foreground) / 0.06);
-  color: hsl(var(--foreground) / 0.7);
-}
-
-.action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 30px;
-  padding: 0 12px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 500;
-  color: hsl(var(--muted-foreground));
-  background: hsl(var(--foreground) / 0.05);
-  transition: all 0.15s ease;
-}
-
-.action-btn:hover {
-  background: hsl(var(--foreground) / 0.08);
-  color: hsl(var(--foreground) / 0.8);
-}
-
-.create-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 30px;
-  padding: 0 12px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 500;
-  color: hsl(var(--primary));
-  background: hsl(var(--primary) / 0.08);
-  transition: all 0.15s ease;
-}
-
-.create-btn:hover {
-  background: hsl(var(--primary) / 0.14);
-}
-
-.create-btn.active {
-  background: hsl(var(--primary) / 0.15);
-  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.2);
-}
-
 /* ====== AI 创建区域 ====== */
 
 .slide-down-enter-active,
@@ -493,17 +407,6 @@ function stepIcon(step: string): string {
   align-items: center;
   gap: 6px;
   padding: 10px 14px 0;
-}
-
-.create-ai-icon {
-  color: hsl(var(--primary));
-}
-
-.create-card-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: hsl(var(--primary));
-  letter-spacing: 0.02em;
 }
 
 .create-input {
@@ -574,27 +477,6 @@ function stepIcon(step: string): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.submit-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 28px;
-  border-radius: 7px;
-  color: hsl(var(--primary-foreground));
-  background: hsl(var(--primary));
-  transition: all 0.15s ease;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background: hsl(var(--primary-hover));
-}
-
-.submit-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
 }
 
 /* ====== AI 创建进度 ====== */
@@ -685,19 +567,6 @@ function stepIcon(step: string): string {
   color: hsl(var(--error));
   background: hsl(var(--error) / 0.06);
   border: 1px solid hsl(var(--error) / 0.1);
-}
-
-.error-retry {
-  font-size: 11px;
-  font-weight: 500;
-  color: hsl(var(--error));
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  flex-shrink: 0;
-}
-
-.error-retry:hover {
-  opacity: 0.8;
 }
 
 /* ====== 空状态 ====== */
@@ -900,127 +769,7 @@ function stepIcon(step: string): string {
   opacity: 1;
 }
 
-.action-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  color: hsl(var(--muted-foreground) / 0.4);
-  transition: all 0.12s ease;
-}
-
-.action-icon:hover {
-  background: hsl(var(--primary) / 0.08);
-  color: hsl(var(--primary));
-}
-
-.action-icon.danger:hover {
-  background: hsl(var(--error) / 0.08);
-  color: hsl(var(--error));
-}
-
-.confirm-btn {
-  padding: 3px 8px;
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  color: hsl(var(--muted-foreground));
-  transition: all 0.12s ease;
-}
-
-.confirm-btn:hover {
-  background: hsl(var(--foreground) / 0.05);
-}
-
-.confirm-btn.danger {
-  color: hsl(var(--error));
-}
-
-.confirm-btn.danger:hover {
-  background: hsl(var(--error) / 0.08);
-}
-
-/* ====== 通用按钮 ====== */
-
-.text-btn {
-  padding: 3px 8px;
-  border-radius: 5px;
-  font-size: 11px;
-  color: hsl(var(--muted-foreground) / 0.6);
-  transition: all 0.12s ease;
-}
-
-.text-btn:hover {
-  background: hsl(var(--foreground) / 0.04);
-  color: hsl(var(--foreground) / 0.7);
-}
-
-.primary-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 14px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 500;
-  color: hsl(var(--primary-foreground));
-  background: hsl(var(--primary));
-  transition: all 0.15s ease;
-}
-
-.primary-btn:hover:not(:disabled) {
-  background: hsl(var(--primary-hover));
-}
-
-.primary-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.secondary-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 14px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 500;
-  color: hsl(var(--foreground) / 0.7);
-  background: hsl(var(--foreground) / 0.06);
-  transition: all 0.15s ease;
-}
-
-.secondary-btn:hover {
-  background: hsl(var(--foreground) / 0.1);
-  color: hsl(var(--foreground) / 0.85);
-}
-
 /* ====== 导入弹窗 ====== */
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: hsl(0 0% 0% / 0.35);
-  backdrop-filter: blur(4px);
-  z-index: 1000;
-}
 
 .import-dialog {
   width: 420px;
@@ -1047,70 +796,6 @@ function stepIcon(step: string): string {
 
 .dialog-body {
   padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.dialog-hint {
-  font-size: 12.5px;
-  color: hsl(var(--muted-foreground) / 0.7);
-  line-height: 1.5;
-}
-
-.dialog-input {
-  width: 100%;
-  height: 36px;
-  padding: 0 12px;
-  border: 1px solid hsl(var(--border) / 0.5);
-  border-radius: 8px;
-  font-size: 13px;
-  color: hsl(var(--foreground));
-  background: hsl(var(--background));
-  outline: none;
-  transition: all 0.15s ease;
-}
-
-.dialog-input:focus {
-  border-color: hsl(var(--primary) / 0.4);
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.06);
-}
-
-.dialog-input::placeholder {
-  color: hsl(var(--muted-foreground) / 0.35);
-}
-
-.dialog-input:disabled {
-  opacity: 0.5;
-}
-
-.dialog-error {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11.5px;
-  color: hsl(var(--error));
-}
-
-.dialog-tips {
-  font-size: 11.5px;
-  color: hsl(var(--muted-foreground) / 0.5);
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: hsl(var(--foreground) / 0.02);
-}
-
-.dialog-tips-title {
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-.dialog-tips ul {
-  list-style: disc;
-  padding-left: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 
 .dialog-footer {
