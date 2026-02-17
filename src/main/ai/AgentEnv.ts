@@ -9,6 +9,8 @@
  *   2. 作为 Agent 进程的环境变量子集（未来 sandbox 场景）
  */
 
+import path from 'node:path'
+
 // ==================== 类型定义 ====================
 
 /**
@@ -35,6 +37,8 @@ export interface AgentEnv {
   workspace: string
   /** 当前会话 ID */
   sessionId: string
+  /** 任务目录（{workspace}/tasks/，多 Agent 委托时使用） */
+  tasksDir: string
 
   // --- 系统路径 ---
   /** 用户主目录（应用级，如 ~/.coobee-ai） */
@@ -164,6 +168,7 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
     // 工作空间
     workspace,
     sessionId,
+    tasksDir: path.join(workspace, 'tasks'),
 
     // 系统路径
     userHome: Env.paths.userHome,
@@ -216,6 +221,7 @@ export function formatRuntimePaths(env: AgentEnv): string {
 <session>
   <sessionId>${env.sessionId}</sessionId>
   <workspace>${env.workspace}</workspace>
+  <tasksDir>${env.tasksDir}</tasksDir>
 </session>
 <paths>
   <userHome>${env.userHome}</userHome>
@@ -252,5 +258,29 @@ ${env.loadedExtensions.map((id) => `    <extension>${id}</extension>`).join('\n'
 <tools>
 ${env.availableTools.map((t) => `  <tool>${t}</tool>`).join('\n')}
 </tools>
+<workspace_conventions>
+When performing multi-agent delegation tasks, follow these directory conventions.
+All data MUST be written under {workspace}/tasks/{taskId}/ so the user and frontend can track progress.
+
+Directory structure (created automatically by delegate_to_agent):
+  tasks/{taskId}/
+  ├── plan.md           — Task plan (human-readable, written by task_plan tool)
+  ├── status.json       — Task status (machine-readable, written by task_plan tool)
+  ├── agents/{agentId}/ — Sub-agent workspace (sessions/, contexts/, events/, output/)
+  ├── results/{agentId}.md — Sub-agent final output (written automatically on completion)
+  └── experiences/*.md  — Shared execution experiences (written by sub-agents)
+
+status.json format:
+  { taskId, title, createdAt, updatedAt, status: "planning"|"running"|"done"|"failed",
+    steps: [{ id, description, agentId?, status: "pending"|"running"|"done"|"failed", startedAt?, completedAt?, error? }] }
+
+Workflow:
+  1. Use task_plan(create) to create a plan with steps → get taskId
+  2. Use task_plan(update_step) to mark each step as running/done/failed
+  3. Use delegate_to_agent(taskId=...) to delegate — sub-agents share the same task directory
+  4. Use task_plan(complete) to finalize with a summary
+
+For simple single delegations, taskId is auto-generated and task_plan is optional.
+</workspace_conventions>
 </runtime_environment>`
 }

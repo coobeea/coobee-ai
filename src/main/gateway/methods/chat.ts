@@ -5,8 +5,12 @@
  *   - chat: 对话 + 文件操作 — 禁用 exec（脚本执行），保留文件读写等工具
  *   - agent: 完整 Agent — 全部工具 + 执行协议 + Skill + HITL
  *
+ * 支持 agentId 参数：
+ *   - 指定 agentId 时从 AgentStore 加载 Agent 定义，用自定义 instructions/tools/skills/model 构建 Builder
+ *   - 不指定时使用默认 Agent（行为不变）
+ *
  * 方法：
- *   chat.send  — 发送消息并启动流式处理（支持 mode 参数）
+ *   chat.send  — 发送消息并启动流式处理（支持 mode / agentId 参数）
  *   chat.abort — 中止当前会话（预留）
  */
 
@@ -16,6 +20,8 @@ import { builtinTools } from '@main/ai/tools'
 import { ToolRegistry } from '@main/ai/tools/registry'
 import { resolveApiKey } from '@main/ai/provider/ApiKeyResolver'
 import { configStoreInstance } from '@main/common/config/ConfigStore'
+import { AgentStore } from '@main/ai/agents/AgentStore'
+import type { AgentDefinition } from '@main/ai/agents/types'
 import { GatewayErrorCode, GatewayMethodError } from '../protocol'
 import type { MethodGroup } from '../protocol'
 import type { AgentMode } from '@main/ai/runtime/types'
@@ -120,6 +126,63 @@ function applyThinkingLevel(builder: ReturnType<typeof agentExecutor.piMono>): v
   builder.thinkingLevel('medium')
 }
 
+/**
+ * 从 AgentDefinition 创建 Builder
+ *
+ * 用 Agent 定义中的 instructions/tools/skills/model/thinkingLevel 覆盖默认配置。
+ * 未在定义中指定的字段使用全局默认值。
+ */
+function createBuilderFromDefinition(
+  def: AgentDefinition,
+  agentMode: AgentMode
+): ReturnType<typeof agentExecutor.piMono> {
+  const builder = agentExecutor
+    .piMono()
+    .name(def.name || def.id)
+    .mode(agentMode)
+    .sessionMode('file')
+    .instructions(def.instructions)
+
+  // 解析工具集
+  const extensionTools = ToolRegistry.getInstance().getAll()
+  const toolMap = new Map(builtinTools.map((t) => [t.name, t]))
+  for (const ext of extensionTools) {
+    toolMap.set(ext.name, ext)
+  }
+
+  if (def.tools && def.tools.length > 0) {
+    // Agent 定义中指定了工具列表 → 只加载指定的工具
+    const selectedTools = def.tools
+      .map((name) => toolMap.get(name))
+      .filter((t): t is NonNullable<typeof t> => t !== undefined)
+    builder.tools(selectedTools)
+  } else {
+    // 未指定工具 → 继承全部工具（与默认 Agent 相同）
+    const allTools = Array.from(toolMap.values())
+    if (agentMode === 'chat') {
+      builder.tools(allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name)))
+    } else {
+      builder.tools(allTools)
+    }
+  }
+
+  // 模型：Agent 定义优先，否则走 Provider 系统
+  if (def.model) {
+    builder.model(def.model)
+  } else {
+    applyProviderConfig(builder)
+  }
+
+  // 思维链：Agent 定义优先，否则走全局配置
+  if (def.thinkingLevel) {
+    builder.thinkingLevel(def.thinkingLevel)
+  } else {
+    applyThinkingLevel(builder)
+  }
+
+  return builder
+}
+
 // 注册 Builder 工厂，供 Pipeline executor 使用
 agentExecutor.setBuilderFactory((mode) => createBuilder(mode))
 
@@ -130,8 +193,14 @@ export const chatMethods: MethodGroup = {
       const {
         message,
         sessionId,
-        mode = 'agent'
-      } = params as { message?: string; sessionId?: string; mode?: AgentMode }
+        mode = 'agent',
+        agentId
+      } = params as {
+        message?: string
+        sessionId?: string
+        mode?: AgentMode
+        agentId?: string
+      }
 
       if (!message) {
         throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'message is required')
@@ -146,32 +215,55 @@ export const chatMethods: MethodGroup = {
       }
 
       const sid = sessionId || generateSessionId()
-      log.info(`[chat.send] sessionId=${sid}, mode=${mode}`)
+      log.info(`[chat.send] sessionId=${sid}, mode=${mode}${agentId ? `, agentId=${agentId}` : ''}`)
 
       try {
-        // 优先使用管线（支持排队/合并/中断）
-        const pipelineResult = agentExecutor.submitViaPipeline(sid, message, mode)
-        if (pipelineResult) {
-          return {
-            sessionId: sid,
-            status: pipelineResult.status,
-            mode,
-            queuePosition: pipelineResult.queuePosition
+        // 如果指定了 agentId，从 AgentStore 加载定义并创建 Builder
+        let agentDef: AgentDefinition | null = null
+        if (agentId) {
+          const store = AgentStore.getInstance()
+          agentDef = await store.get(agentId)
+          if (!agentDef) {
+            throw new GatewayMethodError(
+              GatewayErrorCode.INVALID_PARAMS,
+              `Agent "${agentId}" not found`
+            )
           }
         }
 
-        // 回退到原始 submit
+        // 优先使用管线（支持排队/合并/中断）
+        // 注意：agentId 场景暂不走管线，直接用 submit
+        if (!agentDef) {
+          const pipelineResult = agentExecutor.submitViaPipeline(sid, message, mode)
+          if (pipelineResult) {
+            return {
+              sessionId: sid,
+              status: pipelineResult.status,
+              mode,
+              queuePosition: pipelineResult.queuePosition
+            }
+          }
+        }
+
+        // 创建 Builder：有 agentDef 用自定义定义，否则用默认
+        const builder = agentDef ? createBuilderFromDefinition(agentDef, mode) : createBuilder(mode)
+
         const result = agentExecutor.submit({
           sessionId: sid,
           message,
-          builder: createBuilder(mode)
+          builder
         })
 
         if (result.status === 'busy') {
           throw new GatewayMethodError(GatewayErrorCode.SESSION_BUSY, '当前会话正在处理中')
         }
 
-        return { sessionId: sid, status: 'streaming', mode }
+        return {
+          sessionId: sid,
+          status: 'streaming',
+          mode,
+          ...(agentId ? { agentId } : {})
+        }
       } catch (error) {
         if (error instanceof GatewayMethodError) throw error
         const msg = error instanceof Error ? error.message : String(error)

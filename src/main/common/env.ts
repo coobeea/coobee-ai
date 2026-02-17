@@ -74,16 +74,28 @@ export const Env = {
       /** Agent 级记忆（按 Agent 隔离） */
       agentMemoryDir: path.join(_userHome, 'memory', 'agent'),
 
+      // === Agent 定义目录（Agents）===
+      /**
+       * Agent 定义存储目录
+       *
+       * 每个 Agent 一个 JSON 文件：{agentsDir}/{agentId}.json
+       * 由 AgentStore 管理，通过 manage_agent 工具暴露给 LLM。
+       *
+       * @example 开发: <项目>/.home/agents | 生产: ~/.coobee-ai/agents
+       */
+      agentsDir: path.join(_userHome, 'agents'),
+
       // === Agent 工作空间（Workspaces）===
       /**
        * Agent 工作空间总根目录
        *
-       * 每次会话/Agent 通过 getWorkspaceDir(id) 获取独立子目录：
+       * 每次会话/Agent 通过 getAgentWorkspaceDir(id) 获取独立子目录：
        *   workspaces/{id}/
        *   ├── sessions/     会话持久化
        *   ├── contexts/     LLM 请求上下文快照
        *   ├── skills/       Agent 自生成的 Skill
-       *   └── output/       Agent 输出文件
+       *   ├── output/       Agent 输出文件
+       *   └── tasks/        多 Agent 委托任务（按需创建，详见 getAgentWorkspaceDir）
        *
        * @example 开发: <项目>/.home/workspaces | 生产: ~/.coobee-ai/workspaces
        */
@@ -247,7 +259,18 @@ export const Env = {
    *   ├── events/       流式事件记录（完整时间线）
    *   ├── skills/       Agent 自生成的 Skill
    *   ├── output/       Agent 输出文件
-   *   └── logs/         Agent 运行日志
+   *   ├── logs/         Agent 运行日志
+   *   └── tasks/        [多 Agent] 委托任务目录（按需创建）
+   *       └── {taskId}/
+   *           ├── plan.md         任务计划（task_plan 工具写入）
+   *           ├── status.json     任务状态（task_plan 工具更新）
+   *           ├── agents/         子 Agent 工作目录
+   *           │   └── {agentId}/  子 Agent 完整工作空间
+   *           ├── results/        子 Agent 的汇总结果
+   *           └── experiences/    共享执行经验
+   *
+   * 注：tasks/ 目录由 task_plan 和 delegate_to_agent 工具按需创建，
+   * 不在 workspace 初始化时创建。
    *
    * @param id 工作空间标识（通常为 sessionId）
    * @returns 工作空间根路径

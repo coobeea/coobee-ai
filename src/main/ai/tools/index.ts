@@ -26,7 +26,10 @@ export {
   sessionStatusTool,
   sessionHistoryTool,
   contextInspectTool,
-  skillListTool
+  skillListTool,
+  manageAgentTool,
+  delegateToAgentTool,
+  taskPlanTool
 } from './builtin'
 
 // 工具注册表

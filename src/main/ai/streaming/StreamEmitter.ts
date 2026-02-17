@@ -56,6 +56,8 @@ const CHUNK_TO_MESSAGE_MAP: Partial<Record<StreamChunkType, StreamMessageType>> 
   // Handoff / HITL
   'handoff:start': 'handoff',
   'handoff:done': 'handoff',
+  'delegate:start': 'delegate',
+  'delegate:done': 'delegate',
   'hitl:required': 'hitl',
   'hitl:approved': 'hitl',
   'hitl:rejected': 'hitl',

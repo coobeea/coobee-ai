@@ -21,11 +21,13 @@ import ProjectPanel from '@/components/agent/ProjectPanel.vue'
 import WorkbenchPanel from '@/components/agent/WorkbenchPanel.vue'
 import ChatPanel from '@/components/agent/ChatPanel.vue'
 import VoicePanel from '@/components/agent/VoicePanel.vue'
+import AgentsPanel from '@/components/agent/AgentsPanel.vue'
 
 const router = useRouter()
 
 const leftCollapsed = ref(false)
 const rightCollapsed = ref(false)
+const agentsPanelCollapsed = ref(true)
 </script>
 
 <template>
@@ -51,6 +53,17 @@ const rightCollapsed = ref(false)
         >
           <span class="i-carbon-folder-shared inline-block h-3.5 w-3.5"></span>
           项目空间
+        </button>
+
+        <!-- Agents 面板 -->
+        <button
+          v-if="agentsPanelCollapsed"
+          class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+          title="展开 Agents 面板"
+          @click="agentsPanelCollapsed = false"
+        >
+          <span class="i-carbon-bot inline-block h-3.5 w-3.5"></span>
+          Agents
         </button>
 
         <!-- 日志 -->
@@ -94,6 +107,9 @@ const rightCollapsed = ref(false)
 
       <!-- 右栏：对话 -->
       <ChatPanel v-model:collapsed="rightCollapsed" />
+
+      <!-- Agents 面板（可折叠，默认隐藏） -->
+      <AgentsPanel v-model:collapsed="agentsPanelCollapsed" />
     </div>
 
     <!-- ========== 底部语音栏 ========== -->

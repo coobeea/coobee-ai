@@ -25,6 +25,9 @@ import { contextInspectTool } from './context_inspect'
 import { skillListTool } from './skill_list'
 import { configPatchTool } from './config_patch'
 import { configGetTool } from './config_get'
+import { manageAgentTool } from './manage-agent'
+import { delegateToAgentTool } from './delegate-to-agent'
+import { taskPlanTool } from './task-plan'
 
 // 单独导出
 export { readTool } from './read'
@@ -41,6 +44,9 @@ export { contextInspectTool } from './context_inspect'
 export { skillListTool } from './skill_list'
 export { configPatchTool } from './config_patch'
 export { configGetTool } from './config_get'
+export { manageAgentTool } from './manage-agent'
+export { delegateToAgentTool } from './delegate-to-agent'
+export { taskPlanTool } from './task-plan'
 
 /**
  * 所有内置工具
@@ -67,6 +73,10 @@ export { configGetTool } from './config_get'
  *   --- 配置 ---
  *   config_get      — 查看应用配置，低风险
  *   config_patch    — 修改应用配置，中风险
+ *   --- Agent 管理 ---
+ *   manage_agent        — Agent 定义 CRUD，中风险
+ *   delegate_to_agent   — 委托子任务给专业 Agent，中风险
+ *   task_plan           — 任务计划管理，低风险
  */
 export const builtinTools: ToolDefinition[] = [
   readTool,
@@ -82,5 +92,8 @@ export const builtinTools: ToolDefinition[] = [
   contextInspectTool,
   skillListTool,
   configGetTool,
-  configPatchTool
+  configPatchTool,
+  manageAgentTool,
+  delegateToAgentTool,
+  taskPlanTool
 ]

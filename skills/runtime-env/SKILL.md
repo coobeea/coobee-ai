@@ -41,6 +41,8 @@ description: 描述 Agent 运行时环境的目录结构、路径约定和可用
 │   ├── coobee.json5                  # 主配置文件
 │   ├── secrets.json5                 # API Key 密钥配置
 │   └── skills.json5                  # Skill 专属配置（API Key、参数等）
+├── agents/                           # Agent 定义存储
+│   └── {agent-id}.json              # 每个 Agent 一个 JSON 文件（由 manage_agent 工具管理）
 ├── memory/                           # 记忆存储
 │   ├── user/                         # 用户级记忆（跨 Agent 共享）
 │   │   └── *.json / *.md             # 偏好、长期经验、学习成果
@@ -61,7 +63,15 @@ description: 描述 Agent 运行时环境的目录结构、路径约定和可用
         ├── skills/                   # 你自己生成的 Skill
         ├── extensions/               # 你自己创建的 Extension
         ├── output/                   # 你的输出文件（报告、代码、文档等）
-        └── logs/                     # 运行日志
+        ├── logs/                     # 运行日志
+        └── tasks/                    # [多 Agent] 委托任务目录
+            └── {taskId}/             # 每个委托任务一个目录
+                ├── plan.md           # 任务计划（task_plan 工具写入）
+                ├── status.json       # 任务状态（task_plan 工具更新）
+                ├── agents/           # 子 Agent 工作目录
+                │   └── {agentId}/   # 子 Agent 完整工作空间
+                ├── results/          # 子 Agent 的汇总结果
+                └── experiences/      # 共享执行经验
 ```
 
 ---
@@ -73,15 +83,16 @@ description: 描述 Agent 运行时环境的目录结构、路径约定和可用
 
 ### 目录用途
 
-| 子目录        | 用途         | 说明                                               |
-| ------------- | ------------ | -------------------------------------------------- |
-| `sessions/`   | 会话持久化   | 系统自动管理，通常无需手动操作                     |
-| `contexts/`   | 上下文快照   | 系统自动记录每次 LLM 调用的输入配置和输出结果      |
-| `events/`     | 事件记录     | 系统自动记录所有流式事件（JSONL 格式，完整时间线） |
-| `skills/`     | 自生成 Skill | 你可以在此创建新的 Skill 供后续使用                |
-| `extensions/` | 自创建扩展   | 你可以在此创建新的 Extension（会被热加载）         |
-| `output/`     | 输出文件     | 生成的代码、报告、文档等放在这里                   |
-| `logs/`       | 运行日志     | 执行过程的日志记录                                 |
+| 子目录        | 用途         | 说明                                                       |
+| ------------- | ------------ | ---------------------------------------------------------- |
+| `sessions/`   | 会话持久化   | 系统自动管理，通常无需手动操作                             |
+| `contexts/`   | 上下文快照   | 系统自动记录每次 LLM 调用的输入配置和输出结果              |
+| `events/`     | 事件记录     | 系统自动记录所有流式事件（JSONL 格式，完整时间线）         |
+| `skills/`     | 自生成 Skill | 你可以在此创建新的 Skill 供后续使用                        |
+| `extensions/` | 自创建扩展   | 你可以在此创建新的 Extension（会被热加载）                 |
+| `output/`     | 输出文件     | 生成的代码、报告、文档等放在这里                           |
+| `logs/`       | 运行日志     | 执行过程的日志记录                                         |
+| `tasks/`      | 委托任务     | 多 Agent 委托时的任务目录（task_plan + delegate_to_agent） |
 
 ### 文件操作建议
 

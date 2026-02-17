@@ -40,10 +40,21 @@ export interface PendingApproval {
  * 解决了旧模型（content/thinking/toolCalls 独立字段）丢失时序的问题。
  * 事件到达时按顺序 push 到 blocks 数组，模板按数组顺序渲染即可保持时序。
  */
+/** Agent 委托信息 */
+export interface DelegateInfo {
+  agentId: string
+  agentName?: string
+  task?: string
+  status: 'running' | 'done'
+  output?: string
+  duration?: number
+}
+
 export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'thinking'; text: string }
   | { type: 'tool'; tool: ToolCallInfo }
+  | { type: 'delegate'; delegate: DelegateInfo }
 
 /** 对话消息 */
 export interface ChatMessage {
@@ -243,6 +254,36 @@ export const useChatStore = defineStore('chat', () => {
         isStreaming.value = true
         break
 
+      case 'delegate': {
+        if (!assistantMsg) {
+          assistantMsg = createAssistantMessage()
+        }
+        const action = msg.data?.action as string | undefined
+        if (action === 'start') {
+          assistantMsg.blocks.push({
+            type: 'delegate',
+            delegate: {
+              agentId: (msg.data?.agentId as string) || 'unknown',
+              agentName: msg.data?.agentName as string | undefined,
+              task: msg.data?.task as string | undefined,
+              status: 'running'
+            }
+          })
+        } else if (action === 'done') {
+          // 找到最后一个 running 的 delegate 块并更新
+          for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
+            const block = assistantMsg.blocks[i]
+            if (block.type === 'delegate' && block.delegate.status === 'running') {
+              block.delegate.status = 'done'
+              block.delegate.output = msg.content || undefined
+              block.delegate.duration = msg.data?.duration as number | undefined
+              break
+            }
+          }
+        }
+        break
+      }
+
       default:
         console.log(`[chatStore] Unhandled stream message type: ${msg.type}`, msg)
         break
@@ -271,13 +312,27 @@ export const useChatStore = defineStore('chat', () => {
     })
 
     try {
+      // 检查是否有选中的 Agent
+      let agentId: string | undefined
+      try {
+        const { useAgentsStore } = await import('./agents')
+        const agentsStore = useAgentsStore()
+        agentId = agentsStore.selectedAgentId ?? undefined
+      } catch {
+        // agents store 未初始化时忽略
+      }
+
       // 通过 Gateway RPC 调用 chat.send
       const result = await gateway.request<{
         sessionId: string
         status: string
         error?: string
         queuePosition?: number
-      }>('chat.send', { message: text, sessionId: sessionId.value })
+      }>('chat.send', {
+        message: text,
+        sessionId: sessionId.value,
+        ...(agentId ? { agentId } : {})
+      })
 
       if (result) {
         const { sessionId: sid, status, error } = result

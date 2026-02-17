@@ -22,6 +22,7 @@
  *   tool:start   → tool_call
  *   tool:done    → tool_result
  *   handoff:*    → handoff
+ *   delegate:*   → delegate
  *   hitl:*       → hitl
  *   run:start       → start
  *   run:done        → done
@@ -35,6 +36,7 @@ export type StreamMessageType =
   | 'tool_call'
   | 'tool_result'
   | 'handoff'
+  | 'delegate'
   | 'hitl'
   | 'agent_updated'
   | 'start'

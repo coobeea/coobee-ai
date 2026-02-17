@@ -345,6 +345,9 @@ export type StreamChunkType =
   // ⑨ compression: Session 压缩
   | 'compression:start' // 压缩开始
   | 'compression:done' // 压缩完成（含统计信息）
+  // ⑩ delegate: 子 Agent 委托
+  | 'delegate:start' // 委托开始
+  | 'delegate:done' // 委托完成
 
 /**
  * StreamChunk 额外数据（联合类型，根据 StreamChunkType 变化）

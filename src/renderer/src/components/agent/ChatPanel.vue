@@ -335,6 +335,61 @@ onMounted(() => {
                     </div>
                   </div>
                 </div>
+
+                <!-- delegate block -->
+                <div
+                  v-else-if="block.type === 'delegate'"
+                  class="overflow-hidden rounded-md border text-[11px] shadow-sm"
+                  :class="{
+                    'border-violet-200': block.delegate.status === 'running',
+                    'border-violet-300': block.delegate.status === 'done'
+                  }"
+                >
+                  <div
+                    class="flex items-center gap-1.5 px-2 py-1"
+                    :class="{
+                      'bg-violet-50': block.delegate.status === 'running',
+                      'bg-violet-50/50': block.delegate.status === 'done'
+                    }"
+                  >
+                    <span class="i-carbon-bot inline-block h-3 w-3 text-violet-500"></span>
+                    <span class="text-[10px] font-semibold text-violet-700">
+                      {{ block.delegate.agentName || block.delegate.agentId }}
+                    </span>
+                    <span class="flex-1"></span>
+                    <span
+                      class="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                      :class="{
+                        'bg-violet-100 text-violet-600': block.delegate.status === 'running',
+                        'bg-violet-100 text-violet-700': block.delegate.status === 'done'
+                      }"
+                    >
+                      {{
+                        block.delegate.status === 'running'
+                          ? '委托中...'
+                          : `完成${block.delegate.duration ? ` (${Math.round(block.delegate.duration / 1000)}s)` : ''}`
+                      }}
+                    </span>
+                  </div>
+                  <div
+                    v-if="block.delegate.task"
+                    class="border-t border-violet-100 bg-white px-2 py-1"
+                  >
+                    <p class="text-[10px] text-gray-500">
+                      {{ block.delegate.task }}
+                    </p>
+                  </div>
+                  <div
+                    v-if="block.delegate.output && block.delegate.status === 'done'"
+                    class="border-t border-violet-100 px-2 py-1"
+                  >
+                    <div
+                      class="max-h-20 overflow-y-auto rounded bg-white px-1.5 py-1 font-mono text-[10px] text-gray-500"
+                    >
+                      {{ block.delegate.output }}
+                    </div>
+                  </div>
+                </div>
               </template>
 
               <!-- 等待中（streaming 且无内容块） -->

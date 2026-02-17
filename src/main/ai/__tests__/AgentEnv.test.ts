@@ -101,6 +101,7 @@ describe('AgentEnv', () => {
         appVersion: '1.2.3',
         workspace: '/mock/workspace',
         sessionId: 'session-123',
+        tasksDir: '/mock/workspace/tasks',
         userHome: '/mock/.home',
         systemHome: '/Users/mock',
         temp: '/tmp/mock',
@@ -113,7 +114,11 @@ describe('AgentEnv', () => {
         userExtensionsDir: '/mock/.home/extensions',
         loadedExtensions: [],
         memoryDir: '/mock/.home/memory',
-        availableTools: ['read', 'write', 'exec']
+        availableTools: ['read', 'write', 'exec'],
+        sandboxMode: 'path-only',
+        execApproval: 'auto',
+        defaultModel: 'unknown',
+        thinkingLevel: 'medium'
       })
     })
 
@@ -242,6 +247,7 @@ describe('AgentEnv', () => {
       appVersion: '1.0.0',
       workspace: '/home/test/workspaces/session-1',
       sessionId: 'session-1',
+      tasksDir: '/home/test/workspaces/session-1/tasks',
       userHome: '/home/test',
       systemHome: '/Users/test',
       temp: '/tmp',

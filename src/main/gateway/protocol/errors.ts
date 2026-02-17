@@ -21,6 +21,7 @@ export enum GatewayErrorCode {
   INVALID_PARAMS = 2002,
 
   // 3xxx 业务错误
+  NOT_FOUND = 3000,
   SESSION_BUSY = 3001,
   TIMEOUT = 3002,
   INTERNAL_ERROR = 3003,
@@ -37,6 +38,7 @@ const ERROR_MESSAGES: Record<GatewayErrorCode, string> = {
   [GatewayErrorCode.UNKNOWN_MESSAGE_TYPE]: 'Unknown message type',
   [GatewayErrorCode.METHOD_NOT_FOUND]: 'Method not found',
   [GatewayErrorCode.INVALID_PARAMS]: 'Invalid parameters',
+  [GatewayErrorCode.NOT_FOUND]: 'Resource not found',
   [GatewayErrorCode.SESSION_BUSY]: 'Session is busy',
   [GatewayErrorCode.TIMEOUT]: 'Request timeout',
   [GatewayErrorCode.INTERNAL_ERROR]: 'Internal error',
