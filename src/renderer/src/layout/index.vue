@@ -13,9 +13,13 @@
  *   │ 导航菜单  │                            │
  *   │ 设置     │                            │
  *   └──────────┴────────────────────────────┘
+ *
+ * 全局悬浮组件：
+ *   - CopilotBubble：应用管家悬浮气泡（右下角，所有页面可见）
  */
 
 import Sidebar from './Sidebar.vue';
+import CopilotBubble from '@/components/copilot/CopilotBubble.vue';
 </script>
 
 <template>
@@ -27,5 +31,8 @@ import Sidebar from './Sidebar.vue';
     <main class="min-w-0 flex-1">
       <router-view />
     </main>
+
+    <!-- 全局悬浮：应用管家气泡 -->
+    <CopilotBubble />
   </div>
 </template>
