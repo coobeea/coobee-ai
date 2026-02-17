@@ -154,9 +154,9 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
       sandboxMode = security?.sandbox?.mode ?? 'path-only';
       execApproval = security?.approvals?.exec ?? 'auto';
 
-      const agents = configStoreInstance.get('agents');
-      defaultModel = agents?.defaults?.model?.primary ?? 'unknown';
-      thinkingLevel = agents?.defaults?.thinkingLevel ?? 'medium';
+      const models = configStoreInstance.get('models');
+      defaultModel = models?.defaults?.model?.primary ?? 'unknown';
+      thinkingLevel = models?.defaults?.thinkingLevel ?? 'medium';
     }
   } catch {
     // ConfigStore 未初始化时使用默认值

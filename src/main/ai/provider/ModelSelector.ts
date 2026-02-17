@@ -99,7 +99,7 @@ export class ModelSelector {
     }
 
     // Level 3: 全局默认
-    const globalDefault = this.config.agents?.defaults?.model?.primary;
+    const globalDefault = this.config.models?.defaults?.model?.primary;
     if (globalDefault) {
       source = 'global';
       const ref = parseModelRef(globalDefault);
@@ -135,7 +135,7 @@ export class ModelSelector {
     const primaryStr = `${primary.provider}/${primary.model}`;
 
     // 从全局配置获取 fallbacks
-    const fallbacks = this.config.agents?.defaults?.model?.fallbacks ?? [];
+    const fallbacks = this.config.models?.defaults?.model?.fallbacks ?? [];
 
     // 过滤掉与 primary 相同的
     const filteredFallbacks = fallbacks.filter((f) => f !== primaryStr);

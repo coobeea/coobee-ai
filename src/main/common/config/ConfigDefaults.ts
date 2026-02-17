@@ -10,9 +10,7 @@ import type { CoobeeConfig } from './schema';
 /** 完整的默认配置 */
 export const DEFAULT_CONFIG: CoobeeConfig = {
   models: {
-    providers: {}
-  },
-  agents: {
+    providers: {},
     defaults: {
       model: undefined
     }

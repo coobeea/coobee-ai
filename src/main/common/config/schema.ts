@@ -83,12 +83,7 @@ export const QueueSettingsSchema = z.object({
 export const CoobeeConfigSchema = z.object({
   models: z
     .object({
-      providers: z.record(z.string(), ProviderConfigSchema).optional()
-    })
-    .optional(),
-
-  agents: z
-    .object({
+      providers: z.record(z.string(), ProviderConfigSchema).optional(),
       defaults: z
         .object({
           model: ModelSelectionSchema.optional(),

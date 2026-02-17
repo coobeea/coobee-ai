@@ -10,10 +10,10 @@
  *
  * 分类：Configuration | 风险：低（只读）
  */
-import JSON5 from 'json5'
-import { z } from 'zod'
-import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types'
-import { ToolCategory } from '../types'
+import JSON5 from 'json5';
+import { z } from 'zod';
+import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types';
+import { ToolCategory } from '../types';
 
 export const configGetTool: ToolDefinition = {
   name: 'config_get',
@@ -29,83 +29,81 @@ export const configGetTool: ToolDefinition = {
       .string()
       .optional()
       .describe(
-        'Config section to view: "models", "agents", "messages", "tools", "security", "ui", "logging". ' +
+        'Config section to view: "models", "messages", "tools", "security", "ui", "logging". ' +
           'Omit to view all sections.'
       )
   }),
 
-  execute: async function* (
-    params: Record<string, unknown>
-  ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
-    const key = params.key as string | undefined
-    const startTime = Date.now()
+  execute: async function* (params: Record<string, unknown>): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
+    const key = params.key as string | undefined;
+    const startTime = Date.now();
 
-    yield { type: 'progress', content: 'Reading configuration...', percentage: 0 }
+    yield { type: 'progress', content: 'Reading configuration...', percentage: 0 };
 
     // 获取 ConfigStore 实例
-    let configStore: import('@main/common/config/ConfigStore').ConfigStore
+    let configStore: import('@main/common/config/ConfigStore').ConfigStore;
     try {
-      const { configStoreInstance } = await import('@main/common/config/ConfigStore')
+      const { configStoreInstance } = await import('@main/common/config/ConfigStore');
       if (!configStoreInstance) {
         return {
           success: false,
           llmContent: 'Error: ConfigStore not initialized.',
           error: { code: 'NOT_INITIALIZED', message: 'ConfigStore instance not available' }
-        }
+        };
       }
-      configStore = configStoreInstance
+      configStore = configStoreInstance;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = err instanceof Error ? err.message : String(err);
       return {
         success: false,
         llmContent: `Error: Failed to load ConfigStore: ${msg}`,
         error: { code: 'IMPORT_ERROR', message: msg }
-      }
+      };
     }
 
-    yield { type: 'progress', content: 'Formatting...', percentage: 50 }
+    yield { type: 'progress', content: 'Formatting...', percentage: 50 };
 
     try {
-      let result: unknown
+      let result: unknown;
 
       if (key) {
-        const validKeys = ['models', 'agents', 'messages', 'tools', 'security', 'ui', 'logging']
+        const validKeys = ['models', 'messages', 'tools', 'security', 'ui', 'logging'];
         if (!validKeys.includes(key)) {
           return {
             success: false,
             llmContent: `Error: Unknown config key "${key}". Valid keys: ${validKeys.join(', ')}`,
             error: { code: 'INVALID_KEY', message: `Unknown key: ${key}` }
-          }
+          };
         }
-        result = configStore.get(key as keyof import('@main/common/config/schema').CoobeeConfig)
+        result = configStore.get(key as keyof import('@main/common/config/schema').CoobeeConfig);
       } else {
-        result = configStore.getAll()
+        result = configStore.getAll();
       }
 
       // 脱敏 API Key
-      const sanitized = maskApiKeys(result)
-      const formatted = JSON5.stringify(sanitized, null, 2)
+      const sanitized = maskApiKeys(result);
+      const formatted = JSON5.stringify(sanitized, null, 2);
 
-      const label = key ? `config.${key}` : 'config (all sections)'
-      const summary = `Current ${label}:\n\n${formatted}`
+      const label = key ? `config.${key}` : 'config (all sections)';
+      const summary = `Current ${label}:\n\n${formatted}`;
 
-      yield { type: 'output', content: summary }
+      yield { type: 'output', content: summary };
 
       return {
         success: true,
         llmContent: summary,
         metadata: { startTime, endTime: Date.now(), duration: Date.now() - startTime }
-      }
+      };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = err instanceof Error ? err.message : String(err);
       return {
         success: false,
         llmContent: `Error: Failed to read config: ${msg}`,
         error: { code: 'READ_FAILED', message: msg }
-      }
+      };
     }
   }
-}
+};
 
 /**
  * 递归脱敏 API Key
@@ -113,22 +111,22 @@ export const configGetTool: ToolDefinition = {
  * 将所有名为 apiKey 的字段值替换为 ****，防止泄漏。
  */
 function maskApiKeys(obj: unknown): unknown {
-  if (obj === null || obj === undefined) return obj
-  if (typeof obj !== 'object') return obj
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
 
   if (Array.isArray(obj)) {
-    return obj.map(maskApiKeys)
+    return obj.map(maskApiKeys);
   }
 
-  const result: Record<string, unknown> = {}
+  const result: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
     if (k === 'apiKey' && typeof v === 'string' && v.length > 0) {
-      result[k] = '****'
+      result[k] = '****';
     } else if (typeof v === 'object' && v !== null) {
-      result[k] = maskApiKeys(v)
+      result[k] = maskApiKeys(v);
     } else {
-      result[k] = v
+      result[k] = v;
     }
   }
-  return result
+  return result;
 }

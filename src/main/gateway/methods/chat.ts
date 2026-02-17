@@ -14,32 +14,32 @@
  *   chat.abort — 中止当前会话（预留）
  */
 
-import { log } from '@main/common/logger'
-import { agentExecutor } from '@main/ai/AgentExecutor'
-import { builtinTools } from '@main/ai/tools'
-import { ToolRegistry } from '@main/ai/tools/registry'
-import { resolveApiKey } from '@main/ai/provider/ApiKeyResolver'
-import { configStoreInstance } from '@main/common/config/ConfigStore'
-import { AgentStore } from '@main/ai/agents/AgentStore'
-import type { AgentDefinition } from '@main/ai/agents/types'
-import { GatewayErrorCode, GatewayMethodError } from '../protocol'
-import type { MethodGroup } from '../protocol'
-import type { AgentMode } from '@main/ai/runtime/types'
+import { log } from '@main/common/logger';
+import { agentExecutor } from '@main/ai/AgentExecutor';
+import { builtinTools } from '@main/ai/tools';
+import { ToolRegistry } from '@main/ai/tools/registry';
+import { resolveApiKey } from '@main/ai/provider/ApiKeyResolver';
+import { configStoreInstance } from '@main/common/config/ConfigStore';
+import { AgentStore } from '@main/ai/agents/AgentStore';
+import type { AgentDefinition } from '@main/ai/agents/types';
+import { GatewayErrorCode, GatewayMethodError } from '../protocol';
+import type { MethodGroup } from '../protocol';
+import type { AgentMode } from '@main/ai/runtime/types';
 
 /** Chat 模式禁用的工具名称列表 */
-const CHAT_MODE_BLOCKED_TOOLS = new Set(['exec'])
+const CHAT_MODE_BLOCKED_TOOLS = new Set(['exec']);
 
 /** 默认 Chat 模式指令（有文件工具，但无脚本执行） */
 const CHAT_INSTRUCTIONS =
-  '你是一个友好、专业的 AI 助手。你可以读写文件来辅助回答问题，但不能执行脚本命令。请用中文回答用户的问题。'
+  '你是一个友好、专业的 AI 助手。你可以读写文件来辅助回答问题，但不能执行脚本命令。请用中文回答用户的问题。';
 
 /** 默认 Agent 模式指令（完整，有工具能力） */
 const AGENT_INSTRUCTIONS =
-  '你是一个友好、专业的 AI 助手。你拥有文件操作、命令执行、记忆管理等工具。请用中文回答用户的问题，必要时使用工具完成任务。'
+  '你是一个友好、专业的 AI 助手。你拥有文件操作、命令执行、记忆管理等工具。请用中文回答用户的问题，必要时使用工具完成任务。';
 
 /** 生成 session ID */
 function generateSessionId(): string {
-  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**
@@ -55,31 +55,31 @@ function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.pi
     .piMono()
     .name(agentMode === 'chat' ? 'chat-assistant' : 'chat-agent')
     .mode(agentMode)
-    .sessionMode('file')
+    .sessionMode('file');
 
   // 合并 builtin + Extension 工具（Extension 可覆盖同名 builtin）
-  const extensionTools = ToolRegistry.getInstance().getAll()
-  const toolMap = new Map(builtinTools.map((t) => [t.name, t]))
+  const extensionTools = ToolRegistry.getInstance().getAll();
+  const toolMap = new Map(builtinTools.map((t) => [t.name, t]));
   for (const ext of extensionTools) {
-    toolMap.set(ext.name, ext)
+    toolMap.set(ext.name, ext);
   }
-  const allTools = Array.from(toolMap.values())
+  const allTools = Array.from(toolMap.values());
 
   if (agentMode === 'agent') {
-    builder.instructions(AGENT_INSTRUCTIONS).tools(allTools)
+    builder.instructions(AGENT_INSTRUCTIONS).tools(allTools);
   } else {
     // Chat 模式：加载工具但排除 exec（脚本执行）
-    const chatTools = allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name))
-    builder.instructions(CHAT_INSTRUCTIONS).tools(chatTools)
+    const chatTools = allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name));
+    builder.instructions(CHAT_INSTRUCTIONS).tools(chatTools);
   }
 
   // 尝试从 Provider 系统获取模型配置
-  applyProviderConfig(builder)
+  applyProviderConfig(builder);
 
   // 从配置或默认值设置思维链级别
-  applyThinkingLevel(builder)
+  applyThinkingLevel(builder);
 
-  return builder
+  return builder;
 }
 
 /**
@@ -89,19 +89,19 @@ function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.pi
  */
 function applyProviderConfig(builder: ReturnType<typeof agentExecutor.piMono>): void {
   try {
-    const providerSystem = agentExecutor.getProviderSystem?.()
-    if (!providerSystem) return
+    const providerSystem = agentExecutor.getProviderSystem?.();
+    if (!providerSystem) return;
 
-    const { selector, registry } = providerSystem
-    const ref = selector.resolve()
-    const provider = registry.get(ref.provider)
-    if (!provider) return
+    const { selector, registry } = providerSystem;
+    const ref = selector.resolve();
+    const provider = registry.get(ref.provider);
+    if (!provider) return;
 
     // 解析 API Key
-    const apiKey = resolveApiKey(provider.apiKey, provider.id)
-    if (!apiKey) return
+    const apiKey = resolveApiKey(provider.apiKey, provider.id);
+    if (!apiKey) return;
 
-    builder.fromProviderConfig(provider, ref.model)
+    builder.fromProviderConfig(provider, ref.model);
   } catch {
     // Provider 系统未就绪，静默回退到默认配置
   }
@@ -110,20 +110,20 @@ function applyProviderConfig(builder: ReturnType<typeof agentExecutor.piMono>): 
 /**
  * 从 coobee.json5 配置注入思维链级别
  *
- * 读取 agents.defaults.thinkingLevel 配置项，默认 'medium'。
+ * 读取 models.defaults.thinkingLevel 配置项，默认 'medium'。
  */
 function applyThinkingLevel(builder: ReturnType<typeof agentExecutor.piMono>): void {
   try {
-    const config = configStoreInstance?.getAll?.()
-    const level = config?.agents?.defaults?.thinkingLevel
+    const config = configStoreInstance?.getAll?.();
+    const level = config?.models?.defaults?.thinkingLevel;
     if (level) {
-      builder.thinkingLevel(level)
-      return
+      builder.thinkingLevel(level);
+      return;
     }
   } catch {
     // 静默回退
   }
-  builder.thinkingLevel('medium')
+  builder.thinkingLevel('medium');
 }
 
 /**
@@ -141,50 +141,50 @@ function createBuilderFromDefinition(
     .name(def.name || def.id)
     .mode(agentMode)
     .sessionMode('file')
-    .instructions(def.instructions)
+    .instructions(def.instructions);
 
   // 解析工具集
-  const extensionTools = ToolRegistry.getInstance().getAll()
-  const toolMap = new Map(builtinTools.map((t) => [t.name, t]))
+  const extensionTools = ToolRegistry.getInstance().getAll();
+  const toolMap = new Map(builtinTools.map((t) => [t.name, t]));
   for (const ext of extensionTools) {
-    toolMap.set(ext.name, ext)
+    toolMap.set(ext.name, ext);
   }
 
   if (def.tools && def.tools.length > 0) {
     // Agent 定义中指定了工具列表 → 只加载指定的工具
     const selectedTools = def.tools
       .map((name) => toolMap.get(name))
-      .filter((t): t is NonNullable<typeof t> => t !== undefined)
-    builder.tools(selectedTools)
+      .filter((t): t is NonNullable<typeof t> => t !== undefined);
+    builder.tools(selectedTools);
   } else {
     // 未指定工具 → 继承全部工具（与默认 Agent 相同）
-    const allTools = Array.from(toolMap.values())
+    const allTools = Array.from(toolMap.values());
     if (agentMode === 'chat') {
-      builder.tools(allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name)))
+      builder.tools(allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name)));
     } else {
-      builder.tools(allTools)
+      builder.tools(allTools);
     }
   }
 
   // 模型：Agent 定义优先，否则走 Provider 系统
   if (def.model) {
-    builder.model(def.model)
+    builder.model(def.model);
   } else {
-    applyProviderConfig(builder)
+    applyProviderConfig(builder);
   }
 
   // 思维链：Agent 定义优先，否则走全局配置
   if (def.thinkingLevel) {
-    builder.thinkingLevel(def.thinkingLevel)
+    builder.thinkingLevel(def.thinkingLevel);
   } else {
-    applyThinkingLevel(builder)
+    applyThinkingLevel(builder);
   }
 
-  return builder
+  return builder;
 }
 
 // 注册 Builder 工厂，供 Pipeline executor 使用
-agentExecutor.setBuilderFactory((mode) => createBuilder(mode))
+agentExecutor.setBuilderFactory((mode) => createBuilder(mode));
 
 export const chatMethods: MethodGroup = {
   namespace: 'chat',
@@ -196,14 +196,14 @@ export const chatMethods: MethodGroup = {
         mode = 'agent',
         agentId
       } = params as {
-        message?: string
-        sessionId?: string
-        mode?: AgentMode
-        agentId?: string
-      }
+        message?: string;
+        sessionId?: string;
+        mode?: AgentMode;
+        agentId?: string;
+      };
 
       if (!message) {
-        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'message is required')
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'message is required');
       }
 
       // 校验 mode 参数
@@ -211,51 +211,48 @@ export const chatMethods: MethodGroup = {
         throw new GatewayMethodError(
           GatewayErrorCode.INVALID_PARAMS,
           `Invalid mode "${mode}". Must be "chat" or "agent".`
-        )
+        );
       }
 
-      const sid = sessionId || generateSessionId()
-      log.info(`[chat.send] sessionId=${sid}, mode=${mode}${agentId ? `, agentId=${agentId}` : ''}`)
+      const sid = sessionId || generateSessionId();
+      log.info(`[chat.send] sessionId=${sid}, mode=${mode}${agentId ? `, agentId=${agentId}` : ''}`);
 
       try {
         // 如果指定了 agentId，从 AgentStore 加载定义并创建 Builder
-        let agentDef: AgentDefinition | null = null
+        let agentDef: AgentDefinition | null = null;
         if (agentId) {
-          const store = await AgentStore.getInstance()
-          agentDef = await store.get(agentId)
+          const store = await AgentStore.getInstance();
+          agentDef = await store.get(agentId);
           if (!agentDef) {
-            throw new GatewayMethodError(
-              GatewayErrorCode.INVALID_PARAMS,
-              `Agent "${agentId}" not found`
-            )
+            throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, `Agent "${agentId}" not found`);
           }
         }
 
         // 优先使用管线（支持排队/合并/中断）
         // 注意：agentId 场景暂不走管线，直接用 submit
         if (!agentDef) {
-          const pipelineResult = agentExecutor.submitViaPipeline(sid, message, mode)
+          const pipelineResult = agentExecutor.submitViaPipeline(sid, message, mode);
           if (pipelineResult) {
             return {
               sessionId: sid,
               status: pipelineResult.status,
               mode,
               queuePosition: pipelineResult.queuePosition
-            }
+            };
           }
         }
 
         // 创建 Builder：有 agentDef 用自定义定义，否则用默认
-        const builder = agentDef ? createBuilderFromDefinition(agentDef, mode) : createBuilder(mode)
+        const builder = agentDef ? createBuilderFromDefinition(agentDef, mode) : createBuilder(mode);
 
         const result = agentExecutor.submit({
           sessionId: sid,
           message,
           builder
-        })
+        });
 
         if (result.status === 'busy') {
-          throw new GatewayMethodError(GatewayErrorCode.SESSION_BUSY, '当前会话正在处理中')
+          throw new GatewayMethodError(GatewayErrorCode.SESSION_BUSY, '当前会话正在处理中');
         }
 
         return {
@@ -263,26 +260,26 @@ export const chatMethods: MethodGroup = {
           status: 'streaming',
           mode,
           ...(agentId ? { agentId } : {})
-        }
+        };
       } catch (error) {
-        if (error instanceof GatewayMethodError) throw error
-        const msg = error instanceof Error ? error.message : String(error)
-        log.error(`[chat.send] Failed: sessionId=${sid}`, error)
-        throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, msg)
+        if (error instanceof GatewayMethodError) throw error;
+        const msg = error instanceof Error ? error.message : String(error);
+        log.error(`[chat.send] Failed: sessionId=${sid}`, error);
+        throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, msg);
       }
     },
 
     abort: async (params) => {
-      const { sessionId } = params as { sessionId?: string }
+      const { sessionId } = params as { sessionId?: string };
 
       if (!sessionId) {
-        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'sessionId is required')
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'sessionId is required');
       }
 
-      log.info(`[chat.abort] sessionId=${sessionId}`)
-      const aborted = agentExecutor.abort(sessionId)
+      log.info(`[chat.abort] sessionId=${sessionId}`);
+      const aborted = agentExecutor.abort(sessionId);
 
-      return { sessionId, aborted }
+      return { sessionId, aborted };
     }
   }
-}
+};

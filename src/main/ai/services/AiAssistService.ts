@@ -134,7 +134,7 @@ function createAssistBuilder(instructions: string, needsTools: boolean): ReturnT
   // 思维链级别：轻量任务用 low
   try {
     const config = configStoreInstance?.getAll?.();
-    const level = config?.agents?.defaults?.thinkingLevel;
+    const level = config?.models?.defaults?.thinkingLevel;
     builder.thinkingLevel(level ?? 'low');
   } catch {
     builder.thinkingLevel('low');

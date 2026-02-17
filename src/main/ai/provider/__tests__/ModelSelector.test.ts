@@ -8,7 +8,7 @@ describe('ModelSelector', () => {
   let selector: ModelSelector;
 
   const config: CoobeeConfig = {
-    agents: {
+    models: {
       defaults: {
         model: {
           primary: 'aliyun/qwen3-max',
@@ -91,7 +91,7 @@ describe('ModelSelector', () => {
 
   it('should return undefined fallbacks when none available', () => {
     const noFallbackConfig: CoobeeConfig = {
-      agents: { defaults: { model: { primary: 'openai/gpt-4o' } } }
+      models: { defaults: { model: { primary: 'openai/gpt-4o' } } }
     };
     const sel = new ModelSelector(noFallbackConfig);
     const result = sel.resolveWithFallbacks();
@@ -102,7 +102,7 @@ describe('ModelSelector', () => {
 
   it('should update config for hot-reload', () => {
     const newConfig: CoobeeConfig = {
-      agents: { defaults: { model: { primary: 'anthropic/claude-sonnet-4' } } }
+      models: { defaults: { model: { primary: 'anthropic/claude-sonnet-4' } } }
     };
     selector.updateConfig(newConfig);
     const ref = selector.resolve();

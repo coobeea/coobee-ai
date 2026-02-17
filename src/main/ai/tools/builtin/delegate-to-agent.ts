@@ -26,21 +26,21 @@
  * 分类：Execute | 风险：中（启动子 Agent）
  */
 
-import fs from 'node:fs'
-import path from 'node:path'
-import { z } from 'zod'
-import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
-import { ToolCategory } from '../types'
-import { AgentStore } from '../../agents/AgentStore'
-import type { AgentDefinition } from '../../agents/types'
+import fs from 'node:fs';
+import path from 'node:path';
+import { z } from 'zod';
+import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types';
+import { ToolCategory } from '../types';
+import { AgentStore } from '../../agents/AgentStore';
+import type { AgentDefinition } from '../../agents/types';
 
 // ==================== 常量 ====================
 
 /** 子 Agent 默认最大轮次 */
-const DEFAULT_MAX_TURNS = 20
+const DEFAULT_MAX_TURNS = 20;
 
 /** 子 Agent 默认超时（5 分钟） */
-const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000
+const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * 子 Agent 禁用的工具集（防止递归嵌套）
@@ -52,7 +52,7 @@ const SUB_AGENT_BLOCKED_TOOLS = new Set([
   'delegate_to_agent', // 禁止递归委托
   'manage_agent', // 禁止在子 Agent 层级创建/修改 Agent
   'task_plan' // 计划管理由主 Agent 负责
-])
+]);
 
 // ==================== 参数 Schema ====================
 
@@ -73,16 +73,10 @@ const paramsSchema = z.object({
   context: z
     .string()
     .optional()
-    .describe(
-      'Additional context: file paths, prior results, constraints. ' +
-        'Will be appended to the task message.'
-    ),
+    .describe('Additional context: file paths, prior results, constraints. ' + 'Will be appended to the task message.'),
 
-  maxTurns: z
-    .number()
-    .optional()
-    .describe(`Max LLM turns for the sub-agent (default: ${DEFAULT_MAX_TURNS})`)
-})
+  maxTurns: z.number().optional().describe(`Max LLM turns for the sub-agent (default: ${DEFAULT_MAX_TURNS})`)
+});
 
 // ==================== 工具定义 ====================
 
@@ -102,52 +96,51 @@ export const delegateToAgentTool: ToolDefinition = {
     signal?: AbortSignal,
     execContext?: ToolExecutionContext
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
-    const agentId = params.agentId as string
-    const task = params.task as string
-    const taskId = (params.taskId as string) || `task-${Date.now()}`
-    const context = params.context as string | undefined
-    const maxTurns = (params.maxTurns as number) || DEFAULT_MAX_TURNS
+    const agentId = params.agentId as string;
+    const task = params.task as string;
+    const taskId = (params.taskId as string) || `task-${Date.now()}`;
+    const context = params.context as string | undefined;
+    const maxTurns = (params.maxTurns as number) || DEFAULT_MAX_TURNS;
 
     if (!agentId || !task) {
       return {
         success: false,
         error: { code: 'MISSING_PARAM', message: 'agentId and task are required' }
-      }
+      };
     }
 
     // 获取父 workspace 路径
-    const parentWorkspace = execContext?.workspaceRoot
+    const parentWorkspace = execContext?.workspaceRoot;
     if (!parentWorkspace) {
       return {
         success: false,
         error: {
           code: 'NO_WORKSPACE',
-          message:
-            'Cannot determine parent workspace. ToolExecutionContext.workspaceRoot is missing.'
+          message: 'Cannot determine parent workspace. ToolExecutionContext.workspaceRoot is missing.'
         }
-      }
+      };
     }
 
     // 1. 加载 Agent 定义
-    const store = await AgentStore.getInstance()
-    const agentDef = await store.get(agentId)
+    const store = await AgentStore.getInstance();
+    const agentDef = await store.get(agentId);
     if (!agentDef) {
       return {
         success: false,
         error: { code: 'NOT_FOUND', message: `Agent "${agentId}" not found` }
-      }
+      };
     }
 
     yield {
       type: 'progress',
       content: `Delegating to "${agentDef.name}" (${agentId}), taskId=${taskId}...`
-    }
+    };
 
     // 2. 创建任务目录结构
-    const taskDir = path.join(parentWorkspace, 'tasks', taskId)
-    const subAgentWorkspace = path.join(taskDir, 'agents', agentId)
-    const resultsDir = path.join(taskDir, 'results')
-    const experiencesDir = path.join(taskDir, 'experiences')
+    const taskDir = path.join(parentWorkspace, 'tasks', taskId);
+    const subAgentWorkspace = path.join(taskDir, 'agents', agentId);
+    const resultsDir = path.join(taskDir, 'results');
+    const experiencesDir = path.join(taskDir, 'experiences');
 
     ensureDirs([
       taskDir,
@@ -158,43 +151,36 @@ export const delegateToAgentTool: ToolDefinition = {
       path.join(subAgentWorkspace, 'output'),
       resultsDir,
       experiencesDir
-    ])
+    ]);
 
     // 3. 收集已有执行经验
-    const priorExperiences = collectExperiences(experiencesDir)
+    const priorExperiences = collectExperiences(experiencesDir);
 
     // 4. 组装消息（task + user context + 自动经验传递）
-    const messageParts = [task]
+    const messageParts = [task];
     if (context) {
-      messageParts.push(`\n--- Context ---\n${context}`)
+      messageParts.push(`\n--- Context ---\n${context}`);
     }
     if (priorExperiences) {
       messageParts.push(
         `\n--- Prior Experiences from Other Agents ---\n${priorExperiences}\n---\nPlease consider these experiences when executing your task.`
-      )
+      );
     }
-    const message = messageParts.join('\n')
+    const message = messageParts.join('\n');
 
     // 5. 创建临时运行时并执行
-    const startTime = Date.now()
+    const startTime = Date.now();
     try {
-      const result = await runSubAgent(
-        agentDef,
-        message,
-        maxTurns,
-        subAgentWorkspace,
-        experiencesDir,
-        signal
-      )
-      const duration = Date.now() - startTime
+      const result = await runSubAgent(agentDef, message, maxTurns, subAgentWorkspace, experiencesDir, signal);
+      const duration = Date.now() - startTime;
 
       yield {
         type: 'progress',
         content: `Agent "${agentDef.name}" completed in ${Math.round(duration / 1000)}s`
-      }
+      };
 
       // 6. 写入结果文件
-      const resultFile = path.join(resultsDir, `${agentId}.md`)
+      const resultFile = path.join(resultsDir, `${agentId}.md`);
       const resultContent = [
         `# Result: ${agentDef.name} (${agentId})`,
         '',
@@ -206,10 +192,10 @@ export const delegateToAgentTool: ToolDefinition = {
         '## Output',
         '',
         result.output || '(no output)'
-      ].join('\n')
-      fs.writeFileSync(resultFile, resultContent, 'utf-8')
+      ].join('\n');
+      fs.writeFileSync(resultFile, resultContent, 'utf-8');
 
-      const toolCallCount = result.toolCalls?.length ?? 0
+      const toolCallCount = result.toolCalls?.length ?? 0;
 
       return {
         success: true,
@@ -229,13 +215,13 @@ export const delegateToAgentTool: ToolDefinition = {
           toolCalls: toolCallCount,
           resultFile
         }
-      }
+      };
     } catch (err) {
-      const duration = Date.now() - startTime
-      const msg = err instanceof Error ? err.message : String(err)
+      const duration = Date.now() - startTime;
+      const msg = err instanceof Error ? err.message : String(err);
 
       // 即使失败也写入结果文件（记录失败信息）
-      const resultFile = path.join(resultsDir, `${agentId}.md`)
+      const resultFile = path.join(resultsDir, `${agentId}.md`);
       const failContent = [
         `# Result: ${agentDef.name} (${agentId}) — FAILED`,
         '',
@@ -246,9 +232,9 @@ export const delegateToAgentTool: ToolDefinition = {
         '## Failure Details',
         '',
         msg
-      ].join('\n')
+      ].join('\n');
       try {
-        fs.writeFileSync(resultFile, failContent, 'utf-8')
+        fs.writeFileSync(resultFile, failContent, 'utf-8');
       } catch {
         // 写文件失败不影响主流程
       }
@@ -257,10 +243,10 @@ export const delegateToAgentTool: ToolDefinition = {
         success: false,
         error: { code: 'DELEGATE_FAILED', message: `Agent "${agentId}" failed: ${msg}` },
         metadata: { agentId, taskId, duration }
-      }
+      };
     }
   }
-}
+};
 
 // ==================== 子 Agent 执行 ====================
 
@@ -281,9 +267,9 @@ async function runSubAgent(
   signal?: AbortSignal
 ): Promise<{ output: string; toolCalls?: Array<{ toolName: string }> }> {
   // 动态导入，避免循环依赖
-  const { agentExecutor } = await import('../../AgentExecutor')
-  const { builtinTools } = await import('../builtin')
-  const { ToolRegistry } = await import('../registry')
+  const { agentExecutor } = await import('../../AgentExecutor');
+  const { builtinTools } = await import('../builtin');
+  const { ToolRegistry } = await import('../registry');
 
   // 经验共享指令（追加到 Agent 的 instructions 后面）
   const experienceInstruction = [
@@ -295,9 +281,9 @@ async function runSubAgent(
     '- 经验内容应包括：问题描述、原因分析、解决方案（如有）',
     '- 你的输出文件请放在当前工作目录的 output/ 子目录下',
     '</sub_agent_context>'
-  ].join('\n')
+  ].join('\n');
 
-  const fullInstructions = agentDef.instructions + experienceInstruction
+  const fullInstructions = agentDef.instructions + experienceInstruction;
 
   // 创建 Builder
   const builder = agentExecutor
@@ -310,44 +296,42 @@ async function runSubAgent(
     // 手动设置子 Agent 的工作目录，不走 injectEnv 的顶级 workspace 创建
     .sessionDir(path.join(subAgentWorkspace, 'sessions'))
     .workspaceRoot(subAgentWorkspace)
-    .contextDir(path.join(subAgentWorkspace, 'contexts'))
+    .contextDir(path.join(subAgentWorkspace, 'contexts'));
 
   // 工具集（过滤掉子 Agent 禁用的工具，防止递归嵌套）
-  const extensionTools = ToolRegistry.getInstance().getAll()
-  const toolMap = new Map(builtinTools.map((t) => [t.name, t]))
+  const extensionTools = ToolRegistry.getInstance().getAll();
+  const toolMap = new Map(builtinTools.map((t) => [t.name, t]));
   for (const ext of extensionTools) {
-    toolMap.set(ext.name, ext)
+    toolMap.set(ext.name, ext);
   }
 
   if (agentDef.tools && agentDef.tools.length > 0) {
     const selectedTools = agentDef.tools
       .filter((name) => !SUB_AGENT_BLOCKED_TOOLS.has(name))
       .map((name) => toolMap.get(name))
-      .filter((t): t is NonNullable<typeof t> => t !== undefined)
-    builder.tools(selectedTools)
+      .filter((t): t is NonNullable<typeof t> => t !== undefined);
+    builder.tools(selectedTools);
   } else {
-    const allTools = Array.from(toolMap.values()).filter(
-      (t) => !SUB_AGENT_BLOCKED_TOOLS.has(t.name)
-    )
-    builder.tools(allTools)
+    const allTools = Array.from(toolMap.values()).filter((t) => !SUB_AGENT_BLOCKED_TOOLS.has(t.name));
+    builder.tools(allTools);
   }
 
   // 模型配置
   if (agentDef.model) {
-    builder.model(agentDef.model)
+    builder.model(agentDef.model);
   } else {
-    await applyProviderConfig(builder, agentExecutor)
+    await applyProviderConfig(builder, agentExecutor);
   }
 
   // 思维链
   if (agentDef.thinkingLevel) {
-    builder.thinkingLevel(agentDef.thinkingLevel)
+    builder.thinkingLevel(agentDef.thinkingLevel);
   } else {
-    await applyDefaultThinkingLevel(builder)
+    await applyDefaultThinkingLevel(builder);
   }
 
   // 生成临时 sessionId（用于 AgentExecutor 内部跟踪，不会创建顶级 workspace）
-  const subSessionId = `delegate-${agentDef.id}-${Date.now()}`
+  const subSessionId = `delegate-${agentDef.id}-${Date.now()}`;
 
   // 使用 submitAndWait 同步执行
   const result = await withTimeout(
@@ -358,12 +342,12 @@ async function runSubAgent(
       signal
     }),
     DEFAULT_TIMEOUT_MS
-  )
+  );
 
   return {
     output: result.output,
     toolCalls: result.toolCalls?.map((tc) => ({ toolName: tc.toolName }))
-  }
+  };
 }
 
 // ==================== 经验收集 ====================
@@ -374,22 +358,22 @@ async function runSubAgent(
  * @returns 合并后的经验文本，或 null（无经验）
  */
 function collectExperiences(experiencesDir: string): string | null {
-  if (!fs.existsSync(experiencesDir)) return null
+  if (!fs.existsSync(experiencesDir)) return null;
 
-  const files = fs.readdirSync(experiencesDir).filter((f) => f.endsWith('.md'))
-  if (files.length === 0) return null
+  const files = fs.readdirSync(experiencesDir).filter((f) => f.endsWith('.md'));
+  if (files.length === 0) return null;
 
-  const parts: string[] = []
+  const parts: string[] = [];
   for (const file of files) {
     try {
-      const content = fs.readFileSync(path.join(experiencesDir, file), 'utf-8')
-      parts.push(`### ${file}\n${content}`)
+      const content = fs.readFileSync(path.join(experiencesDir, file), 'utf-8');
+      parts.push(`### ${file}\n${content}`);
     } catch {
       // 读取失败跳过
     }
   }
 
-  return parts.length > 0 ? parts.join('\n\n') : null
+  return parts.length > 0 ? parts.join('\n\n') : null;
 }
 
 // ==================== 辅助函数 ====================
@@ -398,7 +382,7 @@ function collectExperiences(experiencesDir: string): string | null {
 function ensureDirs(dirs: string[]): void {
   for (const dir of dirs) {
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(dir, { recursive: true });
     }
   }
 }
@@ -408,19 +392,19 @@ async function applyProviderConfig(
   executor: typeof import('../../AgentExecutor').agentExecutor
 ): Promise<void> {
   try {
-    const providerSystem = executor.getProviderSystem?.()
-    if (!providerSystem) return
+    const providerSystem = executor.getProviderSystem?.();
+    if (!providerSystem) return;
 
-    const { selector, registry } = providerSystem
-    const ref = selector.resolve()
-    const provider = registry.get(ref.provider)
-    if (!provider) return
+    const { selector, registry } = providerSystem;
+    const ref = selector.resolve();
+    const provider = registry.get(ref.provider);
+    if (!provider) return;
 
-    const { resolveApiKey: resolve } = await import('../../provider/ApiKeyResolver')
-    const apiKey = resolve(provider.apiKey, provider.id)
-    if (!apiKey) return
+    const { resolveApiKey: resolve } = await import('../../provider/ApiKeyResolver');
+    const apiKey = resolve(provider.apiKey, provider.id);
+    if (!apiKey) return;
 
-    builder.fromProviderConfig(provider, ref.model)
+    builder.fromProviderConfig(provider, ref.model);
   } catch {
     // Provider 系统未就绪，静默回退
   }
@@ -430,31 +414,31 @@ async function applyDefaultThinkingLevel(
   builder: ReturnType<typeof import('../../AgentExecutor').agentExecutor.piMono>
 ): Promise<void> {
   try {
-    const { configStoreInstance } = await import('../../../common/config/ConfigStore')
-    const config = configStoreInstance?.getAll?.()
-    const level = config?.agents?.defaults?.thinkingLevel
+    const { configStoreInstance } = await import('../../../common/config/ConfigStore');
+    const config = configStoreInstance?.getAll?.();
+    const level = config?.models?.defaults?.thinkingLevel;
     if (level) {
-      builder.thinkingLevel(level)
-      return
+      builder.thinkingLevel(level);
+      return;
     }
   } catch {
     // 静默回退
   }
-  builder.thinkingLevel('medium')
+  builder.thinkingLevel('medium');
 }
 
 /** 带超时的 Promise 包装 */
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms)
+    const timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms);
     promise
       .then((v) => {
-        clearTimeout(timer)
-        resolve(v)
+        clearTimeout(timer);
+        resolve(v);
       })
       .catch((e) => {
-        clearTimeout(timer)
-        reject(e)
-      })
-  })
+        clearTimeout(timer);
+        reject(e);
+      });
+  });
 }
