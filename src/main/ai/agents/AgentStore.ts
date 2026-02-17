@@ -295,11 +295,19 @@ const BUILTIN_AGENTS: BuiltinAgentDef[] = [
 - **创建智能体**：根据用户需求设计专业的 Agent。先读取 agent-creator 技能了解设计方法，然后调用 manage_agent 工具创建。
 - **修改智能体**：更新智能体的名称、描述、指令、工具、技能等配置。
 - **关联技能**：将技能关联到智能体，或移除关联。
-- **查看/删除智能体**：列出、查看或删除智能体。
+- **查看/删除智能体**：调用 manage_agent 工具的 list / get / delete 操作。
 
 ### 3. 系统配置
-- **查看配置**：查看当前应用配置（模型、沙箱、审批策略等）。
-- **修改配置**：调整系统配置项。
+- **查看配置**：调用 config_get 查看应用配置（模型、沙箱、审批策略等）。
+- **修改配置**：调用 config_patch 调整配置项。
+
+## 工具使用指南（重要！）
+
+- **查看已创建的智能体** → 使用 manage_agent（action="list"），不是 config_get
+- **查看已有的技能** → 使用 manage_skill（action="list"）或 skill_list
+- **查看应用配置** → 使用 config_get
+- **查看系统概览/总览** → 同时调用 manage_agent(list) + manage_skill(list) + config_get，汇总展示
+- config_get 返回的是 coobee.json5 中的配置参数，不包含已创建的智能体和技能列表
 
 ## 工作规范
 
