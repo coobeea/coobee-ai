@@ -3,13 +3,15 @@
  * AgentView — 智能体主视图
  *
  * 两种状态：
- *   1. 未开始会话 → 显示智能体列表，选择后开始对话
+ *   1. 未开始会话 → 显示智能体列表 + AI 创建入口
  *   2. 会话进行中 → 三栏工作区（项目空间 | 工作台 | 对话）
  */
 
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { useChatStore } from '@/stores/chat';
 import { useAgentsStore } from '@/stores/agents';
+
+const isMac = navigator.platform?.includes('Mac') ?? false;
 import ProjectPanel from '@/components/agent/ProjectPanel.vue';
 import WorkbenchPanel from '@/components/agent/WorkbenchPanel.vue';
 import ChatPanel from '@/components/agent/ChatPanel.vue';
@@ -26,60 +28,42 @@ const agentsPanelCollapsed = ref(true);
 /** 是否已进入工作区 */
 const isInWorkspace = ref(false);
 
-/** 选中的工作目录 */
-const selectedDir = ref<string | null>(null);
-
 /** 是否处于工作状态 */
 const isActive = computed(() => isInWorkspace.value || chatStore.sessionId !== null);
 
-/** 是否显示创建表单 */
-const showCreateForm = ref(false);
-const newAgent = ref({ id: '', name: '', description: '', instructions: '' });
+/** AI 创建：用户需求输入 */
+const aiRequirement = ref('');
+const aiInputRef = ref<HTMLTextAreaElement | null>(null);
+
+/** 是否显示创建区域 */
+const showCreateArea = ref(false);
 
 onMounted(() => {
   agentsStore.fetchAgents();
 });
 
-async function selectDirectory(): Promise<void> {
-  try {
-    const result = await window.electron?.ipcRenderer.invoke('dialog:openDirectory');
-    if (result) {
-      selectedDir.value = result;
-    }
-  } catch (err) {
-    console.warn('[AgentView] 选择目录失败:', err);
-  }
-}
-
-function startSession(): void {
-  isInWorkspace.value = true;
-}
-
 function startNewSession(): void {
   chatStore.clearMessages();
   isInWorkspace.value = false;
-  selectedDir.value = null;
   agentsPanelCollapsed.value = true;
 }
 
-function toggleCreateForm(): void {
-  showCreateForm.value = !showCreateForm.value;
-  if (showCreateForm.value) {
-    newAgent.value = { id: '', name: '', description: '', instructions: '' };
+function toggleCreateArea(): void {
+  showCreateArea.value = !showCreateArea.value;
+  if (showCreateArea.value) {
+    aiRequirement.value = '';
+    agentsStore.aiCreateError = null;
+    nextTick(() => aiInputRef.value?.focus());
   }
 }
 
-async function handleCreate(): Promise<void> {
-  const a = newAgent.value;
-  if (!a.id.trim() || !a.name.trim() || !a.instructions.trim()) return;
-  const ok = await agentsStore.createAgent({
-    id: a.id.trim(),
-    name: a.name.trim(),
-    description: a.description.trim() || a.name.trim(),
-    instructions: a.instructions.trim()
-  });
+async function handleAiCreate(): Promise<void> {
+  const req = aiRequirement.value.trim();
+  if (!req || agentsStore.aiCreating) return;
+  const ok = await agentsStore.aiCreateAgent(req);
   if (ok) {
-    showCreateForm.value = false;
+    showCreateArea.value = false;
+    aiRequirement.value = '';
   }
 }
 
@@ -97,149 +81,167 @@ async function handleDelete(agentId: string): Promise<void> {
   confirmDeleteId.value = null;
   await agentsStore.deleteAgent(agentId);
 }
+
+function formatTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = now.getTime() - d.getTime();
+    if (diff < 60_000) return '刚刚';
+    if (diff < 3600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+    if (diff < 86400_000) return `${Math.floor(diff / 3600_000)} 小时前`;
+    if (diff < 2592000_000) return `${Math.floor(diff / 86400_000)} 天前`;
+    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
+}
 </script>
 
 <template>
-  <div class="flex h-full w-full flex-col" style="background: hsl(var(--background))">
+  <div class="agent-view">
     <!-- ========== 状态 1：智能体列表 ========== -->
-    <div v-if="!isActive" class="flex flex-1 overflow-hidden">
-      <!-- 主内容：智能体列表 -->
-      <div class="flex flex-1 flex-col">
-        <!-- 顶栏 -->
-        <div class="top-bar">
-          <h1 class="title">智能体</h1>
-          <div class="flex items-center gap-2">
-            <button
-              class="btn-ghost"
-              :class="{ '!text-primary !bg-primary/10': showCreateForm }"
-              @click="toggleCreateForm">
-              <span class="i-carbon-add inline-block h-3.5 w-3.5" />
-              <span>创建</span>
-            </button>
-            <button class="btn-ghost" @click="agentsStore.fetchAgents()">
-              <span class="i-carbon-renew inline-block h-3.5 w-3.5" :class="{ 'animate-spin': agentsStore.loading }" />
-            </button>
+    <div v-if="!isActive" class="landing">
+      <!-- 顶栏 -->
+      <header class="header">
+        <div class="header-left">
+          <div class="header-icon">
+            <span class="i-carbon-bot inline-block h-4 w-4" />
           </div>
+          <h1 class="header-title">智能体</h1>
+          <span v-if="agentsStore.agentCount > 0" class="header-count">
+            {{ agentsStore.agentCount }}
+          </span>
         </div>
-
-        <!-- 创建表单 -->
-        <div v-if="showCreateForm" class="create-form">
-          <div class="grid grid-cols-2 gap-2">
-            <input v-model="newAgent.id" placeholder="ID（如 code-reviewer）" class="form-input" />
-            <input v-model="newAgent.name" placeholder="名称" class="form-input" />
-          </div>
-          <input v-model="newAgent.description" placeholder="一句话描述（可选）" class="form-input" />
-          <textarea
-            v-model="newAgent.instructions"
-            placeholder="系统指令：定义角色、行为规范、输出格式..."
-            rows="3"
-            class="form-input resize-none"></textarea>
-          <div class="flex justify-end gap-2">
-            <button class="btn-ghost" @click="showCreateForm = false">取消</button>
-            <button
-              class="btn-primary"
-              :disabled="!newAgent.id.trim() || !newAgent.name.trim() || !newAgent.instructions.trim()"
-              @click="handleCreate">
-              创建智能体
-            </button>
-          </div>
+        <div class="header-right">
+          <button class="icon-btn" title="刷新" @click="agentsStore.fetchAgents()">
+            <span
+              class="i-carbon-renew inline-block h-[15px] w-[15px]"
+              :class="{ 'animate-spin': agentsStore.loading }" />
+          </button>
+          <button class="create-btn" :class="{ active: showCreateArea }" @click="toggleCreateArea">
+            <span class="i-carbon-add inline-block h-3.5 w-3.5" />
+            <span>新建</span>
+          </button>
         </div>
+      </header>
 
-        <!-- 列表区域 -->
-        <div class="flex-1 overflow-y-auto px-6 py-4">
-          <!-- 错误 -->
-          <div v-if="agentsStore.error" class="error-banner">
-            <span class="i-carbon-warning-alt inline-block h-4 w-4 shrink-0" />
-            <span>{{ agentsStore.error }}</span>
-            <button class="ml-auto text-xs underline" @click="agentsStore.fetchAgents()"> 重试 </button>
-          </div>
-
-          <!-- 加载中 -->
-          <div v-if="agentsStore.loading && agentsStore.agents.length === 0" class="empty-center">
-            <span class="i-carbon-renew inline-block h-6 w-6 animate-spin opacity-20" />
-            <p>加载中...</p>
-          </div>
-
-          <!-- 空状态 -->
-          <div v-else-if="agentsStore.agents.length === 0 && !agentsStore.loading" class="empty-center">
-            <div class="empty-icon">
-              <span class="i-carbon-bot inline-block h-8 w-8 opacity-30" />
+      <!-- AI 创建区域 -->
+      <Transition name="slide-down">
+        <div v-if="showCreateArea" class="create-section">
+          <div class="create-card" :class="{ focused: agentsStore.aiCreating }">
+            <div class="create-card-header">
+              <span class="i-carbon-watson inline-block h-4 w-4 create-ai-icon" />
+              <span class="create-card-label">AI 自动创建</span>
             </div>
-            <p class="empty-title">还没有智能体</p>
-            <p class="empty-desc"> 点击上方「创建」手动添加，或在对话中让 AI 自动生成 </p>
-            <button class="btn-primary mt-4" @click="toggleCreateForm">
-              <span class="i-carbon-add inline-block h-3.5 w-3.5" />
-              创建第一个智能体
-            </button>
-          </div>
-
-          <!-- 智能体网格 -->
-          <div v-else class="agent-grid">
-            <div
-              v-for="agent in agentsStore.agents"
-              :key="agent.id"
-              class="agent-card"
-              :class="{ selected: agentsStore.selectedAgentId === agent.id }"
-              @click="handleSelect(agent.id)">
-              <!-- 图标 -->
-              <div class="card-icon" :class="{ selected: agentsStore.selectedAgentId === agent.id }">
-                <span class="i-carbon-bot inline-block h-5 w-5" />
+            <textarea
+              ref="aiInputRef"
+              v-model="aiRequirement"
+              placeholder="描述你想要的智能体...&#10;例如：一个专业的代码审查助手，能检查代码质量和安全性"
+              rows="2"
+              class="create-input"
+              :disabled="agentsStore.aiCreating"
+              @keydown.meta.enter="handleAiCreate"
+              @keydown.ctrl.enter="handleAiCreate" />
+            <div class="create-card-footer">
+              <div class="create-footer-left">
+                <span v-if="agentsStore.aiCreateError" class="create-error">
+                  <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
+                  {{ agentsStore.aiCreateError }}
+                </span>
+                <span v-else class="create-tip">
+                  <kbd>{{ isMac ? '⌘' : 'Ctrl' }}</kbd>
+                  <kbd>↵</kbd>
+                  发送
+                </span>
               </div>
+              <div class="flex items-center gap-2">
+                <button class="text-btn" @click="showCreateArea = false">取消</button>
+                <button
+                  class="submit-btn"
+                  :disabled="!aiRequirement.trim() || agentsStore.aiCreating"
+                  @click="handleAiCreate">
+                  <span v-if="agentsStore.aiCreating" class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin" />
+                  <span v-else class="i-carbon-send-filled inline-block h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
 
-              <!-- 信息 -->
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-2">
-                  <span class="card-name">{{ agent.name }}</span>
-                  <span class="card-version">v{{ agent.version }}</span>
-                  <span class="card-badge" :class="agent.createdBy === 'agent' ? 'ai' : 'user'">
+      <!-- 内容区域 -->
+      <div class="content">
+        <!-- 错误 -->
+        <div v-if="agentsStore.error" class="error-bar">
+          <span class="i-carbon-warning-alt inline-block h-3.5 w-3.5 shrink-0" />
+          <span class="flex-1 truncate">{{ agentsStore.error }}</span>
+          <button class="error-retry" @click="agentsStore.fetchAgents()">重试</button>
+        </div>
+
+        <!-- 加载中 -->
+        <div v-if="agentsStore.loading && agentsStore.agents.length === 0" class="empty-state">
+          <div class="empty-spinner">
+            <span class="i-carbon-renew inline-block h-5 w-5 animate-spin" />
+          </div>
+          <p class="empty-label">加载中...</p>
+        </div>
+
+        <!-- 空状态 -->
+        <div v-else-if="agentsStore.agents.length === 0 && !agentsStore.loading" class="empty-state">
+          <div class="empty-visual">
+            <div class="empty-circle">
+              <span class="i-carbon-bot inline-block h-7 w-7" />
+            </div>
+            <div class="empty-orbit" />
+          </div>
+          <p class="empty-heading">创建你的第一个智能体</p>
+          <p class="empty-sub"> 描述你的需求，AI 将自动生成专业的智能体配置 </p>
+          <button class="primary-btn mt-5" @click="toggleCreateArea">
+            <span class="i-carbon-watson inline-block h-3.5 w-3.5" />
+            开始创建
+          </button>
+        </div>
+
+        <!-- 智能体列表 -->
+        <div v-else class="agent-list">
+          <div
+            v-for="agent in agentsStore.agents"
+            :key="agent.id"
+            class="agent-item"
+            :class="{ selected: agentsStore.selectedAgentId === agent.id }"
+            @click="handleSelect(agent.id)">
+            <!-- 头像 -->
+            <div class="agent-avatar" :class="{ selected: agentsStore.selectedAgentId === agent.id }">
+              <span class="i-carbon-bot inline-block h-[18px] w-[18px]" />
+            </div>
+
+            <!-- 信息 -->
+            <div class="agent-info">
+              <div class="agent-row">
+                <span class="agent-name">{{ agent.name }}</span>
+                <div class="agent-meta">
+                  <span class="agent-tag" :class="agent.createdBy === 'agent' ? 'ai' : 'manual'">
                     {{ agent.createdBy === 'agent' ? 'AI' : '手动' }}
                   </span>
+                  <span class="agent-time">{{ formatTime(agent.updatedAt) }}</span>
                 </div>
-                <p class="card-desc" :title="agent.description">{{ agent.description }}</p>
               </div>
-
-              <!-- 操作 -->
-              <div class="card-actions">
-                <template v-if="confirmDeleteId !== agent.id">
-                  <button class="action-btn delete" title="删除" @click.stop="handleDelete(agent.id)">
-                    <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
-                  </button>
-                </template>
-                <template v-else>
-                  <button class="action-btn confirm" @click.stop="handleDelete(agent.id)"> 确认 </button>
-                  <button class="action-btn" @click.stop="confirmDeleteId = null">取消</button>
-                </template>
-              </div>
+              <p class="agent-desc">{{ agent.description }}</p>
             </div>
-          </div>
-        </div>
 
-        <!-- 底部操作栏 -->
-        <div class="bottom-bar">
-          <!-- 工作目录 -->
-          <div class="flex items-center gap-2 text-xs" style="color: hsl(var(--muted-foreground))">
-            <span class="i-carbon-folder inline-block h-3.5 w-3.5" />
-            <span v-if="selectedDir" class="max-w-[240px] truncate font-mono text-[11px]">
-              {{ selectedDir }}
-            </span>
-            <span v-else class="text-[11px]">未选择工作目录</span>
-            <button class="btn-ghost text-[11px]" @click="selectDirectory">
-              {{ selectedDir ? '更换' : '选择目录' }}
-            </button>
-          </div>
-
-          <div class="flex items-center gap-3">
-            <span
-              v-if="agentsStore.selectedAgent"
-              class="flex items-center gap-1 text-xs"
-              style="color: hsl(var(--primary))">
-              <span class="i-carbon-checkmark-filled inline-block h-3 w-3" />
-              {{ agentsStore.selectedAgent.name }}
-            </span>
-            <button class="btn-primary" :disabled="!selectedDir" @click="startSession">
-              <span class="i-carbon-play-filled inline-block h-3.5 w-3.5" />
-              开始会话
-            </button>
+            <!-- 操作 -->
+            <div class="agent-actions" @click.stop>
+              <template v-if="confirmDeleteId !== agent.id">
+                <button class="del-btn" title="删除" @click="handleDelete(agent.id)">
+                  <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
+                </button>
+              </template>
+              <template v-else>
+                <button class="confirm-btn danger" @click="handleDelete(agent.id)">删除</button>
+                <button class="confirm-btn" @click="confirmDeleteId = null">取消</button>
+              </template>
+            </div>
           </div>
         </div>
       </div>
@@ -247,24 +249,15 @@ async function handleDelete(agentId: string): Promise<void> {
 
     <!-- ========== 状态 2：三栏工作区 ========== -->
     <template v-else>
-      <div class="top-bar compact">
+      <div class="workspace-bar">
         <div class="flex items-center gap-2">
-          <span
-            v-if="selectedDir"
-            class="max-w-[200px] truncate font-mono text-[10px]"
-            style="color: hsl(var(--muted-foreground))">
-            {{ selectedDir }}
-          </span>
-          <span
-            v-if="agentsStore.selectedAgent"
-            class="rounded px-1.5 py-px text-[10px]"
-            style="background: hsl(var(--primary) / 0.1); color: hsl(var(--primary))">
+          <span v-if="agentsStore.selectedAgent" class="workspace-agent">
             {{ agentsStore.selectedAgent.name }}
           </span>
         </div>
         <div class="flex items-center gap-1">
-          <button class="btn-ghost text-[10px]" @click="agentsPanelCollapsed = !agentsPanelCollapsed"> 智能体 </button>
-          <button class="btn-ghost text-[10px]" @click="startNewSession">返回列表</button>
+          <button class="text-btn text-[10px]" @click="agentsPanelCollapsed = !agentsPanelCollapsed"> 智能体 </button>
+          <button class="text-btn text-[10px]" @click="startNewSession">返回列表</button>
         </div>
       </div>
 
@@ -281,291 +274,606 @@ async function handleDelete(agentId: string): Promise<void> {
 </template>
 
 <style scoped>
+/* ====== 根容器 ====== */
+
+.agent-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: hsl(var(--background));
+}
+
+.landing {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
 /* ====== 顶栏 ====== */
 
-.top-bar {
+.header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 48px;
-  padding: 0 24px;
+  height: 52px;
+  padding: 0 20px;
   flex-shrink: 0;
-  border-bottom: 1px solid hsl(var(--border) / 0.4);
-  background: hsl(var(--surface));
+  border-bottom: 1px solid hsl(var(--border) / 0.3);
+  background: hsl(var(--surface) / 0.6);
+  backdrop-filter: blur(12px);
 }
 
-.top-bar.compact {
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
   height: 28px;
-  padding: 0 12px;
-  background: hsl(var(--surface) / 0.8);
+  border-radius: 8px;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
 }
 
-.title {
-  font-size: 15px;
+.header-title {
+  font-size: 14px;
   font-weight: 600;
   color: hsl(var(--foreground));
+  letter-spacing: -0.01em;
 }
 
-/* ====== 底部操作栏 ====== */
+.header-count {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: hsl(var(--foreground) / 0.06);
+  color: hsl(var(--muted-foreground));
+}
 
-.bottom-bar {
+.header-right {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 48px;
-  padding: 0 24px;
-  flex-shrink: 0;
-  border-top: 1px solid hsl(var(--border) / 0.4);
-  background: hsl(var(--surface));
+  gap: 6px;
 }
 
-/* ====== 按钮 ====== */
-
-.btn-ghost {
-  display: inline-flex;
+.icon-btn {
+  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
   color: hsl(var(--muted-foreground));
   transition: all 0.15s ease;
 }
 
-.btn-ghost:hover {
-  background: hsl(var(--foreground) / 0.05);
-  color: hsl(var(--foreground) / 0.8);
+.icon-btn:hover {
+  background: hsl(var(--foreground) / 0.06);
+  color: hsl(var(--foreground) / 0.7);
 }
 
-.btn-primary {
+.create-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 16px;
-  border-radius: 8px;
-  font-size: 13px;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 12px;
   font-weight: 500;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.08);
+  transition: all 0.15s ease;
+}
+
+.create-btn:hover {
+  background: hsl(var(--primary) / 0.14);
+}
+
+.create-btn.active {
+  background: hsl(var(--primary) / 0.15);
+  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.2);
+}
+
+/* ====== AI 创建区域 ====== */
+
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.slide-down-enter-to,
+.slide-down-leave-from {
+  opacity: 1;
+  max-height: 200px;
+}
+
+.create-section {
+  padding: 14px 20px;
+  border-bottom: 1px solid hsl(var(--border) / 0.2);
+  background: hsl(var(--surface) / 0.3);
+}
+
+.create-card {
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: 12px;
+  background: hsl(var(--surface));
+  overflow: hidden;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px hsl(var(--shadow) / 0.04);
+}
+
+.create-card:focus-within {
+  border-color: hsl(var(--primary) / 0.3);
+  box-shadow:
+    0 0 0 3px hsl(var(--primary) / 0.06),
+    0 1px 3px hsl(var(--shadow) / 0.04);
+}
+
+.create-card.focused {
+  border-color: hsl(var(--primary) / 0.25);
+}
+
+.create-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px 0;
+}
+
+.create-ai-icon {
+  color: hsl(var(--primary));
+}
+
+.create-card-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: hsl(var(--primary));
+  letter-spacing: 0.02em;
+}
+
+.create-input {
+  width: 100%;
+  padding: 8px 14px 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: hsl(var(--foreground));
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+}
+
+.create-input::placeholder {
+  color: hsl(var(--muted-foreground) / 0.35);
+}
+
+.create-input:disabled {
+  opacity: 0.5;
+}
+
+.create-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-top: 1px solid hsl(var(--border) / 0.15);
+  background: hsl(var(--background) / 0.4);
+}
+
+.create-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.create-tip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.4);
+}
+
+.create-tip kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-family-mono);
+  background: hsl(var(--foreground) / 0.05);
+  color: hsl(var(--muted-foreground) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.3);
+}
+
+.create-error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: hsl(var(--error));
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border-radius: 7px;
   color: hsl(var(--primary-foreground));
   background: hsl(var(--primary));
   transition: all 0.15s ease;
 }
 
-.btn-primary:hover {
+.submit-btn:hover:not(:disabled) {
   background: hsl(var(--primary-hover));
 }
 
-.btn-primary:disabled {
-  opacity: 0.4;
+.submit-btn:disabled {
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
-/* ====== 创建表单 ====== */
+/* ====== 内容区 ====== */
 
-.create-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px 24px;
-  border-bottom: 1px solid hsl(var(--border) / 0.3);
-  background: hsl(var(--surface));
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
 }
 
-.form-input {
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
-  font-size: 12px;
-  color: hsl(var(--foreground));
-  background: hsl(var(--background));
-  outline: none;
-  transition: border-color 0.15s ease;
-}
+/* ====== 错误横幅 ====== */
 
-.form-input:focus {
-  border-color: hsl(var(--primary) / 0.5);
-  background: hsl(var(--surface));
-}
-
-.form-input::placeholder {
-  color: hsl(var(--muted-foreground) / 0.5);
-}
-
-/* ====== 错误提示 ====== */
-
-.error-banner {
+.error-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
-  margin-bottom: 16px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
   border-radius: 8px;
   font-size: 12px;
   color: hsl(var(--error));
-  background: hsl(var(--error) / 0.08);
+  background: hsl(var(--error) / 0.06);
+  border: 1px solid hsl(var(--error) / 0.1);
 }
 
-/* ====== 空态 ====== */
+.error-retry {
+  font-size: 11px;
+  font-weight: 500;
+  color: hsl(var(--error));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  flex-shrink: 0;
+}
 
-.empty-center {
+.error-retry:hover {
+  opacity: 0.8;
+}
+
+/* ====== 空状态 ====== */
+
+.empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding-top: 80px;
+  padding-top: 10vh;
   text-align: center;
 }
 
-.empty-icon {
+.empty-spinner {
+  color: hsl(var(--muted-foreground) / 0.25);
+  margin-bottom: 12px;
+}
+
+.empty-label {
+  font-size: 13px;
+  color: hsl(var(--muted-foreground) / 0.5);
+}
+
+.empty-visual {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  margin-bottom: 24px;
+}
+
+.empty-circle {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  background: hsl(var(--foreground) / 0.04);
-  margin-bottom: 16px;
+  border-radius: 50%;
+  background: hsl(var(--primary) / 0.06);
+  color: hsl(var(--primary) / 0.35);
+  z-index: 1;
 }
 
-.empty-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: hsl(var(--foreground) / 0.6);
-  margin-bottom: 4px;
+.empty-orbit {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 1.5px dashed hsl(var(--primary) / 0.12);
+  animation: orbit-spin 20s linear infinite;
 }
 
-.empty-desc {
-  font-size: 12px;
-  color: hsl(var(--muted-foreground) / 0.6);
+@keyframes orbit-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.empty-heading {
+  font-size: 15px;
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.7);
+  margin-bottom: 6px;
+}
+
+.empty-sub {
+  font-size: 12.5px;
+  color: hsl(var(--muted-foreground) / 0.55);
   line-height: 1.6;
-  max-width: 280px;
+  max-width: 260px;
 }
 
-/* ====== 智能体网格 ====== */
+/* ====== 智能体列表 ====== */
 
-.agent-grid {
+.agent-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
-.agent-card {
+.agent-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid transparent;
-  background: hsl(var(--surface));
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.agent-card:hover {
-  border-color: hsl(var(--border));
-  box-shadow: 0 1px 3px hsl(var(--shadow) / 0.06);
+.agent-item:hover {
+  background: hsl(var(--surface));
+  border-color: hsl(var(--border) / 0.4);
 }
 
-.agent-card.selected {
-  border-color: hsl(var(--primary) / 0.3);
+.agent-item.selected {
   background: hsl(var(--primary) / 0.04);
+  border-color: hsl(var(--primary) / 0.15);
 }
 
-/* 卡片图标 */
+/* 头像 */
 
-.card-icon {
+.agent-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   flex-shrink: 0;
-  background: hsl(var(--foreground) / 0.05);
-  color: hsl(var(--muted-foreground));
+  background: hsl(var(--foreground) / 0.04);
+  color: hsl(var(--muted-foreground) / 0.5);
   transition: all 0.15s ease;
 }
 
-.card-icon.selected {
-  background: hsl(var(--primary) / 0.12);
+.agent-item:hover .agent-avatar {
+  background: hsl(var(--foreground) / 0.07);
+  color: hsl(var(--muted-foreground) / 0.7);
+}
+
+.agent-avatar.selected {
+  background: hsl(var(--primary) / 0.1);
   color: hsl(var(--primary));
 }
 
-/* 卡片信息 */
+/* 信息 */
 
-.card-name {
+.agent-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-name {
   font-size: 13px;
   font-weight: 500;
   color: hsl(var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.card-version {
-  font-size: 10px;
-  color: hsl(var(--muted-foreground) / 0.5);
+.agent-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
-.card-badge {
+.agent-tag {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
+  font-weight: 500;
 }
 
-.card-badge.ai {
-  background: hsl(217 91% 60% / 0.1);
-  color: hsl(217 91% 60%);
+.agent-tag.ai {
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
 }
 
-.card-badge.user {
-  background: hsl(142 76% 36% / 0.1);
-  color: hsl(142 76% 36%);
+.agent-tag.manual {
+  background: hsl(var(--success) / 0.08);
+  color: hsl(var(--success));
 }
 
-.card-desc {
+.agent-time {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground) / 0.4);
+  white-space: nowrap;
+}
+
+.agent-desc {
   margin-top: 2px;
-  font-size: 11.5px;
-  color: hsl(var(--muted-foreground) / 0.7);
+  font-size: 12px;
+  color: hsl(var(--muted-foreground) / 0.55);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 卡片操作 */
+/* 操作按钮 */
 
-.card-actions {
+.agent-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.12s ease;
+  flex-shrink: 0;
 }
 
-.agent-card:hover .card-actions {
+.agent-item:hover .agent-actions {
   opacity: 1;
 }
 
-.action-btn {
-  padding: 4px 8px;
-  border-radius: 4px;
+.del-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: hsl(var(--muted-foreground) / 0.4);
+  transition: all 0.12s ease;
+}
+
+.del-btn:hover {
+  background: hsl(var(--error) / 0.08);
+  color: hsl(var(--error));
+}
+
+.confirm-btn {
+  padding: 3px 8px;
+  border-radius: 5px;
   font-size: 11px;
+  font-weight: 500;
   color: hsl(var(--muted-foreground));
+  transition: all 0.12s ease;
+}
+
+.confirm-btn:hover {
+  background: hsl(var(--foreground) / 0.05);
+}
+
+.confirm-btn.danger {
+  color: hsl(var(--error));
+}
+
+.confirm-btn.danger:hover {
+  background: hsl(var(--error) / 0.08);
+}
+
+/* ====== 通用按钮 ====== */
+
+.text-btn {
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.6);
+  transition: all 0.12s ease;
+}
+
+.text-btn:hover {
+  background: hsl(var(--foreground) / 0.04);
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary));
   transition: all 0.15s ease;
 }
 
-.action-btn:hover {
-  background: hsl(var(--foreground) / 0.06);
+.primary-btn:hover:not(:disabled) {
+  background: hsl(var(--primary-hover));
 }
 
-.action-btn.delete:hover {
-  background: hsl(var(--error) / 0.1);
-  color: hsl(var(--error));
+.primary-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
-.action-btn.confirm {
-  color: hsl(var(--error));
+/* ====== 工作区顶栏 ====== */
+
+.workspace-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid hsl(var(--border) / 0.25);
+  background: hsl(var(--surface) / 0.6);
+  backdrop-filter: blur(8px);
 }
 
-.action-btn.confirm:hover {
-  background: hsl(var(--error) / 0.1);
+.workspace-agent {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
 }
 </style>
