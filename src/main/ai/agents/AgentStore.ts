@@ -42,11 +42,10 @@ export class AgentStore {
 
   // ==================== 单例 ====================
 
-  static getInstance(): AgentStore {
+  static async getInstance(): Promise<AgentStore> {
     if (!AgentStore.instance) {
       // 延迟加载 Env，避免循环依赖
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { Env } = require('../../common/env')
+      const { Env } = await import('@main/common/env')
       AgentStore.instance = new AgentStore(Env.paths.agentsDir)
     }
     return AgentStore.instance

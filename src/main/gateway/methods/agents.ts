@@ -15,7 +15,7 @@ export const agentsMethods: MethodGroup = {
   namespace: 'agents',
   methods: {
     list: async () => {
-      const store = AgentStore.getInstance()
+      const store = await AgentStore.getInstance()
       const agents = await store.list()
       return { agents }
     },
@@ -26,7 +26,7 @@ export const agentsMethods: MethodGroup = {
         throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'agentId is required')
       }
 
-      const store = AgentStore.getInstance()
+      const store = await AgentStore.getInstance()
       const agent = await store.get(agentId)
       if (!agent) {
         throw new GatewayMethodError(GatewayErrorCode.NOT_FOUND, `Agent "${agentId}" not found`)
@@ -41,7 +41,7 @@ export const agentsMethods: MethodGroup = {
         throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'agentId is required')
       }
 
-      const store = AgentStore.getInstance()
+      const store = await AgentStore.getInstance()
       const deleted = await store.delete(agentId)
       if (!deleted) {
         throw new GatewayMethodError(GatewayErrorCode.NOT_FOUND, `Agent "${agentId}" not found`)

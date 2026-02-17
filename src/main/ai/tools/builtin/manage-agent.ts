@@ -92,7 +92,7 @@ export const manageAgentTool: ToolDefinition = {
     const action = params.action as string
 
     try {
-      const store = AgentStore.getInstance()
+      const store = await AgentStore.getInstance()
 
       switch (action) {
         case 'create':

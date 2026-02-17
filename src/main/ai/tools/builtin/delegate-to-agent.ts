@@ -129,7 +129,7 @@ export const delegateToAgentTool: ToolDefinition = {
     }
 
     // 1. 加载 Agent 定义
-    const store = AgentStore.getInstance()
+    const store = await AgentStore.getInstance()
     const agentDef = await store.get(agentId)
     if (!agentDef) {
       return {

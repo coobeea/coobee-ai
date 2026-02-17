@@ -221,7 +221,7 @@ export const chatMethods: MethodGroup = {
         // 如果指定了 agentId，从 AgentStore 加载定义并创建 Builder
         let agentDef: AgentDefinition | null = null
         if (agentId) {
-          const store = AgentStore.getInstance()
+          const store = await AgentStore.getInstance()
           agentDef = await store.get(agentId)
           if (!agentDef) {
             throw new GatewayMethodError(
