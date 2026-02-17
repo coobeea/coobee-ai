@@ -338,7 +338,10 @@ function formatTime(iso: string): string {
                 <span class="i-carbon-bot inline-block h-5 w-5" />
               </div>
               <div class="card-title-area">
-                <span class="card-name">{{ agent.name }}</span>
+                <div class="flex items-center gap-1.5">
+                  <span class="card-name">{{ agent.name }}</span>
+                  <span v-if="agent.createdBy === 'system'" class="builtin-badge">内置</span>
+                </div>
                 <span class="card-time">{{ formatTime(agent.updatedAt) }}</span>
               </div>
             </div>
@@ -365,7 +368,11 @@ function formatTime(iso: string): string {
                   <button class="action-icon" title="编辑技能" @click="openSkillsEditor(agent.id)">
                     <span class="i-carbon-edit inline-block h-3.5 w-3.5" />
                   </button>
-                  <button class="action-icon danger" title="删除" @click="handleDelete(agent.id)">
+                  <button
+                    v-if="agent.createdBy !== 'system'"
+                    class="action-icon danger"
+                    title="删除"
+                    @click="handleDelete(agent.id)">
                     <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
                   </button>
                 </template>
@@ -977,6 +984,20 @@ function formatTime(iso: string): string {
   font-size: 11px;
   color: hsl(var(--muted-foreground) / 0.4);
   margin-top: 2px;
+}
+
+.builtin-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary) / 0.7);
+  letter-spacing: 0.03em;
+  line-height: 1.4;
+  flex-shrink: 0;
 }
 
 /* 描述 */

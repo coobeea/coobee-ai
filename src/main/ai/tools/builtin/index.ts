@@ -10,43 +10,45 @@
  * 工具只包含纯执行逻辑，不含审批/HITL 逻辑。
  * 审批由上层 Runtime 的 HITL 机制统一处理。
  */
-import type { ToolDefinition } from '../types'
-import { readTool } from './read'
-import { writeTool } from './write'
-import { editTool } from './edit'
-import { execTool } from './exec'
-import { processTool } from './process'
-import { memoryTool } from './memory'
-import { searchTool } from './search'
-import { globTool } from './glob'
-import { sessionStatusTool } from './session_status'
-import { sessionHistoryTool } from './session_history'
-import { contextInspectTool } from './context_inspect'
-import { skillListTool } from './skill_list'
-import { configPatchTool } from './config_patch'
-import { configGetTool } from './config_get'
-import { manageAgentTool } from './manage-agent'
-import { delegateToAgentTool } from './delegate-to-agent'
-import { taskPlanTool } from './task-plan'
+import type { ToolDefinition } from '../types';
+import { readTool } from './read';
+import { writeTool } from './write';
+import { editTool } from './edit';
+import { execTool } from './exec';
+import { processTool } from './process';
+import { memoryTool } from './memory';
+import { searchTool } from './search';
+import { globTool } from './glob';
+import { sessionStatusTool } from './session_status';
+import { sessionHistoryTool } from './session_history';
+import { contextInspectTool } from './context_inspect';
+import { skillListTool } from './skill_list';
+import { configPatchTool } from './config_patch';
+import { configGetTool } from './config_get';
+import { manageAgentTool } from './manage-agent';
+import { manageSkillTool } from './manage-skill';
+import { delegateToAgentTool } from './delegate-to-agent';
+import { taskPlanTool } from './task-plan';
 
 // 单独导出
-export { readTool } from './read'
-export { writeTool } from './write'
-export { editTool } from './edit'
-export { execTool } from './exec'
-export { processTool } from './process'
-export { memoryTool } from './memory'
-export { searchTool } from './search'
-export { globTool } from './glob'
-export { sessionStatusTool } from './session_status'
-export { sessionHistoryTool } from './session_history'
-export { contextInspectTool } from './context_inspect'
-export { skillListTool } from './skill_list'
-export { configPatchTool } from './config_patch'
-export { configGetTool } from './config_get'
-export { manageAgentTool } from './manage-agent'
-export { delegateToAgentTool } from './delegate-to-agent'
-export { taskPlanTool } from './task-plan'
+export { readTool } from './read';
+export { writeTool } from './write';
+export { editTool } from './edit';
+export { execTool } from './exec';
+export { processTool } from './process';
+export { memoryTool } from './memory';
+export { searchTool } from './search';
+export { globTool } from './glob';
+export { sessionStatusTool } from './session_status';
+export { sessionHistoryTool } from './session_history';
+export { contextInspectTool } from './context_inspect';
+export { skillListTool } from './skill_list';
+export { configPatchTool } from './config_patch';
+export { configGetTool } from './config_get';
+export { manageAgentTool } from './manage-agent';
+export { manageSkillTool } from './manage-skill';
+export { delegateToAgentTool } from './delegate-to-agent';
+export { taskPlanTool } from './task-plan';
 
 /**
  * 所有内置工具
@@ -75,6 +77,7 @@ export { taskPlanTool } from './task-plan'
  *   config_patch    — 修改应用配置，中风险
  *   --- Agent 管理 ---
  *   manage_agent        — Agent 定义 CRUD，中风险
+ *   manage_skill        — Skill 技能 CRUD，中风险
  *   delegate_to_agent   — 委托子任务给专业 Agent，中风险
  *   task_plan           — 任务计划管理，低风险
  */
@@ -94,6 +97,7 @@ export const builtinTools: ToolDefinition[] = [
   configGetTool,
   configPatchTool,
   manageAgentTool,
+  manageSkillTool,
   delegateToAgentTool,
   taskPlanTool
-]
+];

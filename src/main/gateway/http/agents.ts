@@ -212,9 +212,11 @@ export function registerAgentRoutes(router: Router): void {
       }
       ctx.body = { agentId, deleted: true };
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       log.error(`[agents.delete] Error (${agentId}):`, err);
-      ctx.status = 500;
-      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+      // 内置 Agent 删除 → 403
+      ctx.status = msg.includes('cannot be deleted') ? 403 : 500;
+      ctx.body = { error: msg };
     }
   });
 

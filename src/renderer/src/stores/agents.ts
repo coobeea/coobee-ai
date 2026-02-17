@@ -15,7 +15,7 @@ export interface AgentEntry {
   id: string;
   name: string;
   description: string;
-  createdBy: 'user' | 'agent';
+  createdBy: 'user' | 'agent' | 'system';
   version: number;
   updatedAt: string;
   /** Agent 完整定义中的 tools 字段 */
@@ -88,7 +88,12 @@ export const useAgentsStore = defineStore('agents', () => {
 
     try {
       const result = await apiRequest<{ agents: AgentEntry[] }>('');
-      agents.value = result.agents;
+      // 系统内置 Agent 排在最前
+      agents.value = result.agents.sort((a, b) => {
+        if (a.createdBy === 'system' && b.createdBy !== 'system') return -1;
+        if (a.createdBy !== 'system' && b.createdBy === 'system') return 1;
+        return 0;
+      });
     } catch (err) {
       error.value = err instanceof Error ? err.message : String(err);
       console.warn('[AgentsStore] Failed to fetch agents:', err);
