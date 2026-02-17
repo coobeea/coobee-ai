@@ -8,6 +8,7 @@
 
 import { ref, nextTick, watch } from 'vue';
 import { useCopilotStore, type CopilotMessage, type CopilotBlock } from '@/stores/copilot';
+import logoSvg from '@/assets/logo.svg';
 
 const copilot = useCopilotStore();
 const inputText = ref('');
@@ -88,7 +89,7 @@ function isUserMessage(msg: CopilotMessage): boolean {
     <!-- 悬浮气泡按钮 -->
     <Transition name="bubble-pop">
       <button v-if="!copilot.visible" class="copilot-fab" title="应用管家" @click="copilot.open()">
-        <span class="i-carbon-chat-bot inline-block h-5 w-5" />
+        <img :src="logoSvg" alt="Coobee" class="fab-logo" />
       </button>
     </Transition>
 
@@ -98,7 +99,7 @@ function isUserMessage(msg: CopilotMessage): boolean {
         <!-- 面板头部 -->
         <div class="panel-header">
           <div class="panel-header-left">
-            <span class="i-carbon-chat-bot inline-block h-4 w-4 text-[hsl(var(--primary))]" />
+            <img :src="logoSvg" alt="Coobee" class="panel-header-logo" />
             <span class="panel-title">应用管家</span>
           </div>
           <div class="panel-header-right">
@@ -116,7 +117,7 @@ function isUserMessage(msg: CopilotMessage): boolean {
           <!-- 空状态 -->
           <div v-if="!copilot.hasMessages" class="panel-empty">
             <div class="panel-empty-icon">
-              <span class="i-carbon-chat-bot inline-block h-6 w-6" />
+              <img :src="logoSvg" alt="Coobee" class="empty-logo" />
             </div>
             <p class="panel-empty-title">你好，我是应用管家</p>
             <p class="panel-empty-sub"> 告诉我你想做什么，比如创建技能、管理智能体、修改配置... </p>
@@ -228,11 +229,11 @@ function isUserMessage(msg: CopilotMessage): boolean {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border) / 0.5);
   box-shadow:
-    0 4px 14px hsl(var(--primary) / 0.35),
-    0 2px 6px hsl(var(--shadow) / 0.15);
+    0 4px 14px hsl(var(--shadow) / 0.2),
+    0 2px 6px hsl(var(--shadow) / 0.1);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -240,12 +241,20 @@ function isUserMessage(msg: CopilotMessage): boolean {
 .copilot-fab:hover {
   transform: scale(1.08);
   box-shadow:
-    0 6px 20px hsl(var(--primary) / 0.4),
-    0 3px 8px hsl(var(--shadow) / 0.2);
+    0 6px 20px hsl(var(--shadow) / 0.25),
+    0 3px 8px hsl(var(--shadow) / 0.15);
+  border-color: hsl(var(--primary) / 0.3);
 }
 
 .copilot-fab:active {
   transform: scale(0.95);
+}
+
+.fab-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  pointer-events: none;
 }
 
 /* ====== 气泡动画 ====== */
@@ -317,6 +326,12 @@ function isUserMessage(msg: CopilotMessage): boolean {
   gap: 8px;
 }
 
+.panel-header-logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+
 .panel-title {
   font-size: 13px;
   font-weight: 600;
@@ -370,12 +385,17 @@ function isUserMessage(msg: CopilotMessage): boolean {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: hsl(var(--primary) / 0.08);
-  color: hsl(var(--primary) / 0.5);
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: hsl(var(--foreground) / 0.03);
   margin-bottom: 12px;
+}
+
+.empty-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
 }
 
 .panel-empty-title {
