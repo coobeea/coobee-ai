@@ -19,6 +19,7 @@ import { GatewayServer } from './GatewayServer';
 import { registerAgentRoutes } from './http/agents';
 import { registerThreadRoutes } from './http/threads';
 import { registerAiAssistRoutes } from './http/ai-assist';
+import { registerSkillRoutes } from './http/skills';
 import { GatewayErrorCode, GatewayMethodError } from './protocol/errors';
 import type {
   GatewayRequest,
@@ -178,6 +179,7 @@ export class Gateway implements GatewayApi {
     registerAgentRoutes(router);
     registerThreadRoutes(router);
     registerAiAssistRoutes(router);
+    registerSkillRoutes(router);
     log.info('[Gateway] HTTP REST routes registered');
   }
 

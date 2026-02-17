@@ -7,15 +7,15 @@
  *   │  🤖 智能体            │  导航菜单
  *   │  📊 日志              │
  *   ├──────────────────────┤
- *   │  最近会话             │  标题
- *   │  · 线程 A            │  Thread 列表（持久化，可滚动）
- *   │  · 线程 B            │
+ *   │  最近任务             │  标题
+ *   │  · 任务 A            │  Thread 列表（持久化，可滚动）
+ *   │  · 任务 B            │
  *   │  ...                 │
  *   ├──────────────────────┤
  *   │  ⚙  设置              │
  *   └──────────────────────┘
  *
- * Thread 列表从后端 HTTP REST API 获取（.home/threads/），
+ * 任务列表从后端 HTTP REST API 获取（.home/threads/），
  * 使用 Snowflake ID 有序排列，最新在前。
  */
 
@@ -103,7 +103,7 @@ onMounted(() => updateActiveState());
     <!-- 会话列表 -->
     <div class="session-section">
       <div class="section-header">
-        <span>最近会话</span>
+        <span>最近任务</span>
         <button
           v-if="threadsStore.threads.length > 0"
           class="refresh-btn"
@@ -121,19 +121,19 @@ onMounted(() => updateActiveState());
           class="session-item"
           :class="{ active: threadsStore.activeThreadId === thread.id }"
           @click="handleThreadClick(thread.id)">
-          <span class="i-carbon-chat icon-xs" />
+          <span class="i-carbon-task icon-xs" />
           <div class="session-info">
             <span class="session-title">{{ thread.title }}</span>
             <span class="session-meta">
-              {{ thread.messageCount }} 条消息 · {{ formatRelativeTime(thread.updatedAt) }}
+              {{ thread.messageCount }} 条 · {{ formatRelativeTime(thread.updatedAt) }}
             </span>
           </div>
         </div>
 
         <!-- 空态 -->
         <div v-if="threadsStore.threads.length === 0 && !threadsStore.loading" class="empty-state">
-          <span class="i-carbon-chat inline-block h-6 w-6 opacity-[0.08]" />
-          <p>创建智能体并开始对话后<br />会话将出现在这里</p>
+          <span class="i-carbon-task inline-block h-6 w-6 opacity-[0.08]" />
+          <p>选择智能体并开启任务后<br />任务将出现在这里</p>
         </div>
 
         <!-- 加载中 -->

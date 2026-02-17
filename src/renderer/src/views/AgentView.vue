@@ -10,6 +10,8 @@
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { useChatStore } from '@/stores/chat';
 import { useAgentsStore } from '@/stores/agents';
+import { useThreadsStore } from '@/stores/threads';
+import configManager from '@/config';
 
 const isMac = navigator.platform?.includes('Mac') ?? false;
 import ProjectPanel from '@/components/agent/ProjectPanel.vue';
@@ -20,6 +22,7 @@ import AgentsPanel from '@/components/agent/AgentsPanel.vue';
 
 const chatStore = useChatStore();
 const agentsStore = useAgentsStore();
+const threadsStore = useThreadsStore();
 
 const leftCollapsed = ref(false);
 const rightCollapsed = ref(false);
@@ -41,7 +44,14 @@ const showCreateArea = ref(false);
 /** 技能编辑：当前编辑的 Agent ID */
 const editSkillsAgentId = ref<string | null>(null);
 const editSkillsList = ref<string[]>([]);
-const availableSkillNames = ref<string[]>([]);
+
+/** 可用技能列表（从后端获取） */
+interface SkillInfo {
+  name: string;
+  description: string;
+}
+const availableSkills = ref<SkillInfo[]>([]);
+const skillsLoading = ref(false);
 
 onMounted(() => {
   agentsStore.fetchAgents();
@@ -78,6 +88,17 @@ function handleSelect(agentId: string): void {
   agentsStore.selectAgent(agentsStore.selectedAgentId === agentId ? null : agentId);
 }
 
+/** 开启任务：选择智能体 → 创建 Thread → 进入工作区 */
+async function handleStartTask(agentId: string): Promise<void> {
+  agentsStore.selectAgent(agentId);
+  const agent = agentsStore.agents.find((a) => a.id === agentId);
+  const title = agent ? `${agent.name} 的任务` : '新任务';
+  const thread = await threadsStore.createThread(title, agentId);
+  if (thread) {
+    isInWorkspace.value = true;
+  }
+}
+
 async function handleDelete(agentId: string): Promise<void> {
   if (confirmDeleteId.value !== agentId) {
     confirmDeleteId.value = agentId;
@@ -88,11 +109,28 @@ async function handleDelete(agentId: string): Promise<void> {
 }
 
 /** 打开技能编辑面板 */
-function openSkillsEditor(agentId: string): void {
+async function openSkillsEditor(agentId: string): Promise<void> {
   const agent = agentsStore.agents.find((a) => a.id === agentId);
   if (!agent) return;
   editSkillsAgentId.value = agentId;
   editSkillsList.value = [...(agent.skills ?? [])];
+
+  // 从后端获取可用技能列表
+  if (availableSkills.value.length === 0) {
+    skillsLoading.value = true;
+    try {
+      const url = `${configManager.getBaseUrl()}/gateway/skills`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = (await res.json()) as { skills: SkillInfo[] };
+        availableSkills.value = data.skills;
+      }
+    } catch (err) {
+      console.warn('[AgentView] Failed to fetch skills:', err);
+    } finally {
+      skillsLoading.value = false;
+    }
+  }
 }
 
 /** 切换技能勾选 */
@@ -287,53 +325,55 @@ function formatTime(iso: string): string {
         </div>
 
         <!-- 智能体列表 -->
-        <div v-else class="agent-list">
+        <div v-else class="agent-grid">
           <div
             v-for="agent in agentsStore.agents"
             :key="agent.id"
-            class="agent-item"
+            class="agent-card"
             :class="{ selected: agentsStore.selectedAgentId === agent.id }"
             @click="handleSelect(agent.id)">
-            <!-- 头像 -->
-            <div class="agent-avatar" :class="{ selected: agentsStore.selectedAgentId === agent.id }">
-              <span class="i-carbon-bot inline-block h-[18px] w-[18px]" />
-            </div>
-
-            <!-- 信息 -->
-            <div class="agent-info">
-              <div class="agent-row">
-                <span class="agent-name">{{ agent.name }}</span>
-                <div class="agent-meta">
-                  <span class="agent-tag" :class="agent.createdBy === 'agent' ? 'ai' : 'manual'">
-                    {{ agent.createdBy === 'agent' ? 'AI' : '手动' }}
-                  </span>
-                  <span class="agent-time">{{ formatTime(agent.updatedAt) }}</span>
-                </div>
+            <!-- 卡片头部：头像 + 名称 + 时间 -->
+            <div class="card-header">
+              <div class="card-avatar" :class="{ selected: agentsStore.selectedAgentId === agent.id }">
+                <span class="i-carbon-bot inline-block h-5 w-5" />
               </div>
-              <p class="agent-desc">{{ agent.description }}</p>
-              <!-- 技能标签 -->
-              <div v-if="agent.skills && agent.skills.length > 0" class="agent-skills">
-                <span v-for="skill in agent.skills.slice(0, 3)" :key="skill" class="skill-tag">
-                  {{ skill }}
-                </span>
-                <span v-if="agent.skills.length > 3" class="skill-more"> +{{ agent.skills.length - 3 }} </span>
+              <div class="card-title-area">
+                <span class="card-name">{{ agent.name }}</span>
+                <span class="card-time">{{ formatTime(agent.updatedAt) }}</span>
               </div>
             </div>
 
-            <!-- 操作 -->
-            <div class="agent-actions" @click.stop>
-              <template v-if="confirmDeleteId !== agent.id">
-                <button class="edit-btn" title="编辑技能" @click="openSkillsEditor(agent.id)">
-                  <span class="i-carbon-edit inline-block h-3.5 w-3.5" />
-                </button>
-                <button class="del-btn" title="删除" @click="handleDelete(agent.id)">
-                  <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
-                </button>
-              </template>
-              <template v-else>
-                <button class="confirm-btn danger" @click="handleDelete(agent.id)">删除</button>
-                <button class="confirm-btn" @click="confirmDeleteId = null">取消</button>
-              </template>
+            <!-- 描述 -->
+            <p class="card-desc">{{ agent.description }}</p>
+
+            <!-- 技能标签 -->
+            <div v-if="agent.skills && agent.skills.length > 0" class="card-skills">
+              <span v-for="skill in agent.skills.slice(0, 3)" :key="skill" class="skill-tag">
+                {{ skill }}
+              </span>
+              <span v-if="agent.skills.length > 3" class="skill-more"> +{{ agent.skills.length - 3 }} </span>
+            </div>
+
+            <!-- 底部操作栏 -->
+            <div class="card-footer" @click.stop>
+              <button class="start-task-btn" @click="handleStartTask(agent.id)">
+                <span class="i-carbon-play-filled-alt inline-block h-3 w-3" />
+                <span>开启任务</span>
+              </button>
+              <div class="card-actions">
+                <template v-if="confirmDeleteId !== agent.id">
+                  <button class="action-icon" title="编辑技能" @click="openSkillsEditor(agent.id)">
+                    <span class="i-carbon-edit inline-block h-3.5 w-3.5" />
+                  </button>
+                  <button class="action-icon danger" title="删除" @click="handleDelete(agent.id)">
+                    <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
+                  </button>
+                </template>
+                <template v-else>
+                  <button class="confirm-btn danger" @click="handleDelete(agent.id)">删除</button>
+                  <button class="confirm-btn" @click="confirmDeleteId = null">取消</button>
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -374,10 +414,28 @@ function formatTime(iso: string): string {
               <span>编辑技能</span>
             </div>
             <div class="skills-dialog-body">
-              <p v-if="availableSkillNames.length === 0" class="skills-empty"> 暂无可用技能 </p>
-              <label v-for="skill in availableSkillNames" :key="skill" class="skill-checkbox">
-                <input type="checkbox" :checked="editSkillsList.includes(skill)" @change="toggleSkill(skill)" />
-                <span>{{ skill }}</span>
+              <!-- 加载中 -->
+              <div v-if="skillsLoading" class="skills-loading">
+                <span class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
+                <span>加载技能列表...</span>
+              </div>
+              <!-- 空态 -->
+              <p v-else-if="availableSkills.length === 0" class="skills-empty"> 暂无可用技能 </p>
+              <!-- 技能列表 -->
+              <label
+                v-for="skill in availableSkills"
+                v-else
+                :key="skill.name"
+                class="skill-checkbox"
+                :class="{ checked: editSkillsList.includes(skill.name) }">
+                <input
+                  type="checkbox"
+                  :checked="editSkillsList.includes(skill.name)"
+                  @change="toggleSkill(skill.name)" />
+                <div class="skill-label">
+                  <span class="skill-label-name">{{ skill.name }}</span>
+                  <span v-if="skill.description" class="skill-label-desc">{{ skill.description }}</span>
+                </div>
               </label>
             </div>
             <div class="skills-dialog-footer">
@@ -832,139 +890,124 @@ function formatTime(iso: string): string {
   max-width: 260px;
 }
 
-/* ====== 智能体列表 ====== */
+/* ====== 智能体卡片网格 ====== */
 
-.agent-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
 }
 
-.agent-item {
+.agent-card {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border) / 0.35);
+  background: hsl(var(--surface) / 0.6);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.agent-card:hover {
+  background: hsl(var(--surface));
+  border-color: hsl(var(--border) / 0.6);
+  box-shadow:
+    0 2px 8px hsl(var(--shadow) / 0.06),
+    0 1px 3px hsl(var(--shadow) / 0.04);
+  transform: translateY(-1px);
+}
+
+.agent-card.selected {
+  background: hsl(var(--primary) / 0.03);
+  border-color: hsl(var(--primary) / 0.2);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.05);
+}
+
+/* 卡片头部 */
+
+.card-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  margin-bottom: 10px;
 }
 
-.agent-item:hover {
-  background: hsl(var(--surface));
-  border-color: hsl(var(--border) / 0.4);
-}
-
-.agent-item.selected {
-  background: hsl(var(--primary) / 0.04);
-  border-color: hsl(var(--primary) / 0.15);
-}
-
-/* 头像 */
-
-.agent-avatar {
+.card-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   flex-shrink: 0;
-  background: hsl(var(--foreground) / 0.04);
-  color: hsl(var(--muted-foreground) / 0.5);
-  transition: all 0.15s ease;
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.08), hsl(var(--primary) / 0.15));
+  color: hsl(var(--primary) / 0.6);
+  transition: all 0.2s ease;
 }
 
-.agent-item:hover .agent-avatar {
-  background: hsl(var(--foreground) / 0.07);
-  color: hsl(var(--muted-foreground) / 0.7);
+.agent-card:hover .card-avatar {
+  color: hsl(var(--primary) / 0.8);
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--primary) / 0.2));
 }
 
-.agent-avatar.selected {
-  background: hsl(var(--primary) / 0.1);
+.card-avatar.selected {
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--primary) / 0.25));
   color: hsl(var(--primary));
 }
 
-/* 信息 */
-
-.agent-info {
+.card-title-area {
   flex: 1;
   min-width: 0;
 }
 
-.agent-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.agent-name {
-  font-size: 13px;
-  font-weight: 500;
+.card-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
   color: hsl(var(--foreground));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.3;
 }
 
-.agent-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.agent-tag {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-.agent-tag.ai {
-  background: hsl(var(--primary) / 0.08);
-  color: hsl(var(--primary));
-}
-
-.agent-tag.manual {
-  background: hsl(var(--success) / 0.08);
-  color: hsl(var(--success));
-}
-
-.agent-time {
-  font-size: 10px;
+.card-time {
+  display: block;
+  font-size: 11px;
   color: hsl(var(--muted-foreground) / 0.4);
-  white-space: nowrap;
+  margin-top: 2px;
 }
 
-.agent-desc {
-  margin-top: 2px;
-  font-size: 12px;
-  color: hsl(var(--muted-foreground) / 0.55);
-  line-height: 1.4;
+/* 描述 */
+
+.card-desc {
+  font-size: 12.5px;
+  color: hsl(var(--muted-foreground) / 0.6);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-bottom: 10px;
 }
 
 /* 技能标签 */
 
-.agent-skills {
+.card-skills {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
+  margin-bottom: 12px;
   flex-wrap: wrap;
 }
 
 .skill-tag {
   font-size: 10px;
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: 4px;
-  background: hsl(var(--info, 210 100% 50%) / 0.08);
-  color: hsl(var(--info, 210 100% 50%) / 0.7);
+  background: hsl(var(--primary) / 0.06);
+  color: hsl(var(--primary) / 0.65);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -974,23 +1017,49 @@ function formatTime(iso: string): string {
   color: hsl(var(--muted-foreground) / 0.4);
 }
 
-/* 操作按钮 */
+/* 卡片底部操作栏 */
 
-.agent-actions {
+.card-footer {
   display: flex;
   align-items: center;
-  gap: 3px;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-  flex-shrink: 0;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid hsl(var(--border) / 0.15);
 }
 
-.agent-item:hover .agent-actions {
+.start-task-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.08);
+  transition: all 0.15s ease;
+}
+
+.start-task-btn:hover {
+  background: hsl(var(--primary) / 0.14);
+  box-shadow: 0 1px 4px hsl(var(--primary) / 0.1);
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.agent-card:hover .card-actions {
   opacity: 1;
 }
 
-.edit-btn,
-.del-btn {
+.action-icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1001,12 +1070,12 @@ function formatTime(iso: string): string {
   transition: all 0.12s ease;
 }
 
-.edit-btn:hover {
+.action-icon:hover {
   background: hsl(var(--primary) / 0.08);
   color: hsl(var(--primary));
 }
 
-.del-btn:hover {
+.action-icon.danger:hover {
   background: hsl(var(--error) / 0.08);
   color: hsl(var(--error));
 }
@@ -1149,6 +1218,16 @@ function formatTime(iso: string): string {
   gap: 4px;
 }
 
+.skills-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 0;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground) / 0.5);
+}
+
 .skills-empty {
   text-align: center;
   padding: 24px 0;
@@ -1158,25 +1237,56 @@ function formatTime(iso: string): string {
 
 .skill-checkbox {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 8px;
   font-size: 13px;
   color: hsl(var(--foreground) / 0.8);
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: all 0.12s ease;
+  border: 1px solid transparent;
 }
 
 .skill-checkbox:hover {
-  background: hsl(var(--foreground) / 0.04);
+  background: hsl(var(--foreground) / 0.03);
+}
+
+.skill-checkbox.checked {
+  background: hsl(var(--primary) / 0.04);
+  border-color: hsl(var(--primary) / 0.12);
 }
 
 .skill-checkbox input[type='checkbox'] {
   width: 16px;
   height: 16px;
+  margin-top: 1px;
   accent-color: hsl(var(--primary));
   cursor: pointer;
+  flex-shrink: 0;
+}
+
+.skill-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.skill-label-name {
+  font-weight: 500;
+  color: hsl(var(--foreground) / 0.85);
+  line-height: 1.3;
+}
+
+.skill-label-desc {
+  font-size: 11.5px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .skills-dialog-footer {
