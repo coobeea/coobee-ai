@@ -41,8 +41,19 @@ description: 描述 Agent 运行时环境的目录结构、路径约定和可用
 │   ├── coobee.json5                  # 主配置文件
 │   ├── secrets.json5                 # API Key 密钥配置
 │   └── skills.json5                  # Skill 专属配置（API Key、参数等）
-├── agents/                           # Agent 定义存储
-│   └── {agent-id}.json              # 每个 Agent 一个 JSON 文件（由 manage_agent 工具管理）
+├── agents/                           # 智能体定义存储（AgentStore 管理）
+│   └── {agent-id}.json              # 每个智能体一个 JSON 文件
+│                                     #   包含: id, name, description, instructions,
+│                                     #          tools, skills, model, version 等
+│                                     #   ID 格式: kebab-case（如 code-reviewer）
+│                                     #   管理方式: manage_agent 工具 或 HTTP REST API
+├── threads/                          # 会话线程存储（ThreadStore 管理）
+│   └── {threadId}.json              # 每个会话线程一个 JSON 文件
+│                                     #   threadId 使用 Snowflake ID（有序，可按 ID 排序得到时间顺序）
+│                                     #   包含: id, title, agentId, status, messageCount,
+│                                     #          createdAt, updatedAt
+│                                     #   status: active | archived | deleted
+│                                     #   管理方式: HTTP REST API（/gateway/threads/*）
 ├── memory/                           # 记忆存储
 │   ├── user/                         # 用户级记忆（跨 Agent 共享）
 │   │   └── *.json / *.md             # 偏好、长期经验、学习成果
@@ -101,6 +112,77 @@ description: 描述 Agent 运行时环境的目录结构、路径约定和可用
 - **自创建 Extension** → 放入 `{workspace}/extensions/{ext-id}/`
 - **临时文件** → 使用 `<paths>` 中的 `temp` 目录
 - **不要修改** `sessions/`、`contexts/` 和 `events/` 下的文件
+
+---
+
+## 智能体（Agents）
+
+智能体定义存储在 `{userHome}/agents/` 目录下，每个智能体是一个独立的 JSON 文件。
+
+### 数据结构
+
+```json
+{
+  "id": "code-reviewer", // 唯一标识（kebab-case）
+  "name": "代码审查专家", // 中文显示名称
+  "description": "审查代码质量...", // 一句话描述
+  "instructions": "你是一个...", // 系统指令（Agent 的灵魂）
+  "tools": ["read", "search"], // 启用的工具名称列表
+  "skills": ["coding-standards"], // 关联的 Skill 名称列表
+  "model": "openai/gpt-4o", // 指定模型（可选）
+  "createdAt": "2025-01-01T...", // 创建时间（ISO 8601）
+  "updatedAt": "2025-01-01T...", // 最后更新时间
+  "createdBy": "user", // 创建者：user | agent
+  "version": 1 // 版本号（每次更新递增）
+}
+```
+
+### 管理方式
+
+| 方式                | 说明                                          |
+| ------------------- | --------------------------------------------- |
+| `manage_agent` 工具 | LLM 通过 function call 管理（创建/更新/删除） |
+| HTTP REST API       | 前端通过 `/gateway/agents/*` 管理             |
+| AI 自动创建         | 用户输入需求，系统 AI 自动生成完整定义        |
+
+### 与当前会话的关系
+
+- 每个 Thread（会话线程）绑定一个 `agentId`
+- Agent 定义决定了该会话中 LLM 的行为方式（指令、工具、技能）
+- Agent 是**模板**，Thread 是**实例**
+
+---
+
+## 会话线程（Threads）
+
+会话线程存储在 `{userHome}/threads/` 目录下，记录用户与智能体之间的对话会话。
+
+### 数据结构
+
+```json
+{
+  "id": "1234567890123456789", // Snowflake ID（天然有序）
+  "title": "帮我审查代码", // 显示标题
+  "agentId": "code-reviewer", // 关联的智能体 ID
+  "status": "active", // 状态：active | archived | deleted
+  "messageCount": 12, // 消息数量
+  "createdAt": "2025-01-01T...", // 创建时间
+  "updatedAt": "2025-01-01T..." // 最后更新时间
+}
+```
+
+### 关键设计
+
+| 特性          | 说明                                                         |
+| ------------- | ------------------------------------------------------------ |
+| ID 生成       | 使用 Snowflake 算法，天然有序，按 ID 降序 = 按时间降序       |
+| 持久化        | 每个线程一个 JSON 文件，应用重启后保留                       |
+| 与 Agent 绑定 | 每个 Thread 通过 `agentId` 关联到一个智能体                  |
+| 管理方式      | HTTP REST API（`/gateway/threads/*`）— GET/POST/PATCH/DELETE |
+
+### 与工作空间的关系
+
+Thread 是用户可见的"会话列表"概念，而工作空间（workspace）是 Agent 执行时的文件系统隔离区域。一般情况下，Thread 的 `id` 对应 workspace 的 `sessionId`。
 
 ---
 
@@ -339,6 +421,8 @@ export default {
 | `paths`      | `userHome`             | 应用主目录                                          |
 | `paths`      | `systemHome`           | 系统用户目录（如 /Users/xxx）                       |
 | `paths`      | `configDir`            | 配置目录（coobee.json5/secrets.json5/skills.json5） |
+| `paths`      | `agentsDir`            | 智能体定义目录（{userHome}/agents/）                |
+| `paths`      | `threadsDir`           | 会话线程目录（{userHome}/threads/）                 |
 | `paths`      | `temp`                 | 系统临时目录                                        |
 | `paths`      | `memoryDir`            | 记忆总根目录                                        |
 | `skills`     | `builtinSkillsDir`     | 内置 Skill 目录                                     |

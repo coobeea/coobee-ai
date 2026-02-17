@@ -9,7 +9,7 @@
  *   2. 作为 Agent 进程的环境变量子集（未来 sandbox 场景）
  */
 
-import path from 'node:path'
+import path from 'node:path';
 
 // ==================== 类型定义 ====================
 
@@ -24,69 +24,73 @@ import path from 'node:path'
 export interface AgentEnv {
   // --- 系统信息 ---
   /** 操作系统 */
-  platform: 'darwin' | 'win32' | 'linux'
+  platform: 'darwin' | 'win32' | 'linux';
   /** CPU 架构 */
-  arch: string
+  arch: string;
   /** 是否为开发模式 */
-  isDev: boolean
+  isDev: boolean;
   /** 应用版本 */
-  appVersion: string
+  appVersion: string;
 
   // --- 工作空间 ---
   /** 工作空间根目录 */
-  workspace: string
+  workspace: string;
   /** 当前会话 ID */
-  sessionId: string
+  sessionId: string;
   /** 任务目录（{workspace}/tasks/，多 Agent 委托时使用） */
-  tasksDir: string
+  tasksDir: string;
 
   // --- 系统路径 ---
   /** 用户主目录（应用级，如 ~/.coobee-ai） */
-  userHome: string
+  userHome: string;
   /** 系统用户主目录（如 /Users/xxx） */
-  systemHome: string
+  systemHome: string;
   /** 系统临时目录 */
-  temp: string
+  temp: string;
   /** 配置目录（存放 coobee.json5、secrets.json5、skills.json5） */
-  configDir: string
+  configDir: string;
+  /** 智能体定义目录（{userHome}/agents/） */
+  agentsDir: string;
+  /** 会话线程目录（{userHome}/threads/，Snowflake ID 有序） */
+  threadsDir: string;
 
   // --- Skill 系统 ---
   /** Skill 搜索路径（按优先级从低到高） */
-  skillPaths: string[]
+  skillPaths: string[];
   /** 内置 Skill 目录 */
-  builtinSkillsDir: string
+  builtinSkillsDir: string;
   /** 用户 Skill 目录 */
-  userSkillsDir: string
+  userSkillsDir: string;
 
   // --- Extension 系统 ---
   /** Extension 搜索路径（按优先级从低到高） */
-  extensionPaths: string[]
+  extensionPaths: string[];
   /** 内置 Extension 目录 */
-  builtinExtensionsDir: string
+  builtinExtensionsDir: string;
   /** 用户 Extension 目录 */
-  userExtensionsDir: string
+  userExtensionsDir: string;
   /** 已加载的 Extension ID 列表 */
-  loadedExtensions: string[]
+  loadedExtensions: string[];
 
   // --- 记忆系统 ---
   /** 记忆总根目录 */
-  memoryDir: string
+  memoryDir: string;
 
   // --- 能力清单 ---
   /** 可用工具名称列表 */
-  availableTools: string[]
+  availableTools: string[];
 
   // --- 安全上下文 ---
   /** 沙箱模式 */
-  sandboxMode: 'off' | 'path-only' | 'docker'
+  sandboxMode: 'off' | 'path-only' | 'docker';
   /** 命令审批策略 */
-  execApproval: 'auto' | 'always' | 'never'
+  execApproval: 'auto' | 'always' | 'never';
 
   // --- 模型上下文 ---
   /** 当前默认模型（provider/model 格式） */
-  defaultModel: string
+  defaultModel: string;
   /** 思维链级别 */
-  thinkingLevel: string
+  thinkingLevel: string;
 }
 
 // ==================== 构建函数 ====================
@@ -99,30 +103,30 @@ export interface AgentEnv {
  */
 export async function buildAgentEnv(sessionId: string, workspace: string): Promise<AgentEnv> {
   // 延迟导入 Env，避免测试环境循环依赖
-  const { Env } = await import('@main/common/env')
+  const { Env } = await import('@main/common/env');
 
-  const skillPaths = await Env.getSkillSearchPaths(workspace)
-  const extensionPaths = await Env.getExtensionSearchPaths(workspace)
+  const skillPaths = await Env.getSkillSearchPaths(workspace);
+  const extensionPaths = await Env.getExtensionSearchPaths(workspace);
 
   // Extension 系统信息
-  let loadedExtensions: string[] = []
-  let availableTools: string[] = []
+  let loadedExtensions: string[] = [];
+  let availableTools: string[] = [];
 
   try {
-    const { ExtensionManager } = await import('@main/common/extension')
-    const registry = ExtensionManager.getRegistry()
+    const { ExtensionManager } = await import('@main/common/extension');
+    const registry = ExtensionManager.getRegistry();
     if (registry) {
       // 合并扩展贡献的 Skill 目录
       // 优先级：内置(1) → 扩展贡献(1.5) → 用户级(2) → 工作空间(3)
-      const extSkillDirs = registry.getSkillDirs().map((s) => s.dir)
+      const extSkillDirs = registry.getSkillDirs().map((s) => s.dir);
       if (extSkillDirs.length > 0) {
-        const builtinIdx = skillPaths.indexOf(Env.paths.builtinSkillsDir)
-        const insertIdx = builtinIdx >= 0 ? builtinIdx + 1 : 0
-        skillPaths.splice(insertIdx, 0, ...extSkillDirs)
+        const builtinIdx = skillPaths.indexOf(Env.paths.builtinSkillsDir);
+        const insertIdx = builtinIdx >= 0 ? builtinIdx + 1 : 0;
+        skillPaths.splice(insertIdx, 0, ...extSkillDirs);
       }
 
       // 已加载的 Extension ID 列表
-      loadedExtensions = registry.getExtensionIds()
+      loadedExtensions = registry.getExtensionIds();
     }
   } catch {
     // Extension 系统未初始化时忽略
@@ -130,29 +134,29 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
 
   // 可用工具清单
   try {
-    const { ToolRegistry } = await import('@main/ai/tools/registry')
-    const toolReg = ToolRegistry.getInstance()
-    availableTools = toolReg.getAll().map((t) => t.name)
+    const { ToolRegistry } = await import('@main/ai/tools/registry');
+    const toolReg = ToolRegistry.getInstance();
+    availableTools = toolReg.getAll().map((t) => t.name);
   } catch {
     // ToolRegistry 未初始化时忽略
   }
 
   // 安全与模型上下文
-  let sandboxMode: 'off' | 'path-only' | 'docker' = 'path-only'
-  let execApproval: 'auto' | 'always' | 'never' = 'auto'
-  let defaultModel = 'unknown'
-  let thinkingLevel = 'medium'
+  let sandboxMode: 'off' | 'path-only' | 'docker' = 'path-only';
+  let execApproval: 'auto' | 'always' | 'never' = 'auto';
+  let defaultModel = 'unknown';
+  let thinkingLevel = 'medium';
 
   try {
-    const { configStoreInstance } = await import('@main/common/config/ConfigStore')
+    const { configStoreInstance } = await import('@main/common/config/ConfigStore');
     if (configStoreInstance) {
-      const security = configStoreInstance.get('security')
-      sandboxMode = security?.sandbox?.mode ?? 'path-only'
-      execApproval = security?.approvals?.exec ?? 'auto'
+      const security = configStoreInstance.get('security');
+      sandboxMode = security?.sandbox?.mode ?? 'path-only';
+      execApproval = security?.approvals?.exec ?? 'auto';
 
-      const agents = configStoreInstance.get('agents')
-      defaultModel = agents?.defaults?.model?.primary ?? 'unknown'
-      thinkingLevel = agents?.defaults?.thinkingLevel ?? 'medium'
+      const agents = configStoreInstance.get('agents');
+      defaultModel = agents?.defaults?.model?.primary ?? 'unknown';
+      thinkingLevel = agents?.defaults?.thinkingLevel ?? 'medium';
     }
   } catch {
     // ConfigStore 未初始化时使用默认值
@@ -175,6 +179,8 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
     systemHome: Env.paths.home,
     temp: Env.paths.temp,
     configDir: Env.paths.configDir,
+    agentsDir: Env.paths.agentsDir,
+    threadsDir: Env.paths.threadsDir,
 
     // Skill 系统
     skillPaths,
@@ -200,7 +206,7 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
     // 模型上下文
     defaultModel,
     thinkingLevel
-  }
+  };
 }
 
 // ==================== 提示词注入 ====================
@@ -227,6 +233,8 @@ export function formatRuntimePaths(env: AgentEnv): string {
   <userHome>${env.userHome}</userHome>
   <systemHome>${env.systemHome}</systemHome>
   <configDir>${env.configDir}</configDir>
+  <agentsDir>${env.agentsDir}</agentsDir>
+  <threadsDir>${env.threadsDir}</threadsDir>
   <temp>${env.temp}</temp>
   <memoryDir>${env.memoryDir}</memoryDir>
 </paths>
@@ -282,5 +290,5 @@ Workflow:
 
 For simple single delegations, taskId is auto-generated and task_plan is optional.
 </workspace_conventions>
-</runtime_environment>`
+</runtime_environment>`;
 }
