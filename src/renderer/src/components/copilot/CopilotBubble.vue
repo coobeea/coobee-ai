@@ -193,16 +193,12 @@ function toolSummary(block: CopilotBlock): string {
             ref="textareaRef"
             v-model="inputText"
             class="panel-input"
-            placeholder="告诉管家你需要什么..."
+            :placeholder="copilot.isStreaming ? '处理中...' : '输入消息，Enter 发送'"
             rows="1"
             :disabled="copilot.isStreaming"
             @keydown="handleKeydown" />
-          <button class="panel-send-btn" :disabled="!inputText.trim() || copilot.isStreaming" @click="handleSend">
-            <span
-              v-if="copilot.isStreaming"
-              class="i-carbon-stop-filled inline-block h-3.5 w-3.5"
-              @click.stop="copilot.abort()" />
-            <span v-else class="i-carbon-send-filled inline-block h-3.5 w-3.5" />
+          <button v-if="copilot.isStreaming" class="panel-stop-btn" title="中断" @click="copilot.abort()">
+            <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5" />
           </button>
         </div>
       </div>
@@ -596,7 +592,7 @@ function toolSummary(block: CopilotBlock): string {
   opacity: 0.5;
 }
 
-.panel-send-btn {
+.panel-stop-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -605,16 +601,11 @@ function toolSummary(block: CopilotBlock): string {
   border-radius: 8px;
   flex-shrink: 0;
   color: hsl(var(--primary-foreground));
-  background: hsl(var(--primary));
+  background: hsl(var(--error));
   transition: all 0.15s ease;
 }
 
-.panel-send-btn:hover:not(:disabled) {
-  background: hsl(var(--primary-hover));
-}
-
-.panel-send-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+.panel-stop-btn:hover {
+  opacity: 0.85;
 }
 </style>

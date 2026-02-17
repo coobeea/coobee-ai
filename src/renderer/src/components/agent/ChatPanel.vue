@@ -490,15 +490,6 @@ onMounted(() => {
           @click="handleAbort">
           <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5"></span>
         </button>
-
-        <!-- 发送按钮 -->
-        <button
-          class="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition"
-          :class="inputText.trim() ? 'bg-primary text-white hover:bg-primary/90' : 'bg-gray-100 text-gray-300'"
-          :disabled="!inputText.trim()"
-          @click="handleSend">
-          <span class="i-carbon-send-alt inline-block h-3.5 w-3.5"></span>
-        </button>
       </div>
       <p v-if="gateway.lastError.value" class="mt-1 flex items-center gap-1 text-[10px] text-red-500">
         <span class="i-carbon-warning inline-block h-2.5 w-2.5"></span>
