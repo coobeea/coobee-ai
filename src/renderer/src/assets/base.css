@@ -1,67 +1,315 @@
-:root {
-  --ev-c-white: #ffffff;
-  --ev-c-white-soft: #f8f8f8;
-  --ev-c-white-mute: #f2f2f2;
+/* ==========================================================================
+   Design System — CSS 变量定义
 
-  --ev-c-black: #1b1b1f;
-  --ev-c-black-soft: #222222;
-  --ev-c-black-mute: #282828;
+   定义应用的主题变量，支持亮色/暗色模式和多种主题色预设。
+   所有颜色使用 HSL 空格分隔格式（H S% L%），由 tailwind.css 中的
+   @theme inline 消费并注册为 Tailwind 工具类。
 
-  --ev-c-gray-1: #515c67;
-  --ev-c-gray-2: #414853;
-  --ev-c-gray-3: #32363f;
+   迁移自 Joythink-AI，适配 Tailwind CSS 4。
+   ========================================================================== */
 
-  --ev-c-text-1: rgba(255, 255, 245, 0.86);
-  --ev-c-text-2: rgba(235, 235, 245, 0.6);
-  --ev-c-text-3: rgba(235, 235, 245, 0.38);
+@layer base {
+  /* ================================================================
+     亮色模式 — 默认值
+     ================================================================ */
+  :root {
+    /* 基础颜色 */
+    --background: 0 0% 92.9%;
+    --foreground: 240 10% 3.9%;
 
-  --ev-button-alt-border: transparent;
-  --ev-button-alt-text: var(--ev-c-text-1);
-  --ev-button-alt-bg: var(--ev-c-gray-3);
-  --ev-button-alt-hover-border: transparent;
-  --ev-button-alt-hover-text: var(--ev-c-text-1);
-  --ev-button-alt-hover-bg: var(--ev-c-gray-2);
-}
+    /* 表面颜色 */
+    --surface: 0 0% 100%;
+    --surface-variant: 240 4.8% 95.9%;
 
-:root {
-  --color-background: var(--ev-c-black);
-  --color-background-soft: var(--ev-c-black-soft);
-  --color-background-mute: var(--ev-c-black-mute);
+    /* 文本颜色 */
+    --text-primary: 240 10% 3.9%;
+    --text-secondary: 217 19% 47%;
+    --text-muted: 217 19% 47%;
 
-  --color-text: var(--ev-c-text-1);
-}
+    /* 边框和分割线 */
+    --border: 214 32% 91%;
+    --border-variant: 214 32% 91%;
+    --divider: 214 32% 91%;
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  font-weight: normal;
-}
+    /* 输入框 */
+    --input: 214 32% 91%;
+    --input-background: 0 0% 100%;
 
-ul {
-  list-style: none;
-}
+    /* 主色调 — 默认蓝色 */
+    --primary: 243 76% 59%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 243 76% 54%;
 
-body {
-  min-height: 100vh;
-  color: var(--color-text);
-  background: var(--color-background);
-  line-height: 1.6;
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Fira Sans',
-    'Droid Sans',
-    'Helvetica Neue',
-    sans-serif;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    /* 次要色调 */
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 214 20% 65%;
+    --secondary-hover: 240 4.8% 90%;
+
+    /* 强调色 */
+    --accent: 210 40% 96.08%;
+    --accent-foreground: 215.9 16.3% 34.9%;
+    --accent-hover: 210 40% 91%;
+
+    /* 状态颜色 */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 98%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 98%;
+    --error: 0 84.2% 60.2%;
+    --error-foreground: 0 0% 98%;
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 98%;
+
+    /* 遮罩和阴影 */
+    --overlay: 0 0% 0%;
+    --shadow: 0 0% 0%;
+
+    /* 其他语义色 */
+    --muted: 210 40% 93%;
+    --muted-foreground: 217 19% 47%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --ring: 243 76% 59%;
+    --radius: 0.5rem;
+
+    /* 字体设置
+       使用 --font-family- 前缀避免与 Tailwind 4 的 --font-* 主题变量冲突 */
+    --font-family-primary: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-size-base: 16px;
+
+    /* 字体族预设 */
+    --font-family-system: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-family-sans: 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --font-family-serif: Georgia, 'Times New Roman', 'Songti SC', serif;
+    --font-family-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+
+    /* 缩放 */
+    --zoom-scale: 1;
+
+    /* 主题切换过渡 */
+    --transition-theme: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  }
+
+  /* ================================================================
+     主题色预设 — 亮色模式
+     ================================================================ */
+
+  /* 蓝色 — 默认 */
+  :root,
+  .theme-blue {
+    --primary: 210 100% 63%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 210 100% 58%;
+    --ring: 210 100% 63%;
+  }
+
+  /* 紫色 */
+  .theme-purple {
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 262 83% 53%;
+    --ring: 262 83% 58%;
+  }
+
+  /* 绿色 */
+  .theme-green {
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 142 76% 31%;
+    --ring: 142 76% 36%;
+  }
+
+  /* 红色 */
+  .theme-red {
+    --primary: 0 84% 60%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 0 84% 55%;
+    --ring: 0 84% 60%;
+  }
+
+  /* 橙色 */
+  .theme-orange {
+    --primary: 25 95% 53%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 25 95% 48%;
+    --ring: 25 95% 53%;
+  }
+
+  /* 粉色 */
+  .theme-pink {
+    --primary: 330 81% 60%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 330 81% 55%;
+    --ring: 330 81% 60%;
+  }
+
+  /* 青色 */
+  .theme-cyan {
+    --primary: 199 89% 48%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 199 89% 43%;
+    --ring: 199 89% 48%;
+  }
+
+  /* 靛青 */
+  .theme-indigo {
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 239 84% 62%;
+    --ring: 239 84% 67%;
+  }
+
+  /* 翠绿 */
+  .theme-emerald {
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 160 84% 34%;
+    --ring: 160 84% 39%;
+  }
+
+  /* 玫瑰 */
+  .theme-rose {
+    --primary: 346 77% 49%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 346 77% 44%;
+    --ring: 346 77% 49%;
+  }
+
+  /* ================================================================
+     暗色模式
+     ================================================================ */
+  .dark {
+    /* 基础颜色 */
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+
+    /* 表面颜色 */
+    --surface: 240 6% 10%;
+    --surface-variant: 240 4% 16%;
+
+    /* 文本颜色 */
+    --text-primary: 0 0% 98%;
+    --text-secondary: 218 11% 65%;
+    --text-muted: 218 11% 65%;
+
+    /* 边框和分割线 */
+    --border: 240 4% 16%;
+    --border-variant: 240 4% 20%;
+    --divider: 240 4% 16%;
+
+    /* 输入框 */
+    --input: 240 4% 16%;
+    --input-background: 240 6% 10%;
+
+    /* 次要色调 */
+    --secondary: 215 14% 34%;
+    --secondary-foreground: 240 5% 84%;
+    --secondary-hover: 215 14% 39%;
+
+    /* 强调色 */
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 98%;
+    --accent-hover: 240 4% 21%;
+
+    /* 状态颜色 */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 98%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 98%;
+    --error: 0 72% 51%;
+    --error-foreground: 0 0% 98%;
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 98%;
+
+    /* 遮罩和阴影 */
+    --overlay: 0 0% 0%;
+    --shadow: 0 0% 0%;
+
+    /* 其他语义色 */
+    --muted: 240 15% 20%;
+    --muted-foreground: 218 11% 65%;
+    --popover: 240 6% 10%;
+    --popover-foreground: 0 0% 98%;
+    --card: 240 6% 10%;
+    --card-foreground: 0 0% 98%;
+  }
+
+  /* ================================================================
+     主题色预设 — 暗色模式
+     暗色模式下适当提高亮度以保证可读性
+     ================================================================ */
+
+  /* 蓝色 — 暗色默认 */
+  .dark.theme-blue,
+  .dark {
+    --primary: 210 100% 68%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 210 100% 73%;
+    --ring: 210 100% 68%;
+  }
+
+  .dark.theme-purple {
+    --primary: 262 80% 65%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 262 80% 70%;
+    --ring: 262 80% 65%;
+  }
+
+  .dark.theme-green {
+    --primary: 142 70% 45%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 142 70% 50%;
+    --ring: 142 70% 45%;
+  }
+
+  .dark.theme-red {
+    --primary: 0 75% 65%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 0 75% 70%;
+    --ring: 0 75% 65%;
+  }
+
+  .dark.theme-orange {
+    --primary: 25 90% 60%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 25 90% 65%;
+    --ring: 25 90% 60%;
+  }
+
+  .dark.theme-pink {
+    --primary: 330 75% 65%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 330 75% 70%;
+    --ring: 330 75% 65%;
+  }
+
+  .dark.theme-cyan {
+    --primary: 199 85% 55%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 199 85% 60%;
+    --ring: 199 85% 55%;
+  }
+
+  .dark.theme-indigo {
+    --primary: 239 80% 70%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 239 80% 75%;
+    --ring: 239 80% 70%;
+  }
+
+  .dark.theme-emerald {
+    --primary: 160 80% 45%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 160 80% 50%;
+    --ring: 160 80% 45%;
+  }
+
+  .dark.theme-rose {
+    --primary: 346 70% 55%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 346 70% 60%;
+    --ring: 346 70% 55%;
+  }
 }
