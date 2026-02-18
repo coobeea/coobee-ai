@@ -99,7 +99,7 @@ function getAgentTypeLabel(type?: AgentType): string | null {
     case 'orchestrator':
       return '编排';
     case 'swarm':
-      return '群组';
+      return '蜂群';
     default:
       return null;
   }

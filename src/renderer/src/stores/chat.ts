@@ -255,6 +255,20 @@ export const useChatStore = defineStore('chat', () => {
             }
             break;
 
+          case 'hitl:approved':
+          case 'hitl:rejected': {
+            if (currentMsg?.pendingApprovals) {
+              const targetIndex = evt.data?.index as number | undefined;
+              if (targetIndex != null) {
+                const approval = currentMsg.pendingApprovals.find((a) => a.index === targetIndex);
+                if (approval) {
+                  approval.decision = evt.type === 'hitl:approved' ? 'approve-once' : 'reject';
+                }
+              }
+            }
+            break;
+          }
+
           case 'delegate:start':
             if (currentMsg) {
               currentMsg.blocks.push({

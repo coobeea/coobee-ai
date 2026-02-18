@@ -16,6 +16,7 @@ import { log } from '@main/common/logger';
 import { hitlApprovalManager } from '@main/ai/hitl/HitlApprovalManager';
 import { eventBus } from '@main/common/eventbus';
 import { CheckpointManager } from '@main/ai/threads/CheckpointManager';
+import { AgentEventWriter } from '@main/ai/AgentEventWriter';
 import type { ThreadWakeEvent } from '@main/ai/threads/ThreadWaker';
 import { GatewayErrorCode, GatewayMethodError } from '../protocol';
 import type { MethodGroup } from '../protocol';
@@ -60,11 +61,19 @@ export const approvalMethods: MethodGroup = {
       if (checkpoint?.runStatus === 'approval-pending') {
         log.info(`[hitl.decide] Async mode: emitting thread:wake for ${sessionId}`);
 
+        const resolvedToolName = toolName || checkpoint.pendingOperation?.toolName || 'unknown';
+        const action = decision === 'reject' ? 'rejected' : 'approved';
+        AgentEventWriter.dispatchForSession(sessionId, {
+          type: action === 'approved' ? 'hitl:approved' : 'hitl:rejected',
+          content: `${action}: ${resolvedToolName}`,
+          data: { index, toolName: resolvedToolName, action }
+        });
+
         eventBus.emit('thread:wake', {
           threadId: sessionId,
           reason: 'approval-done',
           approvalDecision: decision,
-          toolName: toolName || checkpoint.pendingOperation?.toolName,
+          toolName: resolvedToolName,
           toolParams
         } satisfies ThreadWakeEvent);
 
