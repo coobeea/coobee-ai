@@ -126,7 +126,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <aside v-show="!isCollapsed" class="flex h-full w-[380px] shrink-0 flex-col border-l border-gray-200/80 bg-[#f7f7f8]">
+  <aside v-show="!isCollapsed" class="flex h-full w-[320px] shrink-0 flex-col border-l border-gray-200/80 bg-[#f7f7f8]">
     <!-- 面板标题 -->
     <div class="flex h-10 shrink-0 items-center justify-between border-b border-gray-200/60 px-3">
       <div class="flex items-center gap-1.5">

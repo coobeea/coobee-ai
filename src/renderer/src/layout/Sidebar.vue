@@ -46,6 +46,7 @@ onMounted(() => {
 });
 
 const handleMenuClick = (item: MenuItem): void => {
+  threadsStore.selectThread(null);
   router.push(item.route);
 };
 
@@ -123,7 +124,7 @@ onMounted(() => updateActiveState());
         v-for="item in menuItems"
         :key="item.id"
         class="nav-btn"
-        :class="{ active: item.id === activeMenuId }"
+        :class="{ active: item.id === activeMenuId && !threadsStore.activeThreadId }"
         @click="handleMenuClick(item)">
         <span :class="item.icon" class="icon-sm" />
         <span>{{ item.label }}</span>

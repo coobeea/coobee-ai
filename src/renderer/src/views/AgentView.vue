@@ -447,22 +447,6 @@ function formatTime(iso: string): string {
 
       <!-- 已选目录：三栏工作区 -->
       <template v-else>
-        <div class="workspace-bar">
-          <div class="flex items-center gap-2">
-            <span v-if="agentsStore.selectedAgent" class="workspace-agent">
-              {{ agentsStore.selectedAgent.name }}
-            </span>
-            <span v-if="projectPath" class="workspace-dir" :title="projectPath">
-              <span class="i-carbon-folder inline-block h-3 w-3 shrink-0" />
-              {{ projectPath.split('/').pop() || projectPath }}
-            </span>
-          </div>
-          <div class="flex items-center gap-1">
-            <button class="text-btn text-[10px]" @click="agentsPanelCollapsed = !agentsPanelCollapsed"> 智能体 </button>
-            <button class="text-btn text-[10px]" @click="startNewSession">返回列表</button>
-          </div>
-        </div>
-
         <div class="flex min-h-0 flex-1">
           <ProjectPanel v-model:collapsed="leftCollapsed" v-model:project-path="projectPath" />
           <WorkbenchPanel />
