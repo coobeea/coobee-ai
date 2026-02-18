@@ -11,11 +11,11 @@
  * 分类：Observability | 风险：低（只读）
  */
 
-import fs from 'node:fs'
-import path from 'node:path'
-import { z } from 'zod'
-import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types'
-import { ToolCategory } from '../types'
+import fs from 'node:fs';
+import path from 'node:path';
+import { z } from 'zod';
+import type { ToolDefinition, ToolExecutionContext, ToolStreamUpdate, ToolResult } from '../types';
+import { ToolCategory } from '../types';
 
 export const sessionStatusTool: ToolDefinition = {
   name: 'session_status',
@@ -30,59 +30,56 @@ export const sessionStatusTool: ToolDefinition = {
   execute: async function* (
     _params: Record<string, unknown>,
     _signal?: AbortSignal,
-    context?: { workspaceRoot: string; sessionId?: string }
+    context?: ToolExecutionContext
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
-    yield { type: 'progress' as const, content: '[session_status] querying...' }
+    yield { type: 'progress' as const, content: '[session_status] querying...' };
 
-    const workspace = context?.workspaceRoot
+    const workspace = context?.workspaceRoot;
     if (!workspace) {
-      return { success: false, llmContent: 'Error: workspace not available in context.' }
+      return { success: false, llmContent: 'Error: workspace not available in context.' };
     }
 
-    const contextsDir = path.join(workspace, 'contexts')
+    const contextsDir = path.join(workspace, 'contexts');
 
     if (!fs.existsSync(contextsDir)) {
       return {
         success: true,
         llmContent: `Session: ${context.sessionId || 'unknown'}\nSnapshots: 0\nNo LLM calls recorded yet.`
-      }
+      };
     }
 
     // 列出所有 context JSON 文件
     const files = fs
       .readdirSync(contextsDir)
       .filter((f) => f.endsWith('.json'))
-      .sort()
+      .sort();
 
-    const snapshotCount = files.length
+    const snapshotCount = files.length;
 
     // 读取最近一次快照
-    let lastInfo = 'No snapshots available.'
+    let lastInfo = 'No snapshots available.';
     if (files.length > 0) {
       try {
-        const lastFile = files[files.length - 1]
-        const raw = fs.readFileSync(path.join(contextsDir, lastFile), 'utf-8')
-        const snap = JSON.parse(raw)
+        const lastFile = files[files.length - 1];
+        const raw = fs.readFileSync(path.join(contextsDir, lastFile), 'utf-8');
+        const snap = JSON.parse(raw);
 
-        const parts: string[] = []
-        parts.push(`Last call: ${snap.timestamp || lastFile}`)
-        if (snap.config?.model) parts.push(`Model: ${snap.config.model}`)
-        if (snap.duration !== undefined) parts.push(`Duration: ${snap.duration}ms`)
-        if (snap.toolCalls?.length) parts.push(`Tool calls: ${snap.toolCalls.length}`)
-        if (snap.error) parts.push(`Error: ${snap.error}`)
-        lastInfo = parts.join('\n')
+        const parts: string[] = [];
+        parts.push(`Last call: ${snap.timestamp || lastFile}`);
+        if (snap.config?.model) parts.push(`Model: ${snap.config.model}`);
+        if (snap.duration !== undefined) parts.push(`Duration: ${snap.duration}ms`);
+        if (snap.toolCalls?.length) parts.push(`Tool calls: ${snap.toolCalls.length}`);
+        if (snap.error) parts.push(`Error: ${snap.error}`);
+        lastInfo = parts.join('\n');
       } catch {
-        lastInfo = 'Failed to parse last snapshot.'
+        lastInfo = 'Failed to parse last snapshot.';
       }
     }
 
-    const output = [
-      `Session: ${context.sessionId || 'unknown'}`,
-      `Snapshots: ${snapshotCount}`,
-      '',
-      lastInfo
-    ].join('\n')
+    const output = [`Session: ${context.sessionId || 'unknown'}`, `Snapshots: ${snapshotCount}`, '', lastInfo].join(
+      '\n'
+    );
 
-    return { success: true, llmContent: output }
+    return { success: true, llmContent: output };
   }
-}
+};

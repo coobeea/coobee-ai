@@ -30,7 +30,7 @@
  * - types.ts                — 类型定义
  */
 
-import path from 'node:path'
+import path from 'node:path';
 import {
   createAgentSession,
   createExtensionRuntime,
@@ -38,27 +38,24 @@ import {
   ModelRegistry,
   SessionManager,
   SettingsManager
-} from '@mariozechner/pi-coding-agent'
-import type {
-  AgentSession,
-  ToolDefinition as PiToolDefinition
-} from '@mariozechner/pi-coding-agent'
-import type { Model } from '@mariozechner/pi-ai'
-import { AbstractAgentRuntime } from '../AbstractAgentRuntime'
-import { ChunkQueue } from './ChunkQueue'
-import { convertTools } from './PiMonoToolConverter'
-import { setupEventSubscription } from './PiMonoStreamAdapter'
-import type { ExecutionConfig, ExecutionResult, StreamChunk, SessionInfo } from '../types'
-import type { PiMonoAgentRuntimeOptions } from './types'
+} from '@mariozechner/pi-coding-agent';
+import type { AgentSession, ToolDefinition as PiToolDefinition } from '@mariozechner/pi-coding-agent';
+import type { Model } from '@mariozechner/pi-ai';
+import { AbstractAgentRuntime } from '../AbstractAgentRuntime';
+import { ChunkQueue } from './ChunkQueue';
+import { convertTools } from './PiMonoToolConverter';
+import { setupEventSubscription } from './PiMonoStreamAdapter';
+import type { ExecutionConfig, ExecutionResult, StreamChunk, SessionInfo } from '../types';
+import type { PiMonoAgentRuntimeOptions } from './types';
 
 /** 默认最大执行轮次（TODO: 接入 maxTurns 配置后启用） */
 // const DEFAULT_MAX_TURNS = 25
 
 /** 默认模型 */
-const DEFAULT_MODEL = 'MiniMax-M2.1'
+const DEFAULT_MODEL = 'MiniMax-M2.1';
 
 /** 默认 Base URL（MiniMax OpenAI 兼容端点） */
-const DEFAULT_BASE_URL = 'https://api.minimaxi.com/v1'
+const DEFAULT_BASE_URL = 'https://api.minimaxi.com/v1';
 
 /**
  * 自定义 Provider 名称
@@ -66,34 +63,34 @@ const DEFAULT_BASE_URL = 'https://api.minimaxi.com/v1'
  * 因为我们构造自定义 Model 对象，使用一个固定的 provider 名称
  * 来注册 API key 到 AuthStorage 中。
  */
-const CUSTOM_PROVIDER = 'openai-compat'
+const CUSTOM_PROVIDER = 'openai-compat';
 
 // ========== Logger ==========
 
 interface RuntimeLogger {
-  info(message: string, ...args: unknown[]): void
-  warn(message: string, ...args: unknown[]): void
-  error(message: string, ...args: unknown[]): void
-  debug(message: string, ...args: unknown[]): void
+  info(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
+  error(message: string, ...args: unknown[]): void;
+  debug(message: string, ...args: unknown[]): void;
 }
 
 const createRuntimeLogger = (): RuntimeLogger => {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createLogger } = require('@main/common/logger')
-    return createLogger('pimono-runtime') as RuntimeLogger
+    const { createLogger } = require('@main/common/logger');
+    return createLogger('pimono-runtime') as RuntimeLogger;
   } catch {
-    const prefix = '[PiMonoAgentRuntime]'
+    const prefix = '[PiMonoAgentRuntime]';
     return {
       info: (msg: string, ...args: unknown[]) => console.log(`${prefix} ${msg}`, ...args),
       warn: (msg: string, ...args: unknown[]) => console.warn(`${prefix} ${msg}`, ...args),
       error: (msg: string, ...args: unknown[]) => console.error(`${prefix} ${msg}`, ...args),
       debug: (msg: string, ...args: unknown[]) => console.debug(`${prefix} ${msg}`, ...args)
-    }
+    };
   }
-}
+};
 
-const log = createRuntimeLogger()
+const log = createRuntimeLogger();
 
 /**
  * 构造 OpenAI Chat Completions 兼容的 Model 对象
@@ -110,9 +107,9 @@ function createOpenAICompatModel(
   baseURL: string,
   modelMeta?: PiMonoAgentRuntimeOptions['modelMeta']
 ): Model<'openai-completions'> {
-  const reasoning = modelMeta?.reasoning ?? true
-  const contextWindow = modelMeta?.contextWindow ?? 204800
-  const maxTokens = modelMeta?.maxOutputTokens ?? 131072
+  const reasoning = modelMeta?.reasoning ?? true;
+  const contextWindow = modelMeta?.contextWindow ?? 204800;
+  const maxTokens = modelMeta?.maxOutputTokens ?? 131072;
 
   return {
     id: modelName,
@@ -137,7 +134,7 @@ function createOpenAICompatModel(
       supportsUsageInStreaming: true,
       maxTokensField: 'max_tokens'
     }
-  }
+  };
 }
 
 /**
@@ -153,67 +150,67 @@ function createOpenAICompatModel(
  * 5. 管理会话生命周期
  */
 export class PiMonoAgentRuntime extends AbstractAgentRuntime {
-  readonly type = 'agent' as const
-  readonly id: string
-  readonly options: PiMonoAgentRuntimeOptions
+  readonly type = 'agent' as const;
+  readonly id: string;
+  readonly options: PiMonoAgentRuntimeOptions;
 
   // pi-SDK 会话（initialize 后可用）
-  private piSession!: AgentSession
+  private piSession!: AgentSession;
 
   // 会话
-  private readonly sessionId: string
-  private createdAt: number
+  private readonly sessionId: string;
+  private createdAt: number;
 
   // 中断状态（pi-SDK 通过 Extension 处理，此处始终为 false）
-  private _interrupted = false
+  private _interrupted = false;
 
   constructor(options: PiMonoAgentRuntimeOptions) {
-    super()
-    this.options = options
-    this.id = `pi-agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    this.sessionId = options.sessionId || `pi-session-${Date.now()}`
-    this.createdAt = Date.now()
+    super();
+    this.options = options;
+    this.id = `pi-agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    this.sessionId = options.sessionId || `pi-session-${Date.now()}`;
+    this.createdAt = Date.now();
   }
 
   get name(): string {
-    return this.options.name
+    return this.options.name;
   }
 
   get interrupted(): boolean {
-    return this._interrupted
+    return this._interrupted;
   }
 
   get supportsHITL(): boolean {
-    return false
+    return false;
   }
 
   // ========== 生命周期 ==========
 
   async initialize(): Promise<void> {
-    const modelName = this.options.model || DEFAULT_MODEL
-    const baseURL = this.options.baseURL || DEFAULT_BASE_URL
-    const thinkingLevel = this.options.thinkingLevel || 'medium'
+    const modelName = this.options.model || DEFAULT_MODEL;
+    const baseURL = this.options.baseURL || DEFAULT_BASE_URL;
+    const thinkingLevel = this.options.thinkingLevel || 'medium';
 
     // 1. 构造 OpenAI 兼容的 Model 对象（从 coobee.json5 模型配置透传元数据）
-    const model = createOpenAICompatModel(modelName, baseURL, this.options.modelMeta)
+    const model = createOpenAICompatModel(modelName, baseURL, this.options.modelMeta);
 
     // 2. 认证配置
     //    通过 AuthStorage 注入 API key，使用自定义 provider 名称
-    const authStorage = new AuthStorage()
-    authStorage.setRuntimeApiKey(CUSTOM_PROVIDER, this.options.apiKey)
-    const modelRegistry = new ModelRegistry(authStorage)
+    const authStorage = new AuthStorage();
+    authStorage.setRuntimeApiKey(CUSTOM_PROVIDER, this.options.apiKey);
+    const modelRegistry = new ModelRegistry(authStorage);
 
     // 3. Session 管理
     //    file 模式：用 sessionId 隔离目录，支持外部管理和恢复会话
     //    memory 模式：内存存储，sessionId 仅作标识
-    const cwd = this.options.cwd || process.cwd()
+    const cwd = this.options.cwd || process.cwd();
     const sessionDir = this.options.sessionDir
       ? path.join(this.options.sessionDir, this.sessionId)
-      : path.join(cwd, '.coobee-ai', 'sessions', this.sessionId)
+      : path.join(cwd, '.coobee-ai', 'sessions', this.sessionId);
     const sessionManager =
       this.options.sessionMode === 'file'
         ? SessionManager.continueRecent(cwd, sessionDir)
-        : SessionManager.inMemory(cwd)
+        : SessionManager.inMemory(cwd);
 
     // 4. Settings（压缩/重试配置）
     const settingsManager = SettingsManager.inMemory({
@@ -223,13 +220,13 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
         maxRetries: this.options.retry?.maxRetries ?? 3,
         baseDelayMs: this.options.retry?.baseDelayMs ?? 1000
       }
-    })
+    });
 
     // 5. 自定义 ResourceLoader（不发现文件系统资源，通过选项注入）
     //    - getSystemPrompt: 返回基础 instructions
     //    - getAppendSystemPrompt: 返回追加指令片段
     //    - getSkills: 返回 SkillDefinition → pi-SDK Skill 的转换结果
-    const stubRuntime = createExtensionRuntime()
+    const stubRuntime = createExtensionRuntime();
     const piSkills = (this.options.skills || []).map((s) => ({
       name: s.name,
       description: s.description,
@@ -237,14 +234,14 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
       baseDir: '',
       source: 'runtime-options',
       disableModelInvocation: false
-    }))
+    }));
     // 如果有 skills，将内容拼接到 appendInstructions 中
     // 因为 pi-SDK 的 Skill 只有 name/description（用于提示词标注），
     // 实际内容需要通过 appendSystemPrompt 注入
     const skillContentParts = (this.options.skills || []).map(
       (s) => `<skill name="${s.name}">\n${s.content}\n</skill>`
-    )
-    const allAppendParts = [...skillContentParts, ...(this.options.appendInstructions || [])]
+    );
+    const allAppendParts = [...skillContentParts, ...(this.options.appendInstructions || [])];
 
     const resourceLoader = {
       getExtensions: () => ({ extensions: [], errors: [], runtime: stubRuntime }),
@@ -257,21 +254,20 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
       getPathMetadata: () => new Map(),
       extendResources: () => {},
       reload: async () => {}
-    }
+    };
 
     // 6. 合并工具：sdkTools（SDK 原生）+ tools（统一 ToolDefinition 转换后）
-    // 优先使用注入的沙箱上下文，否则降级为 path-only
-    const sandboxContext: import('../../sandbox/types').SandboxContext = this.options
-      .sandboxContext || {
+    // 优先使用注入的工具执行上下文，否则降级为 path-only 最小上下文
+    const sandboxContext: import('../../tools/types').ToolExecutionContext = this.options.sandboxContext || {
       mode: 'path-only',
       workspaceRoot: (this.options.cwd as string) || this.options.workspaceRoot || process.cwd(),
       toolPolicy: { allow: [], deny: [], confirm: [] },
       sessionId: this.sessionId
-    }
+    };
     const allSdkTools: PiToolDefinition[] = [
       ...((this.options.sdkTools as PiToolDefinition[]) || []),
       ...convertTools(this.options.tools || [], { sandboxContext, log })
-    ]
+    ];
 
     // 7. 创建 AgentSession
     //    有工具时：tools: [] 禁用内置 codingTools，通过 customTools 传入自定义工具
@@ -285,18 +281,16 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
       sessionManager,
       settingsManager,
       resourceLoader
-    }
+    };
 
     if (allSdkTools.length > 0) {
-      sessionConfig.customTools = allSdkTools
-      sessionConfig.tools = [] // 禁用内置 codingTools，仅使用 customTools
+      sessionConfig.customTools = allSdkTools;
+      sessionConfig.tools = []; // 禁用内置 codingTools，仅使用 customTools
     }
 
-    const { session } = await createAgentSession(
-      sessionConfig as Parameters<typeof createAgentSession>[0]
-    )
+    const { session } = await createAgentSession(sessionConfig as Parameters<typeof createAgentSession>[0]);
 
-    this.piSession = session
+    this.piSession = session;
 
     log.info(
       `Initialized: ${this.name} ` +
@@ -308,15 +302,15 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
         `tools: ${allSdkTools.length}, ` +
         `skills: ${piSkills.length}, ` +
         `session: ${this.sessionId})`
-    )
+    );
   }
 
   async destroy(): Promise<void> {
     if (this.piSession) {
-      this.piSession.dispose()
+      this.piSession.dispose();
     }
-    this._interrupted = false
-    log.info(`Destroyed: ${this.name}`)
+    this._interrupted = false;
+    log.info(`Destroyed: ${this.name}`);
   }
 
   // ========== 执行方法 ==========
@@ -340,43 +334,43 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
     input: string,
     _config?: ExecutionConfig
   ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
-    const startTime = Date.now()
-    const queue = new ChunkQueue<StreamChunk>()
+    const startTime = Date.now();
+    const queue = new ChunkQueue<StreamChunk>();
 
-    log.info(`[PiMonoRuntime] Running stream: ${this.name}`)
+    log.info(`[PiMonoRuntime] Running stream: ${this.name}`);
 
     try {
       // 1. run:start
-      queue.push({ type: 'run:start', content: '' })
+      queue.push({ type: 'run:start', content: '' });
 
       // 2. 设置事件订阅 → push 到 queue
-      let fullOutput = ''
-      let apiError: string | null = null
-      const toolCalls: ExecutionResult['toolCalls'] = []
+      let fullOutput = '';
+      let apiError: string | null = null;
+      const toolCalls: ExecutionResult['toolCalls'] = [];
 
       const unsubscribe = setupEventSubscription(
         this.piSession,
         {
           onChunk: (chunk) => queue.push(chunk),
           onTextDelta: (text) => {
-            fullOutput += text
+            fullOutput += text;
           },
           toolCalls,
           onApiError: (errorMessage) => {
-            apiError = errorMessage
+            apiError = errorMessage;
           }
         },
         log
-      )
+      );
 
       // 3. SDK 执行，完成后结束 queue
       this.piSession
         .prompt(input)
         .then(async () => {
-          unsubscribe()
+          unsubscribe();
           // 等待一个微任务周期，确保 SDK 已排队的事件回调有机会执行完毕
           // （pi-SDK 内部可能通过 Promise/microtask 分发最后的 delta 事件）
-          await Promise.resolve()
+          await Promise.resolve();
 
           if (apiError) {
             // API 返回了错误（如 usage limit exceeded）但 SDK 没有 throw
@@ -384,26 +378,26 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
               type: 'run:error',
               content: apiError,
               data: { message: apiError }
-            })
+            });
           } else {
-            queue.push({ type: 'run:done', content: '' })
+            queue.push({ type: 'run:done', content: '' });
           }
-          queue.end()
+          queue.end();
         })
         .catch(async (err: unknown) => {
-          unsubscribe()
-          await Promise.resolve()
+          unsubscribe();
+          await Promise.resolve();
           queue.push({
             type: 'run:error',
             content: err instanceof Error ? err.message : String(err),
             data: { message: err instanceof Error ? err.message : String(err) }
-          })
-          queue.end()
-        })
+          });
+          queue.end();
+        });
 
       // 4. 逐个 yield 队列中的 chunk
       for await (const chunk of queue) {
-        yield chunk
+        yield chunk;
       }
 
       return {
@@ -415,15 +409,15 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
           agentId: this.id,
           sessionId: this.sessionId
         }
-      }
+      };
     } catch (error: unknown) {
       yield {
         type: 'run:error',
         content: error instanceof Error ? error.message : String(error),
         data: { message: error instanceof Error ? error.message : String(error) }
-      }
-      log.error(`Stream execution failed:`, error)
-      throw error
+      };
+      log.error(`Stream execution failed:`, error);
+      throw error;
     }
   }
 
@@ -433,7 +427,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
   // ========== 会话管理 ==========
 
   async getSession(): Promise<SessionInfo> {
-    const messages = this.piSession.messages || []
+    const messages = this.piSession.messages || [];
     return {
       sessionId: this.sessionId,
       createdAt: this.createdAt,
@@ -444,11 +438,11 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
         agentName: this.name,
         piSessionId: this.piSession.sessionId
       }
-    }
+    };
   }
 
   async clearSession(): Promise<void> {
-    log.info(`Clearing session: ${this.sessionId}`)
+    log.info(`Clearing session: ${this.sessionId}`);
     // pi-SDK 的 SessionManager.inMemory() 在 dispose 后重建即可
     // 对于 file 模式，需要重新创建会话
   }
@@ -459,7 +453,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
    * 获取 session 文件路径（仅 file 模式有值）
    */
   getSessionFilePath(): string | undefined {
-    return this.piSession?.sessionFile
+    return this.piSession?.sessionFile;
   }
 
   /**
@@ -470,10 +464,10 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
    */
   getSessionContext(): { messages: unknown[]; thinkingLevel: string; model: unknown } | null {
     try {
-      return this.piSession?.sessionManager?.buildSessionContext() ?? null
+      return this.piSession?.sessionManager?.buildSessionContext() ?? null;
     } catch (e) {
-      log.warn('Failed to get session context:', e)
-      return null
+      log.warn('Failed to get session context:', e);
+      return null;
     }
   }
 
@@ -481,13 +475,13 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
    * 获取所有原始消息
    */
   getRawMessages(): unknown[] {
-    return this.piSession?.messages ?? []
+    return this.piSession?.messages ?? [];
   }
 
   /**
    * 获取 session 管理器（高级用法，供测试/调试使用）
    */
   getSessionManager(): unknown {
-    return this.piSession?.sessionManager ?? null
+    return this.piSession?.sessionManager ?? null;
   }
 }

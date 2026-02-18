@@ -153,13 +153,13 @@ export interface AgentRuntimeOptions {
    */
   tools?: ToolDefinition[];
   /**
-   * 沙箱上下文
+   * 工具执行上下文
    *
    * 由 AgentEnvInjector 通过 Builder 注入。
-   * Runtime 用此上下文执行工具时的路径守卫、策略检查。
+   * 包含沙箱信息（路径守卫、策略检查）+ Agent/Session 信息。
    * 不传则降级为 path-only + workspaceRoot。
    */
-  sandboxContext?: import('../sandbox/types').SandboxContext;
+  sandboxContext?: import('../tools/types').ToolExecutionContext;
 }
 
 // ========== 系统提示词构建 ==========

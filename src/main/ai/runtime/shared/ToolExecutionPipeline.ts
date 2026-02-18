@@ -14,7 +14,7 @@
  * @module runtime/shared/ToolExecutionPipeline
  */
 
-import type { ToolDefinition, ToolResult, ToolStreamUpdate } from '../../tools/types';
+import type { ToolDefinition, ToolExecutionContext, ToolResult, ToolStreamUpdate } from '../../tools/types';
 
 // ==================== Types ====================
 
@@ -39,14 +39,8 @@ export type OnToolUpdate = (update: ToolStreamUpdate) => void;
 
 /** 管线选项 */
 export interface PipelineOptions {
-  /** 沙箱上下文（包含 sessionId, toolPolicy 等） */
-  sandboxContext: {
-    sessionId?: string;
-    toolPolicy?: unknown;
-    workspaceRoot: string;
-    sandboxRoot?: string;
-    mode?: string;
-  };
+  /** 工具执行上下文（沙箱 + Agent/Session 信息） */
+  sandboxContext: ToolExecutionContext;
   /** 增量输出回调（由各 Runtime 桥接到 SDK 特定的机制） */
   onUpdate?: OnToolUpdate;
   /** AbortSignal（可选） */
@@ -132,7 +126,7 @@ export async function executeToolPipeline(
   }
 
   // === Phase 3: 执行工具 ===
-  const gen = def.execute(typedParams, opts.signal, opts.sandboxContext as never);
+  const gen = def.execute(typedParams, opts.signal, opts.sandboxContext);
   let iterResult = await gen.next();
 
   // 消费 AsyncGenerator 的增量输出

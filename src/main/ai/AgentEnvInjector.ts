@@ -19,7 +19,8 @@ import { createLogger } from '@main/common/logger';
 import { formatRuntimePaths, buildAgentEnv, type AgentEnv } from './AgentEnv';
 import { SkillManager } from './skills';
 import { createPathOnlyContext, resolveSandboxContext } from './sandbox';
-import type { SandboxContext, SandboxMode } from './sandbox';
+import type { SandboxMode } from './sandbox';
+import type { ToolExecutionContext } from './tools/types';
 import type { AgentBuilder } from './AgentExecutor';
 
 const log = createLogger('ai');
@@ -79,11 +80,14 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
         ...(agentDiscoveryHint ? [agentDiscoveryHint] : [])
       );
 
-      // 5. 设置沙箱上下文（由 Runtime 的 convertTools 使用）
-      //    从配置读取 sandbox mode，注入 COOBEE_* 环境变量
+      // 5. 构建工具执行上下文（由 Runtime 的 convertTools 注入到每个工具）
+      //    包含沙箱信息 + Agent/Session 上下文
       const envVars = buildSkillEnvVars(agentEnv);
-      const sandboxCtx = await buildSandboxContext(workspace, sessionId, envVars);
-      builder.sandboxContext(sandboxCtx);
+      const toolCtx = await buildToolExecutionContext(workspace, sessionId, envVars, {
+        agentName: builder.getName?.() || undefined,
+        agentMode: mode
+      });
+      builder.sandboxContext(toolCtx);
     }
 
     // ====== Chat & Agent 共享：基础环境设置 ======
@@ -259,24 +263,35 @@ function buildSkillEnvVars(env: AgentEnv): Record<string, string> {
   };
 }
 
-// ==================== 沙箱上下文构建 ====================
+// ==================== 工具执行上下文构建 ====================
+
+/** Agent 上下文信息（由调用方传入） */
+interface AgentContextInfo {
+  agentId?: string;
+  agentName?: string;
+  agentType?: import('./threads/types').AgentType;
+  agentMode?: import('./runtime/types').AgentMode;
+  parentSessionId?: string;
+}
 
 /**
- * 根据配置构建沙箱上下文
+ * 构建工具执行上下文（ToolExecutionContext）
  *
- * 从 ConfigStore 读取 security.sandbox.mode 来决定沙箱模式：
+ * 在沙箱上下文基础上，注入 Agent/Session/Thread 维度的运行时信息。
+ * 工具执行函数通过此上下文获取完整的运行环境。
+ *
+ * 沙箱模式从 ConfigStore 读取 security.sandbox.mode：
  *   - 'off': 无沙箱保护
  *   - 'path-only': 路径守卫（默认）
  *   - 'docker': Docker 容器隔离
- *
- * 如果 ConfigStore 不可用，降级为 path-only。
  */
-async function buildSandboxContext(
+async function buildToolExecutionContext(
   workspace: string,
   sessionId: string,
-  envVars: Record<string, string>
-): Promise<SandboxContext> {
-  let mode: SandboxMode = 'path-only';
+  envVars: Record<string, string>,
+  agentInfo?: AgentContextInfo
+): Promise<ToolExecutionContext> {
+  let sandboxMode: SandboxMode = 'path-only';
 
   try {
     const { configStoreInstance } = await import('@main/common/config/ConfigStore');
@@ -284,32 +299,44 @@ async function buildSandboxContext(
       const security = configStoreInstance.get('security');
       const configMode = security?.sandbox?.mode;
       if (configMode) {
-        mode = configMode;
-        log.info(`[EnvInjector] Sandbox mode from config: ${mode}`);
+        sandboxMode = configMode;
+        log.info(`[EnvInjector] Sandbox mode from config: ${sandboxMode}`);
       }
     }
   } catch {
     // ConfigStore 不可用时使用默认值
   }
 
-  // off 模式：返回最小上下文，不启用任何保护
-  if (mode === 'off') {
-    return {
-      mode: 'off',
+  // 构建基础沙箱上下文
+  let baseCtx;
+  if (sandboxMode === 'off') {
+    baseCtx = {
+      mode: 'off' as const,
       workspaceRoot: workspace,
-      toolPolicy: { allow: [], deny: [] },
+      toolPolicy: { allow: [] as string[], deny: [] as string[] },
       sessionId,
       envVars
     };
+  } else if (sandboxMode === 'docker') {
+    baseCtx = await resolveSandboxContext({ mode: 'docker', workspaceRoot: workspace }, sessionId);
+    baseCtx.envVars = envVars;
+  } else {
+    baseCtx = createPathOnlyContext(workspace, { sessionId, envVars });
   }
 
-  // docker 模式：委托给 resolveSandboxContext（会处理 Docker 不可用的降级）
-  if (mode === 'docker') {
-    const ctx = await resolveSandboxContext({ mode: 'docker', workspaceRoot: workspace }, sessionId);
-    ctx.envVars = envVars;
-    return ctx;
-  }
+  // threadId：顶层 sessionId 即为 threadId，子 Agent 的 sessionId 含 `:` 分隔符
+  const threadId = sessionId.includes(':') ? sessionId.split(':')[0] : sessionId;
 
-  // path-only 模式（默认）
-  return createPathOnlyContext(workspace, { sessionId, envVars });
+  // 合并沙箱上下文 + Agent 上下文
+  const toolCtx: ToolExecutionContext = {
+    ...baseCtx,
+    threadId,
+    agentId: agentInfo?.agentId,
+    agentName: agentInfo?.agentName,
+    agentType: agentInfo?.agentType,
+    agentMode: agentInfo?.agentMode,
+    parentSessionId: agentInfo?.parentSessionId
+  };
+
+  return toolCtx;
 }

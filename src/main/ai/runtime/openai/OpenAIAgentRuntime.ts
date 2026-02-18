@@ -12,13 +12,13 @@
  * - maxTurns：防止无限工具调用循环
  */
 
-import { run, Agent, tool } from '@openai/agents'
-import type { StreamedRunResult, Tool } from '@openai/agents'
-import { FileSession } from './FileSession'
-import { SessionCompressor } from './SessionCompressor'
-import { ThinkTagParser, stripThinkTags } from './ThinkTagParser'
-import { createStreamEmitter, type IStreamEmitter } from '../../streaming/StreamEmitter'
-import { AbstractAgentRuntime } from '../AbstractAgentRuntime'
+import { run, Agent, tool } from '@openai/agents';
+import type { StreamedRunResult, Tool } from '@openai/agents';
+import { FileSession } from './FileSession';
+import { SessionCompressor } from './SessionCompressor';
+import { ThinkTagParser, stripThinkTags } from './ThinkTagParser';
+import { createStreamEmitter, type IStreamEmitter } from '../../streaming/StreamEmitter';
+import { AbstractAgentRuntime } from '../AbstractAgentRuntime';
 import {
   buildInstructions,
   type ExecutionConfig,
@@ -26,44 +26,44 @@ import {
   type StreamChunk,
   type SessionInfo,
   type ToolDefinition
-} from '../types'
-import type { OpenAIAgentRuntimeOptions, ContextSnapshot, CompressionResult } from './types'
+} from '../types';
+import type { OpenAIAgentRuntimeOptions, ContextSnapshot, CompressionResult } from './types';
 
 /** 默认最大执行轮次 */
-const DEFAULT_MAX_TURNS = 25
+const DEFAULT_MAX_TURNS = 25;
 
 /** 默认模型 */
-const DEFAULT_MODEL = 'gpt-4o'
+const DEFAULT_MODEL = 'gpt-4o';
 
 // ========== Logger ==========
 // 尝试使用 electron-log（生产环境），fallback 到 console（测试环境）
 // 这样无论在 Electron 还是 vitest 中都能输出日志
 
 interface RuntimeLogger {
-  info(message: string, ...args: unknown[]): void
-  warn(message: string, ...args: unknown[]): void
-  error(message: string, ...args: unknown[]): void
-  debug(message: string, ...args: unknown[]): void
+  info(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
+  error(message: string, ...args: unknown[]): void;
+  debug(message: string, ...args: unknown[]): void;
 }
 
 const createRuntimeLogger = (): RuntimeLogger => {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createLogger } = require('@main/common/logger')
-    return createLogger('agent-runtime') as RuntimeLogger
+    const { createLogger } = require('@main/common/logger');
+    return createLogger('agent-runtime') as RuntimeLogger;
   } catch {
     // Electron 环境不可用（如测试），fallback 到 console
-    const prefix = '[OpenAIAgentRuntime]'
+    const prefix = '[OpenAIAgentRuntime]';
     return {
       info: (msg: string, ...args: unknown[]) => console.log(`${prefix} ${msg}`, ...args),
       warn: (msg: string, ...args: unknown[]) => console.warn(`${prefix} ${msg}`, ...args),
       error: (msg: string, ...args: unknown[]) => console.error(`${prefix} ${msg}`, ...args),
       debug: (msg: string, ...args: unknown[]) => console.debug(`${prefix} ${msg}`, ...args)
-    }
+    };
   }
-}
+};
 
-const log = createRuntimeLogger()
+const log = createRuntimeLogger();
 
 /**
  * OpenAI Agent 运行时
@@ -77,64 +77,61 @@ const log = createRuntimeLogger()
  * 4. 处理 HITL 工具审批的暂停/恢复
  */
 export class OpenAIAgentRuntime extends AbstractAgentRuntime {
-  readonly type = 'agent' as const
-  readonly id: string
+  readonly type = 'agent' as const;
+  readonly id: string;
 
   // Agent 配置（构造时传入，不可变）
-  readonly options: OpenAIAgentRuntimeOptions
+  readonly options: OpenAIAgentRuntimeOptions;
 
   // Agent 实例（initialize 后可用）
-  private agent!: Agent
+  private agent!: Agent;
 
   // 会话
-  private session!: FileSession
-  private readonly sessionId: string
+  private session!: FileSession;
+  private readonly sessionId: string;
 
   // 流式输出
-  private streamEmitter!: IStreamEmitter
+  private streamEmitter!: IStreamEmitter;
 
   // Session 压缩器
-  private compressor?: SessionCompressor
+  private compressor?: SessionCompressor;
 
   // 时间
-  private createdAt: number
+  private createdAt: number;
 
   constructor(options: OpenAIAgentRuntimeOptions) {
-    super()
-    this.options = options
-    this.id = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    this.sessionId = options.sessionId || `session-${Date.now()}`
-    this.createdAt = Date.now()
+    super();
+    this.options = options;
+    this.id = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    this.sessionId = options.sessionId || `session-${Date.now()}`;
+    this.createdAt = Date.now();
   }
 
   get name(): string {
-    return this.options.name
+    return this.options.name;
   }
 
   get interrupted(): boolean {
-    return false
+    return false;
   }
 
   get supportsHITL(): boolean {
     // HITL 现在由 tool-approval Extension 统一处理，Runtime 不再管理 HITL 状态
-    return false
+    return false;
   }
 
   // ========== 生命周期 ==========
 
   async initialize(): Promise<void> {
     // 1. 合并工具：sdkTools（SDK 原生）+ tools（统一 ToolDefinition 转换后）
-    const allTools: Tool[] = [
-      ...(this.options.sdkTools || []),
-      ...this.convertTools(this.options.tools || [])
-    ]
+    const allTools: Tool[] = [...(this.options.sdkTools || []), ...this.convertTools(this.options.tools || [])];
 
     // 2. 构建最终系统提示词：instructions + skills + appendInstructions
     const finalInstructions = buildInstructions(
       this.options.instructions,
       this.options.skills,
       this.options.appendInstructions
-    )
+    );
 
     // 3. 创建 SDK Agent（纯配置，成本极低）
     this.agent = new Agent({
@@ -143,24 +140,22 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
       model: this.options.model || DEFAULT_MODEL,
       ...(this.options.modelSettings ? { modelSettings: this.options.modelSettings } : {}),
       ...(allTools.length > 0 ? { tools: allTools } : {}),
-      ...(this.options.handoffs && this.options.handoffs.length > 0
-        ? { handoffs: this.options.handoffs }
-        : {})
-    })
+      ...(this.options.handoffs && this.options.handoffs.length > 0 ? { handoffs: this.options.handoffs } : {})
+    });
 
     // 2. 创建 FileSession（单层持久化）
-    this.session = new FileSession(this.sessionId, this.options.sessionDir)
+    this.session = new FileSession(this.sessionId, this.options.sessionDir);
 
     // 3. 创建流式发射器
     this.streamEmitter = createStreamEmitter(this.sessionId, {
       type: 'agent',
       id: this.id,
       name: this.name
-    })
+    });
 
     // 4. 创建 Session 压缩器（如果配置启用）
     if (this.options.compression?.enabled) {
-      this.compressor = new SessionCompressor(this.options.compression)
+      this.compressor = new SessionCompressor(this.options.compression);
     }
 
     log.info(
@@ -170,11 +165,11 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         `handoffs: ${this.options.handoffs?.length || 0}, ` +
         `compression: ${this.options.compression?.enabled ? 'on' : 'off'}, ` +
         `session: ${this.sessionId})`
-    )
+    );
   }
 
   async destroy(): Promise<void> {
-    log.info(`Destroyed: ${this.name}`)
+    log.info(`Destroyed: ${this.name}`);
   }
 
   // ========== 执行方法 ==========
@@ -193,19 +188,19 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
     input: string,
     config?: ExecutionConfig
   ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
-    const startTime = Date.now()
-    const maxTurns = config?.maxTurns ?? this.options.maxTurns ?? DEFAULT_MAX_TURNS
+    const startTime = Date.now();
+    const maxTurns = config?.maxTurns ?? this.options.maxTurns ?? DEFAULT_MAX_TURNS;
 
-    log.info(`Running stream: ${this.name}`)
+    log.info(`Running stream: ${this.name}`);
 
     try {
       // 1. run:start
-      yield { type: 'run:start', content: '' }
+      yield { type: 'run:start', content: '' };
 
       // 1.5 执行前检查 session 压缩
-      const compressionChunks = await this.compressSessionWithChunks()
+      const compressionChunks = await this.compressSessionWithChunks();
       for (const chunk of compressionChunks) {
-        yield chunk
+        yield chunk;
       }
 
       // 2. SDK 流式执行
@@ -213,31 +208,31 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         stream: true,
         session: this.session,
         maxTurns
-      })
+      });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const streamResult = streamRunResult as StreamedRunResult<unknown, any>
+      const streamResult = streamRunResult as StreamedRunResult<unknown, any>;
 
       // 3. 消费流事件（AsyncGenerator — 直接 yield）
-      let fullOutput = ''
+      let fullOutput = '';
       for await (const chunk of this.generateStreamEvents(streamResult, (text) => {
-        fullOutput += text
+        fullOutput += text;
       })) {
-        yield chunk
+        yield chunk;
       }
 
       // 4. 等待完成
-      await streamResult.completed
+      await streamResult.completed;
 
       // HITL 审批现在由 tool-approval Extension 在 before_tool_call Hook 中处理，
       // 不再依赖 SDK 的 interruptions 机制。
 
-      const rawOutput = (streamResult.finalOutput as string) || fullOutput
-      const output = stripThinkTags(rawOutput) || rawOutput
+      const rawOutput = (streamResult.finalOutput as string) || fullOutput;
+      const output = stripThinkTags(rawOutput) || rawOutput;
 
       // 7. run:done
-      yield { type: 'run:done', content: '' }
+      yield { type: 'run:done', content: '' };
 
-      const duration = Date.now() - startTime
+      const duration = Date.now() - startTime;
 
       return {
         output,
@@ -247,15 +242,15 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
           agentId: this.id,
           sessionId: this.sessionId
         }
-      }
+      };
     } catch (error: unknown) {
       yield {
         type: 'run:error',
         content: error instanceof Error ? error.message : String(error),
         data: { message: error instanceof Error ? error.message : String(error) }
-      }
-      log.error(`Stream execution failed:`, error)
-      throw error
+      };
+      log.error(`Stream execution failed:`, error);
+      throw error;
     }
   }
 
@@ -265,7 +260,7 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
   // ========== 会话管理 ==========
 
   async getSession(): Promise<SessionInfo> {
-    const count = await this.session.getItemCount()
+    const count = await this.session.getItemCount();
     return {
       sessionId: this.sessionId,
       createdAt: this.createdAt,
@@ -275,12 +270,12 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         agentId: this.id,
         agentName: this.name
       }
-    }
+    };
   }
 
   async clearSession(): Promise<void> {
-    log.info(`Clearing session: ${this.sessionId}`)
-    await this.session.clearSession()
+    log.info(`Clearing session: ${this.sessionId}`);
+    await this.session.clearSession();
   }
 
   /**
@@ -293,12 +288,12 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
    *   - stats：统计信息（消息数、summary 数、总 token 估算）
    */
   async getContextSnapshot(): Promise<ContextSnapshot> {
-    const contextItems = await this.session.getItems()
-    const allSessionItems = await this.session.getAllSessionItems()
-    const lastSummary = await this.session.getLastSummary()
+    const contextItems = await this.session.getItems();
+    const allSessionItems = await this.session.getAllSessionItems();
+    const lastSummary = await this.session.getLastSummary();
 
-    const messageCount = allSessionItems.filter((si) => si.type === 'message').length
-    const summaryCount = allSessionItems.filter((si) => si.type === 'summary').length
+    const messageCount = allSessionItems.filter((si) => si.type === 'message').length;
+    const summaryCount = allSessionItems.filter((si) => si.type === 'summary').length;
 
     return {
       contextItems,
@@ -310,7 +305,7 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         messageCount,
         summaryCount
       }
-    }
+    };
   }
 
   // ========== 内部方法 ==========
@@ -334,39 +329,39 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
     streamResult: StreamedRunResult<unknown, any>,
     onTextDelta: (text: string) => void
   ): AsyncGenerator<StreamChunk, void, unknown> {
-    let turnIndex = 0
-    let turnOpen = false
-    let textStartEmitted = false
-    let reasoningStartEmitted = false
-    let fullReasoningText = ''
+    let turnIndex = 0;
+    let turnOpen = false;
+    let textStartEmitted = false;
+    let reasoningStartEmitted = false;
+    let fullReasoningText = '';
 
     // 同步缓冲：ThinkTagParser 回调产生的 chunk 先存这里，每轮 yield
-    const buffer: StreamChunk[] = []
+    const buffer: StreamChunk[] = [];
     const emit = (chunk: StreamChunk): void => {
-      buffer.push(chunk)
-    }
+      buffer.push(chunk);
+    };
 
     // ---- ThinkTagParser：实时拆分 <think> 标签 ----
     const thinkParser = new ThinkTagParser({
       onText: (text) => {
         if (!textStartEmitted) {
-          textStartEmitted = true
-          emit({ type: 'text:start', content: '' })
+          textStartEmitted = true;
+          emit({ type: 'text:start', content: '' });
         }
-        onTextDelta(text)
-        emit({ type: 'text:delta', content: text, data: { delta: text } })
+        onTextDelta(text);
+        emit({ type: 'text:delta', content: text, data: { delta: text } });
       },
 
       onReasoningStart: () => {
         if (!reasoningStartEmitted) {
-          reasoningStartEmitted = true
-          emit({ type: 'reasoning:start', content: '' })
+          reasoningStartEmitted = true;
+          emit({ type: 'reasoning:start', content: '' });
         }
       },
 
       onReasoning: (text) => {
-        fullReasoningText += text
-        emit({ type: 'reasoning:delta', content: text, data: { delta: text } })
+        fullReasoningText += text;
+        emit({ type: 'reasoning:delta', content: text, data: { delta: text } });
       },
 
       onReasoningDone: () => {
@@ -374,93 +369,93 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
           type: 'reasoning:done',
           content: '',
           data: { rawContent: fullReasoningText }
-        })
+        });
       }
-    })
+    });
 
     for await (const event of streamResult) {
       // 清空缓冲
-      buffer.length = 0
+      buffer.length = 0;
 
       // ---- debug 日志：记录原始 SDK 事件 ----
       if (event.type === 'raw_model_stream_event') {
-        const rawEvent = event.data as { type?: string; event?: { type?: string } } | undefined
-        const rawType = rawEvent?.type
-        const innerType = rawType === 'model' ? rawEvent?.event?.type : undefined
+        const rawEvent = event.data as { type?: string; event?: { type?: string } } | undefined;
+        const rawType = rawEvent?.type;
+        const innerType = rawType === 'model' ? rawEvent?.event?.type : undefined;
         log.debug(
           `[SDK Event] ${event.type} | rawType=${rawType}${innerType ? ` | innerType=${innerType}` : ''}`,
           JSON.stringify(event.data)
-        )
+        );
       } else if (event.type === 'run_item_stream_event') {
-        const itemType = (event.item as { type?: string })?.type
+        const itemType = (event.item as { type?: string })?.type;
         log.debug(
           `[SDK Event] ${event.type} | name=${event.name} | itemType=${itemType}`,
           JSON.stringify(event.item?.rawItem ?? event.item)
-        )
+        );
       } else {
-        log.debug(`[SDK Event] ${event.type}`, JSON.stringify(event))
+        log.debug(`[SDK Event] ${event.type}`, JSON.stringify(event));
       }
 
       switch (event.type) {
         // ===== raw_model_stream_event =====
         case 'raw_model_stream_event': {
-          const rawEvent = event.data
-          if (!rawEvent || typeof rawEvent !== 'object') break
-          const rawType = (rawEvent as { type?: string }).type
+          const rawEvent = event.data;
+          if (!rawEvent || typeof rawEvent !== 'object') break;
+          const rawType = (rawEvent as { type?: string }).type;
 
           // response_started → 关上一轮 + 开新一轮 + llm:start
           if (rawType === 'response_started') {
-            thinkParser.flush()
+            thinkParser.flush();
 
             if (turnOpen) {
-              emit({ type: 'turn:done', content: '', data: { turnIndex } })
+              emit({ type: 'turn:done', content: '', data: { turnIndex } });
             }
-            turnIndex++
-            turnOpen = true
-            textStartEmitted = false
-            reasoningStartEmitted = false
-            fullReasoningText = ''
-            thinkParser.reset()
-            emit({ type: 'turn:start', content: '', data: { turnIndex } })
-            emit({ type: 'llm:start', content: '' })
+            turnIndex++;
+            turnOpen = true;
+            textStartEmitted = false;
+            reasoningStartEmitted = false;
+            fullReasoningText = '';
+            thinkParser.reset();
+            emit({ type: 'turn:start', content: '', data: { turnIndex } });
+            emit({ type: 'llm:start', content: '' });
           }
 
           // output_text_delta → 通过 ThinkTagParser 分流
           if (rawType === 'output_text_delta') {
-            const delta = (rawEvent as { delta?: string }).delta || ''
+            const delta = (rawEvent as { delta?: string }).delta || '';
             if (delta) {
-              thinkParser.feed(delta)
+              thinkParser.feed(delta);
             }
           }
 
           // response_done → 关闭 reasoning/text + llm:done（携带 usage）
           if (rawType === 'response_done') {
-            thinkParser.flush()
+            thinkParser.flush();
 
-            const response = (rawEvent as { response?: Record<string, unknown> }).response
+            const response = (rawEvent as { response?: Record<string, unknown> }).response;
             const usage = response?.usage as
               | { inputTokens?: number; outputTokens?: number; totalTokens?: number }
-              | undefined
+              | undefined;
 
             if (reasoningStartEmitted && thinkParser.isInThinking) {
               emit({
                 type: 'reasoning:done',
                 content: '',
                 data: { rawContent: fullReasoningText }
-              })
+              });
             }
 
             if (textStartEmitted) {
               const outputs = response?.output as
                 | Array<{
-                    type?: string
-                    content?: Array<{ text?: string }>
+                    type?: string;
+                    content?: Array<{ text?: string }>;
                   }>
-                | undefined
-              const msgOutput = outputs?.find((o) => o.type === 'message')
-              const rawFullText = msgOutput?.content?.map((c) => c.text || '').join('') || ''
-              const cleanText = stripThinkTags(rawFullText)
-              emit({ type: 'text:done', content: cleanText, data: { text: cleanText } })
+                | undefined;
+              const msgOutput = outputs?.find((o) => o.type === 'message');
+              const rawFullText = msgOutput?.content?.map((c) => c.text || '').join('') || '';
+              const cleanText = stripThinkTags(rawFullText);
+              emit({ type: 'text:done', content: cleanText, data: { text: cleanText } });
             }
 
             emit({
@@ -476,51 +471,48 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
                     }
                   : undefined
               }
-            })
+            });
           }
 
-          break
+          break;
         }
 
         // ===== run_item_stream_event =====
         case 'run_item_stream_event': {
-          const item = event.item
-          if (!item) break
-          const eventName = event.name
+          const item = event.item;
+          if (!item) break;
+          const eventName = event.name;
 
           // tool_called → tool:start
           if (eventName === 'tool_called' && item.type === 'tool_call_item') {
-            const rawItem = item.rawItem
-            const toolName = (rawItem as { name?: string }).name || 'unknown'
-            const callId = (rawItem as { call_id?: string }).call_id
-            emit({ type: 'tool:start', content: toolName, data: { toolName, callId } })
+            const rawItem = item.rawItem;
+            const toolName = (rawItem as { name?: string }).name || 'unknown';
+            const callId = (rawItem as { call_id?: string }).call_id;
+            emit({ type: 'tool:start', content: toolName, data: { toolName, callId } });
           }
 
           // tool_output → tool:done
           if (eventName === 'tool_output') {
-            const rawItem = (item as { rawItem?: Record<string, unknown> }).rawItem || {}
-            const toolName = (rawItem as { name?: string }).name || 'unknown'
+            const rawItem = (item as { rawItem?: Record<string, unknown> }).rawItem || {};
+            const toolName = (rawItem as { name?: string }).name || 'unknown';
             const callId =
-              (rawItem as { callId?: string; call_id?: string }).callId ||
-              (rawItem as { call_id?: string }).call_id
-            const output =
-              (item as { output?: string }).output || (rawItem as { output?: string }).output || ''
+              (rawItem as { callId?: string; call_id?: string }).callId || (rawItem as { call_id?: string }).call_id;
+            const output = (item as { output?: string }).output || (rawItem as { output?: string }).output || '';
             emit({
               type: 'tool:done',
               content: typeof output === 'string' ? output : JSON.stringify(output),
               data: { toolName, callId, output }
-            })
+            });
           }
 
           // handoff: 请求
           if (eventName === 'handoff_requested') {
-            const agentName =
-              (item as unknown as { agent?: { name?: string } }).agent?.name || 'unknown'
+            const agentName = (item as unknown as { agent?: { name?: string } }).agent?.name || 'unknown';
             emit({
               type: 'handoff:start',
               content: `Handoff to ${agentName}`,
               data: { toAgent: agentName }
-            })
+            });
           }
 
           // handoff: 完成
@@ -528,43 +520,43 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
             const targetAgent =
               (item as unknown as { targetAgent?: { name?: string } }).targetAgent?.name ||
               (item as unknown as { agent?: { name?: string } }).agent?.name ||
-              'unknown'
+              'unknown';
             emit({
               type: 'handoff:done',
               content: `Switched to ${targetAgent}`,
               data: { toAgent: targetAgent }
-            })
+            });
           }
 
           // hitl 审批现在由 tool-approval Extension 处理，不再在 SDK 事件层拦截
 
-          break
+          break;
         }
 
         // ===== agent_updated_stream_event =====
         case 'agent_updated_stream_event': {
-          const agentName = event.agent?.name || 'unknown'
+          const agentName = event.agent?.name || 'unknown';
           await this.streamEmitter.emit('agent_updated', `Agent updated: ${agentName}`, {
             agentName
-          })
-          break
+          });
+          break;
         }
       }
 
       // yield 本轮收集的所有 chunk
       for (const chunk of buffer) {
-        yield chunk
+        yield chunk;
       }
     }
 
     // 关闭最后一轮
     if (turnOpen) {
-      thinkParser.flush()
+      thinkParser.flush();
       // flush 可能产生额外 chunk
       for (const chunk of buffer) {
-        yield chunk
+        yield chunk;
       }
-      yield { type: 'turn:done', content: '', data: { turnIndex } }
+      yield { type: 'turn:done', content: '', data: { turnIndex } };
     }
   }
 
@@ -575,7 +567,7 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     newItems: any[]
   ): ExecutionResult['toolCalls'] {
-    if (!newItems) return []
+    if (!newItems) return [];
 
     return (
       newItems
@@ -585,10 +577,10 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         )
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .map((item: any) => {
-          const rawItem = item.rawItem
-          let parsedArgs: Record<string, unknown> = {}
+          const rawItem = item.rawItem;
+          let parsedArgs: Record<string, unknown> = {};
           try {
-            parsedArgs = JSON.parse(rawItem.arguments || '{}') as Record<string, unknown>
+            parsedArgs = JSON.parse(rawItem.arguments || '{}') as Record<string, unknown>;
           } catch {
             // ignore
           }
@@ -596,9 +588,9 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
             toolName: rawItem.name || 'unknown',
             arguments: parsedArgs,
             result: rawItem.output
-          }
+          };
         })
-    )
+    );
   }
 
   /**
@@ -609,23 +601,22 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
    *   - execute 前检查工具策略（isToolAllowed，sandbox 级别拦截）
    *   - yield 的 ToolStreamUpdate 通过 StreamEmitter 发送 tool:delta 事件给前端
    *   - return 的 ToolResult.llmContent 作为工具返回值发送回 LLM
-   *   - 自动注入 SandboxContext（路径边界、工具策略、Docker 等）
+   *   - 自动注入 ToolExecutionContext（路径守卫、工具策略、Agent 信息等）
    *
    * HITL 审批：
    *   不再使用 SDK 的 needsApproval 机制，改由 tool-approval Extension
    *   在 before_tool_call Hook 中统一处理（适用于所有 Runtime）。
    */
   private convertTools(defs: ToolDefinition[]): Tool[] {
-    if (!defs.length) return []
+    if (!defs.length) return [];
 
-    // 优先使用注入的沙箱上下文，否则降级为 path-only
-    const sandboxContext: import('../../sandbox/types').SandboxContext = this.options
-      .sandboxContext || {
+    // 优先使用注入的工具执行上下文，否则降级为 path-only 最小上下文
+    const sandboxContext: import('../../tools/types').ToolExecutionContext = this.options.sandboxContext || {
       mode: 'path-only',
       workspaceRoot: this.options.workspaceRoot || process.cwd(),
       toolPolicy: { allow: [], deny: [], confirm: [] },
       sessionId: this.sessionId
-    }
+    };
 
     return defs.map((def) =>
       tool({
@@ -635,7 +626,7 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         execute: async (params: any) => {
           // 使用共享管线：hook + policy + execute + post-hooks
-          const { executeToolPipeline } = await import('../shared/ToolExecutionPipeline')
+          const { executeToolPipeline } = await import('../shared/ToolExecutionPipeline');
           const result = await executeToolPipeline(def, params as Record<string, unknown>, {
             sandboxContext,
             onUpdate: (update) => {
@@ -644,13 +635,13 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
                 type: 'tool:delta',
                 content: update.content,
                 data: { delta: update.content }
-              })
+              });
             }
-          })
-          return result.resultText
+          });
+          return result.resultText;
         }
       })
-    )
+    );
   }
 
   // ========== Session 压缩 ==========
@@ -664,48 +655,48 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
    *   - 扩展可返回 customSummary 替换默认压缩摘要
    */
   private async compressSessionWithChunks(): Promise<StreamChunk[]> {
-    if (!this.compressor) return []
+    if (!this.compressor) return [];
 
-    const chunks: StreamChunk[] = []
+    const chunks: StreamChunk[] = [];
 
     try {
-      const model = this.options.model || DEFAULT_MODEL
+      const model = this.options.model || DEFAULT_MODEL;
 
-      const status = await this.compressor.getCompressionStatus(this.session)
-      if (!status) return []
+      const status = await this.compressor.getCompressionStatus(this.session);
+      if (!status) return [];
 
       // 检查是否达到压缩阈值（避免在未达阈值时触发 Hook）
-      if (status.totalTokens < status.threshold) return []
+      if (status.totalTokens < status.threshold) return [];
 
       // === Extension Hook: before_compaction (modifying) ===
       // 在压缩前触发，允许扩展做 Memory Flush 或自定义压缩
-      let skipDefault = false
+      let skipDefault = false;
       try {
-        const { ExtensionManager } = await import('../../../common/extension')
-        const runner = ExtensionManager.getHookRunner()
+        const { ExtensionManager } = await import('../../../common/extension');
+        const runner = ExtensionManager.getHookRunner();
         if (runner) {
           const hookResult = await runner.runModifyingHook('before_compaction', {
             sessionId: this.options.sessionId || '',
             messageCount: 0, // SessionCompressor 未暴露此信息
             totalTokens: status.totalTokens,
             threshold: status.threshold
-          })
+          });
           if (hookResult?.skipDefault) {
-            skipDefault = true
+            skipDefault = true;
             log.info(
               `Session compression skipped by Extension Hook` +
                 (hookResult.customSummary ? ' (custom summary provided)' : '')
-            )
+            );
           }
         }
       } catch (hookErr) {
-        log.warn('before_compaction hook failed (continuing with default compression):', hookErr)
+        log.warn('before_compaction hook failed (continuing with default compression):', hookErr);
       }
 
       // 如果扩展跳过了默认压缩
-      if (skipDefault) return []
+      if (skipDefault) return [];
 
-      const result = await this.compressor.compressIfNeeded(this.session, model)
+      const result = await this.compressor.compressIfNeeded(this.session, model);
 
       if (result.compressed && status) {
         chunks.push({
@@ -718,7 +709,7 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
             // 标记 Hook 已在此处理过，consumeAndForward 不再重复触发
             hookHandled: true
           }
-        })
+        });
         chunks.push({
           type: 'compression:done',
           content: `Compressed ${result.summarizedCount} messages`,
@@ -730,27 +721,27 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
             compressionRatio: result.compressionRatio || 0,
             duration: result.duration || 0
           }
-        })
+        });
 
         log.info(
           `Session compressed: ` +
             `${result.summarizedCount} messages summarized ` +
             `(seq ${result.summarizedSeqs?.[0]}-${result.endSeq}), ` +
             `${result.keptCount} kept, ${result.duration}ms`
-        )
+        );
       }
     } catch (error) {
-      log.error('Session compression failed (non-fatal):', error)
+      log.error('Session compression failed (non-fatal):', error);
     }
 
-    return chunks
+    return chunks;
   }
 
   /**
    * 手动触发 session 压缩
    */
   async compressSession(options?: { force?: boolean }): Promise<CompressionResult> {
-    const model = this.options.model || DEFAULT_MODEL
+    const model = this.options.model || DEFAULT_MODEL;
 
     if (options?.force) {
       const forceCompressor = new SessionCompressor({
@@ -761,8 +752,8 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         keepRatio: this.options.compression?.keepRatio ?? 0.3,
         summaryModel: this.options.compression?.summaryModel,
         debug: this.options.compression?.debug
-      })
-      return forceCompressor.compressIfNeeded(this.session, model)
+      });
+      return forceCompressor.compressIfNeeded(this.session, model);
     }
 
     const compressor =
@@ -770,8 +761,8 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
       new SessionCompressor({
         enabled: true,
         ...(this.options.compression || {})
-      })
+      });
 
-    return compressor.compressIfNeeded(this.session, model)
+    return compressor.compressIfNeeded(this.session, model);
   }
 }

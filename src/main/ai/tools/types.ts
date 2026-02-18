@@ -42,43 +42,43 @@ export enum ToolCategory {
 /** 工具错误信息 */
 export interface ToolError {
   /** 错误代码（如 ENOENT, EACCES, TIMEOUT） */
-  code: string
+  code: string;
   /** 错误消息 */
-  message: string
+  message: string;
   /** 详细信息（可选） */
-  details?: unknown
+  details?: unknown;
 }
 
 /** 工具执行结果 */
 export interface ToolResult {
   /** 是否成功 */
-  success: boolean
+  success: boolean;
 
   /** LLM 看到的工具执行结果内容（发送回模型的） */
-  llmContent?: string
+  llmContent?: string;
 
   /** 用户看到的工具执行结果内容（前端展示用，可含 Markdown） */
-  userContent?: string
+  userContent?: string;
 
   /** 失败时的错误信息 */
-  error?: ToolError
+  error?: ToolError;
 
   /** 执行元数据 */
-  metadata?: ToolResultMetadata
+  metadata?: ToolResultMetadata;
 }
 
 /** 工具执行元数据 */
 export interface ToolResultMetadata {
   /** 执行开始时间（ms timestamp） */
-  startTime?: number
+  startTime?: number;
   /** 执行结束时间（ms timestamp） */
-  endTime?: number
+  endTime?: number;
   /** 执行耗时（毫秒） */
-  duration?: number
+  duration?: number;
   /** 结果的 token 数量（估算） */
-  tokens?: number
+  tokens?: number;
   /** 其他元数据 */
-  [key: string]: unknown
+  [key: string]: unknown;
 }
 
 // ========== 工具流式更新 ==========
@@ -98,35 +98,60 @@ export interface ToolResultMetadata {
  */
 export interface ToolStreamUpdate {
   /** 更新类型: progress — 进度, output — 输出内容 */
-  type: 'progress' | 'output'
+  type: 'progress' | 'output';
 
   /** 更新内容 */
-  content: string
+  content: string;
 
   /** 进度百分比（0–100），仅当 type='progress' 时有意义 */
-  percentage?: number
+  percentage?: number;
 }
 
 // ========== Zod Schema 类型 ==========
 
-import type { z } from 'zod'
+import type { z } from 'zod';
 
 /** Zod 参数 Schema 类型（工具参数必须是 ZodObject） */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ToolParametersSchema = z.ZodObject<any>
+export type ToolParametersSchema = z.ZodObject<any>;
 
 // ========== 工具执行上下文 ==========
+
+import type { SandboxContext } from '../sandbox/types';
 
 /**
  * 工具执行上下文
  *
- * 复用 sandbox 模块的 SandboxContext 作为工具执行上下文。
- * 工具通过 context 获取沙箱信息（路径边界、Docker 容器等）。
+ * 工具运行时的完整环境信息。继承 SandboxContext（路径守卫、Docker 等），
+ * 并扩展 Agent/Thread/Session 维度的上下文。
+ *
+ * 工具通过 context 可获取：
+ *   - 沙箱信息：workspaceRoot, sandboxRoot, toolPolicy, docker, envVars（来自 SandboxContext）
+ *   - 会话信息：sessionId（来自 SandboxContext）, threadId, parentSessionId
+ *   - Agent 信息：agentId, agentName, agentType, agentMode
+ *
+ * 由 AgentEnvInjector 构建，通过 Builder → Runtime → ToolExecutionPipeline 注入到每个工具。
+ * 大模型不感知此上下文，仅工具执行函数内部使用。
  */
-import type { SandboxContext } from '../sandbox/types'
+export interface ToolExecutionContext extends SandboxContext {
+  /** 线程 ID（= 顶层 sessionId，用于关联 Thread 定义） */
+  threadId?: string;
 
-/** 工具执行上下文（= SandboxContext） */
-export type ToolExecutionContext = SandboxContext
+  /** Agent 定义 ID（如果关联了持久化的 AgentDefinition） */
+  agentId?: string;
+
+  /** Agent 名称（运行时显示名） */
+  agentName?: string;
+
+  /** Agent 类型（agent / orchestrator / swarm） */
+  agentType?: import('../threads/types').AgentType;
+
+  /** Agent 运行模式（chat / agent / orchestrator / swarm） */
+  agentMode?: import('../runtime/types').AgentMode;
+
+  /** 父会话 ID（子 Agent / Worker / Swarm Role 时存在，用于追溯委托链） */
+  parentSessionId?: string;
+}
 
 // ========== 工具定义 ==========
 
@@ -154,13 +179,13 @@ export type ToolExecutionContext = SandboxContext
  */
 export interface ToolDefinition {
   /** 工具名称（唯一标识，LLM 调用时使用） */
-  name: string
+  name: string;
 
   /** 工具描述（LLM 用于决策是否调用） */
-  description: string
+  description: string;
 
   /** 工具功能分类 */
-  category: ToolCategory
+  category: ToolCategory;
 
   /**
    * 参数 Zod Schema
@@ -169,7 +194,7 @@ export interface ToolDefinition {
    *   - OpenAI SDK: 直接传给 tool()（原生支持 Zod）
    *   - PiMono SDK: 通过 z.toJSONSchema() 转换为 JSON Schema
    */
-  parameters: ToolParametersSchema
+  parameters: ToolParametersSchema;
 
   /**
    * 是否需要用户确认后才能执行（HITL 声明式元数据）
@@ -179,7 +204,7 @@ export interface ToolDefinition {
    *
    * 注意：实际审批逻辑由 Runtime 的 HITL 层处理，工具本身不实现审批。
    */
-  needUserConfirm?: boolean
+  needUserConfirm?: boolean;
 
   /**
    * 执行函数（AsyncGenerator）
@@ -194,5 +219,5 @@ export interface ToolDefinition {
     params: Record<string, unknown>,
     signal?: AbortSignal,
     context?: ToolExecutionContext
-  ) => AsyncGenerator<ToolStreamUpdate, ToolResult, unknown>
+  ) => AsyncGenerator<ToolStreamUpdate, ToolResult, unknown>;
 }

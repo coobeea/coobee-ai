@@ -14,26 +14,26 @@
  * @module runtime/pimono/PiMonoToolConverter
  */
 
-import { z } from 'zod'
-import type { ToolDefinition as PiToolDefinition } from '@mariozechner/pi-coding-agent'
-import type { ToolDefinition } from '../../tools/types'
-import type { SandboxContext } from '../../sandbox/types'
-import { executeToolPipeline } from '../shared/ToolExecutionPipeline'
+import { z } from 'zod';
+import type { ToolDefinition as PiToolDefinition } from '@mariozechner/pi-coding-agent';
+import type { ToolDefinition } from '../../tools/types';
+import type { ToolExecutionContext } from '../../tools/types';
+import { executeToolPipeline } from '../shared/ToolExecutionPipeline';
 
 // ========== Types ==========
 
 interface RuntimeLogger {
-  info(message: string, ...args: unknown[]): void
-  warn(message: string, ...args: unknown[]): void
-  error(message: string, ...args: unknown[]): void
-  debug(message: string, ...args: unknown[]): void
+  info(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
+  error(message: string, ...args: unknown[]): void;
+  debug(message: string, ...args: unknown[]): void;
 }
 
 interface ConvertToolsOptions {
-  /** 沙箱上下文 */
-  sandboxContext: SandboxContext
+  /** 工具执行上下文 */
+  sandboxContext: ToolExecutionContext;
   /** 日志器 */
-  log: RuntimeLogger
+  log: RuntimeLogger;
 }
 
 // ========== Core API ==========
@@ -46,19 +46,16 @@ interface ConvertToolsOptions {
  *   - execute 前检查工具策略（isToolAllowed，sandbox 级别拦截）
  *   - yield 的 ToolStreamUpdate 通过 PiMono 的 onUpdate 回调发送增量输出
  *   - return 的 ToolResult.llmContent 作为 AgentToolResult 返回
- *   - 自动注入 SandboxContext（路径边界、工具策略、Docker 等）
+ *   - 自动注入 ToolExecutionContext（路径守卫、工具策略、Agent 信息等）
  *
  * HITL 审批：
  *   由 tool-approval Extension 在 before_tool_call Hook 中统一处理，
  *   PiMono 现在也支持 HITL（通过 Hook 异步等待用户审批）。
  */
-export function convertTools(
-  defs: ToolDefinition[],
-  options: ConvertToolsOptions
-): PiToolDefinition[] {
-  if (!defs.length) return []
+export function convertTools(defs: ToolDefinition[], options: ConvertToolsOptions): PiToolDefinition[] {
+  if (!defs.length) return [];
 
-  const { sandboxContext } = options
+  const { sandboxContext } = options;
 
   return defs.map(
     (def) =>
@@ -90,19 +87,19 @@ export function convertTools(
                       updateType: update.type,
                       percentage: update.percentage
                     }
-                  })
+                  });
                 }
               : undefined
-          })
+          });
 
           return {
             content: [{ type: 'text', text: result.resultText }],
             details: { name: def.name }
-          }
+          };
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any as PiToolDefinition
-  )
+  );
 }
 
 // ========== Internal Helpers ==========
@@ -117,6 +114,6 @@ export function convertTools(
  * 解决：移除 $schema 属性，让 AJV 使用其默认的 draft-07 模式验证。
  */
 function stripSchemaRef(schema: Record<string, unknown>): Record<string, unknown> {
-  const { $schema: _, ...rest } = schema
-  return rest
+  const { $schema: _, ...rest } = schema;
+  return rest;
 }
