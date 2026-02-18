@@ -74,19 +74,21 @@ function formatRelativeTime(iso: string): string {
   }
 }
 
-/** runStatus 状态指示器配置 */
-function getRunStatusConfig(status?: ThreadRunStatus): { icon: string; class: string; label: string } | null {
+/** runStatus 状态配置：每种状态对应颜色 class 和标签 */
+function getRunStatusConfig(status?: ThreadRunStatus): { class: string; label: string } {
   switch (status) {
     case 'running':
-      return { icon: 'i-carbon-renew', class: 'status-running', label: '运行中' };
+      return { class: 'status-running', label: '运行中' };
     case 'tool-pending':
-      return { icon: 'i-carbon-tool-box', class: 'status-tool', label: '工具执行中' };
+      return { class: 'status-tool', label: '工具执行中' };
     case 'approval-pending':
-      return { icon: 'i-carbon-pending', class: 'status-approval', label: '等待审批' };
+      return { class: 'status-approval', label: '等待审批' };
     case 'error':
-      return { icon: 'i-carbon-warning-alt', class: 'status-error', label: '出错' };
+      return { class: 'status-error', label: '出错' };
+    case 'completed':
+      return { class: 'status-completed', label: '已完成' };
     default:
-      return null;
+      return { class: 'status-idle', label: '空闲' };
   }
 }
 
@@ -149,14 +151,10 @@ onMounted(() => updateActiveState());
           class="session-item"
           :class="{ active: threadsStore.activeThreadId === thread.id }"
           @click="handleThreadClick(thread.id)">
-          <div class="thread-icon-wrap">
-            <span class="i-carbon-task icon-xs" />
-            <span
-              v-if="getRunStatusConfig(thread.runStatus)"
-              class="status-dot"
-              :class="getRunStatusConfig(thread.runStatus)!.class"
-              :title="getRunStatusConfig(thread.runStatus)!.label" />
-          </div>
+          <span
+            class="status-dot"
+            :class="getRunStatusConfig(thread.runStatus).class"
+            :title="getRunStatusConfig(thread.runStatus).label" />
           <div class="session-info">
             <div class="session-title-row">
               <span class="session-title">{{ thread.title }}</span>
@@ -165,15 +163,6 @@ onMounted(() => updateActiveState());
               </span>
             </div>
             <span class="session-meta">
-              <template v-if="getRunStatusConfig(thread.runStatus)">
-                <span class="run-status-label" :class="getRunStatusConfig(thread.runStatus)!.class">
-                  <span
-                    :class="[getRunStatusConfig(thread.runStatus)!.icon, 'inline-block h-2.5 w-2.5']"
-                    :style="thread.runStatus === 'running' ? 'animation: spin 1s linear infinite' : ''" />
-                  {{ getRunStatusConfig(thread.runStatus)!.label }}
-                </span>
-                ·
-              </template>
               {{ thread.messageCount }} 条 · {{ formatRelativeTime(thread.updatedAt) }}
             </span>
           </div>
@@ -299,39 +288,43 @@ onMounted(() => updateActiveState());
   color: hsl(var(--foreground) / 0.85);
 }
 
-/* thread icon + status dot */
-
-.thread-icon-wrap {
-  position: relative;
-  flex-shrink: 0;
-}
+/* status dot */
 
 .status-dot {
-  position: absolute;
-  bottom: -1px;
-  right: -2px;
-  width: 6px;
-  height: 6px;
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  border: 1px solid hsl(var(--surface));
+  margin-top: 5px;
 }
 
 .status-dot.status-running {
   background: hsl(142 71% 45%);
+  box-shadow: 0 0 0 2px hsl(142 71% 45% / 0.2);
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
 .status-dot.status-tool {
   background: hsl(217 91% 60%);
+  box-shadow: 0 0 0 2px hsl(217 91% 60% / 0.2);
 }
 
 .status-dot.status-approval {
   background: hsl(38 92% 50%);
+  box-shadow: 0 0 0 2px hsl(38 92% 50% / 0.2);
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
 .status-dot.status-error {
   background: hsl(0 84% 60%);
+}
+
+.status-dot.status-completed {
+  background: hsl(var(--muted-foreground) / 0.25);
+}
+
+.status-dot.status-idle {
+  background: hsl(var(--muted-foreground) / 0.2);
 }
 
 @keyframes pulse-dot {
@@ -378,30 +371,6 @@ onMounted(() => updateActiveState());
   background: hsl(var(--primary) / 0.1);
   color: hsl(var(--primary) / 0.7);
   letter-spacing: 0.03em;
-}
-
-.run-status-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 10px;
-  font-weight: 500;
-}
-
-.run-status-label.status-running {
-  color: hsl(142 71% 45%);
-}
-
-.run-status-label.status-tool {
-  color: hsl(217 91% 60%);
-}
-
-.run-status-label.status-approval {
-  color: hsl(38 92% 50%);
-}
-
-.run-status-label.status-error {
-  color: hsl(0 84% 60%);
 }
 
 .session-meta {

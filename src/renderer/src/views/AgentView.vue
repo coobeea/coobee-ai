@@ -7,7 +7,7 @@
  *   2. 会话进行中 → 三栏工作区（项目空间 | 工作台 | 对话）
  */
 
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { useChatStore } from '@/stores/chat';
 import { useAgentsStore } from '@/stores/agents';
 import { useThreadsStore } from '@/stores/threads';
@@ -61,10 +61,31 @@ const skillsLoading = ref(false);
 
 onMounted(() => {
   agentsStore.fetchAgents();
+  if (threadsStore.activeThreadId) {
+    enterWorkspaceForThread(threadsStore.activeThreadId);
+  }
 });
+
+watch(
+  () => threadsStore.activeThreadId,
+  (newId) => {
+    if (newId) {
+      enterWorkspaceForThread(newId);
+    }
+  }
+);
+
+function enterWorkspaceForThread(threadId: string): void {
+  const thread = threadsStore.threads.find((t) => t.id === threadId);
+  if (thread) {
+    agentsStore.selectAgent(thread.agentId);
+  }
+  isInWorkspace.value = true;
+}
 
 function startNewSession(): void {
   chatStore.clearMessages();
+  threadsStore.selectThread(null);
   isInWorkspace.value = false;
   projectPath.value = null;
   agentsPanelCollapsed.value = true;
