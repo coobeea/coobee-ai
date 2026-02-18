@@ -34,13 +34,16 @@ vi.mock('../../AgentExecutor', () => ({
         instructions: vi.fn().mockReturnThis(),
         model: vi.fn().mockReturnThis(),
         sessionId: vi.fn().mockReturnThis(),
+        thinkingLevel: vi.fn().mockReturnThis(),
         build: vi.fn().mockResolvedValue({
           run: (prompt: string) => mockRunResult(prompt),
           destroy: () => mockDestroyResult()
         })
       };
       return builder;
-    }
+    },
+    applyProviderConfig: vi.fn(),
+    applyThinkingLevel: vi.fn()
   }
 }));
 

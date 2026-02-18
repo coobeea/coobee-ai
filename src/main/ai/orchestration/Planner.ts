@@ -158,12 +158,13 @@ Consider:
       .sessionMode('file')
       .instructions(PLANNER_INSTRUCTIONS);
 
-    // 使用配置的模型（如果指定）
+    agentExecutor.applyProviderConfig(builder);
+    agentExecutor.applyThinkingLevel(builder);
+
     if (this.options?.model) {
       builder.model(this.options.model);
     }
 
-    // 设置 sessionId
     builder.sessionId(sessionId);
 
     let runtime: import('../runtime/AgentRuntime').AgentRuntime | null = null;

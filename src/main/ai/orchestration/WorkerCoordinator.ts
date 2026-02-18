@@ -241,6 +241,9 @@ export class WorkerCoordinator implements IWorkerCoordinator {
         .sessionMode('file')
         .instructions(agentDef.instructions);
 
+      agentExecutor.applyProviderConfig(builder);
+      agentExecutor.applyThinkingLevel(builder);
+
       if (agentDef.model) {
         builder.model(agentDef.model);
       } else if (this.config?.model) {
@@ -261,6 +264,9 @@ export class WorkerCoordinator implements IWorkerCoordinator {
       .mode('agent')
       .sessionMode('file')
       .instructions(preset.instructions);
+
+    agentExecutor.applyProviderConfig(builder);
+    agentExecutor.applyThinkingLevel(builder);
 
     if (this.config?.model) {
       builder.model(this.config.model);

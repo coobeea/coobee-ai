@@ -18,7 +18,6 @@ import { log } from '@main/common/logger';
 import { agentExecutor } from '@main/ai/AgentExecutor';
 import { builtinTools } from '@main/ai/tools';
 import { ToolRegistry } from '@main/ai/tools/registry';
-import { resolveApiKey } from '@main/ai/provider/ApiKeyResolver';
 import { configStoreInstance } from '@main/common/config/ConfigStore';
 import { AgentStore } from '@main/ai/agents/AgentStore';
 import type { AgentDefinition } from '@main/ai/agents/types';
@@ -81,28 +80,10 @@ function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.pi
 }
 
 /**
- * 尝试从 Provider 系统注入模型配置
- *
- * 如果 Provider 系统未初始化或无可用配置，则不做任何操作（使用 coobee.json5 / 环境变量兜底）。
+ * 尝试从 Provider 系统注入模型配置（委托给 AgentExecutor 公共方法）
  */
 function applyProviderConfig(builder: ReturnType<typeof agentExecutor.piMono>): void {
-  try {
-    const providerSystem = agentExecutor.getProviderSystem?.();
-    if (!providerSystem) return;
-
-    const { selector, registry } = providerSystem;
-    const ref = selector.resolve();
-    const provider = registry.get(ref.provider);
-    if (!provider) return;
-
-    // 解析 API Key
-    const apiKey = resolveApiKey(provider.apiKey, provider.id);
-    if (!apiKey) return;
-
-    builder.fromProviderConfig(provider, ref.model);
-  } catch {
-    // Provider 系统未就绪，静默回退到默认配置
-  }
+  agentExecutor.applyProviderConfig(builder);
 }
 
 /**
