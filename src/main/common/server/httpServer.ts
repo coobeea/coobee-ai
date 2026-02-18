@@ -64,7 +64,7 @@ export class HttpServer {
     log.info('[HttpServer] Initializing...');
     this._setupMiddleware();
     this._registerHttpRoutes();
-    this._createHttpServer();
+    this._startServer();
 
     HttpServer._instance = this;
   }
@@ -642,14 +642,7 @@ export class HttpServer {
     }
   }
 
-  /**
-   * 创建 http.Server 实例（但不开始监听）
-   *
-   * 先创建 http.Server 以便 GatewayServer 可以挂载 WebSocket，
-   * 真正的 listen() 延迟到 startListening() 调用时执行，
-   * 确保所有 WebSocket/路由挂载完毕后才接受外部连接，避免 404。
-   */
-  private _createHttpServer(): void {
+  private _startServer(): void {
     this.app.on('error', (err, ctx) => {
       log.error('[HttpServer] Server error:', err, ctx);
     });
@@ -664,16 +657,6 @@ export class HttpServer {
       }
     });
 
-    log.info('[HttpServer] http.Server created (not yet listening)');
-  }
-
-  /**
-   * 开始监听端口
-   *
-   * 应在所有 WebSocket 挂载（GatewayServer.start()）完成后调用，
-   * 保证客户端连接时所有路径已就绪。
-   */
-  startListening(): void {
     this.httpServer.listen(SERVER_PORT, '127.0.0.1', () => {
       log.info(`[HttpServer] Listening on http://127.0.0.1:${SERVER_PORT} (HTTP + WebSocket)`);
     });

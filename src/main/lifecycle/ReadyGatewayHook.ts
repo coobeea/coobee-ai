@@ -31,13 +31,6 @@ export const ReadyGatewayHook: LifecycleHook = {
       gateway.start();
       activeGateway = gateway;
       log.info('[ReadyGatewayHook] Gateway initialized successfully');
-
-      // Gateway WebSocket 挂载完成后才开始监听端口，避免 404 竞争
-      const { HttpServer } = await import('@main/common/server/httpServer');
-      const httpServer = HttpServer.getInstance();
-      if (httpServer) {
-        httpServer.startListening();
-      }
     } catch (error) {
       log.error('[ReadyGatewayHook] Failed to initialize Gateway:', error);
     }

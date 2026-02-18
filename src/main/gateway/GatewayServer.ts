@@ -71,29 +71,17 @@ export class GatewayServer {
   /**
    * 启动 GatewayServer
    *
-   * 1. 创建 WebSocketServer (noServer)，手动处理 http.Server 的 upgrade 事件
+   * 1. 创建 WebSocketServer，挂到 http.Server（通过 path 隔离）
    * 2. 注册内置 HTTP 端点
    * 3. 将 Router 挂到 Koa app
-   *
-   * 使用 noServer 模式避免 Koa 在 request 事件中返回 404 阻断 WebSocket 握手。
    */
   start(): void {
     if (this.initialized) return;
 
-    // WS 层：noServer 模式，手动处理 upgrade 事件
-    this.wss = new WebSocketServer({ noServer: true });
-
-    // 拦截 http.Server 的 upgrade 事件，只处理 /gateway/ws 路径
-    this.nodeHttpServer.on('upgrade', (request, socket, head) => {
-      const { pathname } = new URL(request.url || '', 'http://localhost');
-
-      if (pathname === '/gateway/ws') {
-        this.wss.handleUpgrade(request, socket, head, (ws) => {
-          this.wss.emit('connection', ws, request);
-        });
-      } else {
-        socket.destroy();
-      }
+    // WS 层：挂载到 http.Server，使用 /gateway/ws 路径
+    this.wss = new WebSocketServer({
+      server: this.nodeHttpServer,
+      path: '/gateway/ws'
     });
 
     this.wss.on('connection', (ws) => {
