@@ -54,15 +54,19 @@ function openFile(filePath: string): void {
 
   fetchFileContent(filePath)
     .then((data) => {
-      entry.content = data.content;
-      entry.language = data.language;
-      entry.name = data.name;
-      entry.loading = false;
+      const target = openFiles.value.find((f) => f.path === filePath);
+      if (!target) return;
+      target.content = data.content;
+      target.language = data.language;
+      target.name = data.name;
+      target.loading = false;
     })
     .catch((err) => {
-      entry.content = `// Error loading file: ${err instanceof Error ? err.message : String(err)}`;
-      entry.language = 'plaintext';
-      entry.loading = false;
+      const target = openFiles.value.find((f) => f.path === filePath);
+      if (!target) return;
+      target.content = `// Error loading file: ${err instanceof Error ? err.message : String(err)}`;
+      target.language = 'plaintext';
+      target.loading = false;
     });
 }
 
