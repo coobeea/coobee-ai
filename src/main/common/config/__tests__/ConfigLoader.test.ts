@@ -1,38 +1,49 @@
-import fs from 'fs'
-import os from 'os'
-import path from 'path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ConfigLoader } from '../ConfigLoader'
+vi.mock('@main/common/logger', () => {
+  const mockLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  return { log: mockLog, default: mockLog, createLogger: vi.fn(() => mockLog) };
+});
+vi.mock('@main/common/env', () => ({
+  Env: {
+    isDev: true,
+    paths: { configDir: '/mock/config', userHome: '/mock/.home' }
+  }
+}));
+
+import { ConfigLoader } from '../ConfigLoader';
 
 describe('ConfigLoader', () => {
-  let tmpDir: string
-  let loader: ConfigLoader
+  let tmpDir: string;
+  let loader: ConfigLoader;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coobee-config-test-'))
-    loader = new ConfigLoader(tmpDir)
-  })
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coobee-config-test-'));
+    loader = new ConfigLoader(tmpDir);
+  });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true })
-  })
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   // ─── 文件不存在 ──────────────────────────────────
 
   it('should return default config when file does not exist', () => {
-    const config = loader.load()
-    expect(config).toBeDefined()
-    expect(config.ui?.theme).toBe('auto')
-    expect(config.logging?.level).toBe('info')
-  })
+    const config = loader.load();
+    expect(config).toBeDefined();
+    expect(config.ui?.theme).toBe('auto');
+    expect(config.logging?.level).toBe('info');
+  });
 
   it('should auto-create config when file missing and return valid snapshot', () => {
-    const snap = loader.snapshot()
+    const snap = loader.snapshot();
     // 文件不存在时 snapshot() 会自动重建，因此 exists=true
-    expect(snap.exists).toBe(true)
-    expect(snap.valid).toBe(true)
-  })
+    expect(snap.exists).toBe(true);
+    expect(snap.valid).toBe(true);
+  });
 
   // ─── 正常加载 ────────────────────────────────────
 
@@ -40,13 +51,13 @@ describe('ConfigLoader', () => {
     writeConfig({
       ui: { theme: 'dark', language: 'en-US', soundEffects: false },
       logging: { level: 'debug', file: false }
-    })
+    });
 
-    const config = loader.load()
-    expect(config.ui?.theme).toBe('dark')
-    expect(config.ui?.language).toBe('en-US')
-    expect(config.logging?.level).toBe('debug')
-  })
+    const config = loader.load();
+    expect(config.ui?.theme).toBe('dark');
+    expect(config.ui?.language).toBe('en-US');
+    expect(config.logging?.level).toBe('debug');
+  });
 
   it('should parse JSON5 comments and trailing commas', () => {
     const json5Content = `{
@@ -56,18 +67,18 @@ describe('ConfigLoader', () => {
     language: "zh-CN",
     soundEffects: true,  // trailing comma
   },
-}`
-    fs.writeFileSync(path.join(tmpDir, 'coobee.json5'), json5Content)
+}`;
+    fs.writeFileSync(path.join(tmpDir, 'coobee.json5'), json5Content);
 
-    const config = loader.load()
-    expect(config.ui?.theme).toBe('light')
-  })
+    const config = loader.load();
+    expect(config.ui?.theme).toBe('light');
+  });
 
   // ─── 环境变量替换 ────────────────────────────────
 
   it('should resolve ${VAR} templates from env', () => {
-    const oldEnv = process.env.TEST_API_KEY
-    process.env.TEST_API_KEY = 'sk-secret-123'
+    const oldEnv = process.env.TEST_API_KEY;
+    process.env.TEST_API_KEY = 'sk-secret-123';
 
     try {
       writeConfig({
@@ -81,18 +92,18 @@ describe('ConfigLoader', () => {
             }
           }
         }
-      })
+      });
 
-      const config = loader.load()
-      expect(config.models?.providers?.test?.apiKey).toBe('sk-secret-123')
+      const config = loader.load();
+      expect(config.models?.providers?.test?.apiKey).toBe('sk-secret-123');
     } finally {
       if (oldEnv === undefined) {
-        delete process.env.TEST_API_KEY
+        delete process.env.TEST_API_KEY;
       } else {
-        process.env.TEST_API_KEY = oldEnv
+        process.env.TEST_API_KEY = oldEnv;
       }
     }
-  })
+  });
 
   it('should keep ${VAR} template when env var is not set', () => {
     writeConfig({
@@ -106,105 +117,105 @@ describe('ConfigLoader', () => {
           }
         }
       }
-    })
+    });
 
-    const config = loader.load()
-    expect(config.models?.providers?.test?.apiKey).toBe('${NONEXISTENT_VAR_12345}')
-  })
+    const config = loader.load();
+    expect(config.models?.providers?.test?.apiKey).toBe('${NONEXISTENT_VAR_12345}');
+  });
 
   // ─── 缓存 ───────────────────────────────────────
 
   it('should cache config after first load', () => {
-    writeConfig({ ui: { theme: 'dark' } })
-    const config1 = loader.load()
+    writeConfig({ ui: { theme: 'dark' } });
+    const config1 = loader.load();
 
     // 直接修改文件（不调用 clearCache）
-    const content = JSON.stringify({ ui: { theme: 'light' } }, null, 2)
-    fs.writeFileSync(path.join(tmpDir, 'coobee.json5'), content)
-    const config2 = loader.load()
+    const content = JSON.stringify({ ui: { theme: 'light' } }, null, 2);
+    fs.writeFileSync(path.join(tmpDir, 'coobee.json5'), content);
+    const config2 = loader.load();
 
     // 应返回缓存的旧值
-    expect(config1.ui?.theme).toBe('dark')
-    expect(config2.ui?.theme).toBe('dark')
-  })
+    expect(config1.ui?.theme).toBe('dark');
+    expect(config2.ui?.theme).toBe('dark');
+  });
 
   it('should reload after clearCache', () => {
-    writeConfig({ ui: { theme: 'dark' } })
-    loader.load()
+    writeConfig({ ui: { theme: 'dark' } });
+    loader.load();
 
-    writeConfig({ ui: { theme: 'light' } })
-    loader.clearCache()
-    const config = loader.load()
+    writeConfig({ ui: { theme: 'light' } });
+    loader.clearCache();
+    const config = loader.load();
 
-    expect(config.ui?.theme).toBe('light')
-  })
+    expect(config.ui?.theme).toBe('light');
+  });
 
   // ─── 错误处理 ────────────────────────────────────
 
   it('should return invalid snapshot for malformed JSON5', () => {
-    fs.writeFileSync(path.join(tmpDir, 'coobee.json5'), '{ invalid json5 {{{{')
+    fs.writeFileSync(path.join(tmpDir, 'coobee.json5'), '{ invalid json5 {{{{');
 
-    const snap = loader.snapshot()
-    expect(snap.valid).toBe(false)
-    expect(snap.issues.length).toBeGreaterThan(0)
-    expect(snap.issues[0].message).toContain('JSON5 parse error')
-  })
+    const snap = loader.snapshot();
+    expect(snap.valid).toBe(false);
+    expect(snap.issues.length).toBeGreaterThan(0);
+    expect(snap.issues[0].message).toContain('JSON5 parse error');
+  });
 
   it('should return invalid snapshot for schema violations', () => {
-    writeConfig({ ui: { theme: 'neon' } })
+    writeConfig({ ui: { theme: 'neon' } });
 
-    const snap = loader.snapshot()
-    expect(snap.valid).toBe(false)
-    expect(snap.issues.length).toBeGreaterThan(0)
-  })
+    const snap = loader.snapshot();
+    expect(snap.valid).toBe(false);
+    expect(snap.issues.length).toBeGreaterThan(0);
+  });
 
   it('should fall back to defaults when schema validation fails', () => {
-    writeConfig({ ui: { theme: 'neon' } })
+    writeConfig({ ui: { theme: 'neon' } });
 
-    const snap = loader.snapshot()
-    expect(snap.config.ui?.theme).toBe('auto') // default
-  })
+    const snap = loader.snapshot();
+    expect(snap.config.ui?.theme).toBe('auto'); // default
+  });
 
   // ─── 快照 hash ──────────────────────────────────
 
   it('should include hash in snapshot', () => {
-    writeConfig({ ui: { theme: 'dark' } })
-    const snap = loader.snapshot()
-    expect(snap.hash).toBeTruthy()
-    expect(typeof snap.hash).toBe('string')
-  })
+    writeConfig({ ui: { theme: 'dark' } });
+    const snap = loader.snapshot();
+    expect(snap.hash).toBeTruthy();
+    expect(typeof snap.hash).toBe('string');
+  });
 
   it('should have different hashes for different content', () => {
-    writeConfig({ ui: { theme: 'dark' } })
-    const snap1 = loader.snapshot()
+    writeConfig({ ui: { theme: 'dark' } });
+    const snap1 = loader.snapshot();
 
-    writeConfig({ ui: { theme: 'light' } })
-    const snap2 = loader.snapshot()
+    writeConfig({ ui: { theme: 'light' } });
+    const snap2 = loader.snapshot();
 
-    expect(snap1.hash).not.toBe(snap2.hash)
-  })
+    expect(snap1.hash).not.toBe(snap2.hash);
+  });
 
   // ─── ensureConfigFile ────────────────────────────
 
   it('should create config file when not exists', () => {
-    const newDir = path.join(tmpDir, 'subdir')
-    const newLoader = new ConfigLoader(newDir)
+    const newDir = path.join(tmpDir, 'subdir');
+    const newLoader = new ConfigLoader(newDir);
 
-    expect(fs.existsSync(path.join(newDir, 'coobee.json5'))).toBe(false)
-    newLoader.ensureConfigFile()
-    expect(fs.existsSync(path.join(newDir, 'coobee.json5'))).toBe(true)
+    expect(fs.existsSync(path.join(newDir, 'coobee.json5'))).toBe(false);
+    newLoader.ensureConfigFile();
+    expect(fs.existsSync(path.join(newDir, 'coobee.json5'))).toBe(true);
 
     // Created file should be loadable
-    const config = newLoader.load()
-    expect(config.ui?.theme).toBe('auto')
-  })
+    const config = newLoader.load();
+    expect(config.ui?.theme).toBe('auto');
+  });
 
   // ─── 辅助函数 ────────────────────────────────────
 
   /** 写入任意 JSON 作为配置（测试用，可为部分对象） */
   function writeConfig(config: Record<string, unknown>): void {
-    const content = JSON.stringify(config, null, 2)
-    fs.writeFileSync(path.join(tmpDir, 'coobee.json5'), content)
-    loader.clearCache()
+    const content = JSON.stringify(config, null, 2);
+    fs.writeFileSync(path.join(tmpDir, 'coobee.json5'), content);
+    loader.clearCache();
   }
-})
+});

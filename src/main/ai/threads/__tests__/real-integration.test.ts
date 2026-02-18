@@ -114,7 +114,29 @@ function waitMs(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-describe('真实集成测试', () => {
+/** 检测 dev server 是否可用 */
+async function isDevServerAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = new WebSocket(WS_URL);
+    const timer = setTimeout(() => {
+      probe.close();
+      resolve(false);
+    }, 3000);
+    probe.on('open', () => {
+      clearTimeout(timer);
+      probe.close();
+      resolve(true);
+    });
+    probe.on('error', () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+  });
+}
+
+const canConnect = await isDevServerAvailable();
+
+describe.skipIf(!canConnect)('真实集成测试', () => {
   beforeAll(async () => {
     ws = new WebSocket(WS_URL);
     await new Promise<void>((resolve, reject) => {
