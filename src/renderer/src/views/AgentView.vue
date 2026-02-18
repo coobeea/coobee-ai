@@ -7,10 +7,11 @@
  *   2. 会话进行中 → 三栏工作区（项目空间 | 工作台 | 对话）
  */
 
-import { ref, computed, onMounted, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useChatStore } from '@/stores/chat';
 import { useAgentsStore } from '@/stores/agents';
 import { useThreadsStore } from '@/stores/threads';
+import { useCopilotStore } from '@/stores/copilot';
 import configManager from '@/config';
 
 const isMac = navigator.platform?.includes('Mac') ?? false;
@@ -19,10 +20,13 @@ import WorkbenchPanel from '@/components/agent/WorkbenchPanel.vue';
 import ChatPanel from '@/components/agent/ChatPanel.vue';
 import VoicePanel from '@/components/agent/VoicePanel.vue';
 import AgentsPanel from '@/components/agent/AgentsPanel.vue';
+import { useOpenFiles } from '@/composables/useOpenFiles';
 
 const chatStore = useChatStore();
 const agentsStore = useAgentsStore();
 const threadsStore = useThreadsStore();
+const copilotStore = useCopilotStore();
+const { closeAllFiles } = useOpenFiles();
 
 const leftCollapsed = ref(false);
 const rightCollapsed = ref(false);
@@ -59,11 +63,23 @@ interface SkillInfo {
 const availableSkills = ref<SkillInfo[]>([]);
 const skillsLoading = ref(false);
 
+watch(
+  isActive,
+  (active) => {
+    copilotStore.bubbleHidden = active;
+  },
+  { immediate: true }
+);
+
 onMounted(() => {
   agentsStore.fetchAgents();
   if (threadsStore.activeThreadId) {
     enterWorkspaceForThread(threadsStore.activeThreadId);
   }
+});
+
+onUnmounted(() => {
+  copilotStore.bubbleHidden = false;
 });
 
 watch(
@@ -83,12 +99,14 @@ function enterWorkspaceForThread(threadId: string): void {
       projectPath.value = thread.workspacePath;
     }
   }
+  closeAllFiles();
   isInWorkspace.value = true;
   chatStore.loadHistory(threadId);
 }
 
 function startNewSession(): void {
   chatStore.clearMessages();
+  closeAllFiles();
   threadsStore.selectThread(null);
   isInWorkspace.value = false;
   projectPath.value = null;

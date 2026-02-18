@@ -61,27 +61,26 @@ function updateEditorContent(): void {
 }
 
 watch(
-  () => activeFile.value,
   () => {
-    nextTick(updateEditorContent);
+    const f = activeFile.value;
+    if (!f) return null;
+    return `${f.path}::${f.loading}::${f.content.length}`;
   },
-  { deep: true }
-);
-
-watch(
-  () => openFiles.value.length,
-  (len) => {
-    if (len > 0 && !editorInstance.value) {
-      nextTick(initEditor);
-      nextTick(updateEditorContent);
+  async () => {
+    if (openFiles.value.length > 0 && !editorInstance.value) {
+      await nextTick();
+      initEditor();
     }
+    await nextTick();
+    updateEditorContent();
   }
 );
 
-onMounted(() => {
+onMounted(async () => {
   if (openFiles.value.length > 0) {
-    nextTick(initEditor);
-    nextTick(updateEditorContent);
+    await nextTick();
+    initEditor();
+    updateEditorContent();
   }
 });
 

@@ -40,6 +40,7 @@ export const useCopilotStore = defineStore('copilot', () => {
   // ---- 独立状态 ----
   const visible = ref(false);
   const sessionId = ref<string | null>(null);
+  const bubbleHidden = ref(false);
 
   // ---- Stream 订阅 ----
   let unregisterStream: (() => void) | null = null;
@@ -168,6 +169,7 @@ export const useCopilotStore = defineStore('copilot', () => {
     sessionId,
     messages,
     isStreaming,
+    bubbleHidden,
     // Getters
     hasMessages,
     // Actions

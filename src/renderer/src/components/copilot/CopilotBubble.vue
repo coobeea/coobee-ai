@@ -100,10 +100,10 @@ function toolSummary(block: ContentBlock): string {
 </script>
 
 <template>
-  <!-- 悬浮气泡按钮（固定在右下角） -->
+  <!-- 悬浮气泡按钮（固定在右下角，工作区内隐藏） -->
   <Transition name="bubble-pop">
     <button
-      v-if="!copilot.visible"
+      v-if="!copilot.visible && !copilot.bubbleHidden"
       class="copilot-fab"
       :style="{ zIndex: fabZIndex }"
       title="应用管家"
