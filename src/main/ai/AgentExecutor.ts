@@ -52,7 +52,9 @@ export interface ExecuteRequest {
   /** 用户消息 */
   message: string;
   /** Builder 实例（通过 agentExecutor.piMono() 或 agentExecutor.openai() 创建） */
-  builder: AgentBuilder;
+  builder?: AgentBuilder;
+  /** 预构建的 Runtime（Orchestrator / Swarm 等已初始化的运行时，跳过 Builder 流程） */
+  runtime?: AgentRuntime;
   /** 流式事件回调（可选） */
   onChunk?: (chunk: StreamChunk) => void;
   /** 中止信号（Pipeline 传入，用于提前终止流式消费） */
@@ -296,6 +298,10 @@ class AgentExecutor {
    */
   async *stream(request: Omit<ExecuteRequest, 'onChunk'>): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
     const { sessionId, message, builder } = request;
+
+    if (!builder) {
+      throw new Error('stream() requires a builder. Use submit() with runtime for pre-built runtimes.');
+    }
 
     if (this.busySessions.has(sessionId)) {
       throw new Error(`Session ${sessionId} is busy`);
@@ -664,6 +670,29 @@ class AgentExecutor {
     let eventWriter: AgentEventWriter | null = null;
 
     try {
+      if (request.runtime) {
+        // === 预构建 Runtime 路径（Orchestrator / Swarm） ===
+        const { Env } = await import('@main/common/env');
+        const workspace = await Env.getAgentWorkspaceDir(sessionId);
+        eventWriter = new AgentEventWriter(workspace);
+        eventWriter.register(sessionId);
+
+        runtime = request.runtime;
+        eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
+
+        const gen = runtime.stream(message);
+        const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal);
+
+        const duration = Date.now() - startTime;
+        this.logCompletion(sessionId, result, duration);
+        return result;
+      }
+
+      // === Builder 路径（标准 Agent / Chat） ===
+      if (!builder) {
+        throw new Error('ExecuteRequest requires either builder or runtime');
+      }
+
       // 0. 注入运行时环境
       const workspace = await injectEnv(sessionId, builder);
       eventWriter = new AgentEventWriter(workspace);

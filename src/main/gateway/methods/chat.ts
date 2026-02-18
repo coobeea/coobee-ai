@@ -26,6 +26,8 @@ import { ThreadStore } from '@main/ai/threads/ThreadStore';
 import { GatewayErrorCode, GatewayMethodError } from '../protocol';
 import type { MethodGroup } from '../protocol';
 import type { AgentMode } from '@main/ai/runtime/types';
+import { OrchestratorRuntime } from '@main/ai/orchestration/OrchestratorRuntime';
+import { SwarmRuntime } from '@main/ai/swarm/SwarmRuntime';
 
 /** Chat 模式禁用的工具名称列表 */
 const CHAT_MODE_BLOCKED_TOOLS = new Set(['exec']);
@@ -203,23 +205,25 @@ export const chatMethods: MethodGroup = {
       }
 
       // 校验 mode 参数
-      if (mode !== 'chat' && mode !== 'agent') {
+      const validModes = ['chat', 'agent', 'orchestrator', 'swarm'];
+      if (!validModes.includes(mode)) {
         throw new GatewayMethodError(
           GatewayErrorCode.INVALID_PARAMS,
-          `Invalid mode "${mode}". Must be "chat" or "agent".`
+          `Invalid mode "${mode}". Must be one of: ${validModes.join(', ')}.`
         );
       }
 
-      // sessionId = threadId：必须由前端传入，不再自动生成随机 ID
-      // 如果未传入，自动创建 Thread 并使用 Thread ID 作为 sessionId
+      // 自动创建 Thread
       let sid = sessionId;
       if (!sid) {
         const threadStore = await ThreadStore.getInstance();
+        const agentType = mode === 'orchestrator' ? 'orchestrator' : mode === 'swarm' ? 'swarm' : 'agent';
+        const agentMode = mode === 'orchestrator' || mode === 'swarm' ? 'agent' : mode;
         const thread = await threadStore.create({
           title: message.slice(0, 50),
           agentId: agentId || 'default',
-          agentMode: mode,
-          agentType: 'agent'
+          agentMode,
+          agentType
         });
         sid = thread.id;
         log.info(`[chat.send] Auto-created thread: ${sid}`);
@@ -228,7 +232,49 @@ export const chatMethods: MethodGroup = {
       log.info(`[chat.send] sessionId=${sid}, mode=${mode}${agentId ? `, agentId=${agentId}` : ''}`);
 
       try {
-        // 如果指定了 agentId，从 AgentStore 加载定义并创建 Builder
+        // ========== Orchestrator 模式 ==========
+        if (mode === 'orchestrator') {
+          const orchestrator = new OrchestratorRuntime({
+            name: 'User Orchestrator',
+            sessionId: sid,
+            orchestratorConfig: { parentSessionId: sid }
+          });
+          await orchestrator.initialize();
+
+          const result = agentExecutor.submit({
+            sessionId: sid,
+            message,
+            runtime: orchestrator
+          });
+
+          if (result.status === 'busy') {
+            throw new GatewayMethodError(GatewayErrorCode.SESSION_BUSY, '当前会话正在处理中');
+          }
+
+          return { sessionId: sid, status: 'streaming', mode };
+        }
+
+        // ========== Swarm 模式 ==========
+        if (mode === 'swarm') {
+          const swarm = new SwarmRuntime(sid, sid, {
+            config: { parentSessionId: sid, name: 'User Swarm' }
+          });
+          await swarm.initialize();
+
+          const result = agentExecutor.submit({
+            sessionId: sid,
+            message,
+            runtime: swarm
+          });
+
+          if (result.status === 'busy') {
+            throw new GatewayMethodError(GatewayErrorCode.SESSION_BUSY, '当前会话正在处理中');
+          }
+
+          return { sessionId: sid, status: 'streaming', mode };
+        }
+
+        // ========== Agent / Chat 模式 ==========
         let agentDef: AgentDefinition | null = null;
         if (agentId) {
           const store = await AgentStore.getInstance();
@@ -238,8 +284,6 @@ export const chatMethods: MethodGroup = {
           }
         }
 
-        // 优先使用管线（支持排队/合并/中断）
-        // 注意：agentId 场景暂不走管线，直接用 submit
         if (!agentDef) {
           const pipelineResult = agentExecutor.submitViaPipeline(sid, message, mode);
           if (pipelineResult) {
@@ -252,7 +296,6 @@ export const chatMethods: MethodGroup = {
           }
         }
 
-        // 创建 Builder：有 agentDef 用自定义定义，否则用默认
         const builder = agentDef ? createBuilderFromDefinition(agentDef, mode) : createBuilder(mode);
 
         const result = agentExecutor.submit({

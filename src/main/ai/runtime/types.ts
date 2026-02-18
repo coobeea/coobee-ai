@@ -15,7 +15,7 @@
  * 工具类型的权威来源在 src/main/ai/tools/types.ts，
  * 此处 re-export 保持 Runtime 层的向后兼容。
  */
-import type { ToolDefinition as _ToolDefinition } from '../tools/types'
+import type { ToolDefinition as _ToolDefinition } from '../tools/types';
 export type {
   ToolCategory,
   ToolError,
@@ -24,10 +24,10 @@ export type {
   ToolStreamUpdate,
   ToolExecutionContext,
   ToolDefinition
-} from '../tools/types'
+} from '../tools/types';
 
 // 文件内使用的别名（re-export 的类型在同文件不可直接引用）
-type ToolDefinition = _ToolDefinition
+type ToolDefinition = _ToolDefinition;
 
 // ========== 统一技能定义 ==========
 
@@ -46,28 +46,28 @@ type ToolDefinition = _ToolDefinition
  */
 export interface SkillConfigField {
   /** 配置项键名 */
-  key: string
+  key: string;
   /** 配置项描述 */
-  description: string
+  description: string;
   /** 是否必填 */
-  required?: boolean
+  required?: boolean;
   /** 默认值 */
-  default?: unknown
+  default?: unknown;
 }
 
 export interface SkillDefinition {
   /** 技能名称（唯一标识） */
-  name: string
+  name: string;
   /** 技能描述（用于提示词中的标注） */
-  description: string
+  description: string;
   /** 技能内容（通常是 markdown 格式的指令/知识） */
-  content: string
+  content: string;
   /** SKILL.md 文件的绝对路径（用于按需读取） */
-  filePath?: string
+  filePath?: string;
   /** Skill 所需配置项描述（来自 SKILL.md frontmatter） */
-  configSchema?: SkillConfigField[]
+  configSchema?: SkillConfigField[];
   /** 运行时注入的配置值（来自 skills.json5，不含敏感信息的摘要供 prompt 使用） */
-  configStatus?: 'configured' | 'missing' | 'partial'
+  configStatus?: 'configured' | 'missing' | 'partial';
 }
 
 // ========== 运行模式 ==========
@@ -80,7 +80,7 @@ export interface SkillDefinition {
  *
  * 模式在 Builder 上设置，AgentEnvInjector 根据模式决定注入内容。
  */
-export type AgentMode = 'chat' | 'agent'
+export type AgentMode = 'chat' | 'agent' | 'orchestrator' | 'swarm';
 
 // ========== Agent 运行时通用选项 ==========
 
@@ -92,27 +92,27 @@ export type AgentMode = 'chat' | 'agent'
  */
 export interface AgentRuntimeOptions {
   /** Agent 名称 */
-  name: string
+  name: string;
   /** Agent 基础系统指令 */
-  instructions: string
+  instructions: string;
   /**
    * 追加指令片段
    *
    * 在基础 instructions 之后追加的额外指令。
    * 适合动态注入上下文信息（如当前项目结构、用户偏好等）。
    */
-  appendInstructions?: string[]
+  appendInstructions?: string[];
   /**
    * 技能列表
    *
    * 注入到系统提示词中的领域知识。
    * 各 Runtime 自动格式化并整合到最终 LLM 上下文中。
    */
-  skills?: SkillDefinition[]
+  skills?: SkillDefinition[];
   /** 模型名称 */
-  model?: string
+  model?: string;
   /** 会话 ID（不传则自动生成） */
-  sessionId?: string
+  sessionId?: string;
   /**
    * 会话存储根目录
    *
@@ -124,9 +124,9 @@ export interface AgentRuntimeOptions {
    *   → OpenAI: {sessionDir}/{sessionId}/messages.jsonl
    *   → PiMono: {sessionDir}/{sessionId}/（SDK 自行管理内部结构）
    */
-  sessionDir?: string
+  sessionDir?: string;
   /** 最大执行轮次，防止无限工具调用循环（默认 25） */
-  maxTurns?: number
+  maxTurns?: number;
   /**
    * 上下文快照目录
    *
@@ -136,7 +136,7 @@ export interface AgentRuntimeOptions {
    * 文件命名格式：{ISO 时间戳}.json（自然排序 = 时间顺序）
    * 由 AgentExecutor.injectEnv() 自动设置为 {workspace}/contexts/
    */
-  contextDir?: string
+  contextDir?: string;
   /**
    * 工作区根目录
    *
@@ -144,14 +144,14 @@ export interface AgentRuntimeOptions {
    * 由 AgentExecutor.injectEnv() 自动设置为 Agent 的 workspace 目录。
    * 不传则降级为 process.cwd()。
    */
-  workspaceRoot?: string
+  workspaceRoot?: string;
   /**
    * 统一工具列表（SDK 无关）
    *
    * 使用 ToolDefinition 格式定义工具，Runtime 内部自动转换为 SDK 原生格式。
    * 与 SDK 原生工具（各 Runtime 的 sdkTools）共存，SDK 原生工具优先。
    */
-  tools?: ToolDefinition[]
+  tools?: ToolDefinition[];
   /**
    * 沙箱上下文
    *
@@ -159,7 +159,7 @@ export interface AgentRuntimeOptions {
    * Runtime 用此上下文执行工具时的路径守卫、策略检查。
    * 不传则降级为 path-only + workspaceRoot。
    */
-  sandboxContext?: import('../sandbox/types').SandboxContext
+  sandboxContext?: import('../sandbox/types').SandboxContext;
 }
 
 // ========== 系统提示词构建 ==========
@@ -176,14 +176,14 @@ export interface AgentRuntimeOptions {
  *   </skills>
  */
 export function formatSkills(skills: SkillDefinition[]): string {
-  if (!skills.length) return ''
+  if (!skills.length) return '';
   const items = skills
     .map(
       (s) =>
         `<skill name="${s.name}">\n<description>${s.description}</description>\n<content>\n${s.content}\n</content>\n</skill>`
     )
-    .join('\n')
-  return `<skills>\n${items}\n</skills>`
+    .join('\n');
+  return `<skills>\n${items}\n</skills>`;
 }
 
 /**
@@ -198,17 +198,17 @@ export function buildInstructions(
   skills?: SkillDefinition[],
   appendInstructions?: string[]
 ): string {
-  const parts: string[] = [instructions]
+  const parts: string[] = [instructions];
 
   if (skills?.length) {
-    parts.push(formatSkills(skills))
+    parts.push(formatSkills(skills));
   }
 
   if (appendInstructions?.length) {
-    parts.push(appendInstructions.join('\n\n'))
+    parts.push(appendInstructions.join('\n\n'));
   }
 
-  return parts.join('\n\n')
+  return parts.join('\n\n');
 }
 
 // ========== 执行配置和结果 ==========
@@ -218,11 +218,11 @@ export function buildInstructions(
  */
 export interface ExecutionConfig {
   /** 是否启用流式输出 */
-  streaming?: boolean
+  streaming?: boolean;
   /** 覆盖最大轮次 */
-  maxTurns?: number
+  maxTurns?: number;
   /** 其他配置 */
-  [key: string]: unknown
+  [key: string]: unknown;
 }
 
 /**
@@ -230,11 +230,11 @@ export interface ExecutionConfig {
  */
 export interface ToolApprovalInfo {
   /** 审批项索引 */
-  index: number
+  index: number;
   /** 工具名称 */
-  toolName: string
+  toolName: string;
   /** 工具参数（JSON 字符串） */
-  arguments: string
+  arguments: string;
 }
 
 /**
@@ -242,23 +242,23 @@ export interface ToolApprovalInfo {
  */
 export interface ExecutionResult {
   /** 最终输出文本 */
-  output: string
+  output: string;
   /** API 错误信息（SDK 内部错误，非 throw 类型） */
-  error?: string
+  error?: string;
   /** 是否被中断（HITL 工具审批） */
-  interrupted?: boolean
+  interrupted?: boolean;
   /** 待审批的工具调用列表（仅 interrupted=true 时有值） */
-  interruptions?: ToolApprovalInfo[]
+  interruptions?: ToolApprovalInfo[];
   /** 使用的工具调用记录 */
   toolCalls?: Array<{
-    toolName: string
-    arguments: Record<string, unknown>
-    result?: unknown
-  }>
+    toolName: string;
+    arguments: Record<string, unknown>;
+    result?: unknown;
+  }>;
   /** 执行耗时（ms） */
-  duration?: number
+  duration?: number;
   /** 元数据 */
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
 }
 
 // ========== 流式事件 ==========
@@ -270,13 +270,13 @@ export interface ExecutionResult {
  */
 export interface StreamChunk {
   /** 事件类型（prefix:event 格式） */
-  type: StreamChunkType
+  type: StreamChunkType;
   /** 主要内容（文本增量、工具名、错误信息等） */
-  content: string
+  content: string;
   /** 额外数据（类型随 type 变化） */
-  data?: StreamChunkData
+  data?: StreamChunkData;
   /** 发出此事件的 Agent 名称（多 Agent 场景有值） */
-  agentName?: string
+  agentName?: string;
 }
 
 /**
@@ -347,7 +347,7 @@ export type StreamChunkType =
   | 'compression:done' // 压缩完成（含统计信息）
   // ⑩ delegate: 子 Agent 委托
   | 'delegate:start' // 委托开始
-  | 'delegate:done' // 委托完成
+  | 'delegate:done'; // 委托完成
 
 /**
  * StreamChunk 额外数据（联合类型，根据 StreamChunkType 变化）
@@ -367,16 +367,16 @@ export type StreamChunkData =
   | HandoffData
   | CompressionStartData
   | CompressionDoneData
-  | Record<string, unknown>
+  | Record<string, unknown>;
 
 // ---- ① run: ----
 
 /** run:error 数据 */
 export interface RunErrorData {
   /** 错误消息 */
-  message: string
+  message: string;
   /** 错误码 */
-  code?: string
+  code?: string;
 }
 
 // ---- ② turn: ----
@@ -384,7 +384,7 @@ export interface RunErrorData {
 /** turn:start / turn:done 数据 */
 export interface TurnData {
   /** 轮次索引（从 1 开始） */
-  turnIndex: number
+  turnIndex: number;
 }
 
 // ---- ③ llm: ----
@@ -392,13 +392,13 @@ export interface TurnData {
 /** llm:done 数据（含 token 用量） */
 export interface LlmDoneData {
   /** 响应 ID */
-  responseId?: string
+  responseId?: string;
   /** Token 用量 */
   usage?: {
-    inputTokens: number
-    outputTokens: number
-    totalTokens: number
-  }
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
 }
 
 // ---- ④ text: ----
@@ -406,13 +406,13 @@ export interface LlmDoneData {
 /** text:delta 数据 */
 export interface TextDeltaData {
   /** 增量文本片段 */
-  delta: string
+  delta: string;
 }
 
 /** text:done 数据 */
 export interface TextDoneData {
   /** 完整文本 */
-  text: string
+  text: string;
 }
 
 // ---- ⑤ reasoning: ----
@@ -420,9 +420,9 @@ export interface TextDoneData {
 /** reasoning:done 数据 */
 export interface ReasoningDoneData {
   /** 推理摘要（用户可见） */
-  summary?: string
+  summary?: string;
   /** 原始推理文本（可能不返回） */
-  rawContent?: string
+  rawContent?: string;
 }
 
 // ---- ⑥ tool: ----
@@ -430,37 +430,37 @@ export interface ReasoningDoneData {
 /** tool:start 数据 */
 export interface ToolStartData {
   /** 工具名称 */
-  toolName: string
+  toolName: string;
   /** 调用 ID */
-  callId?: string
+  callId?: string;
 }
 
 /** tool:delta 数据 */
 export interface ToolDeltaData {
   /** 参数 JSON 片段 / 执行进度 */
-  delta: string
+  delta: string;
   /** 调用 ID */
-  callId?: string
+  callId?: string;
 }
 
 /** tool:pending 数据（参数完成） */
 export interface ToolPendingData {
   /** 工具名称 */
-  toolName?: string
+  toolName?: string;
   /** 调用 ID */
-  callId?: string
+  callId?: string;
   /** 完整参数 JSON 字符串 */
-  arguments: string
+  arguments: string;
 }
 
 /** tool:done 数据（执行结果） */
 export interface ToolDoneData {
   /** 工具名称 */
-  toolName: string
+  toolName: string;
   /** 调用 ID */
-  callId?: string
+  callId?: string;
   /** 输出内容 */
-  output: unknown
+  output: unknown;
 }
 
 // ---- ⑦ hitl: ----
@@ -468,13 +468,13 @@ export interface ToolDoneData {
 /** hitl:required 数据 */
 export interface HitlRequiredData {
   /** 审批项索引 */
-  index: number
+  index: number;
   /** 工具名称 */
-  toolName: string
+  toolName: string;
   /** 工具参数（JSON 字符串） */
-  arguments?: string
+  arguments?: string;
   /** SDK 原始审批项引用（用于 approve/reject，由具体实现定义类型） */
-  approvalItem: unknown
+  approvalItem: unknown;
 }
 
 // ---- ⑧ handoff: ----
@@ -482,9 +482,9 @@ export interface HitlRequiredData {
 /** handoff:start / handoff:done 数据 */
 export interface HandoffData {
   /** 来源 Agent 名称 */
-  fromAgent?: string
+  fromAgent?: string;
   /** 目标 Agent 名称 */
-  toAgent: string
+  toAgent: string;
 }
 
 // ---- ⑨ compression: ----
@@ -492,27 +492,27 @@ export interface HandoffData {
 /** compression:start 数据 */
 export interface CompressionStartData {
   /** 触发原因 */
-  reason: string
+  reason: string;
   /** 当前 token 数 */
-  totalTokens: number
+  totalTokens: number;
   /** 阈值 */
-  threshold: number
+  threshold: number;
 }
 
 /** compression:done 数据 */
 export interface CompressionDoneData {
   /** 被压缩的消息序号列表 */
-  summarizedSeqs: number[]
+  summarizedSeqs: number[];
   /** 最后一个被压缩的序号 */
-  endSeq: number
+  endSeq: number;
   /** 压缩前的 token 数 */
-  originalTokens: number
+  originalTokens: number;
   /** 总结的 token 数 */
-  summaryTokens: number
+  summaryTokens: number;
   /** 压缩比 */
-  compressionRatio: number
+  compressionRatio: number;
   /** 压缩耗时（ms） */
-  duration: number
+  duration: number;
 }
 
 // ========== 会话信息 ==========
@@ -522,13 +522,13 @@ export interface CompressionDoneData {
  */
 export interface SessionInfo {
   /** 会话 ID */
-  sessionId: string
+  sessionId: string;
   /** 创建时间 */
-  createdAt: number
+  createdAt: number;
   /** 最后更新时间 */
-  updatedAt: number
+  updatedAt: number;
   /** 消息数量 */
-  messageCount: number
+  messageCount: number;
   /** 元数据 */
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
 }
