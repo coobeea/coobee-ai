@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { electronAPI } from '@electron-toolkit/preload';
-import { ShellChannels, TabChannels, IPC_EVENT_CHANNEL } from '@shared/ipc';
+import { ShellChannels, TabChannels, AppChannels, IPC_EVENT_CHANNEL } from '@shared/ipc';
 import type {
   WindowInfoResponse,
   CreateTabRequest,
@@ -39,6 +39,11 @@ const api = {
    * 打开目录选择对话框，返回选中的路径或 null
    */
   openDirectory: (): Promise<string | null> => ipcRenderer.invoke(ShellChannels.OPEN_DIRECTORY),
+
+  /**
+   * 检查后端是否就绪（所有生命周期 Hook 完成）
+   */
+  isBackendReady: (): Promise<boolean> => ipcRenderer.invoke(AppChannels.IS_BACKEND_READY),
 
   /**
    * 监听 IPC 事件

@@ -70,6 +70,8 @@ export const EventTypes = {
   APP_SECOND_INSTANCE: 'app:second-instance',
   /** 子进程崩溃 */
   APP_CHILD_PROCESS_GONE: 'app:child-process-gone',
+  /** 后端就绪（所有生命周期 Hook 完成） */
+  BACKEND_READY: 'backend:ready',
   /** 系统错误 */
   SYSTEM_ERROR: 'system:error',
 
@@ -104,12 +106,12 @@ export const EventTypes = {
   CONFIG_LOG_PATH_CHANGED: 'config:logPath:changed',
   /** 快捷键配置变更 */
   CONFIG_SHORTCUTS_CHANGED: 'config:shortcuts:changed'
-} as const
+} as const;
 
 /**
  * 事件类型（用于 TypeScript 类型推断）
  */
-export type EventType = (typeof EventTypes)[keyof typeof EventTypes]
+export type EventType = (typeof EventTypes)[keyof typeof EventTypes];
 
 /**
  * 事件 Payload 类型映射
@@ -117,187 +119,190 @@ export type EventType = (typeof EventTypes)[keyof typeof EventTypes]
 export interface EventPayloads {
   // ==================== Window 事件 ====================
   [EventTypes.WINDOW_CREATED]: {
-    windowId: number
-    type: string
-  }
+    windowId: number;
+    type: string;
+  };
   [EventTypes.WINDOW_READY]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_SHOW]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_HIDE]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_CLOSE]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_CLOSED]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_FOCUSED]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_BLURRED]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_MINIMIZED]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_MAXIMIZED]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_UNMAXIMIZED]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_RESTORED]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_ENTER_FULL_SCREEN]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_LEAVE_FULL_SCREEN]: {
-    windowId: number
-  }
+    windowId: number;
+  };
   [EventTypes.WINDOW_RESIZED]: {
-    windowId: number
-    bounds: { width: number; height: number; x: number; y: number }
-  }
+    windowId: number;
+    bounds: { width: number; height: number; x: number; y: number };
+  };
 
   // ==================== Tab 事件 ====================
   [EventTypes.TAB_CREATED]: {
-    windowId: number
-    tabId: number
-    title: string
-    url: string
-    position: number
-  }
+    windowId: number;
+    tabId: number;
+    title: string;
+    url: string;
+    position: number;
+  };
   [EventTypes.TAB_CLOSED]: {
-    windowId: number
-    tabId: number
-  }
+    windowId: number;
+    tabId: number;
+  };
   [EventTypes.TAB_ACTIVATED]: {
-    windowId: number
-    tabId: number
-    previousTabId: number | null
-  }
+    windowId: number;
+    tabId: number;
+    previousTabId: number | null;
+  };
   [EventTypes.TAB_UPDATED]: {
-    windowId: number
-    tabId: number
-    title?: string
-    url?: string
-  }
+    windowId: number;
+    tabId: number;
+    title?: string;
+    url?: string;
+  };
   [EventTypes.TAB_MOVED]: {
-    windowId: number
-    tabId: number
-    fromPosition: number
-    toPosition: number
-  }
+    windowId: number;
+    tabId: number;
+    fromPosition: number;
+    toPosition: number;
+  };
   [EventTypes.TABS_REORDERED]: {
-    windowId: number
+    windowId: number;
     /** 新的 Tab 顺序（Tab ID 数组）*/
-    tabIds: number[]
+    tabIds: number[];
     /** 每个 Tab 的位置变化信息 */
     changes: Array<{
-      tabId: number
-      fromPosition: number
-      toPosition: number
-    }>
-  }
+      tabId: number;
+      fromPosition: number;
+      toPosition: number;
+    }>;
+  };
   [EventTypes.TAB_MOVED_TO_WINDOW]: {
-    tabId: number
-    fromWindowId: number
-    toWindowId: number
-    title: string
-  }
+    tabId: number;
+    fromWindowId: number;
+    toWindowId: number;
+    title: string;
+  };
   [EventTypes.TAB_DUPLICATED]: {
-    windowId: number
-    originalTabId: number
-    newTabId: number
-    title: string
-  }
+    windowId: number;
+    originalTabId: number;
+    newTabId: number;
+    title: string;
+  };
   [EventTypes.TAB_RELOADED]: {
-    windowId: number
-    tabId: number
-  }
+    windowId: number;
+    tabId: number;
+  };
 
   // ==================== App 事件 ====================
   [EventTypes.APP_ACTIVATED]: {
-    hasWindows: boolean
-  }
+    hasWindows: boolean;
+  };
   [EventTypes.APP_FOCUS]: {
-    timestamp: number
-  }
+    timestamp: number;
+  };
   [EventTypes.APP_BEFORE_QUIT]: {
-    timestamp: number
-  }
+    timestamp: number;
+  };
   [EventTypes.APP_SECOND_INSTANCE]: {
-    hasWindows: boolean
-  }
+    hasWindows: boolean;
+  };
   [EventTypes.APP_CHILD_PROCESS_GONE]: {
-    type: string
-    reason: string
-    exitCode: number
-  }
+    type: string;
+    reason: string;
+    exitCode: number;
+  };
+  [EventTypes.BACKEND_READY]: {
+    timestamp: number;
+  };
   [EventTypes.SYSTEM_ERROR]: {
-    code: string
-    message: string
-    details?: unknown
-  }
+    code: string;
+    message: string;
+    details?: unknown;
+  };
 
   // ==================== Config 配置事件 ====================
   [EventTypes.CONFIG_THEME_CHANGED]: {
-    theme: 'light' | 'dark' | 'auto'
-  }
+    theme: 'light' | 'dark' | 'auto';
+  };
   [EventTypes.CONFIG_AUTO_START_CHANGED]: {
-    value: boolean
-  }
+    value: boolean;
+  };
   [EventTypes.CONFIG_START_TO_TRAY_CHANGED]: {
-    value: boolean
-  }
+    value: boolean;
+  };
   [EventTypes.CONFIG_CLOSE_TO_TRAY_CHANGED]: {
-    value: boolean
-  }
+    value: boolean;
+  };
   [EventTypes.CONFIG_LANGUAGE_CHANGED]: {
-    language: string
-  }
+    language: string;
+  };
   [EventTypes.CONFIG_AUTO_UPDATE_CHANGED]: {
-    value: boolean
-  }
+    value: boolean;
+  };
   [EventTypes.CONFIG_BETA_UPDATES_CHANGED]: {
-    value: boolean
-  }
+    value: boolean;
+  };
   [EventTypes.CONFIG_MEMORY_LIMIT_CHANGED]: {
-    limit: number
-  }
+    limit: number;
+  };
   [EventTypes.CONFIG_HARDWARE_ACCELERATION_CHANGED]: {
-    value: boolean
-  }
+    value: boolean;
+  };
   [EventTypes.CONFIG_SHOW_TRAY_ICON_CHANGED]: {
-    value: boolean
-  }
+    value: boolean;
+  };
   [EventTypes.CONFIG_SOUND_EFFECTS_CHANGED]: {
-    value: boolean
-  }
+    value: boolean;
+  };
   [EventTypes.CONFIG_ALWAYS_ON_TOP_CHANGED]: {
-    value: boolean
-  }
+    value: boolean;
+  };
   [EventTypes.CONFIG_BACKUP_PATH_CHANGED]: {
-    path: string
-  }
+    path: string;
+  };
   [EventTypes.CONFIG_LOG_PATH_CHANGED]: {
-    path: string
-  }
+    path: string;
+  };
   [EventTypes.CONFIG_SHORTCUTS_CHANGED]: {
     shortcuts: Array<{
-      key: string
-      shortcut: string
-      editable: boolean
-      enabled: boolean
-      global: boolean
-      registered: boolean
-    }>
-  }
+      key: string;
+      shortcut: string;
+      editable: boolean;
+      enabled: boolean;
+      global: boolean;
+      registered: boolean;
+    }>;
+  };
 }
 
 /**
@@ -305,19 +310,19 @@ export interface EventPayloads {
  */
 export interface IpcEventMessage<T extends keyof EventPayloads = keyof EventPayloads> {
   /** 事件类型 */
-  type: T
+  type: T;
   /** 事件负载 */
-  payload: EventPayloads[T]
+  payload: EventPayloads[T];
   /** 事件时间戳 */
-  timestamp: number
+  timestamp: number;
 }
 
 /**
  * 类型安全的事件处理器
  */
-export type EventHandler<T extends keyof EventPayloads> = (payload: EventPayloads[T]) => void
+export type EventHandler<T extends keyof EventPayloads> = (payload: EventPayloads[T]) => void;
 
 /**
  * 通用事件处理器（用于 mitt）
  */
-export type GenericEventHandler = (payload: unknown) => void
+export type GenericEventHandler = (payload: unknown) => void;

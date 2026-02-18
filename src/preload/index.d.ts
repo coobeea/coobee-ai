@@ -23,6 +23,7 @@ declare global {
         update: (req: UpdateTabRequest) => Promise<IpcResult<void>>;
       };
       openDirectory: () => Promise<string | null>;
+      isBackendReady: () => Promise<boolean>;
       onEvent: (callback: (message: IpcEventMessage) => void) => void;
     };
   }

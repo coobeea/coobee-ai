@@ -44,6 +44,12 @@ export const TabChannels = {
   UPDATE: 'tab:update'
 } as const;
 
+/** 应用级通道（invoke） */
+export const AppChannels = {
+  /** 检查后端是否就绪 */
+  IS_BACKEND_READY: 'app:is-backend-ready'
+} as const;
+
 /** 事件监听通道（on 监听） */
 export const EventChannels = {
   /** Tab 列表更新 */
@@ -58,4 +64,5 @@ export const EventChannels = {
 export type ShellChannel = (typeof ShellChannels)[keyof typeof ShellChannels];
 export type WindowChannel = (typeof WindowChannels)[keyof typeof WindowChannels];
 export type TabChannel = (typeof TabChannels)[keyof typeof TabChannels];
+export type AppChannel = (typeof AppChannels)[keyof typeof AppChannels];
 export type EventChannel = (typeof EventChannels)[keyof typeof EventChannels];

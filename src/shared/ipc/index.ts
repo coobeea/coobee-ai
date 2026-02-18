@@ -5,26 +5,14 @@
  */
 
 // ==================== 通道常量 ====================
-export {
-  IPC_EVENT_CHANNEL,
-  ShellChannels,
-  WindowChannels,
-  TabChannels,
-  EventChannels
-} from './channels'
+export { IPC_EVENT_CHANNEL, ShellChannels, WindowChannels, TabChannels, AppChannels, EventChannels } from './channels';
 
-export type { ShellChannel, WindowChannel, TabChannel, EventChannel } from './channels'
+export type { ShellChannel, WindowChannel, TabChannel, AppChannel, EventChannel } from './channels';
 
 // ==================== 事件类型 ====================
-export type {
-  EventType,
-  EventPayloads,
-  EventHandler,
-  GenericEventHandler,
-  IpcEventMessage
-} from './events'
+export type { EventType, EventPayloads, EventHandler, GenericEventHandler, IpcEventMessage } from './events';
 
-export { EventTypes } from './events'
+export { EventTypes } from './events';
 
 // ==================== 类型定义 ====================
 export type {
@@ -54,4 +42,4 @@ export type {
   TabsUpdatedEvent,
   TabActivatedEvent,
   TabClosedEvent
-} from './types'
+} from './types';
