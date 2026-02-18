@@ -172,35 +172,6 @@ export interface TaskResult {
   completedAt: number;
 }
 
-// ==================== 中间件 ====================
-
-/**
- * 中间件上下文
- */
-export interface MiddlewareContext {
-  method: string;
-  args: unknown[];
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * 中间件结果
- */
-export interface MiddlewareResult {
-  success: boolean;
-  data?: unknown;
-  error?: Error;
-}
-
-/**
- * 中间件接口
- */
-export interface Middleware {
-  name: string;
-  priority: number;
-  execute: (context: MiddlewareContext, next: () => Promise<MiddlewareResult>) => Promise<MiddlewareResult>;
-}
-
 // ==================== 数据库迁移 ====================
 
 /**
