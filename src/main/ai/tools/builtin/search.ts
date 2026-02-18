@@ -13,6 +13,7 @@
 
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
+import { checkAborted } from '../pipeline';
 import path from 'node:path';
 import { z } from 'zod';
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types';
@@ -104,9 +105,12 @@ export const searchTool: ToolDefinition = {
 
   execute: async function* (
     params: Record<string, unknown>,
-    _signal?: AbortSignal,
+    signal?: AbortSignal,
     context?: ToolExecutionContext
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
+    const aborted = checkAborted(signal);
+    if (aborted) return aborted;
+
     const workspace = context?.workspaceRoot;
     if (!workspace) {
       return { success: false, llmContent: 'Error: workspace not available.' };
@@ -167,6 +171,7 @@ export const searchTool: ToolDefinition = {
 
     for (const filePath of files) {
       if (matches.length >= maxResults) break;
+      if (signal?.aborted) break;
       filesSearched++;
 
       try {
