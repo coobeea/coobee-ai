@@ -99,7 +99,7 @@ function toolSummary(block: CopilotBlock): string {
     :close-on-esc="true"
     :lock-scroll="false"
     :z-index="9999"
-    container-class="copilot-drawer-container">
+    :container-style="{ marginTop: '0', marginBottom: '0', marginLeft: 'auto', marginRight: '0', height: '100%' }">
     <div class="copilot-drawer">
       <!-- 面板头部 -->
       <div class="panel-header">
@@ -270,13 +270,7 @@ function toolSummary(block: CopilotBlock): string {
   transform: scale(0.8);
 }
 
-/* ====== 抽屉容器（Popup 内部） ====== */
-:deep(.copilot-drawer-container) {
-  height: 100% !important;
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-}
-
+/* ====== 抽屉内容 ====== */
 .copilot-drawer {
   width: 400px;
   height: 100vh;
