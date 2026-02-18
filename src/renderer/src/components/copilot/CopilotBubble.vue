@@ -10,6 +10,7 @@
 
 import { ref, nextTick, watch, computed } from 'vue';
 import { useCopilotStore, type CopilotBlock } from '@/stores/copilot';
+import { layerManager } from '@/utils/LayerManager';
 
 const copilot = useCopilotStore();
 const inputText = ref('');
@@ -23,6 +24,8 @@ const drawerVisible = computed({
     else copilot.close();
   }
 });
+
+const fabZIndex = layerManager.nextZIndex();
 
 const drawerContainerStyle = {
   marginTop: '0',
@@ -85,7 +88,12 @@ function toolSummary(block: CopilotBlock): string {
 <template>
   <!-- 悬浮气泡按钮（固定在右下角） -->
   <Transition name="bubble-pop">
-    <button v-if="!copilot.visible" class="copilot-fab" title="应用管家" @click="copilot.open()">
+    <button
+      v-if="!copilot.visible"
+      class="copilot-fab"
+      :style="{ zIndex: fabZIndex }"
+      title="应用管家"
+      @click="copilot.open()">
       <span class="i-mdi-star-four-points inline-block h-5 w-5" />
     </button>
   </Transition>
@@ -99,7 +107,6 @@ function toolSummary(block: CopilotBlock): string {
     :close-on-click-overlay="true"
     :close-on-esc="true"
     :lock-scroll="false"
-    :z-index="9999"
     :container-style="drawerContainerStyle">
     <div class="copilot-drawer">
       <!-- 面板头部 -->
@@ -219,7 +226,6 @@ function toolSummary(block: CopilotBlock): string {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;

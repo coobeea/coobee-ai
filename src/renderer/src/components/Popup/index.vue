@@ -18,14 +18,7 @@
         <div
           v-if="visible"
           ref="popupRef"
-          :class="[
-            'popup-container',
-            positionClass,
-            containerClass,
-            {
-              'popup-container--no-mask': !showMask
-            }
-          ]"
+          :class="['popup-container', containerClass]"
           :style="contentContainerStyle"
           @click.stop>
           <slot />
@@ -118,30 +111,41 @@ const originalBodyOverflow = ref<string>('');
 const layerId = `popup_${Math.random().toString(36).slice(2, 9)}`;
 const layerZIndex = ref(props.zIndex ?? 0);
 
-// 计算定位类名
-const positionClass = computed(() => {
-  if (props.position === 'custom') return '';
-  return `popup-container--${props.position}`;
-});
-
 // 计算动画名称
 const transitionName = computed(() => `popup-${props.transition}`);
 
-// 计算容器样式
-const containerStyle = computed(() => {
-  const style: Record<string, any> = { ...props.containerStyle };
+// 各 position 对应的默认 margin（与 SCSS 中的 class 保持一致）
+const POSITION_MARGINS: Record<string, Record<string, string>> = {
+  center: { marginLeft: 'auto', marginRight: 'auto', marginTop: 'auto', marginBottom: 'auto' },
+  top: { marginLeft: 'auto', marginRight: 'auto', marginTop: '0', marginBottom: 'auto' },
+  bottom: { marginLeft: 'auto', marginRight: 'auto', marginTop: 'auto', marginBottom: '0' },
+  left: { marginLeft: '0', marginRight: 'auto', marginTop: 'auto', marginBottom: 'auto' },
+  right: { marginLeft: 'auto', marginRight: '0', marginTop: 'auto', marginBottom: 'auto' },
+  'top-left': { marginLeft: '0', marginRight: 'auto', marginTop: '0', marginBottom: 'auto' },
+  'top-right': { marginLeft: 'auto', marginRight: '0', marginTop: '0', marginBottom: 'auto' },
+  'bottom-left': { marginLeft: '0', marginRight: 'auto', marginTop: 'auto', marginBottom: '0' },
+  'bottom-right': { marginLeft: 'auto', marginRight: '0', marginTop: 'auto', marginBottom: '0' }
+};
 
+const contentContainerStyle = computed(() => {
+  const style: Record<string, any> = {};
+
+  // 先填入 position 对应的 margin 基线
+  const posMargins = POSITION_MARGINS[props.position];
+  if (posMargins) {
+    Object.assign(style, posMargins);
+  }
+
+  // 自定义定位
   if (props.position === 'custom' && props.customPosition) {
     Object.assign(style, props.customPosition);
   }
 
-  return style;
-});
+  // containerStyle 最后覆盖（调用方可局部覆盖 margin）
+  if (props.containerStyle) {
+    Object.assign(style, props.containerStyle);
+  }
 
-// 计算内容容器样式（确保z-index高于遮罩层）
-const contentContainerStyle = computed(() => {
-  const style: Record<string, any> = { ...containerStyle.value };
-  style.position = 'relative';
   style.zIndex = 1;
   return style;
 });
@@ -235,53 +239,10 @@ defineExpose({ close });
 }
 
 .popup-container {
-  @apply relative outline-none;
+  position: relative;
+  outline: none;
   pointer-events: auto;
   z-index: 1;
-
-  &--no-mask {
-    pointer-events: auto;
-  }
-
-  // 定位样式
-  &--center {
-    @apply mx-auto;
-    margin-top: auto;
-    margin-bottom: auto;
-    min-height: fit-content;
-  }
-
-  &--top {
-    @apply mx-auto mt-0 mb-auto;
-  }
-
-  &--bottom {
-    @apply mx-auto mt-auto mb-0;
-  }
-
-  &--left {
-    @apply my-auto ml-0 mr-auto;
-  }
-
-  &--right {
-    @apply my-auto ml-auto mr-0;
-  }
-
-  &--top-left {
-    @apply mt-0 ml-0 mb-auto mr-auto;
-  }
-
-  &--top-right {
-    @apply mt-0 ml-auto mb-auto mr-0;
-  }
-
-  &--bottom-left {
-    @apply mt-auto ml-0 mb-0 mr-auto;
-  }
-
-  &--bottom-right {
-    @apply mt-auto ml-auto mb-0 mr-0;
-  }
 }
 
 // ─── 动画 ────────────────────────────────────────────────

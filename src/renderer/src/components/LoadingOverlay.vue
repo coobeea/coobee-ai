@@ -1,39 +1,59 @@
 <template>
   <teleport to="body">
-    <!-- 加载动画遮罩层 -->
-    <OverlayMask
-      v-if="loadingStore.isLoading"
-      :visible="loadingStore.isLoading"
-      :z-index="9998"
-      :blur="true"
-      :opacity="0.8"
-      :background-color="'hsl(var(--background))'"
-      class="transition-opacity duration-300" />
+    <div v-if="loadingStore.isLoading" class="fixed inset-0" :style="{ zIndex: loadingZIndex }">
+      <!-- 遮罩层 -->
+      <OverlayMask
+        :visible="loadingStore.isLoading"
+        :z-index="0"
+        :blur="true"
+        :opacity="0.8"
+        :background-color="'hsl(var(--background))'"
+        class="transition-opacity duration-300" />
 
-    <!-- 加载动画 -->
-    <div
-      v-show="loadingStore.isLoading"
-      class="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none">
-      <transition name="drop">
-        <span
-          v-if="loadingStore.isLoading"
-          :class="`i-svg-spinners-${loadingStore.spinnerType}`"
-          class="h-20 w-20 text-primary" />
-      </transition>
+      <!-- 加载动画 -->
+      <div class="fixed inset-0 z-[1] flex items-center justify-center pointer-events-none">
+        <transition name="drop">
+          <span
+            v-if="loadingStore.isLoading"
+            :class="`i-svg-spinners-${loadingStore.spinnerType}`"
+            class="h-20 w-20 text-primary" />
+        </transition>
+      </div>
     </div>
   </teleport>
 </template>
 
 <script setup lang="ts">
+import { onUnmounted, watch } from 'vue';
+
 import OverlayMask from '@/components/OverlayMask/index.vue';
 import { useLoadingStore } from '@/stores/loading';
+import { layerManager } from '@/utils/LayerManager';
 
 const loadingStore = useLoadingStore();
+
+const layerId = `loading_${Math.random().toString(36).slice(2, 9)}`;
+let loadingZIndex = 0;
+
+watch(
+  () => loadingStore.isLoading,
+  (isLoading) => {
+    if (isLoading) {
+      loadingZIndex = layerManager.register(layerId);
+    } else {
+      layerManager.unregister(layerId);
+    }
+  },
+  { immediate: true }
+);
+
+onUnmounted(() => {
+  layerManager.unregister(layerId);
+});
 </script>
 
 <style scoped>
 .drop-enter-active {
-  /* 动画持续0.5秒，并使用平滑减速的缓动函数 */
   transition: all 0.3s ease-out;
 }
 
@@ -43,7 +63,6 @@ const loadingStore = useLoadingStore();
 
 .drop-enter-from,
 .drop-leave-to {
-  /* 从屏幕视口之外的上方开始动画，确保它从 top: 0 的位置进入画面 */
   transform: translateY(-100vh);
   opacity: 0;
 }
