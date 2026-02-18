@@ -52,14 +52,16 @@
       <div
         v-if="visible && closeOnClickOutside"
         class="fixed inset-0 pointer-events-auto"
-        style="z-index: 9997"
+        :style="{ zIndex: currentZIndex - 1 }"
         @click="handleClickOutside"></div>
     </teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
+
+import { layerManager } from '@/utils/LayerManager';
 
 import type { PopoverPlacement, PopoverSize, PopoverTheme, PopoverTrigger } from './types';
 
@@ -136,7 +138,9 @@ const showTimer = ref<number>();
 const hideTimer = ref<number>();
 const position = ref({ x: 0, y: 0 });
 
-// 监听 modelValue 变化
+const layerId = `popover_${Math.random().toString(36).slice(2, 9)}`;
+const currentZIndex = ref(props.zIndex ?? 0);
+
 watch(
   () => props.modelValue,
   (newValue) => {
@@ -144,15 +148,17 @@ watch(
   }
 );
 
-// 监听 visible 变化
 watch(visible, (newValue) => {
   emit('update:modelValue', newValue);
   if (newValue) {
+    const escCb = props.closeOnEsc ? () => hide() : undefined;
+    currentZIndex.value = props.zIndex ?? layerManager.register(layerId, escCb);
     emit('show');
     nextTick(() => {
       updatePosition();
     });
   } else {
+    layerManager.unregister(layerId);
     emit('hide');
   }
 });
@@ -162,7 +168,7 @@ const popoverStyle = computed(() => {
   const style: Record<string, string> = {
     left: `${position.value.x}px`,
     top: `${position.value.y}px`,
-    zIndex: props.zIndex?.toString() || '9998'
+    zIndex: currentZIndex.value.toString()
   };
 
   // 根据位置调整 transform
@@ -445,26 +451,19 @@ const handleClickOutside = () => {
   }
 };
 
-const handleEscKey = (event: KeyboardEvent) => {
-  if (event.key === 'Escape' && props.closeOnEsc && visible.value) {
-    hide();
-  }
-};
-
-// 生命周期
-onMounted(() => {
-  document.addEventListener('keydown', handleEscKey);
-  window.addEventListener('resize', updatePosition);
-  window.addEventListener('scroll', updatePosition);
-});
-
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleEscKey);
+  layerManager.unregister(layerId);
   window.removeEventListener('resize', updatePosition);
   window.removeEventListener('scroll', updatePosition);
   clearTimeout(showTimer.value);
   clearTimeout(hideTimer.value);
 });
+
+// resize / scroll 时更新位置
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', updatePosition);
+  window.addEventListener('scroll', updatePosition);
+}
 
 // 暴露方法
 defineExpose({

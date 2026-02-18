@@ -58,17 +58,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue';
+import { computed, onUnmounted } from 'vue';
 
-import { zIndexManager } from '@/utils/ZIndexManager';
+import { layerManager } from '@/utils/LayerManager';
 
 import { usePopoverStore } from './store';
 import type { PopoverInstance } from './types';
 
 const popoverStore = usePopoverStore();
 
-// Z-Index 管理
-const containerZIndex = zIndexManager.bringToFront();
+const layerId = `popover-container_${Math.random().toString(36).slice(2, 9)}`;
+const containerZIndex = layerManager.register(layerId, () => {
+  visiblePopovers.value.forEach((popover) => {
+    if (popover.options.closeOnEsc !== false) {
+      popoverStore.hidePopover(popover.id);
+    }
+  });
+});
 const overlayZIndex = containerZIndex - 1;
 
 const visiblePopovers = computed(() => popoverStore.popovers.filter((popover) => popover.visible));
@@ -77,7 +83,7 @@ const hasVisiblePopovers = computed(() => visiblePopovers.value.length > 0);
 
 const getPopoverStyle = (popover: PopoverInstance) => {
   // 为每个 popover 实例注册独立的 z-index
-  const popoverZIndex = popover.options.zIndex || zIndexManager.bringToFront();
+  const popoverZIndex = popover.options.zIndex || layerManager.nextZIndex();
 
   const style: Record<string, string> = {
     left: `${popover.x}px`,
@@ -217,23 +223,8 @@ const handleClickOutside = () => {
   });
 };
 
-const handleEscKey = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') {
-    // 只关闭设置了 closeOnEsc 的 popover
-    visiblePopovers.value.forEach((popover) => {
-      if (popover.options.closeOnEsc !== false) {
-        popoverStore.hidePopover(popover.id);
-      }
-    });
-  }
-};
-
-onMounted(() => {
-  document.addEventListener('keydown', handleEscKey);
-});
-
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleEscKey);
+  layerManager.unregister(layerId);
 });
 </script>
 

@@ -1,6 +1,6 @@
 <template>
   <teleport to="body">
-    <div v-if="visible" class="popup-wrapper" :style="{ zIndex: zIndex }">
+    <div v-if="visible" class="popup-wrapper" :style="{ zIndex: layerZIndex }">
       <!-- 遮罩层 - 始终使用 fade 动画 -->
       <transition name="popup-fade">
         <OverlayMask
@@ -36,11 +36,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 
 import OverlayMask from '@/components/OverlayMask/index.vue';
+import { layerManager } from '@/utils/LayerManager';
 
-// 定位类型
 export type PopupPosition =
   | 'center'
   | 'top'
@@ -53,7 +53,6 @@ export type PopupPosition =
   | 'bottom-right'
   | 'custom';
 
-// 动画类型
 export type PopupTransition = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'bounce';
 
 interface Props {
@@ -73,7 +72,7 @@ interface Props {
   lockScroll?: boolean;
   /** 动画类型 */
   transition?: PopupTransition;
-  /** z-index 层级 */
+  /** z-index 层级（不传则由 LayerManager 自动分配） */
   zIndex?: number;
   /** 自定义遮罩层类名 */
   overlayClass?: string;
@@ -108,14 +107,16 @@ const props = withDefaults(defineProps<Props>(), {
   closeOnClickOverlay: true,
   closeOnEsc: true,
   lockScroll: true,
-  transition: 'fade',
-  zIndex: 1000
+  transition: 'fade'
 });
 
 const emit = defineEmits<Emits>();
 
 const popupRef = ref<HTMLElement>();
 const originalBodyOverflow = ref<string>('');
+
+const layerId = `popup_${Math.random().toString(36).slice(2, 9)}`;
+const layerZIndex = ref(props.zIndex ?? 0);
 
 // 计算定位类名
 const positionClass = computed(() => {
@@ -140,50 +141,48 @@ const containerStyle = computed(() => {
 // 计算内容容器样式（确保z-index高于遮罩层）
 const contentContainerStyle = computed(() => {
   const style: Record<string, any> = { ...containerStyle.value };
-
-  // 确保内容容器的z-index高于遮罩层
-  // 使用相对定位使z-index生效
   style.position = 'relative';
-  style.zIndex = 1; // 相对于popup-wrapper的层级，确保高于遮罩层
-
+  style.zIndex = 1;
   return style;
 });
 
-// 处理遮罩层点击
+// ─── LayerManager 注册 / 注销 ───────────────────────────
+
+function registerLayer(): void {
+  const escCallback = props.closeOnEsc ? () => close() : undefined;
+  const z = layerManager.register(layerId, escCallback);
+  layerZIndex.value = props.zIndex ?? z;
+}
+
+function unregisterLayer(): void {
+  layerManager.unregister(layerId);
+}
+
+// ─── 交互处理 ────────────────────────────────────────────
+
 const handleOverlayClick = () => {
   if (props.closeOnClickOverlay) {
     close();
   }
 };
 
-// 处理ESC键
-const handleEscKey = (event: KeyboardEvent) => {
-  if (event.key === 'Escape' && props.closeOnEsc && props.visible) {
-    close();
-  }
-};
-
-// 锁定/解锁滚动
 const lockBodyScroll = () => {
   if (!props.lockScroll) return;
-
   originalBodyOverflow.value = document.body.style.overflow;
   document.body.style.overflow = 'hidden';
 };
 
 const unlockBodyScroll = () => {
   if (!props.lockScroll) return;
-
   document.body.style.overflow = originalBodyOverflow.value;
 };
 
-// 关闭弹出层
 const close = () => {
   emit('update:visible', false);
   emit('close');
 };
 
-// 动画事件处理
+// 动画事件
 const onEnter = () => {
   emit('open');
   lockBodyScroll();
@@ -199,34 +198,29 @@ const onLeave = () => {
   });
 };
 
-// 监听visible变化
+// ─── visible 变化驱动注册 / 注销 ─────────────────────────
+
 watch(
   () => props.visible,
-  (newVal) => {
-    if (newVal) {
+  (val) => {
+    if (val) {
+      registerLayer();
       nextTick(() => {
-        if (popupRef.value) {
-          popupRef.value.focus();
-        }
+        popupRef.value?.focus();
       });
+    } else {
+      unregisterLayer();
     }
-  }
+  },
+  { immediate: true }
 );
 
-// 生命周期
-onMounted(() => {
-  document.addEventListener('keydown', handleEscKey);
-});
-
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleEscKey);
+  unregisterLayer();
   unlockBodyScroll();
 });
 
-// 暴露方法
-defineExpose({
-  close
-});
+defineExpose({ close });
 </script>
 
 <style lang="scss" scoped>
@@ -243,7 +237,7 @@ defineExpose({
 .popup-container {
   @apply relative outline-none;
   pointer-events: auto;
-  z-index: 1; /* 确保内容容器始终在遮罩层之上 */
+  z-index: 1;
 
   &--no-mask {
     pointer-events: auto;
@@ -290,7 +284,8 @@ defineExpose({
   }
 }
 
-// 动画样式
+// ─── 动画 ────────────────────────────────────────────────
+
 .popup-fade-enter-active,
 .popup-fade-leave-active {
   transition: opacity 0.3s ease;

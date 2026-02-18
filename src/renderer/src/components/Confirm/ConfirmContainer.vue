@@ -1,73 +1,77 @@
 <template>
   <teleport to="body">
-    <!-- 遮罩层 -->
-    <transition name="overlay">
-      <OverlayMask
-        v-if="visibleConfirms.length > 0"
-        :visible="visibleConfirms.length > 0"
-        :z-index="10000"
-        :blur="true"
-        :opacity="0.5"
-        :background-color="'#000000'"
-        @click="handleOverlayClick" />
-    </transition>
+    <div v-if="visibleConfirms.length > 0" :style="{ zIndex: currentZIndex }" class="fixed inset-0">
+      <!-- 遮罩层 -->
+      <transition name="overlay">
+        <OverlayMask
+          v-if="visibleConfirms.length > 0"
+          :visible="visibleConfirms.length > 0"
+          :z-index="0"
+          :blur="true"
+          :opacity="0.5"
+          :background-color="'#000000'"
+          @click="handleOverlayClick" />
+      </transition>
 
-    <!-- 确认对话框 -->
-    <div class="fixed inset-0 z-[10001] pointer-events-none flex items-center justify-center p-4">
-      <transition-group name="confirm" tag="div" class="relative">
-        <div
-          v-for="confirm in visibleConfirms"
-          :key="confirm.id"
-          class="pointer-events-auto bg-background border border-border rounded-lg shadow-lg w-full mx-auto min-w-[400px] max-w-[500px]"
-          :class="getConfirmClass(confirm.type)">
-          <!-- 头部 -->
-          <div class="flex items-center gap-3 p-6 pb-4">
-            <div v-if="confirm.showIcon" :class="getIconClass(confirm.type)" class="flex-shrink-0">
-              <i :class="getIconName(confirm.type)" class="w-6 h-6" />
+      <!-- 确认对话框 -->
+      <div class="fixed inset-0 z-[1] pointer-events-none flex items-center justify-center p-4">
+        <transition-group name="confirm" tag="div" class="relative">
+          <div
+            v-for="confirm in visibleConfirms"
+            :key="confirm.id"
+            class="pointer-events-auto bg-background border border-border rounded-lg shadow-lg w-full mx-auto min-w-[400px] max-w-[500px]"
+            :class="getConfirmClass(confirm.type)">
+            <!-- 头部 -->
+            <div class="flex items-center gap-3 p-6 pb-4">
+              <div v-if="confirm.showIcon" :class="getIconClass(confirm.type)" class="flex-shrink-0">
+                <i :class="getIconName(confirm.type)" class="w-6 h-6" />
+              </div>
+              <div class="flex-1">
+                <h3 class="text-lg font-semibold text-foreground">{{ confirm.title }}</h3>
+              </div>
             </div>
-            <div class="flex-1">
-              <h3 class="text-lg font-semibold text-foreground">{{ confirm.title }}</h3>
+
+            <!-- 内容 -->
+            <div class="px-6 pb-6">
+              <p class="text-sm text-muted-foreground leading-relaxed">{{ confirm.message }}</p>
+            </div>
+
+            <!-- 按钮 -->
+            <div class="flex gap-3 p-6 pt-0 justify-end">
+              <button
+                v-if="confirm.showCancelButton"
+                :disabled="confirm.loading"
+                class="px-4 py-2 text-sm font-medium text-muted-foreground bg-secondary hover:bg-secondary/80 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                @click="handleCancel(confirm)">
+                {{ confirm.cancelText }}
+              </button>
+              <button
+                :disabled="confirm.loading"
+                :class="getConfirmButtonClass(confirm.type)"
+                class="px-4 py-2 text-sm font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                @click="handleConfirm(confirm)">
+                <i v-if="confirm.loading" class="i-mdi-loading animate-spin w-4 h-4" />
+                {{ confirm.confirmText }}
+              </button>
             </div>
           </div>
-
-          <!-- 内容 -->
-          <div class="px-6 pb-6">
-            <p class="text-sm text-muted-foreground leading-relaxed">{{ confirm.message }}</p>
-          </div>
-
-          <!-- 按钮 -->
-          <div class="flex gap-3 p-6 pt-0 justify-end">
-            <button
-              v-if="confirm.showCancelButton"
-              :disabled="confirm.loading"
-              class="px-4 py-2 text-sm font-medium text-muted-foreground bg-secondary hover:bg-secondary/80 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              @click="handleCancel(confirm)">
-              {{ confirm.cancelText }}
-            </button>
-            <button
-              :disabled="confirm.loading"
-              :class="getConfirmButtonClass(confirm.type)"
-              class="px-4 py-2 text-sm font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              @click="handleConfirm(confirm)">
-              <i v-if="confirm.loading" class="i-mdi-loading animate-spin w-4 h-4" />
-              {{ confirm.confirmText }}
-            </button>
-          </div>
-        </div>
-      </transition-group>
+        </transition-group>
+      </div>
     </div>
   </teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 
 import OverlayMask from '@/components/OverlayMask/index.vue';
+import { layerManager } from '@/utils/LayerManager';
 
 import { useConfirmStore } from './store';
 import type { ConfirmInstance } from './types';
 
 const confirmStore = useConfirmStore();
+const layerId = `confirm_${Math.random().toString(36).slice(2, 9)}`;
 
 const visibleConfirms = computed(() => confirmStore.confirms.filter((confirm) => confirm.visible));
 
@@ -145,33 +149,39 @@ const handleOverlayClick = () => {
   }
 };
 
-// 键盘事件处理
-const handleKeydown = (event: KeyboardEvent) => {
+const currentZIndex = ref(0);
+
+function handleEnterKey(event: KeyboardEvent): void {
+  if (event.key !== 'Enter') return;
   if (visibleConfirms.value.length === 0) return;
+  const latest = visibleConfirms.value[visibleConfirms.value.length - 1];
+  if (!latest || latest.loading) return;
+  event.preventDefault();
+  handleConfirm(latest);
+}
 
-  const latestConfirm = visibleConfirms.value[visibleConfirms.value.length - 1];
-  if (!latestConfirm || latestConfirm.loading) return;
-
-  switch (event.key) {
-    case 'Enter':
-      event.preventDefault();
-      handleConfirm(latestConfirm);
-      break;
-    case 'Escape':
-      if (latestConfirm.persistent) return;
-      event.preventDefault();
-      handleCancel(latestConfirm);
-      break;
-  }
-};
-
-// 添加和移除键盘事件监听器
-onMounted(() => {
-  document.addEventListener('keydown', handleKeydown);
-});
+watch(
+  () => visibleConfirms.value.length,
+  (count) => {
+    if (count > 0) {
+      currentZIndex.value = layerManager.register(layerId, () => {
+        const latest = visibleConfirms.value[visibleConfirms.value.length - 1];
+        if (latest && !latest.loading && !latest.persistent) {
+          handleCancel(latest);
+        }
+      });
+      document.addEventListener('keydown', handleEnterKey);
+    } else {
+      layerManager.unregister(layerId);
+      document.removeEventListener('keydown', handleEnterKey);
+    }
+  },
+  { immediate: true }
+);
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown);
+  layerManager.unregister(layerId);
+  document.removeEventListener('keydown', handleEnterKey);
 });
 </script>
 

@@ -5,7 +5,8 @@
       v-for="position in positions"
       :key="position"
       :class="getContainerClass(position)"
-      class="fixed z-[9999] pointer-events-none">
+      class="fixed pointer-events-none"
+      :style="{ zIndex: messageZIndex }">
       <transition-group name="message" tag="div" class="space-y-2">
         <div
           v-for="message in getMessagesByPosition(position)"
@@ -36,10 +37,12 @@
 
 <script setup lang="ts">
 import { useMessageStore } from '@/components/Message/store';
+import { layerManager } from '@/utils/LayerManager';
 
 import type { MessagePosition } from './types';
 
 const messageStore = useMessageStore();
+const messageZIndex = layerManager.nextZIndex();
 
 const positions: MessagePosition[] = [
   'topLeft',

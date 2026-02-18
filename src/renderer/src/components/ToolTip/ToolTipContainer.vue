@@ -34,23 +34,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onUnmounted } from 'vue';
 
-import { zIndexManager } from '@/utils/ZIndexManager';
+import { layerManager } from '@/utils/LayerManager';
 
 import { useToolTipStore } from './store';
 import type { ToolTipInstance } from './types';
 
 const toolTipStore = useToolTipStore();
 
-// Z-Index 管理
-const containerZIndex = zIndexManager.bringToFront();
+const layerId = `tooltip-container_${Math.random().toString(36).slice(2, 9)}`;
+const containerZIndex = layerManager.nextZIndex();
+
+onUnmounted(() => {
+  layerManager.unregister(layerId);
+});
 
 const visibleToolTips = computed(() => toolTipStore.tooltips.filter((tooltip) => tooltip.visible));
 
 const getToolTipStyle = (tooltip: ToolTipInstance) => {
   // 为每个 tooltip 实例注册独立的 z-index
-  const tooltipZIndex = tooltip.zIndex || zIndexManager.bringToFront();
+  const tooltipZIndex = tooltip.zIndex || layerManager.nextZIndex();
 
   const style: Record<string, string> = {
     left: `${tooltip.x}px`,

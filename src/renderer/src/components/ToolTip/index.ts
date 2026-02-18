@@ -290,33 +290,20 @@ const ToolTipPlugin = {
     // 提供给组合式API使用
     app.provide('$tooltip', tooltipAPI);
 
-    // 导出到window对象供ToolTipContainer使用
     (window as any).elementTooltipMap = elementTooltipMap;
     (window as any).hideTooltip = hideTooltip;
 
-    // 添加全局ESC键监听器来关闭所有tooltip
-    const handleEscKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        tooltipStore.forceHideAllToolTips();
-      }
-    };
-    document.addEventListener('keydown', handleEscKey);
-
-    // 添加全局点击监听器来关闭非persistent的tooltip
-    const handleGlobalClick = (event: Event) => {
+    // 全局点击：关闭非 persistent 的 tooltip
+    document.addEventListener('click', (event: Event) => {
       const target = event.target as HTMLElement;
-      // 检查点击是否在tooltip内部
-      const isClickInsideTooltip = target.closest('[data-tooltip-container]');
-      if (!isClickInsideTooltip) {
-        // 隐藏所有非persistent的tooltip
+      if (!target.closest('[data-tooltip-container]')) {
         tooltipStore.tooltips.forEach((tooltip) => {
           if (!tooltip.persistent && tooltip.trigger !== 'click') {
             tooltipStore.hideToolTip(tooltip.id);
           }
         });
       }
-    };
-    document.addEventListener('click', handleGlobalClick);
+    });
 
     // 注册指令
     app.directive('tooltip', {
