@@ -4,45 +4,59 @@
  * 测试规划者的核心功能：
  * - plan: 将任务分解为子任务和执行阶段
  * - replan: 在失败后重新规划
- * - outputType 结构化输出的正确性
+ * - 输出解析策略（纯 JSON、markdown 代码块、嵌入 JSON）
  * - 空输出时的降级处理
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ===== Mock @openai/agents =====
-const mockRun = vi.fn()
-vi.mock('@openai/agents', () => ({
-  Agent: class MockAgent {
-    name: string
-    instructions: string
-    model: string
-    outputType: unknown
-    constructor(config: Record<string, unknown>) {
-      this.name = (config.name as string) || 'MockAgent'
-      this.instructions = (config.instructions as string) || ''
-      this.model = (config.model as string) || 'gpt-4o'
-      this.outputType = config.outputType
+// ===== Mock AgentExecutor（Planner 通过它创建 Runtime） =====
+const mockRunResult = vi.fn();
+
+vi.mock('@main/common/logger', () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  }),
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+}));
+
+vi.mock('../../AgentExecutor', () => ({
+  agentExecutor: {
+    piMono: () => {
+      const builder = {
+        name: vi.fn().mockReturnThis(),
+        mode: vi.fn().mockReturnThis(),
+        sessionMode: vi.fn().mockReturnThis(),
+        instructions: vi.fn().mockReturnThis(),
+        model: vi.fn().mockReturnThis(),
+        sessionId: vi.fn().mockReturnThis(),
+        build: vi.fn().mockResolvedValue({
+          run: (prompt: string) => mockRunResult(prompt),
+          destroy: vi.fn().mockResolvedValue(undefined)
+        })
+      };
+      return builder;
     }
-  },
-  run: (...args: unknown[]) => mockRun(...args)
-}))
+  }
+}));
 
-import { Planner } from '../Planner'
-import type { Task } from '../types'
+import { Planner } from '../Planner';
+import type { Task } from '../types';
 
 describe('Planner', () => {
-  let planner: Planner
+  let planner: Planner;
 
   beforeEach(() => {
-    vi.clearAllMocks()
-    planner = new Planner()
-  })
+    vi.clearAllMocks();
+    planner = new Planner();
+  });
 
   // ===== plan =====
 
   describe('plan', () => {
-    it('成功规划任务（结构化输出）', async () => {
-      // SDK outputType: finalOutput 直接是已解析的对象
+    it('成功规划任务 — 从 JSON 输出', async () => {
       const planOutput = {
         subTasks: [
           {
@@ -74,130 +88,145 @@ describe('Planner', () => {
             parallelizable: false
           }
         ]
-      }
+      };
 
-      mockRun.mockResolvedValue({ finalOutput: planOutput })
+      mockRunResult.mockResolvedValue({ output: JSON.stringify(planOutput) });
 
       const task: Task = {
         id: 'task-1',
         objective: 'Build a web scraper'
-      }
+      };
 
-      const plan = await planner.plan(task)
+      const plan = await planner.plan(task);
 
-      expect(plan.taskId).toBe('task-1')
-      expect(plan.subTasks).toHaveLength(2)
-      expect(plan.subTasks[0].name).toBe('Research topic')
-      expect(plan.subTasks[0].assignedWorker).toBe('research')
-      expect(plan.subTasks[0].status).toBe('pending')
-      expect(plan.subTasks[1].dependencies).toEqual(['subtask-1'])
-      expect(plan.stages).toHaveLength(2)
-      expect(plan.stages[0].name).toBe('Research Phase')
-      expect(plan.createdAt).toBeGreaterThan(0)
-    })
+      expect(plan.taskId).toBe('task-1');
+      expect(plan.subTasks).toHaveLength(2);
+      expect(plan.subTasks[0].name).toBe('Research topic');
+      expect(plan.subTasks[0].assignedWorker).toBe('research');
+      expect(plan.subTasks[0].status).toBe('pending');
+      expect(plan.subTasks[1].dependencies).toEqual(['subtask-1']);
+      expect(plan.stages).toHaveLength(2);
+      expect(plan.stages[0].name).toBe('Research Phase');
+      expect(plan.createdAt).toBeGreaterThan(0);
+    });
 
-    it('包含描述和上下文的任务', async () => {
-      mockRun.mockResolvedValue({
-        finalOutput: {
-          subTasks: [{ id: 's1', objective: 'Task A', dependencies: [], assignedWorker: 'chat' }],
-          stages: [{ stageId: 'st1', name: 'Stage 1', subTaskIds: ['s1'], parallelizable: false }]
-        }
-      })
+    it('从 markdown 代码块中提取 JSON', async () => {
+      const planOutput = {
+        subTasks: [{ id: 's1', objective: 'Task A', dependencies: [], assignedWorker: 'general' }],
+        stages: [{ stageId: 'st1', name: 'Stage 1', subTaskIds: ['s1'], parallelizable: false }]
+      };
+
+      const markdownOutput = `Here is the plan:\n\`\`\`json\n${JSON.stringify(planOutput, null, 2)}\n\`\`\`\nLet me know if this works.`;
+      mockRunResult.mockResolvedValue({ output: markdownOutput });
+
+      const task: Task = { id: 'task-2', objective: 'Analyze data' };
+      const plan = await planner.plan(task);
+
+      expect(plan.taskId).toBe('task-2');
+      expect(plan.subTasks).toHaveLength(1);
+      expect(plan.subTasks[0].name).toBe('Task A');
+    });
+
+    it('从嵌入的 JSON 对象中提取', async () => {
+      const planOutput = {
+        subTasks: [{ id: 's1', objective: 'Do it', dependencies: [], assignedWorker: 'general' }],
+        stages: [{ stageId: 'st1', name: 'Main', subTaskIds: ['s1'], parallelizable: false }]
+      };
+
+      const output = `OK here is my analysis:\n${JSON.stringify(planOutput)}\nHope this helps!`;
+      mockRunResult.mockResolvedValue({ output });
+
+      const plan = await planner.plan({ id: 'task-3', objective: 'Test' });
+
+      expect(plan.subTasks).toHaveLength(1);
+      expect(plan.subTasks[0].name).toBe('Do it');
+    });
+
+    it('LLM 返回空内容时使用默认计划', async () => {
+      mockRunResult.mockResolvedValue({ output: '' });
+
+      const task: Task = { id: 'task-4', objective: 'Simple task' };
+      const plan = await planner.plan(task);
+
+      expect(plan.taskId).toBe('task-4');
+      expect(plan.subTasks).toHaveLength(1);
+      expect(plan.subTasks[0].name).toBe('Complete the task');
+      expect(plan.subTasks[0].assignedWorker).toBe('general');
+      expect(plan.stages).toHaveLength(1);
+      expect(plan.stages[0].name).toBe('Main Stage');
+    });
+
+    it('LLM 执行失败时使用默认计划', async () => {
+      mockRunResult.mockRejectedValue(new Error('LLM error'));
+
+      const task: Task = { id: 'task-5', objective: 'Failed task' };
+      const plan = await planner.plan(task);
+
+      expect(plan.subTasks).toHaveLength(1);
+      expect(plan.stages).toHaveLength(1);
+    });
+
+    it('提示词包含任务详细信息', async () => {
+      mockRunResult.mockResolvedValue({ output: '{}' });
 
       const task: Task = {
-        id: 'task-2',
+        id: 'task-6',
         objective: 'Analyze data',
         description: 'Detailed analysis of user behavior',
-        context: { dataset: 'users.csv', format: 'CSV' }
-      }
+        requirements: ['Must be fast'],
+        constraints: ['No external APIs'],
+        context: { dataset: 'users.csv' }
+      };
 
-      const plan = await planner.plan(task)
+      await planner.plan(task);
 
-      // 验证 run 被正确调用，提示词包含任务信息，第三个参数是 maxTurns 选项
-      expect(mockRun).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.stringContaining('Analyze data'),
-        expect.objectContaining({ maxTurns: expect.any(Number) })
-      )
-      expect(plan.taskId).toBe('task-2')
-    })
-
-    it('outputType 返回 undefined 时使用默认计划', async () => {
-      // SDK outputType 解析失败时 finalOutput 可能为 undefined
-      mockRun.mockResolvedValue({ finalOutput: undefined })
-
-      const task: Task = {
-        id: 'task-3',
-        objective: 'Simple task'
-      }
-
-      const plan = await planner.plan(task)
-
-      expect(plan.taskId).toBe('task-3')
-      expect(plan.subTasks).toHaveLength(1)
-      expect(plan.subTasks[0].name).toBe('Complete the task')
-      expect(plan.subTasks[0].assignedWorker).toBe('chat')
-      expect(plan.stages).toHaveLength(1)
-      expect(plan.stages[0].name).toBe('Main Stage')
-    })
-
-    it('空输出时返回默认计划', async () => {
-      mockRun.mockResolvedValue({ finalOutput: undefined })
-
-      const task: Task = { id: 'task-4', objective: 'Empty result' }
-      const plan = await planner.plan(task)
-
-      expect(plan.subTasks).toHaveLength(1)
-      expect(plan.stages).toHaveLength(1)
-    })
-  })
+      const prompt = mockRunResult.mock.calls[0][0];
+      expect(prompt).toContain('Analyze data');
+      expect(prompt).toContain('Detailed analysis of user behavior');
+      expect(prompt).toContain('Must be fast');
+      expect(prompt).toContain('No external APIs');
+      expect(prompt).toContain('users.csv');
+    });
+  });
 
   // ===== replan =====
 
   describe('replan', () => {
     it('根据失败信息重新规划', async () => {
-      mockRun.mockResolvedValue({
-        finalOutput: {
-          subTasks: [
-            {
-              id: 'subtask-alt',
-              objective: 'Alternative approach',
-              dependencies: [],
-              assignedWorker: 'code'
-            }
-          ],
-          stages: [
-            {
-              stageId: 'stage-alt',
-              name: 'Alternative Stage',
-              subTaskIds: ['subtask-alt'],
-              parallelizable: false
-            }
-          ]
-        }
-      })
+      const replanOutput = {
+        subTasks: [
+          {
+            id: 'subtask-alt',
+            objective: 'Alternative approach',
+            dependencies: [],
+            assignedWorker: 'code'
+          }
+        ],
+        stages: [
+          {
+            stageId: 'stage-alt',
+            name: 'Alternative Stage',
+            subTaskIds: ['subtask-alt'],
+            parallelizable: false
+          }
+        ]
+      };
 
-      const task: Task = { id: 'task-1', objective: 'Build feature' }
+      mockRunResult.mockResolvedValue({ output: JSON.stringify(replanOutput) });
+
+      const task: Task = { id: 'task-1', objective: 'Build feature' };
 
       const plan = await planner.replan(task, {
         failedSubTaskId: 'subtask-original',
         reason: 'API rate limit exceeded'
-      })
+      });
 
-      expect(plan.taskId).toBe('task-1')
-      expect(plan.subTasks[0].name).toBe('Alternative approach')
+      expect(plan.taskId).toBe('task-1');
+      expect(plan.subTasks[0].name).toBe('Alternative approach');
 
-      // 验证 replan 提示词包含失败信息（第三个参数是 maxTurns 选项）
-      expect(mockRun).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.stringContaining('subtask-original'),
-        expect.objectContaining({ maxTurns: expect.any(Number) })
-      )
-      expect(mockRun).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.stringContaining('API rate limit exceeded'),
-        expect.objectContaining({ maxTurns: expect.any(Number) })
-      )
-    })
-  })
-})
+      const prompt = mockRunResult.mock.calls[0][0];
+      expect(prompt).toContain('subtask-original');
+      expect(prompt).toContain('API rate limit exceeded');
+    });
+  });
+});

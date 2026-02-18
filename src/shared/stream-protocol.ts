@@ -43,36 +43,36 @@ export type StreamMessageType =
   | 'done'
   | 'error'
   | 'interrupted'
-  | 'resumed'
+  | 'resumed';
 
 /** 流式消息来源 */
 export interface StreamSource {
   /** 来源类型 */
-  type: 'agent' | 'team' | 'swarm'
+  type: 'agent' | 'orchestrator' | 'swarm';
   /** 来源 ID */
-  id: string
+  id: string;
   /** 来源名称 */
-  name: string
+  name: string;
 }
 
 /** 流式消息 */
 export interface StreamMessage {
   /** 消息唯一 ID */
-  id: string
+  id: string;
   /** 会话 ID */
-  sessionId: string
+  sessionId: string;
   /** 消息序号（单调递增） */
-  sequence: number
+  sequence: number;
   /** 消息类型 */
-  type: StreamMessageType
+  type: StreamMessageType;
   /** 消息内容 */
-  content: string
+  content: string;
   /** 额外数据 */
-  data?: Record<string, unknown>
+  data?: Record<string, unknown>;
   /** 时间戳 */
-  timestamp: number
+  timestamp: number;
   /** 来源 */
-  source: StreamSource
+  source: StreamSource;
 }
 
 // ==================== WsHub Channel 接口 ====================
@@ -85,22 +85,17 @@ export interface StreamMessage {
  */
 export interface WsChannel {
   /** 频道前缀（用于消息路由，如 'stream'、'worker'） */
-  prefix: string
+  prefix: string;
   /** 频道显示名称（用于日志） */
-  label: string
+  label: string;
   /** 频道初始化：注册 EventBus 监听、获取 Hub 引用等 */
-  onInit(hub: WsHubApi): void
+  onInit(hub: WsHubApi): void;
   /** 处理客户端消息（action 是去除前缀后的部分） */
-  onMessage(
-    ws: unknown,
-    action: string,
-    msg: WsClientMessage,
-    meta: Record<string, unknown>
-  ): Promise<void>
+  onMessage(ws: unknown, action: string, msg: WsClientMessage, meta: Record<string, unknown>): Promise<void>;
   /** 客户端连接（可选） */
-  onConnect?(ws: unknown, meta: Record<string, unknown>): void
+  onConnect?(ws: unknown, meta: Record<string, unknown>): void;
   /** 客户端断开（可选） */
-  onDisconnect?(ws: unknown, meta: Record<string, unknown>): void
+  onDisconnect?(ws: unknown, meta: Record<string, unknown>): void;
 }
 
 /**
@@ -110,18 +105,15 @@ export interface WsChannel {
  */
 export interface WsHubApi {
   /** 向单个客户端发送消息 */
-  send(ws: unknown, payload: WsServerMessage): void
+  send(ws: unknown, payload: WsServerMessage): void;
   /** 向所有客户端广播 */
-  broadcast(payload: WsServerMessage): void
+  broadcast(payload: WsServerMessage): void;
   /** 按条件广播（predicate 返回 true 的客户端） */
-  broadcastIf(
-    payload: WsServerMessage,
-    predicate: (ws: unknown, meta: Record<string, unknown>) => boolean
-  ): number
+  broadcastIf(payload: WsServerMessage, predicate: (ws: unknown, meta: Record<string, unknown>) => boolean): number;
   /** 遍历所有客户端 */
-  forEachClient(callback: (ws: unknown, meta: Record<string, unknown>) => void): void
+  forEachClient(callback: (ws: unknown, meta: Record<string, unknown>) => void): void;
   /** 当前连接数 */
-  readonly clientCount: number
+  readonly clientCount: number;
 }
 
 // ==================== WebSocket 协议 ====================
@@ -145,32 +137,32 @@ export interface WsClientMessage {
     | 'worker:start'
     | 'worker:stop'
     // 内置
-    | 'ping'
+    | 'ping';
   /** Worker 名称（worker:start/worker:stop 时使用） */
-  workerName?: string
-  sessionId?: string
-  fromSequence?: number
+  workerName?: string;
+  sessionId?: string;
+  fromSequence?: number;
 }
 
 // ==================== Worker 状态（Runtime → 前端）====================
 
 /** Worker 运行状态 */
-export type WorkerStatus = 'stopped' | 'initializing' | 'starting' | 'ready' | 'error' | 'stopping'
+export type WorkerStatus = 'stopped' | 'initializing' | 'starting' | 'ready' | 'error' | 'stopping';
 
 /** Worker 状态信息（推送给前端） */
 export interface WorkerStatusInfo {
   /** Worker 名称 */
-  name: string
+  name: string;
   /** 显示名称 */
-  label: string
+  label: string;
   /** 当前状态 */
-  status: WorkerStatus
+  status: WorkerStatus;
   /** 服务端口（ready 时有效，前端据此直连 Worker） */
-  port?: number
+  port?: number;
   /** 错误信息 */
-  error?: string
+  error?: string;
   /** 重启次数 */
-  restartCount: number
+  restartCount: number;
 }
 
 /**
@@ -191,10 +183,10 @@ export type WsServerMessage =
   | { type: 'worker:list'; data: WorkerStatusInfo[] }
   // 内置
   | { type: 'pong'; data?: Record<string, never> }
-  | { type: 'error'; data: { error: string } }
+  | { type: 'error'; data: { error: string } };
 
 /** WebSocket 连接状态 */
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 // ==================== HITL 审批 ====================
 
@@ -206,7 +198,7 @@ export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'err
  *   - approve-always:  始终允许（白名单自学习，预留）
  *   - reject:          拒绝执行
  */
-export type HitlApprovalDecision = 'approve-once' | 'approve-always' | 'reject'
+export type HitlApprovalDecision = 'approve-once' | 'approve-always' | 'reject';
 
 /**
  * HITL 消息数据（hitl 类型 StreamMessage 的 data 字段结构）
@@ -218,11 +210,11 @@ export type HitlApprovalDecision = 'approve-once' | 'approve-always' | 'reject'
  */
 export interface HitlMessageData {
   /** 审批项索引（一次中断可能有多个工具需要审批） */
-  index: number
+  index: number;
   /** 工具名称 */
-  toolName: string
+  toolName: string;
   /** 工具参数（JSON 字符串） */
-  arguments?: string
+  arguments?: string;
   /** 事件阶段 */
-  action: 'required' | 'approved' | 'rejected'
+  action: 'required' | 'approved' | 'rejected';
 }

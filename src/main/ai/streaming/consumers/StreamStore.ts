@@ -3,61 +3,61 @@
  * 监听 EventBus 的流式事件，保存到数据库
  */
 
-import fs from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { eventBus } from '@main/common/eventbus'
-import { log } from '@main/common/logger'
-import { SQLiteService } from '@main/common/database'
-import { StreamEventType, type StreamEvent, type StreamMessage } from '../types'
+import fs from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { eventBus } from '@main/common/eventbus';
+import { log } from '@main/common/logger';
+import { SQLiteService } from '@main/common/database';
+import { StreamEventType, type StreamEvent, type StreamMessage } from '../types';
 
 /**
  * 流式消息存储
  */
 export class StreamStore {
-  private db!: SQLiteService
-  private initialized = false
+  private db!: SQLiteService;
+  private initialized = false;
 
   // 批量写入配置
-  private messageQueue: StreamMessage[] = []
-  private flushInterval = 1000 // 1秒刷新一次
-  private maxBatchSize = 100 // 最大批量大小
-  private flushTimer: NodeJS.Timeout | null = null
-  private flushRetryCount = 0 // 连续失败计数
-  private readonly maxFlushRetries = 5 // 最大连续失败次数
+  private messageQueue: StreamMessage[] = [];
+  private flushInterval = 1000; // 1秒刷新一次
+  private maxBatchSize = 100; // 最大批量大小
+  private flushTimer: NodeJS.Timeout | null = null;
+  private flushRetryCount = 0; // 连续失败计数
+  private readonly maxFlushRetries = 5; // 最大连续失败次数
 
   /**
    * 初始化（创建表结构 + 注册事件监听）
    */
   async initialize(): Promise<void> {
-    if (this.initialized) return
+    if (this.initialized) return;
 
     // 延迟获取 DB 实例，避免模块加载阶段 SQLite 尚未初始化
-    this.db = SQLiteService.getInstance()
+    this.db = SQLiteService.getInstance();
 
     // 1. 创建表结构
-    await this.createSchema()
+    await this.createSchema();
 
     // 2. 注册事件监听
-    this.registerEventListeners()
+    this.registerEventListeners();
 
     // 3. 启动定时刷新
-    this.startFlushTimer()
+    this.startFlushTimer();
 
-    this.initialized = true
-    log.info('[StreamStore] Initialized with batch writing')
+    this.initialized = true;
+    log.info('[StreamStore] Initialized with batch writing');
   }
 
   /**
    * 创建数据库 Schema
    */
   private async createSchema(): Promise<void> {
-    const schemaPath = join(__dirname, '../../storage/schemas', 'stream_messages.sql')
+    const schemaPath = join(__dirname, '../../storage/schemas', 'stream_messages.sql');
     try {
-      const schema = await readFile(schemaPath, 'utf-8')
-      await this.db.execute(schema)
+      const schema = await readFile(schemaPath, 'utf-8');
+      await this.db.execute(schema);
     } catch (_error) {
-      log.warn('[StreamStore] Schema file not found, creating inline')
+      log.warn('[StreamStore] Schema file not found, creating inline');
       await this.db.execute(`
         CREATE TABLE IF NOT EXISTS stream_messages (
           id TEXT PRIMARY KEY,
@@ -81,7 +81,7 @@ export class StreamStore {
 
         CREATE UNIQUE INDEX IF NOT EXISTS idx_session_seq_unique 
           ON stream_messages(session_id, sequence);
-      `)
+      `);
     }
   }
 
@@ -91,9 +91,9 @@ export class StreamStore {
   private startFlushTimer(): void {
     this.flushTimer = setInterval(() => {
       this.flushQueue().catch((error) => {
-        log.error('[StreamStore] Failed to flush queue:', error)
-      })
-    }, this.flushInterval)
+        log.error('[StreamStore] Failed to flush queue:', error);
+      });
+    }, this.flushInterval);
   }
 
   /**
@@ -103,24 +103,24 @@ export class StreamStore {
     // 监听消息事件 - 改为入队而不是立即写入
     eventBus.on(StreamEventType.MESSAGE, (event: StreamEvent) => {
       if (event.message) {
-        this.enqueueMessage(event.message)
+        this.enqueueMessage(event.message);
       }
-    })
+    });
 
-    log.info('[StreamStore] Event listeners registered')
+    log.info('[StreamStore] Event listeners registered');
   }
 
   /**
    * 入队消息（批量写入）
    */
   private enqueueMessage(message: StreamMessage): void {
-    this.messageQueue.push(message)
+    this.messageQueue.push(message);
 
     // 队列满时立即刷新
     if (this.messageQueue.length >= this.maxBatchSize) {
       this.flushQueue().catch((error) => {
-        log.error('[StreamStore] Failed to flush full queue:', error)
-      })
+        log.error('[StreamStore] Failed to flush full queue:', error);
+      });
     }
   }
 
@@ -129,36 +129,33 @@ export class StreamStore {
    */
   private async flushQueue(): Promise<void> {
     if (this.messageQueue.length === 0) {
-      return
+      return;
     }
 
     // 取出当前队列中的所有消息
-    const batch = this.messageQueue.splice(0, this.messageQueue.length)
+    const batch = this.messageQueue.splice(0, this.messageQueue.length);
 
     try {
       // 使用事务批量插入
       await this.db.transaction(async () => {
         for (const message of batch) {
-          await this.saveMessage(message)
+          await this.saveMessage(message);
         }
-      })
+      });
 
-      this.flushRetryCount = 0 // 成功后重置
-      log.info(`[StreamStore] Flushed ${batch.length} messages`)
+      this.flushRetryCount = 0; // 成功后重置
+      log.info(`[StreamStore] Flushed ${batch.length} messages`);
     } catch (error) {
-      this.flushRetryCount++
-      log.error(
-        `[StreamStore] Batch write failed (retry ${this.flushRetryCount}/${this.maxFlushRetries}):`,
-        error
-      )
+      this.flushRetryCount++;
+      log.error(`[StreamStore] Batch write failed (retry ${this.flushRetryCount}/${this.maxFlushRetries}):`, error);
 
       if (this.flushRetryCount < this.maxFlushRetries) {
         // 重新入队等待下次重试
-        this.messageQueue.unshift(...batch)
+        this.messageQueue.unshift(...batch);
       } else {
         // 达到上限 → 写入死信文件而非丢弃
-        this.writeDeadLetters(batch)
-        this.flushRetryCount = 0
+        this.writeDeadLetters(batch);
+        this.flushRetryCount = 0;
       }
     }
   }
@@ -185,28 +182,24 @@ export class StreamStore {
         message.source.name,
         Date.now()
       ]
-    )
+    );
 
-    log.info(`[StreamStore] Saved message: ${message.sessionId}#${message.sequence}`)
+    log.info(`[StreamStore] Saved message: ${message.sessionId}#${message.sequence}`);
   }
 
   /**
    * 获取消息（按序号范围）
    */
-  async getMessages(
-    sessionId: string,
-    fromSequence: number = 1,
-    limit: number = 100
-  ): Promise<StreamMessage[]> {
+  async getMessages(sessionId: string, fromSequence: number = 1, limit: number = 100): Promise<StreamMessage[]> {
     const rows = await this.db.query<Record<string, unknown>>(
       `SELECT * FROM stream_messages 
        WHERE session_id = ? AND sequence >= ? 
        ORDER BY sequence ASC 
        LIMIT ?`,
       [sessionId, fromSequence, limit]
-    )
+    );
 
-    return rows.map((row) => this.rowToMessage(row))
+    return rows.map((row) => this.rowToMessage(row));
   }
 
   /**
@@ -216,9 +209,9 @@ export class StreamStore {
     const row = await this.db.queryOne<Record<string, unknown>>(
       `SELECT MAX(sequence) as max_seq FROM stream_messages WHERE session_id = ?`,
       [sessionId]
-    )
+    );
 
-    return (row?.max_seq as number) || 0
+    return (row?.max_seq as number) || 0;
   }
 
   /**
@@ -232,17 +225,17 @@ export class StreamStore {
          SELECT MAX(sequence) - ? FROM stream_messages WHERE session_id = ?
        )`,
       [sessionId, keepLast, sessionId]
-    )
+    );
 
-    log.info(`[StreamStore] Cleaned old messages for session: ${sessionId}`)
+    log.info(`[StreamStore] Cleaned old messages for session: ${sessionId}`);
   }
 
   /**
    * 清理会话所有消息
    */
   async clearSession(sessionId: string): Promise<void> {
-    await this.db.execute(`DELETE FROM stream_messages WHERE session_id = ?`, [sessionId])
-    log.info(`[StreamStore] Cleared all messages for session: ${sessionId}`)
+    await this.db.execute(`DELETE FROM stream_messages WHERE session_id = ?`, [sessionId]);
+    log.info(`[StreamStore] Cleared all messages for session: ${sessionId}`);
   }
 
   /**
@@ -258,26 +251,26 @@ export class StreamStore {
       data: row.data ? JSON.parse(row.data as string) : undefined,
       timestamp: row.timestamp as number,
       source: {
-        type: row.source_type as 'agent' | 'team' | 'swarm',
+        type: row.source_type as 'agent' | 'orchestrator' | 'swarm',
         id: row.source_id as string,
         name: row.source_name as string
       }
-    }
+    };
   }
 
   /**
    * 获取队列统计信息
    */
   getQueueStats(): {
-    queueSize: number
-    maxBatchSize: number
-    flushInterval: number
+    queueSize: number;
+    maxBatchSize: number;
+    flushInterval: number;
   } {
     return {
       queueSize: this.messageQueue.length,
       maxBatchSize: this.maxBatchSize,
       flushInterval: this.flushInterval
-    }
+    };
   }
 
   /**
@@ -288,34 +281,33 @@ export class StreamStore {
    */
   private writeDeadLetters(messages: StreamMessage[]): void {
     try {
-      let deadLetterDir: string
+      let deadLetterDir: string;
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const env = require('@main/common/env') as { Env: { paths: { userData: string } } }
-        deadLetterDir = join(env.Env.paths.userData, 'dead-letters')
+        const env = require('@main/common/env') as { Env: { paths: { userData: string } } };
+        deadLetterDir = join(env.Env.paths.userData, 'dead-letters');
       } catch {
-        deadLetterDir = join(process.env.HOME || '/tmp', '.coobee-ai', 'dead-letters')
+        deadLetterDir = join(process.env.HOME || '/tmp', '.coobee-ai', 'dead-letters');
       }
 
-      fs.mkdirSync(deadLetterDir, { recursive: true })
+      fs.mkdirSync(deadLetterDir, { recursive: true });
 
-      const filename = `stream-${Date.now()}.jsonl`
-      const filePath = join(deadLetterDir, filename)
+      const filename = `stream-${Date.now()}.jsonl`;
+      const filePath = join(deadLetterDir, filename);
 
-      const lines = messages.map((msg) => JSON.stringify(msg)).join('\n') + '\n'
-      fs.writeFileSync(filePath, lines)
+      const lines = messages.map((msg) => JSON.stringify(msg)).join('\n') + '\n';
+      fs.writeFileSync(filePath, lines);
 
       log.error(
         `[StreamStore] Wrote ${messages.length} dead letters to ${filePath}. ` +
           `These messages failed to write to the database after ${this.maxFlushRetries} retries.`
-      )
+      );
     } catch (err) {
       // 死信写入也失败了，只能记录日志
       log.error(
-        `[StreamStore] CRITICAL: Failed to write ${messages.length} dead letters. ` +
-          `Messages are permanently lost.`,
+        `[StreamStore] CRITICAL: Failed to write ${messages.length} dead letters. ` + `Messages are permanently lost.`,
         err
-      )
+      );
     }
   }
 
@@ -325,18 +317,18 @@ export class StreamStore {
   async destroy(): Promise<void> {
     // 停止定时器
     if (this.flushTimer) {
-      clearInterval(this.flushTimer)
-      this.flushTimer = null
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
     }
 
     // 刷新剩余消息
-    await this.flushQueue()
+    await this.flushQueue();
 
-    log.info('[StreamStore] Destroyed')
+    log.info('[StreamStore] Destroyed');
   }
 }
 
 /**
  * 全局 StreamStore 实例
  */
-export const streamStore = new StreamStore()
+export const streamStore = new StreamStore();

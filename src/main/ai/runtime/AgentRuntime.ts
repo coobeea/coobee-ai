@@ -17,13 +17,7 @@
  *   const result = await runtime.run('hello')
  */
 
-import type {
-  AgentRuntimeOptions,
-  ExecutionConfig,
-  ExecutionResult,
-  StreamChunk,
-  SessionInfo
-} from './types'
+import type { AgentRuntimeOptions, ExecutionConfig, ExecutionResult, StreamChunk, SessionInfo } from './types';
 
 /**
  * 统一运行时接口
@@ -31,31 +25,31 @@ import type {
  * 实现：
  *   - PiMonoAgentRuntime（runtime/pimono/）— 基于 pi-coding-agent SDK
  *   - OpenAIAgentRuntime（runtime/openai/）— 基于 @openai/agents SDK
- *   - TeamRuntime（teams/）— 多智能体编排
- *   - SwarmRuntime（swarm/）— 群体智能
+ *   - OrchestratorRuntime（orchestration/）— 统筹者模式（程序化多 Agent 编排）
+ *   - SwarmRuntime（swarm/）— 群体智能（LLM 自主 Handoff）
  */
 export interface AgentRuntime {
   // ========== 身份 ==========
 
   /** 运行时类型 */
-  readonly type: 'agent' | 'team' | 'swarm'
+  readonly type: 'agent' | 'orchestrator' | 'swarm';
   /** 运行时 ID */
-  readonly id: string
+  readonly id: string;
   /** 名称 */
-  readonly name: string
+  readonly name: string;
   /** 运行时配置选项 */
-  readonly options: AgentRuntimeOptions
+  readonly options: AgentRuntimeOptions;
   /** 是否处于中断状态（HITL 工具审批等待中） */
-  readonly interrupted: boolean
+  readonly interrupted: boolean;
   /** 是否支持 HITL 工具审批（调用方可据此判断，避免 try-catch） */
-  readonly supportsHITL: boolean
+  readonly supportsHITL: boolean;
 
   // ========== 生命周期 ==========
 
   /** 初始化 */
-  initialize(): Promise<void>
+  initialize(): Promise<void>;
   /** 销毁 */
-  destroy(): Promise<void>
+  destroy(): Promise<void>;
 
   // ========== 执行方法 ==========
 
@@ -70,10 +64,7 @@ export interface AgentRuntime {
    * @yields StreamChunk 流式事件块
    * @returns ExecutionResult 执行结果
    */
-  stream(
-    input: string,
-    config?: ExecutionConfig
-  ): AsyncGenerator<StreamChunk, ExecutionResult, unknown>
+  stream(input: string, config?: ExecutionConfig): AsyncGenerator<StreamChunk, ExecutionResult, unknown>;
 
   /**
    * 同步执行（便捷方法）
@@ -83,7 +74,7 @@ export interface AgentRuntime {
    * @param input 用户输入
    * @param config 执行配置
    */
-  run(input: string, config?: ExecutionConfig): Promise<ExecutionResult>
+  run(input: string, config?: ExecutionConfig): Promise<ExecutionResult>;
 
   // ========== HITL 工具审批 ==========
 
@@ -92,24 +83,24 @@ export interface AgentRuntime {
    * @param index 审批项索引
    * @param options 选项（如 alwaysApprove）
    */
-  approveToolCall(index: number, options?: { alwaysApprove?: boolean }): void
+  approveToolCall(index: number, options?: { alwaysApprove?: boolean }): void;
 
   /**
    * 拒绝工具调用
    * @param index 审批项索引
    * @param options 选项（如 alwaysReject）
    */
-  rejectToolCall(index: number, options?: { alwaysReject?: boolean }): void
+  rejectToolCall(index: number, options?: { alwaysReject?: boolean }): void;
 
   /**
    * 恢复被中断的执行（AsyncGenerator 模式）
    */
-  resumeStream(config?: ExecutionConfig): AsyncGenerator<StreamChunk, ExecutionResult, unknown>
+  resumeStream(config?: ExecutionConfig): AsyncGenerator<StreamChunk, ExecutionResult, unknown>;
 
   // ========== 会话管理 ==========
 
   /** 获取会话信息 */
-  getSession(): Promise<SessionInfo>
+  getSession(): Promise<SessionInfo>;
   /** 清除会话历史 */
-  clearSession(): Promise<void>
+  clearSession(): Promise<void>;
 }
