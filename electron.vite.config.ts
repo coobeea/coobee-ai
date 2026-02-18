@@ -2,7 +2,6 @@ import { resolve } from 'path';
 import { defineConfig } from 'electron-vite';
 import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
-import monacoEditorPlugin from 'vite-plugin-monaco-editor-esm';
 import path from 'node:path';
 import Icons from 'unplugin-icons/vite';
 import IconsResolver from 'unplugin-icons/resolver';
@@ -134,12 +133,6 @@ export default defineConfig({
     },
     plugins: [
       tailwindcss(),
-      monacoEditorPlugin({
-        languageWorkers: ['editorWorkerService', 'typescript', 'css', 'html', 'json'],
-        customDistPath(_root, buildOutDir) {
-          return path.resolve(buildOutDir, 'monacoeditorwork');
-        }
-      }),
       // 自动导入 Vue 组件
       Components({
         // 指定 components.d.ts 文件的生成位置

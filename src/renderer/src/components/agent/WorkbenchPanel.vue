@@ -8,7 +8,7 @@
  */
 
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, shallowRef } from 'vue';
-import * as monaco from 'monaco-editor';
+import { monaco } from '@/utils/monaco-setup';
 import { useOpenFiles } from '@/composables/useOpenFiles';
 
 const { openFiles, activeFilePath, activeFile, closeFile, activateFile } = useOpenFiles();
