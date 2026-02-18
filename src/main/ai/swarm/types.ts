@@ -58,6 +58,8 @@ export interface SwarmConfig {
   name: string;
   /** 描述 */
   description?: string;
+  /** 父 sessionId（= threadId），用于子 sessionId 命名 */
+  parentSessionId?: string;
   /** 最大并发 Agent 数 */
   maxConcurrentAgents: number;
   /** Agent 空闲超时时间（ms） */

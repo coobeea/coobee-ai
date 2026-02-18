@@ -77,6 +77,8 @@ export interface IPlanner {
 export class Planner implements IPlanner {
   constructor(
     private readonly options?: {
+      /** 父 sessionId（= threadId），用于子 sessionId 命名 */
+      parentSessionId?: string;
       /** 自定义模型（不传则使用配置默认值） */
       model?: string;
       /** 中止信号 */
@@ -146,13 +148,14 @@ Consider:
   private async callPlannerAgent(prompt: string): Promise<PlanOutput | null> {
     const { agentExecutor } = await import('../AgentExecutor');
 
-    const sessionId = `planner-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const prefix = this.options?.parentSessionId || `planner-${Date.now()}`;
+    const sessionId = this.options?.parentSessionId ? `${prefix}:planner` : prefix;
 
     const builder = agentExecutor
       .piMono()
       .name('Orchestration Planner')
       .mode('chat')
-      .sessionMode('memory')
+      .sessionMode('file')
       .instructions(PLANNER_INSTRUCTIONS);
 
     // 使用配置的模型（如果指定）

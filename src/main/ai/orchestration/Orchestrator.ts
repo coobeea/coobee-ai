@@ -27,6 +27,8 @@ const log = createLogger('orchestration');
  * 统筹者配置
  */
 export interface OrchestratorConfig {
+  /** 父 sessionId（= threadId），传递给 Planner/Worker 用于 sessionId 命名 */
+  parentSessionId?: string;
   /** 是否允许并行执行同 Stage 内的子任务 */
   allowParallel?: boolean;
   /** 最大重试次数 */
@@ -90,8 +92,9 @@ export interface IOrchestrator {
  */
 export class Orchestrator implements IOrchestrator {
   private readonly resolvedConfig: Required<
-    Omit<OrchestratorConfig, 'signal' | 'onEvent' | 'model' | 'workspaceRoot'>
+    Omit<OrchestratorConfig, 'parentSessionId' | 'signal' | 'onEvent' | 'model' | 'workspaceRoot'>
   > & {
+    parentSessionId?: string;
     signal?: AbortSignal;
     onEvent?: (event: OrchestratorEvent) => void;
     model?: string;
@@ -115,6 +118,7 @@ export class Orchestrator implements IOrchestrator {
       enableReplan: config?.enableReplan ?? false,
       subTaskTimeout: config?.subTaskTimeout ?? 5 * 60 * 1000,
       totalTimeout: config?.totalTimeout ?? 30 * 60 * 1000,
+      parentSessionId: config?.parentSessionId,
       signal: config?.signal,
       onEvent: config?.onEvent,
       model: config?.model,
@@ -503,11 +507,13 @@ export class Orchestrator implements IOrchestrator {
  */
 export function createOrchestrator(config?: OrchestratorConfig): Orchestrator {
   const planner = new Planner({
+    parentSessionId: config?.parentSessionId,
     model: config?.model,
     signal: config?.signal
   });
 
   const workerCoordinator = new WorkerCoordinator({
+    parentSessionId: config?.parentSessionId,
     model: config?.model,
     workspaceRoot: config?.workspaceRoot,
     signal: config?.signal

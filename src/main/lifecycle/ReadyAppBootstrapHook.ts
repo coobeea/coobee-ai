@@ -27,6 +27,14 @@ export const BeforeQuitAppBootstrapHook: LifecycleHook = {
 
   async execute(_context: LifecycleContext): Promise<void> {
     try {
+      const { ThreadWaker } = await import('@main/ai/threads/ThreadWaker');
+      ThreadWaker.getInstance().stop();
+      log.info('[BeforeQuitAppBootstrapHook] ThreadWaker 已停止');
+    } catch (error) {
+      log.error('[BeforeQuitAppBootstrapHook] ThreadWaker 停止失败:', error);
+    }
+
+    try {
       const { trayManager } = await import('@main/common/tray');
       trayManager.destroy();
       log.info('[BeforeQuitAppBootstrapHook] 托盘已销毁');
@@ -75,10 +83,39 @@ export const ReadyAppBootstrapHook: LifecycleHook = {
         }
       }
 
+      // 5. 启动 ThreadWaker（事件驱动唤醒系统）
+      try {
+        const { ThreadWaker } = await import('@main/ai/threads/ThreadWaker');
+        ThreadWaker.getInstance().start();
+        log.info('[ReadyAppBootstrapHook] ThreadWaker 已启动');
+      } catch (error) {
+        log.error('[ReadyAppBootstrapHook] ThreadWaker 启动失败:', error);
+      }
+
       log.info('[ReadyAppBootstrapHook] 应用基础设置初始化完成');
     } catch (error) {
       log.error('[ReadyAppBootstrapHook] 应用基础设置初始化失败:', error);
-      // 不抛出错误，允许应用继续启动（托盘不是关键功能）
+    }
+  }
+};
+
+/**
+ * Thread 恢复 Hook
+ *
+ * 在 READY 阶段最后执行（低优先级），扫描未完成的 Thread 并尝试恢复。
+ */
+export const ReadyThreadRecoveryHook: LifecycleHook = {
+  name: 'ready-thread-recovery',
+  phase: LifecyclePhase.READY,
+  priority: 200,
+  critical: false,
+
+  async execute(_context: LifecycleContext): Promise<void> {
+    try {
+      const { ThreadWaker } = await import('@main/ai/threads/ThreadWaker');
+      await ThreadWaker.getInstance().recoverOnStartup();
+    } catch (error) {
+      log.error('[ReadyThreadRecoveryHook] Thread 恢复扫描失败:', error);
     }
   }
 };

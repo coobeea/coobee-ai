@@ -362,7 +362,9 @@ export class SwarmCoordinator {
    */
   private async createTriageRuntime(roles: AgentRole[]): Promise<AgentRuntime> {
     const { agentExecutor } = await import('../AgentExecutor');
-    const sessionId = `triage-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const sessionId = this.config.parentSessionId
+      ? `${this.config.parentSessionId}:triage`
+      : `triage-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const rolesDescription = roles.map((r) => `- **${r.name}** (${r.id}): ${r.description}`).join('\n');
 
@@ -374,7 +376,7 @@ export class SwarmCoordinator {
       .piMono()
       .name('SwarmTriage')
       .mode('chat')
-      .sessionMode('memory')
+      .sessionMode('file')
       .instructions(instructions)
       .sessionId(sessionId);
 
@@ -403,7 +405,7 @@ export class SwarmCoordinator {
       .piMono()
       .name(`${role.name} (Swarm)`)
       .mode('chat')
-      .sessionMode('memory')
+      .sessionMode('file')
       .instructions(specialistInstructions)
       .sessionId(sessionId);
 
@@ -483,14 +485,16 @@ export class SwarmCoordinator {
   private async decomposeTask(task: SwarmTask): Promise<SwarmSubTask[]> {
     try {
       const { agentExecutor } = await import('../AgentExecutor');
-      const sessionId = `decompose-${Date.now()}`;
+      const sessionId = this.config.parentSessionId
+        ? `${this.config.parentSessionId}:decompose`
+        : `decompose-${Date.now()}`;
       const roles = this.getAvailableRoles();
 
       const builder = agentExecutor
         .piMono()
         .name('TaskDecomposer')
         .mode('chat')
-        .sessionMode('memory')
+        .sessionMode('file')
         .instructions(
           `你是一个任务分解专家。分析用户需求，将其拆分为可以并行执行的子任务。
 

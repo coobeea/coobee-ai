@@ -22,6 +22,7 @@ import { resolveApiKey } from '@main/ai/provider/ApiKeyResolver';
 import { configStoreInstance } from '@main/common/config/ConfigStore';
 import { AgentStore } from '@main/ai/agents/AgentStore';
 import type { AgentDefinition } from '@main/ai/agents/types';
+import { ThreadStore } from '@main/ai/threads/ThreadStore';
 import { GatewayErrorCode, GatewayMethodError } from '../protocol';
 import type { MethodGroup } from '../protocol';
 import type { AgentMode } from '@main/ai/runtime/types';
@@ -36,11 +37,6 @@ const CHAT_INSTRUCTIONS =
 /** 默认 Agent 模式指令（完整，有工具能力） */
 const AGENT_INSTRUCTIONS =
   '你是一个友好、专业的 AI 助手。你拥有文件操作、命令执行、记忆管理等工具。请用中文回答用户的问题，必要时使用工具完成任务。';
-
-/** 生成 session ID */
-function generateSessionId(): string {
-  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
 
 /**
  * 创建 Builder（根据模式决定工具集合）
@@ -214,7 +210,21 @@ export const chatMethods: MethodGroup = {
         );
       }
 
-      const sid = sessionId || generateSessionId();
+      // sessionId = threadId：必须由前端传入，不再自动生成随机 ID
+      // 如果未传入，自动创建 Thread 并使用 Thread ID 作为 sessionId
+      let sid = sessionId;
+      if (!sid) {
+        const threadStore = await ThreadStore.getInstance();
+        const thread = await threadStore.create({
+          title: message.slice(0, 50),
+          agentId: agentId || 'default',
+          agentMode: mode,
+          agentType: 'agent'
+        });
+        sid = thread.id;
+        log.info(`[chat.send] Auto-created thread: ${sid}`);
+      }
+
       log.info(`[chat.send] sessionId=${sid}, mode=${mode}${agentId ? `, agentId=${agentId}` : ''}`);
 
       try {

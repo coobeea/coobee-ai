@@ -125,7 +125,9 @@ export class AgentPool {
     }
 
     const poolId = this.generatePoolId(role.id);
-    const sessionId = `swarm-${poolId}-${Date.now()}`;
+    const sessionId = this.config.parentSessionId
+      ? `${this.config.parentSessionId}:swarm:${role.id}`
+      : `swarm-${poolId}-${Date.now()}`;
     const runtime = await this.runtimeFactory(role, sessionId, extraTools);
 
     const entry: PoolAgentEntry = {

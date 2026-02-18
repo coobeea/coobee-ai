@@ -69,6 +69,8 @@ export interface WorkerExecutionResult {
  * Worker 协调器配置
  */
 export interface WorkerCoordinatorConfig {
+  /** 父 sessionId（= threadId），用于子 sessionId 命名 */
+  parentSessionId?: string;
   /** Worker 默认模型 */
   model?: string;
   /** 默认工作区根目录 */
@@ -221,7 +223,9 @@ export class WorkerCoordinator implements IWorkerCoordinator {
   private async createWorkerRuntime(workerType: string, subTask: SubTask): Promise<AgentRuntime> {
     const { agentExecutor } = await import('../AgentExecutor');
 
-    const sessionId = `worker-${subTask.id}-${Date.now()}`;
+    const sessionId = this.config?.parentSessionId
+      ? `${this.config.parentSessionId}:worker:${subTask.id}`
+      : `worker-${subTask.id}-${Date.now()}`;
 
     // 尝试从 AgentStore 加载已有 Agent 定义
     const agentDef = await this.tryLoadAgentDefinition(workerType);
@@ -234,7 +238,7 @@ export class WorkerCoordinator implements IWorkerCoordinator {
         .piMono()
         .name(agentDef.name || agentDef.id)
         .mode('agent')
-        .sessionMode('memory')
+        .sessionMode('file')
         .instructions(agentDef.instructions);
 
       if (agentDef.model) {
@@ -255,7 +259,7 @@ export class WorkerCoordinator implements IWorkerCoordinator {
       .piMono()
       .name(preset.name)
       .mode('agent')
-      .sessionMode('memory')
+      .sessionMode('file')
       .instructions(preset.instructions);
 
     if (this.config?.model) {

@@ -5,42 +5,42 @@
  * Extension 系统提供三种能力注册：Agent 生命周期钩子、工具、Gateway 方法。
  */
 
-import type { ToolDefinition } from '../../ai/tools/types'
-import type { MethodHandler } from '../../gateway/protocol/types'
+import type { ToolDefinition } from '../../ai/tools/types';
+import type { MethodHandler } from '../../gateway/protocol/types';
 
 // ==================== Extension 模块 ====================
 
 /** Extension 清单（extension.json） */
 export interface ExtensionManifest {
-  id: string
-  name: string
-  version: string
-  description?: string
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
   /**
    * 扩展贡献的 Skill 目录（相对于扩展根目录）
    *
    * 声明后，该目录下的 Skill 会被 Skill 加载器自动发现。
    * @example "skills" → <extensionDir>/skills/
    */
-  skills?: string
+  skills?: string;
 }
 
 /** Extension 来源 */
-export type ExtensionOrigin = 'builtin' | 'user' | 'workspace'
+export type ExtensionOrigin = 'builtin' | 'user' | 'workspace';
 
 /** Extension 模块导出格式 */
 export interface ExtensionModule {
-  id: string
-  name: string
-  register: (api: ExtensionApi) => void
+  id: string;
+  name: string;
+  register: (api: ExtensionApi) => void;
 }
 
 /** Extension 日志 */
 export interface ExtensionLogger {
-  info(msg: string, ...args: unknown[]): void
-  warn(msg: string, ...args: unknown[]): void
-  error(msg: string, ...args: unknown[]): void
-  debug(msg: string, ...args: unknown[]): void
+  info(msg: string, ...args: unknown[]): void;
+  warn(msg: string, ...args: unknown[]): void;
+  error(msg: string, ...args: unknown[]): void;
+  debug(msg: string, ...args: unknown[]): void;
 }
 
 // ==================== ExtensionApi ====================
@@ -58,35 +58,29 @@ export interface ExtensionServices {
     waitForSingleDecision(
       approvalId: string,
       timeoutMs?: number
-    ): Promise<import('@shared/stream-protocol').HitlApprovalDecision | null>
+    ): Promise<import('@shared/stream-protocol').HitlApprovalDecision | null>;
     /** 提交单个工具调用的审批决策 */
-    submitSingleDecision(
-      approvalId: string,
-      decision: import('@shared/stream-protocol').HitlApprovalDecision
-    ): boolean
+    submitSingleDecision(approvalId: string, decision: import('@shared/stream-protocol').HitlApprovalDecision): boolean;
     /** 清理指定 session 的所有审批 */
-    cleanupSession(sessionId: string): void
-  }
+    cleanupSession(sessionId: string): void;
+  };
   /** 事件发送服务 */
   events: {
     /** 向指定 session 广播流式事件（前端 + EventBus） */
-    emit(
-      sessionId: string,
-      chunk: { type: string; content: string; data?: Record<string, unknown> }
-    ): void
-  }
+    emit(sessionId: string, chunk: { type: string; content: string; data?: Record<string, unknown> }): void;
+  };
 }
 
 /** Extension 与系统交互的唯一接口 */
 export interface ExtensionApi {
   /** Extension ID */
-  id: string
+  id: string;
   /** Extension 名称 */
-  name: string
+  name: string;
   /** 来源 */
-  origin: ExtensionOrigin
+  origin: ExtensionOrigin;
   /** 日志 */
-  logger: ExtensionLogger
+  logger: ExtensionLogger;
 
   /**
    * 核心服务接口（解耦 Extension 与核心模块的直接依赖）
@@ -94,18 +88,14 @@ export interface ExtensionApi {
    * Extension 应通过 api.services 访问 HITL、事件等能力，
    * 而非直接 import 内部模块路径。
    */
-  services: ExtensionServices
+  services: ExtensionServices;
 
   /** 注册工具 */
-  registerTool(tool: ToolDefinition): void
+  registerTool(tool: ToolDefinition): void;
   /** 注册 Agent 生命周期钩子 */
-  on<K extends ExtensionHookName>(
-    hookName: K,
-    handler: ExtensionHookHandler<K>,
-    opts?: { priority?: number }
-  ): void
+  on<K extends ExtensionHookName>(hookName: K, handler: ExtensionHookHandler<K>, opts?: { priority?: number }): void;
   /** 注册 Gateway RPC 方法 */
-  registerGatewayMethod(method: string, handler: MethodHandler): void
+  registerGatewayMethod(method: string, handler: MethodHandler): void;
 }
 
 // ==================== Extension Hook ====================
@@ -130,10 +120,10 @@ export type ExtensionHookName =
   | 'message_dequeued' // void：消息出队（即将执行）
   | 'queue_drain_start' // void：队列排水开始
   | 'model_resolved' // void：模型选择完成
-  | 'model_fallback' // void：模型回退触发
+  | 'model_fallback'; // void：模型回退触发
 
 /** 执行模式 */
-export type ExtensionHookMode = 'void' | 'modifying'
+export type ExtensionHookMode = 'void' | 'modifying';
 
 export const EXTENSION_HOOK_MODE: Record<ExtensionHookName, ExtensionHookMode> = {
   before_agent_start: 'modifying',
@@ -155,243 +145,246 @@ export const EXTENSION_HOOK_MODE: Record<ExtensionHookName, ExtensionHookMode> =
   queue_drain_start: 'void',
   model_resolved: 'void',
   model_fallback: 'void'
-}
+};
 
 // ---- 各 Hook 的 Event / Result ----
 
 export interface BeforeAgentStartEvent {
-  sessionId: string
-  prompt: string
-  systemPrompt?: string
+  sessionId: string;
+  prompt: string;
+  systemPrompt?: string;
 }
 export interface BeforeAgentStartResult {
-  prependContext?: string
-  replaceSystemPrompt?: string
+  prependContext?: string;
+  replaceSystemPrompt?: string;
 }
 
 export interface BeforeToolCallEvent {
-  sessionId: string
-  toolName: string
-  params: Record<string, unknown>
+  sessionId: string;
+  toolName: string;
+  params: Record<string, unknown>;
   /** 工具定义中是否标记需要用户确认（needUserConfirm） */
-  needUserConfirm?: boolean
+  needUserConfirm?: boolean;
 }
 export interface BeforeToolCallResult {
-  block?: boolean
-  blockReason?: string
-  params?: Record<string, unknown>
+  block?: boolean;
+  blockReason?: string;
+  /** 异步挂起：工具需要审批但不阻塞 Agent run，run 正常结束后等待事件唤醒 */
+  suspend?: boolean;
+  suspendReason?: string;
+  params?: Record<string, unknown>;
 }
 
 export interface ToolResultPersistEvent {
-  sessionId: string
-  toolName: string
-  result: string
+  sessionId: string;
+  toolName: string;
+  result: string;
 }
 export interface ToolResultPersistResult {
-  result?: string
+  result?: string;
 }
 
 export interface AgentEndEvent {
-  sessionId: string
-  success: boolean
-  output: string
-  durationMs: number
+  sessionId: string;
+  success: boolean;
+  output: string;
+  durationMs: number;
 }
 
 export interface AfterToolCallEvent {
-  sessionId: string
-  toolName: string
-  params: Record<string, unknown>
-  result: string
-  durationMs: number
+  sessionId: string;
+  toolName: string;
+  params: Record<string, unknown>;
+  result: string;
+  durationMs: number;
 }
 
 export interface MessageReceivedEvent {
-  sessionId: string
-  message: string
+  sessionId: string;
+  message: string;
 }
 
 export interface SessionEvent {
-  sessionId: string
+  sessionId: string;
 }
 
 // ---- Phase 1 新增：Turn + Compaction ----
 
 export interface TurnStartEvent {
-  sessionId: string
+  sessionId: string;
   /** 轮次索引（从 1 开始） */
-  turnIndex: number
+  turnIndex: number;
 }
 
 export interface TurnEndEvent {
-  sessionId: string
+  sessionId: string;
   /** 轮次索引 */
-  turnIndex: number
+  turnIndex: number;
   /** 本轮耗时（ms） */
-  durationMs: number
+  durationMs: number;
   /** 本轮工具调用次数 */
-  toolCallCount: number
+  toolCallCount: number;
   /** 本轮 token 用量（如果底层 Runtime 提供） */
   usage?: {
-    inputTokens: number
-    outputTokens: number
-  }
+    inputTokens: number;
+    outputTokens: number;
+  };
 }
 
 export interface BeforeCompactionEvent {
-  sessionId: string
+  sessionId: string;
   /** 待压缩消息数 */
-  messageCount: number
+  messageCount: number;
   /** 当前 token 总数 */
-  totalTokens: number
+  totalTokens: number;
   /** 触发阈值 */
-  threshold: number
+  threshold: number;
 }
 
 export interface BeforeCompactionResult {
   /** 跳过默认压缩（由扩展自行实现压缩） */
-  skipDefault?: boolean
+  skipDefault?: boolean;
   /** 自定义压缩摘要（替换默认摘要） */
-  customSummary?: string
+  customSummary?: string;
 }
 
 export interface AfterCompactionEvent {
-  sessionId: string
+  sessionId: string;
   /** 压缩前 token 数 */
-  originalTokens: number
+  originalTokens: number;
   /** 压缩后 token 数 */
-  compressedTokens: number
+  compressedTokens: number;
   /** 压缩比 */
-  compressionRatio: number
+  compressionRatio: number;
   /** 压缩耗时（ms） */
-  duration: number
+  duration: number;
 }
 
 // ---- Phase 2 新增：Pipeline + Provider ----
 
 export interface MessageQueuedEvent {
-  sessionId: string
+  sessionId: string;
   /** 入队的消息内容 */
-  message: string
+  message: string;
   /** 当前队列模式 */
-  mode: string
+  mode: string;
   /** 入队后队列深度 */
-  queueLength: number
+  queueLength: number;
 }
 
 export interface MessageDequeuedEvent {
-  sessionId: string
+  sessionId: string;
   /** 出队的消息内容 */
-  message: string
+  message: string;
   /** 出队后剩余队列深度 */
-  remainingLength: number
+  remainingLength: number;
 }
 
 export interface QueueDrainStartEvent {
-  sessionId: string
+  sessionId: string;
   /** 排水策略 */
-  strategy: 'followup' | 'collect'
+  strategy: 'followup' | 'collect';
   /** 待排水消息数 */
-  pendingCount: number
+  pendingCount: number;
 }
 
 export interface ModelResolvedEvent {
-  sessionId: string
+  sessionId: string;
   /** 解析后的 provider ID */
-  providerId: string
+  providerId: string;
   /** 解析后的 model ID */
-  modelId: string
+  modelId: string;
   /** 解析来源层级 */
-  source: string
+  source: string;
 }
 
 export interface ModelFallbackEvent {
-  sessionId: string
+  sessionId: string;
   /** 失败的 provider/model */
-  failedRef: string
+  failedRef: string;
   /** 回退到的 provider/model */
-  fallbackRef: string
+  fallbackRef: string;
   /** 失败原因 */
-  error: string
+  error: string;
   /** 已尝试次数 */
-  attemptIndex: number
+  attemptIndex: number;
 }
 
 /** Event 映射 */
 export type ExtensionHookEventMap = {
-  before_agent_start: BeforeAgentStartEvent
-  agent_end: AgentEndEvent
-  before_tool_call: BeforeToolCallEvent
-  after_tool_call: AfterToolCallEvent
-  tool_result_persist: ToolResultPersistEvent
-  message_received: MessageReceivedEvent
-  session_start: SessionEvent
-  session_end: SessionEvent
+  before_agent_start: BeforeAgentStartEvent;
+  agent_end: AgentEndEvent;
+  before_tool_call: BeforeToolCallEvent;
+  after_tool_call: AfterToolCallEvent;
+  tool_result_persist: ToolResultPersistEvent;
+  message_received: MessageReceivedEvent;
+  session_start: SessionEvent;
+  session_end: SessionEvent;
   // Phase 1 新增
-  turn_start: TurnStartEvent
-  turn_end: TurnEndEvent
-  before_compaction: BeforeCompactionEvent
-  after_compaction: AfterCompactionEvent
+  turn_start: TurnStartEvent;
+  turn_end: TurnEndEvent;
+  before_compaction: BeforeCompactionEvent;
+  after_compaction: AfterCompactionEvent;
   // Phase 2 新增（Pipeline + Provider）
-  message_queued: MessageQueuedEvent
-  message_dequeued: MessageDequeuedEvent
-  queue_drain_start: QueueDrainStartEvent
-  model_resolved: ModelResolvedEvent
-  model_fallback: ModelFallbackEvent
-}
+  message_queued: MessageQueuedEvent;
+  message_dequeued: MessageDequeuedEvent;
+  queue_drain_start: QueueDrainStartEvent;
+  model_resolved: ModelResolvedEvent;
+  model_fallback: ModelFallbackEvent;
+};
 
 /** Result 映射 */
 export type ExtensionHookResultMap = {
-  before_agent_start: BeforeAgentStartResult | void
-  agent_end: void
-  before_tool_call: BeforeToolCallResult | void
-  after_tool_call: void
-  tool_result_persist: ToolResultPersistResult | void
-  message_received: void
-  session_start: void
-  session_end: void
+  before_agent_start: BeforeAgentStartResult | void;
+  agent_end: void;
+  before_tool_call: BeforeToolCallResult | void;
+  after_tool_call: void;
+  tool_result_persist: ToolResultPersistResult | void;
+  message_received: void;
+  session_start: void;
+  session_end: void;
   // Phase 1 新增
-  turn_start: void
-  turn_end: void
-  before_compaction: BeforeCompactionResult | void
-  after_compaction: void
+  turn_start: void;
+  turn_end: void;
+  before_compaction: BeforeCompactionResult | void;
+  after_compaction: void;
   // Phase 2 新增（Pipeline + Provider）
-  message_queued: void
-  message_dequeued: void
-  queue_drain_start: void
-  model_resolved: void
-  model_fallback: void
-}
+  message_queued: void;
+  message_dequeued: void;
+  queue_drain_start: void;
+  model_resolved: void;
+  model_fallback: void;
+};
 
 /** Handler 签名 */
 export type ExtensionHookHandler<K extends ExtensionHookName> = (
   event: ExtensionHookEventMap[K]
-) => Promise<ExtensionHookResultMap[K]>
+) => Promise<ExtensionHookResultMap[K]>;
 
 /** 已注册的 Hook */
 export interface RegisteredExtensionHook<K extends ExtensionHookName = ExtensionHookName> {
-  extensionId: string
-  hookName: K
-  handler: ExtensionHookHandler<K>
-  priority: number
+  extensionId: string;
+  hookName: K;
+  handler: ExtensionHookHandler<K>;
+  priority: number;
 }
 
 // ==================== 注册记录 ====================
 
 export interface RegisteredExtensionTool {
-  extensionId: string
-  tool: ToolDefinition
+  extensionId: string;
+  tool: ToolDefinition;
 }
 
 export interface RegisteredExtensionMethod {
-  extensionId: string
-  method: string
-  handler: MethodHandler
+  extensionId: string;
+  method: string;
+  handler: MethodHandler;
 }
 
 /** 扩展贡献的 Skill 目录 */
 export interface RegisteredExtensionSkillDir {
-  extensionId: string
+  extensionId: string;
   /** 已解析为绝对路径的 Skill 目录 */
-  dir: string
+  dir: string;
 }

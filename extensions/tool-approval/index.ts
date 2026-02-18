@@ -16,28 +16,28 @@
  *   - 通过 StreamEmitter 发送 hitl:* 事件到前端
  */
 
-import type { ExtensionApi } from '../../src/main/common/extension'
+import type { ExtensionApi } from '../../src/main/common/extension';
 
 // ==================== 常量 ====================
 
 /** 默认审批超时（5 分钟） — 可通过 coobee.json5 security.approvals.timeoutMs 覆盖 */
-const DEFAULT_APPROVAL_TIMEOUT_MS = 300_000
+const DEFAULT_APPROVAL_TIMEOUT_MS = 300_000;
 
 // ==================== 会话级计数器 ====================
 
 /** 每个 session 的审批索引计数器（从 0 开始递增） */
-const sessionCounters = new Map<string, number>()
+const sessionCounters = new Map<string, number>();
 
 /** 获取下一个审批索引 */
 function getNextApprovalIndex(sessionId: string): number {
-  const current = sessionCounters.get(sessionId) ?? 0
-  sessionCounters.set(sessionId, current + 1)
-  return current
+  const current = sessionCounters.get(sessionId) ?? 0;
+  sessionCounters.set(sessionId, current + 1);
+  return current;
 }
 
 /** 重置会话计数器 */
 function resetSessionCounter(sessionId: string): void {
-  sessionCounters.delete(sessionId)
+  sessionCounters.delete(sessionId);
 }
 
 // ==================== Extension 模块 ====================
@@ -50,81 +50,87 @@ export default {
     api.on(
       'session_start',
       async (event) => {
-        resetSessionCounter(event.sessionId)
+        resetSessionCounter(event.sessionId);
       },
       { priority: 100 } // 最高优先级，确保先重置
-    )
+    );
 
     // ========== session_end: 清理 pending ==========
     api.on(
       'session_end',
       async (event) => {
         try {
-          await api.services.hitl.cleanupSession(event.sessionId)
-          resetSessionCounter(event.sessionId)
+          await api.services.hitl.cleanupSession(event.sessionId);
+          resetSessionCounter(event.sessionId);
         } catch {
           // 清理失败不阻断
         }
       },
       { priority: 100 }
-    )
+    );
 
     // ========== before_tool_call: 核心审批逻辑 ==========
     api.on(
       'before_tool_call',
       async (event) => {
-        const { sessionId, toolName, params, needUserConfirm } = event
+        const { sessionId, toolName, params, needUserConfirm } = event;
 
         // 1. ExecPolicy 检查（仅对 exec 工具）
         if (toolName === 'exec' && params.command) {
           try {
-            const { checkExecPolicy, learnExecCommand } =
-              await import('../../src/main/ai/sandbox/exec-policy')
-            const policy = checkExecPolicy(params.command as string)
+            const { checkExecPolicy, learnExecCommand } = await import('../../src/main/ai/sandbox/exec-policy');
+            const policy = checkExecPolicy(params.command as string);
 
             if (policy.action === 'deny') {
               api.logger.warn(
                 `[tool-approval] ExecPolicy deny: "${(params.command as string).slice(0, 50)}", reason=${policy.reason}`
-              )
+              );
               return {
                 block: true,
                 blockReason: `Command rejected by security policy: ${policy.reason}`
-              }
+              };
             }
 
             if (policy.action === 'allow') {
               api.logger.info(
                 `[tool-approval] ExecPolicy allow: "${(params.command as string).slice(0, 50)}", reason=${policy.reason}`
-              )
+              );
               // 白名单命令自动放行，跳过 HITL
-              return
+              return;
             }
 
             // policy.action === 'ask' → 需要用户审批，继续到下面的 HITL 逻辑
             // 即使 needUserConfirm 为 false，exec 的 'ask' 策略也需要用户审批
-            return await requestApproval(api, sessionId, toolName, params, learnExecCommand)
+            return await requestApproval(api, sessionId, toolName, params, learnExecCommand);
           } catch (err) {
-            api.logger.warn(`[tool-approval] ExecPolicy check failed: ${err}`)
+            api.logger.warn(`[tool-approval] ExecPolicy check failed: ${err}`);
             // ExecPolicy 检查失败，降级到 needUserConfirm 逻辑
           }
         }
 
         // 2. 非 exec 工具：检查 needUserConfirm
-        if (!needUserConfirm) return
+        if (!needUserConfirm) return;
 
-        return await requestApproval(api, sessionId, toolName, params)
+        return await requestApproval(api, sessionId, toolName, params);
       },
       { priority: 10 } // 高优先级，在其他 before_tool_call hook 之前
-    )
+    );
   }
-}
+};
 
 // ==================== 辅助函数 ====================
 
 /**
- * 发起审批请求并等待决策
+ * 发起审批请求
  *
- * @param learnFn 可选的学习函数（approve-always 时调用）
+ * 异步模式：不阻塞 Agent run。
+ * 发送 hitl:required 事件后立即返回 { suspend: true }，
+ * Agent run 正常结束，等待用户审批后由 ThreadWaker 唤醒。
+ *
+ * 同步模式（兼容）：如果配置了同步审批，则阻塞等待决策。
+ * 通过 coobee.json5 的 security.approvals.asyncMode 控制（默认 true）。
+ *
+ * @param learnFn 可选的学习函数（approve-always 时调用，仅同步模式有效）
  */
 async function requestApproval(
   api: ExtensionApi,
@@ -132,13 +138,13 @@ async function requestApproval(
   toolName: string,
   params: Record<string, unknown>,
   learnFn?: (command: string) => void
-): Promise<{ block?: boolean; blockReason?: string } | void> {
-  const index = getNextApprovalIndex(sessionId)
-  const approvalId = `${sessionId}:${index}`
+): Promise<{ block?: boolean; blockReason?: string; suspend?: boolean; suspendReason?: string } | void> {
+  const index = getNextApprovalIndex(sessionId);
+  const approvalId = `${sessionId}:${index}`;
 
-  api.logger.info(`[tool-approval] Requesting approval: approvalId=${approvalId}, tool=${toolName}`)
+  api.logger.info(`[tool-approval] Requesting approval: approvalId=${approvalId}, tool=${toolName}`);
 
-  // 1. 发送 hitl:required 事件到前端（通过 services.events）
+  // 1. 发送 hitl:required 事件到前端
   try {
     api.services.events.emit(sessionId, {
       type: 'hitl:required',
@@ -147,50 +153,75 @@ async function requestApproval(
         index,
         toolName,
         arguments: JSON.stringify(params),
-        action: 'required'
+        action: 'required',
+        approvalId
       }
-    })
+    });
   } catch (err) {
-    api.logger.warn(`[tool-approval] Failed to emit hitl:required: ${err}`)
+    api.logger.warn(`[tool-approval] Failed to emit hitl:required: ${err}`);
   }
 
-  // 2. 等待用户决策（通过 services.hitl）
+  // 2. 检查是否使用异步模式
+  const asyncMode = await isAsyncApprovalMode();
+
+  if (asyncMode) {
+    // 异步模式：立即返回 suspend，不阻塞 Agent run
+    api.logger.info(`[tool-approval] Async suspend: approvalId=${approvalId}, tool=${toolName}`);
+    return {
+      suspend: true,
+      suspendReason: `approval-pending:${approvalId}:${toolName}`
+    };
+  }
+
+  // 3. 同步模式（兼容旧行为）：阻塞等待用户决策
   try {
-    const timeoutMs = await getApprovalTimeout()
-    const decision = await api.services.hitl.waitForSingleDecision(approvalId, timeoutMs)
+    const timeoutMs = await getApprovalTimeout();
+    const decision = await api.services.hitl.waitForSingleDecision(approvalId, timeoutMs);
 
     if (!decision) {
-      api.logger.warn(`[tool-approval] Timeout: approvalId=${approvalId}`)
-      emitDecisionEvent(sessionId, index, toolName, 'rejected', 'timeout')
-      return { block: true, blockReason: 'Approval timeout — tool execution blocked' }
+      api.logger.warn(`[tool-approval] Timeout: approvalId=${approvalId}`);
+      emitDecisionEvent(sessionId, index, toolName, 'rejected', 'timeout');
+      return { block: true, blockReason: 'Approval timeout — tool execution blocked' };
     }
 
     if (decision === 'reject') {
-      api.logger.info(`[tool-approval] Rejected: approvalId=${approvalId}`)
-      emitDecisionEvent(sessionId, index, toolName, 'rejected')
-      return { block: true, blockReason: 'User rejected tool execution' }
+      api.logger.info(`[tool-approval] Rejected: approvalId=${approvalId}`);
+      emitDecisionEvent(sessionId, index, toolName, 'rejected');
+      return { block: true, blockReason: 'User rejected tool execution' };
     }
 
-    // approve-once 或 approve-always
-    api.logger.info(`[tool-approval] Approved: approvalId=${approvalId}, decision=${decision}`)
-    emitDecisionEvent(sessionId, index, toolName, 'approved')
+    api.logger.info(`[tool-approval] Approved: approvalId=${approvalId}, decision=${decision}`);
+    emitDecisionEvent(sessionId, index, toolName, 'approved');
 
-    // approve-always + exec → 自学习
     if (decision === 'approve-always' && learnFn && toolName === 'exec' && params.command) {
       try {
-        learnFn(params.command as string)
-        api.logger.info(
-          `[tool-approval] Learned exec command: "${(params.command as string).slice(0, 50)}"`
-        )
+        learnFn(params.command as string);
+        api.logger.info(`[tool-approval] Learned exec command: "${(params.command as string).slice(0, 50)}"`);
       } catch {
         // 学习失败不阻断
       }
     }
 
-    return // 放行
+    return; // 放行
   } catch (err) {
-    api.logger.error(`[tool-approval] Wait failed: ${err}`)
-    return { block: true, blockReason: 'Approval wait error — tool execution blocked' }
+    api.logger.error(`[tool-approval] Wait failed: ${err}`);
+    return { block: true, blockReason: 'Approval wait error — tool execution blocked' };
+  }
+}
+
+/**
+ * 判断是否启用异步审批模式
+ *
+ * 读取 coobee.json5 中的 security.approvals.asyncMode。
+ * 默认启用异步模式（true）。
+ */
+async function isAsyncApprovalMode(): Promise<boolean> {
+  try {
+    const { configStoreInstance } = await import('../../src/main/common/config/ConfigStore');
+    const approvals = configStoreInstance?.get?.('security')?.approvals;
+    return approvals?.asyncMode ?? true;
+  } catch {
+    return true;
   }
 }
 
@@ -209,17 +240,17 @@ async function emitDecisionEvent(
   action: 'approved' | 'rejected',
   reason?: string
 ): Promise<void> {
-  const chunkType = action === 'approved' ? 'hitl:approved' : 'hitl:rejected'
+  const chunkType = action === 'approved' ? 'hitl:approved' : 'hitl:rejected';
   const chunk = {
     type: chunkType as 'hitl:approved' | 'hitl:rejected',
     content: `${action}: ${toolName}`,
     data: { index, toolName, action, ...(reason ? { reason } : {}) }
-  }
+  };
 
   // 统一分发：写文件 + 推前端（单一入口）
   try {
-    const { AgentEventWriter } = await import('../../src/main/ai/AgentEventWriter')
-    AgentEventWriter.dispatchForSession(sessionId, chunk)
+    const { AgentEventWriter } = await import('../../src/main/ai/AgentEventWriter');
+    AgentEventWriter.dispatchForSession(sessionId, chunk);
   } catch {
     // 分发失败不阻断
   }
@@ -233,10 +264,10 @@ async function emitDecisionEvent(
  */
 async function getApprovalTimeout(): Promise<number> {
   try {
-    const { configStoreInstance } = await import('../../src/main/common/config/ConfigStore')
-    const approvals = configStoreInstance?.get?.('security')?.approvals
-    return approvals?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS
+    const { configStoreInstance } = await import('../../src/main/common/config/ConfigStore');
+    const approvals = configStoreInstance?.get?.('security')?.approvals;
+    return approvals?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS;
   } catch {
-    return DEFAULT_APPROVAL_TIMEOUT_MS
+    return DEFAULT_APPROVAL_TIMEOUT_MS;
   }
 }

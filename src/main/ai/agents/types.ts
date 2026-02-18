@@ -12,6 +12,7 @@
  */
 
 import type { ThinkingLevel } from '../runtime/pimono/types';
+import type { AgentType } from '../threads/types';
 
 // ==================== Agent 定义 ====================
 
@@ -25,6 +26,9 @@ export interface AgentDefinition {
 
   /** 一句话描述（LLM 用于判断是否需要此 Agent，前端展示用） */
   description: string;
+
+  /** Agent 分类类型（默认 'agent'） */
+  type?: AgentType;
 
   /** 系统指令（定义 Agent 的人格、专长、行为规范） */
   instructions: string;

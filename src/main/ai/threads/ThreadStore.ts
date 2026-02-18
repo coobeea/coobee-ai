@@ -88,7 +88,7 @@ export class ThreadStore {
 
   // ==================== CRUD ====================
 
-  /** 创建新 Thread（自动生成 Snowflake ID） */
+  /** 创建新 Thread（自动生成 Snowflake ID，sessionId = id） */
   async create(params: CreateThreadParams): Promise<ThreadDefinition> {
     await this.init();
 
@@ -100,6 +100,10 @@ export class ThreadStore {
       title: params.title,
       agentId: params.agentId,
       status: 'active',
+      sessionId: id,
+      agentMode: params.agentMode ?? 'agent',
+      agentType: params.agentType ?? 'agent',
+      runStatus: 'idle',
       messageCount: 0,
       createdAt: now,
       updatedAt: now,
@@ -170,6 +174,7 @@ export class ThreadStore {
       ...existing,
       ...(params.title !== undefined && { title: params.title }),
       ...(params.status !== undefined && { status: params.status }),
+      ...(params.runStatus !== undefined && { runStatus: params.runStatus }),
       ...(params.messageCount !== undefined && { messageCount: params.messageCount }),
       ...(params.metadata !== undefined && { metadata: params.metadata }),
       updatedAt: new Date().toISOString()
@@ -234,6 +239,8 @@ function toIndexEntry(def: ThreadDefinition): ThreadIndexEntry {
     title: def.title,
     agentId: def.agentId,
     status: def.status,
+    runStatus: def.runStatus ?? 'idle',
+    agentType: def.agentType ?? 'agent',
     messageCount: def.messageCount,
     createdAt: def.createdAt,
     updatedAt: def.updatedAt

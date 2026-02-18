@@ -170,9 +170,18 @@ export const delegateToAgentTool: ToolDefinition = {
     const message = messageParts.join('\n');
 
     // 5. 创建临时运行时并执行
+    const parentSessionId = execContext?.sessionId || 'unknown';
     const startTime = Date.now();
     try {
-      const result = await runSubAgent(agentDef, message, maxTurns, subAgentWorkspace, experiencesDir, signal);
+      const result = await runSubAgent(
+        agentDef,
+        message,
+        maxTurns,
+        subAgentWorkspace,
+        experiencesDir,
+        parentSessionId,
+        signal
+      );
       const duration = Date.now() - startTime;
 
       yield {
@@ -265,6 +274,7 @@ async function runSubAgent(
   maxTurns: number,
   subAgentWorkspace: string,
   experiencesDir: string,
+  parentSessionId: string,
   signal?: AbortSignal
 ): Promise<{ output: string; toolCalls?: Array<{ toolName: string }> }> {
   // 动态导入，避免循环依赖
@@ -291,7 +301,7 @@ async function runSubAgent(
     .piMono()
     .name(agentDef.name || agentDef.id)
     .mode('agent')
-    .sessionMode('memory')
+    .sessionMode('file')
     .instructions(fullInstructions)
     .maxTurns(maxTurns)
     // 手动设置子 Agent 的工作目录，不走 injectEnv 的顶级 workspace 创建
@@ -331,8 +341,8 @@ async function runSubAgent(
     await applyDefaultThinkingLevel(builder);
   }
 
-  // 生成临时 sessionId（用于 AgentExecutor 内部跟踪，不会创建顶级 workspace）
-  const subSessionId = `delegate-${agentDef.id}-${Date.now()}`;
+  // 子 Agent sessionId：以父 sessionId(= threadId) 为前缀，保证可追溯
+  const subSessionId = `${parentSessionId}:delegate:${agentDef.id}`;
 
   // 使用 submitAndWait 同步执行
   const result = await withTimeout(

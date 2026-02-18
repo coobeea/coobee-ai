@@ -4,60 +4,77 @@
  * 方法：
  *   hitl.decide — 提交审批决策
  *
- * 审批模型（per-tool-call）：
- *   tool-approval Extension 为每个需要审批的工具调用生成唯一的 approvalId（格式：sessionId:index）。
- *   前端通过 hitl:required 事件获取 index，然后调用此方法提交决策。
- *   HitlApprovalManager 使用 approvalId 作为 key 进行 per-call 等待/唤醒。
+ * 审批模型：
+ *   支持两种模式（由 tool-approval Extension 的 asyncMode 配置决定）：
+ *
+ *   同步模式：Extension 阻塞等待 → submitSingleDecision 唤醒 Promise
+ *   异步模式：Extension 返回 suspend → Agent run 结束 → 用户审批 →
+ *             此处触发 thread:wake 事件 → ThreadWaker 执行工具并恢复 Agent run
  */
 
-import { log } from '@main/common/logger'
-import { hitlApprovalManager } from '@main/ai/hitl/HitlApprovalManager'
-import { GatewayErrorCode, GatewayMethodError } from '../protocol'
-import type { MethodGroup } from '../protocol'
-import type { HitlApprovalDecision } from '@shared/stream-protocol'
+import { log } from '@main/common/logger';
+import { hitlApprovalManager } from '@main/ai/hitl/HitlApprovalManager';
+import { eventBus } from '@main/common/eventbus';
+import { CheckpointManager } from '@main/ai/threads/CheckpointManager';
+import type { ThreadWakeEvent } from '@main/ai/threads/ThreadWaker';
+import { GatewayErrorCode, GatewayMethodError } from '../protocol';
+import type { MethodGroup } from '../protocol';
+import type { HitlApprovalDecision } from '@shared/stream-protocol';
 
 export const approvalMethods: MethodGroup = {
   namespace: 'hitl',
   methods: {
     decide: async (params) => {
-      const { sessionId, index, decision } = params as {
-        sessionId?: string
-        index?: number
-        decision?: HitlApprovalDecision
-      }
+      const { sessionId, index, decision, toolName, toolParams } = params as {
+        sessionId?: string;
+        index?: number;
+        decision?: HitlApprovalDecision;
+        toolName?: string;
+        toolParams?: Record<string, unknown>;
+      };
 
       // 参数校验
       if (!sessionId) {
-        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'sessionId is required')
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'sessionId is required');
       }
       if (typeof index !== 'number' || index < 0) {
-        throw new GatewayMethodError(
-          GatewayErrorCode.INVALID_PARAMS,
-          'index must be a non-negative number'
-        )
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'index must be a non-negative number');
       }
 
-      const validDecisions: HitlApprovalDecision[] = ['approve-once', 'approve-always', 'reject']
+      const validDecisions: HitlApprovalDecision[] = ['approve-once', 'approve-always', 'reject'];
       if (!decision || !validDecisions.includes(decision)) {
-        throw new GatewayMethodError(
-          GatewayErrorCode.INVALID_PARAMS,
-          `Invalid decision: ${decision}`
-        )
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, `Invalid decision: ${decision}`);
       }
 
-      // 构造 approvalId（与 tool-approval Extension 约定的格式一致）
-      const approvalId = `${sessionId}:${index}`
-      log.info(`[hitl.decide] approvalId=${approvalId}, decision=${decision}`)
+      const approvalId = `${sessionId}:${index}`;
+      log.info(`[hitl.decide] approvalId=${approvalId}, decision=${decision}`);
 
-      const success = hitlApprovalManager.submitSingleDecision(approvalId, decision)
-      if (!success) {
-        throw new GatewayMethodError(
-          GatewayErrorCode.INTERNAL_ERROR,
-          'No pending approval for this approvalId'
-        )
+      // 尝试同步模式：如果有 pending promise，直接 resolve 它
+      const syncSuccess = hitlApprovalManager.submitSingleDecision(approvalId, decision);
+      if (syncSuccess) {
+        return { ok: true };
       }
 
-      return { ok: true }
+      // 同步模式没有 pending → 尝试异步模式：检查 checkpoint 是否处于 approval-pending
+      const checkpoint = await CheckpointManager.getInstance().load(sessionId);
+      if (checkpoint?.runStatus === 'approval-pending') {
+        log.info(`[hitl.decide] Async mode: emitting thread:wake for ${sessionId}`);
+
+        eventBus.emit('thread:wake', {
+          threadId: sessionId,
+          reason: 'approval-done',
+          approvalDecision: decision,
+          toolName: toolName || checkpoint.pendingOperation?.toolName,
+          toolParams
+        } satisfies ThreadWakeEvent);
+
+        return { ok: true };
+      }
+
+      throw new GatewayMethodError(
+        GatewayErrorCode.INTERNAL_ERROR,
+        'No pending approval for this approvalId (neither sync nor async)'
+      );
     }
   }
-}
+};

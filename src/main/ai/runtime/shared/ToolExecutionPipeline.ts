@@ -14,39 +14,43 @@
  * @module runtime/shared/ToolExecutionPipeline
  */
 
-import type { ToolDefinition, ToolResult, ToolStreamUpdate } from '../../tools/types'
+import type { ToolDefinition, ToolResult, ToolStreamUpdate } from '../../tools/types';
 
 // ==================== Types ====================
 
 /** 管线执行结果 */
 export interface PipelineResult {
   /** 最终文本结果（经过 hook 修改后） */
-  resultText: string
+  resultText: string;
   /** 工具是否被拦截（before_tool_call block 或 policy deny） */
-  blocked: boolean
+  blocked: boolean;
   /** 拦截原因 */
-  blockReason?: string
+  blockReason?: string;
+  /** 是否因异步操作挂起（如审批等待），Agent run 应结束并等待唤醒 */
+  suspended: boolean;
+  /** 挂起原因 */
+  suspendReason?: string;
   /** 原始 ToolResult（未经 hook 修改） */
-  rawResult?: ToolResult
+  rawResult?: ToolResult;
 }
 
 /** 增量输出回调 */
-export type OnToolUpdate = (update: ToolStreamUpdate) => void
+export type OnToolUpdate = (update: ToolStreamUpdate) => void;
 
 /** 管线选项 */
 export interface PipelineOptions {
   /** 沙箱上下文（包含 sessionId, toolPolicy 等） */
   sandboxContext: {
-    sessionId?: string
-    toolPolicy?: unknown
-    workspaceRoot: string
-    sandboxRoot?: string
-    mode?: string
-  }
+    sessionId?: string;
+    toolPolicy?: unknown;
+    workspaceRoot: string;
+    sandboxRoot?: string;
+    mode?: string;
+  };
   /** 增量输出回调（由各 Runtime 桥接到 SDK 特定的机制） */
-  onUpdate?: OnToolUpdate
+  onUpdate?: OnToolUpdate;
   /** AbortSignal（可选） */
-  signal?: AbortSignal
+  signal?: AbortSignal;
 }
 
 // ==================== Core ====================
@@ -64,31 +68,45 @@ export async function executeToolPipeline(
   params: Record<string, unknown>,
   opts: PipelineOptions
 ): Promise<PipelineResult> {
-  let typedParams = params
-  const toolStartTime = Date.now()
-  const sessionId = opts.sandboxContext.sessionId || ''
+  let typedParams = params;
+  const toolStartTime = Date.now();
+  const sessionId = opts.sandboxContext.sessionId || '';
 
   // === Phase 1: before_tool_call Hook ===
   try {
-    const { ExtensionManager } = await import('../../../common/extension')
-    const runner = ExtensionManager.getHookRunner()
+    const { ExtensionManager } = await import('../../../common/extension');
+    const runner = ExtensionManager.getHookRunner();
     if (runner) {
       const hookResult = await runner.runModifyingHook('before_tool_call', {
         sessionId,
         toolName: def.name,
         params: typedParams,
         needUserConfirm: def.needUserConfirm ?? false
-      })
+      });
       if (hookResult) {
+        // 异步挂起：工具需要审批但不阻塞 Agent run
+        if (hookResult.suspend) {
+          const reason = hookResult.suspendReason || 'approval-pending';
+          return {
+            resultText:
+              `[SUSPENDED] Tool "${def.name}" execution suspended: ${reason}. ` +
+              `The tool will be executed after approval. Do NOT retry this tool call — ` +
+              `the system will resume automatically when the approval is received.`,
+            blocked: false,
+            suspended: true,
+            suspendReason: reason
+          };
+        }
         if (hookResult.block) {
           return {
             resultText: `Error: Tool blocked — ${hookResult.blockReason || 'no reason'}`,
             blocked: true,
+            suspended: false,
             blockReason: hookResult.blockReason || 'no reason'
-          }
+          };
         }
         if (hookResult.params) {
-          typedParams = { ...typedParams, ...hookResult.params }
+          typedParams = { ...typedParams, ...hookResult.params };
         }
       }
     }
@@ -98,62 +116,60 @@ export async function executeToolPipeline(
 
   // === Phase 2: sandbox toolPolicy 检查 ===
   try {
-    const { isToolAllowed, formatToolBlockedMessage } = await import('../../sandbox')
-    const toolPolicy = opts.sandboxContext.toolPolicy as
-      | import('../../sandbox/types').ResolvedToolPolicy
-      | undefined
+    const { isToolAllowed, formatToolBlockedMessage } = await import('../../sandbox');
+    const toolPolicy = opts.sandboxContext.toolPolicy as import('../../sandbox/types').ResolvedToolPolicy | undefined;
     if (toolPolicy && !isToolAllowed(def.name, toolPolicy)) {
-      const msg = formatToolBlockedMessage(def.name, toolPolicy)
+      const msg = formatToolBlockedMessage(def.name, toolPolicy);
       return {
         resultText: `Error: ${msg}`,
         blocked: true,
+        suspended: false,
         blockReason: msg
-      }
+      };
     }
   } catch {
     // sandbox 导入失败不阻断
   }
 
   // === Phase 3: 执行工具 ===
-  const gen = def.execute(typedParams, opts.signal, opts.sandboxContext as never)
-  let iterResult = await gen.next()
+  const gen = def.execute(typedParams, opts.signal, opts.sandboxContext as never);
+  let iterResult = await gen.next();
 
   // 消费 AsyncGenerator 的增量输出
   while (!iterResult.done) {
-    const update = iterResult.value
+    const update = iterResult.value;
     if (opts.onUpdate) {
-      opts.onUpdate(update)
+      opts.onUpdate(update);
     }
-    iterResult = await gen.next()
+    iterResult = await gen.next();
   }
 
   // 最终结果
-  const toolResult = iterResult.value
+  const toolResult = iterResult.value;
   let resultText =
-    toolResult.llmContent ||
-    (toolResult.success ? 'Success' : `Error: ${toolResult.error?.message || 'unknown'}`)
+    toolResult.llmContent || (toolResult.success ? 'Success' : `Error: ${toolResult.error?.message || 'unknown'}`);
 
   // === Phase 4: after_tool_call + tool_result_persist Hooks ===
   try {
-    const { ExtensionManager } = await import('../../../common/extension')
-    const runner = ExtensionManager.getHookRunner()
+    const { ExtensionManager } = await import('../../../common/extension');
+    const runner = ExtensionManager.getHookRunner();
     if (runner) {
-      const toolDuration = Date.now() - toolStartTime
+      const toolDuration = Date.now() - toolStartTime;
       await runner.runVoidHook('after_tool_call', {
         sessionId,
         toolName: def.name,
         params: typedParams,
         result: resultText,
         durationMs: toolDuration
-      })
+      });
 
       const persistResult = await runner.runModifyingHook('tool_result_persist', {
         sessionId,
         toolName: def.name,
         result: resultText
-      })
+      });
       if (persistResult?.result) {
-        resultText = persistResult.result
+        resultText = persistResult.result;
       }
     }
   } catch {
@@ -163,6 +179,7 @@ export async function executeToolPipeline(
   return {
     resultText,
     blocked: false,
+    suspended: false,
     rawResult: toolResult
-  }
+  };
 }

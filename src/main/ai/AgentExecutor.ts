@@ -38,6 +38,7 @@ import type { ModelSelector } from './provider/ModelSelector';
 import { MessagePipeline } from './pipeline/MessagePipeline';
 import type { QueueSettings, SubmitResult } from './pipeline/types';
 import { SkillManager } from './skills/SkillManager';
+import { CheckpointManager } from './threads/CheckpointManager';
 
 // ==================== 类型定义 ====================
 
@@ -116,6 +117,16 @@ class AgentExecutor {
    */
   setBuilderFactory(factory: (mode: AgentMode) => AgentBuilder): void {
     this.builderFactory = factory;
+  }
+
+  /**
+   * 使用已注册的 builderFactory 创建 Builder
+   *
+   * 供 ThreadWaker 等模块在恢复执行时使用。
+   * 如果 factory 未注册则返回 null。
+   */
+  createBuilderFromFactory(mode: AgentMode): AgentBuilder | null {
+    return this.builderFactory ? this.builderFactory(mode) : null;
   }
 
   /**
@@ -377,12 +388,18 @@ class AgentExecutor {
     let turnStartTime = 0;
     let turnToolCallCount = 0;
 
+    const checkpoint = CheckpointManager.getInstance();
+
+    // 标记开始执行
+    checkpoint.updateStatus(sessionId, 'running').catch(() => {});
+
     let r = await gen.next();
     while (!r.done) {
       // 检测中止信号：提前退出循环，通知 generator 结束
       if (signal?.aborted) {
         log.info(`[AgentExecutor] Aborted: sessionId=${sessionId}`);
         await gen.return({ output: '', error: 'Aborted by user' } as ExecutionResult);
+        checkpoint.updateStatus(sessionId, 'idle').catch(() => {});
         return { output: '', error: 'Aborted by user' };
       }
 
@@ -390,6 +407,9 @@ class AgentExecutor {
 
       // 统一分发：写文件 + 推前端（唯一入口，seq 全局唯一）
       eventWriter.dispatch(chunk);
+
+      // === 检查点更新（fire-and-forget） ===
+      this.updateCheckpoint(checkpoint, sessionId, chunk);
 
       if (chunk.type === 'run:error') {
         log.error(`[AgentExecutor] API error in execute: error=${chunk.content}`);
@@ -412,7 +432,67 @@ class AgentExecutor {
       onChunk?.(chunk);
       r = await gen.next();
     }
+
+    // 执行完成
+    checkpoint.updateStatus(sessionId, 'idle').catch(() => {});
     return r.value;
+  }
+
+  /**
+   * 根据 StreamChunk 类型更新检查点状态
+   *
+   * fire-and-forget：不阻塞流式输出。
+   * 同步更新 checkpoint.json 和 Thread 的 runStatus。
+   */
+  private updateCheckpoint(checkpoint: CheckpointManager, sessionId: string, chunk: StreamChunk): void {
+    switch (chunk.type) {
+      case 'tool:start':
+        checkpoint.updateStatus(sessionId, 'tool-pending').catch(() => {});
+        this.syncThreadRunStatus(sessionId, 'tool-pending');
+        break;
+      case 'tool:done':
+        checkpoint.updateStatus(sessionId, 'running').catch(() => {});
+        this.syncThreadRunStatus(sessionId, 'running');
+        break;
+      case 'hitl:required':
+        checkpoint
+          .save({
+            threadId: sessionId,
+            updatedAt: new Date().toISOString(),
+            runStatus: 'approval-pending',
+            pendingOperation: {
+              type: 'approval',
+              approvalId: (chunk.data as Record<string, unknown>)?.approvalId as string,
+              toolName: ((chunk.data as Record<string, unknown>)?.toolName as string) || chunk.content,
+              toolCallId: ((chunk.data as Record<string, unknown>)?.toolCallId as string) || '',
+              agentSessionId: sessionId
+            }
+          })
+          .catch(() => {});
+        this.syncThreadRunStatus(sessionId, 'approval-pending');
+        break;
+      case 'run:error':
+        checkpoint.updateStatus(sessionId, 'error').catch(() => {});
+        this.syncThreadRunStatus(sessionId, 'error');
+        break;
+      case 'run:done':
+        checkpoint.updateStatus(sessionId, 'idle').catch(() => {});
+        this.syncThreadRunStatus(sessionId, 'idle');
+        break;
+    }
+  }
+
+  /**
+   * 同步 Thread 的 runStatus（fire-and-forget）
+   *
+   * 仅在 sessionId 对应已有 Thread 时更新（子 Agent sessionId 含 ':' 不会匹配 Thread）。
+   */
+  private syncThreadRunStatus(sessionId: string, runStatus: import('./threads/types').ThreadRunStatus): void {
+    if (sessionId.includes(':')) return;
+    import('./threads/ThreadStore')
+      .then(({ ThreadStore }) => ThreadStore.getInstance())
+      .then((store) => store.update(sessionId, { runStatus }))
+      .catch(() => {});
   }
 
   /**
