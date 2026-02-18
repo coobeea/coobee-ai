@@ -28,7 +28,7 @@ import CopilotBubble from '@/components/copilot/CopilotBubble.vue';
     <Sidebar />
 
     <!-- 主内容区域 -->
-    <main class="min-w-0 flex-1">
+    <main class="min-h-0 min-w-0 flex-1 overflow-hidden">
       <router-view />
     </main>
 

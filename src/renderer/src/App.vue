@@ -72,7 +72,9 @@ onUnmounted(() => {
   </Transition>
 
   <!-- 真实内容 -->
-  <div v-if="isReady" class="bg-background text-foreground transition-theme flex flex-1 flex-col">
+  <div
+    v-if="isReady"
+    class="bg-background text-foreground transition-theme flex min-h-0 flex-1 flex-col overflow-hidden">
     <router-view />
     <Container />
   </div>
