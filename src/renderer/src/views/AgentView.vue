@@ -79,6 +79,9 @@ function enterWorkspaceForThread(threadId: string): void {
   const thread = threadsStore.threads.find((t) => t.id === threadId);
   if (thread) {
     agentsStore.selectAgent(thread.agentId);
+    if (thread.workspacePath) {
+      projectPath.value = thread.workspacePath;
+    }
   }
   isInWorkspace.value = true;
 }
@@ -131,6 +134,9 @@ async function handleStartTask(agentId: string): Promise<void> {
   const title = agent ? `${agent.name} 的任务` : '新任务';
   const thread = await threadsStore.createThread(title, agentId);
   if (thread) {
+    if (thread.workspacePath) {
+      projectPath.value = thread.workspacePath;
+    }
     isInWorkspace.value = true;
   }
 }

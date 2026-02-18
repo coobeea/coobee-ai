@@ -80,6 +80,8 @@ export interface ThreadIndexEntry {
   messageCount: number;
   createdAt: string;
   updatedAt: string;
+  /** 该 Thread 的工作空间绝对路径（= workspacesDir/{id}） */
+  workspacePath: string;
 }
 
 // ==================== 创建 / 更新参数 ====================

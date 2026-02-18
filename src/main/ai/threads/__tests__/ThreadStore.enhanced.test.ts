@@ -30,10 +30,11 @@ vi.mock('@main/utils/SnowflakeIdGenerator', () => {
 });
 
 let tmpDir: string;
+let workspacesDir: string;
 
 vi.mock('@main/common/env', () => ({
   get Env() {
-    return { paths: { threadsDir: tmpDir } };
+    return { paths: { threadsDir: tmpDir, workspacesDir } };
   }
 }));
 
@@ -42,6 +43,7 @@ describe('ThreadStore 增强字段', () => {
 
   beforeEach(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'threadstore-test-'));
+    workspacesDir = path.join(tmpDir, '..', 'workspaces');
     vi.resetModules();
     const mod = await import('../ThreadStore');
     ThreadStore = mod.ThreadStore;
@@ -53,7 +55,7 @@ describe('ThreadStore 增强字段', () => {
   });
 
   it('create 默认填充 sessionId = id, agentMode = agent, agentType = agent, runStatus = idle', async () => {
-    const store = new ThreadStore(tmpDir);
+    const store = new ThreadStore(tmpDir, workspacesDir);
     const thread = await store.create({ title: 'Test', agentId: 'default' });
 
     expect(thread.sessionId).toBe(thread.id);
@@ -63,7 +65,7 @@ describe('ThreadStore 增强字段', () => {
   });
 
   it('create 支持自定义 agentMode 和 agentType', async () => {
-    const store = new ThreadStore(tmpDir);
+    const store = new ThreadStore(tmpDir, workspacesDir);
     const thread = await store.create({
       title: 'Orchestrator Task',
       agentId: 'orch-1',
@@ -76,7 +78,7 @@ describe('ThreadStore 增强字段', () => {
   });
 
   it('update 可以修改 runStatus', async () => {
-    const store = new ThreadStore(tmpDir);
+    const store = new ThreadStore(tmpDir, workspacesDir);
     const thread = await store.create({ title: 'Task', agentId: 'a1' });
 
     const updated = await store.update(thread.id, { runStatus: 'running' });
@@ -86,8 +88,8 @@ describe('ThreadStore 增强字段', () => {
     expect(updated2!.runStatus).toBe('approval-pending');
   });
 
-  it('list 返回的索引条目包含 runStatus 和 agentType', async () => {
-    const store = new ThreadStore(tmpDir);
+  it('list 返回的索引条目包含 runStatus、agentType 和 workspacePath', async () => {
+    const store = new ThreadStore(tmpDir, workspacesDir);
     await store.create({ title: 'A', agentId: 'a1', agentType: 'swarm' });
     await store.create({ title: 'B', agentId: 'a2' });
 
@@ -95,12 +97,14 @@ describe('ThreadStore 增强字段', () => {
     expect(list).toHaveLength(2);
     expect(list[0].runStatus).toBe('idle');
     expect(list[0].agentType).toBe('agent');
+    expect(list[0].workspacePath).toBe(path.join(workspacesDir, list[0].id));
     expect(list[1].runStatus).toBe('idle');
     expect(list[1].agentType).toBe('swarm');
+    expect(list[1].workspacePath).toBe(path.join(workspacesDir, list[1].id));
   });
 
   it('get 返回包含所有新字段的完整定义', async () => {
-    const store = new ThreadStore(tmpDir);
+    const store = new ThreadStore(tmpDir, workspacesDir);
     const created = await store.create({
       title: 'Full',
       agentId: 'a1',
@@ -117,7 +121,7 @@ describe('ThreadStore 增强字段', () => {
   });
 
   it('向后兼容：加载缺少新字段的旧 JSON 文件', async () => {
-    const store = new ThreadStore(tmpDir);
+    const store = new ThreadStore(tmpDir, workspacesDir);
 
     // 手动写入旧格式的 JSON
     const oldThread = {
@@ -140,7 +144,7 @@ describe('ThreadStore 增强字段', () => {
   });
 
   it('持久化到磁盘后重新加载保持新字段', async () => {
-    const store1 = new ThreadStore(tmpDir);
+    const store1 = new ThreadStore(tmpDir, workspacesDir);
     const created = await store1.create({
       title: 'Persist Test',
       agentId: 'a1',
@@ -149,7 +153,7 @@ describe('ThreadStore 增强字段', () => {
     await store1.update(created.id, { runStatus: 'running' });
 
     // 用新 store 实例重新加载
-    const store2 = new ThreadStore(tmpDir);
+    const store2 = new ThreadStore(tmpDir, workspacesDir);
     const loaded = await store2.get(created.id);
     expect(loaded!.runStatus).toBe('running');
     expect(loaded!.agentType).toBe('swarm');

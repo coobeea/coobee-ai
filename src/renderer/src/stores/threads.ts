@@ -30,6 +30,8 @@ export interface ThreadEntry {
   messageCount: number;
   createdAt: string;
   updatedAt: string;
+  /** 该 Thread 的工作空间绝对路径 */
+  workspacePath: string;
 }
 
 /** HTTP 基础路径 */

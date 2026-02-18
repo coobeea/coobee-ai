@@ -26,6 +26,7 @@ export class ThreadStore {
   private static instance: ThreadStore | null = null;
 
   private readonly threadsDir: string;
+  private readonly workspacesDir: string;
 
   /** 内存索引（启动时加载，运行时同步更新） */
   private index = new Map<string, ThreadIndexEntry>();
@@ -33,8 +34,9 @@ export class ThreadStore {
   /** 是否已初始化 */
   private initialized = false;
 
-  constructor(threadsDir: string) {
+  constructor(threadsDir: string, workspacesDir: string) {
     this.threadsDir = threadsDir;
+    this.workspacesDir = workspacesDir;
   }
 
   // ==================== 单例 ====================
@@ -42,7 +44,7 @@ export class ThreadStore {
   static async getInstance(): Promise<ThreadStore> {
     if (!ThreadStore.instance) {
       const { Env } = await import('@main/common/env');
-      ThreadStore.instance = new ThreadStore(Env.paths.threadsDir);
+      ThreadStore.instance = new ThreadStore(Env.paths.threadsDir, Env.paths.workspacesDir);
     }
     return ThreadStore.instance;
   }
@@ -78,7 +80,7 @@ export class ThreadStore {
         const raw = fs.readFileSync(filePath, 'utf-8');
         const def = JSON.parse(raw) as ThreadDefinition;
         if (def.status !== 'deleted') {
-          this.index.set(def.id, toIndexEntry(def));
+          this.index.set(def.id, toIndexEntry(def, this.workspacesDir));
         }
       } catch (err) {
         log.warn(`[ThreadStore] Failed to load ${file}:`, err);
@@ -111,7 +113,7 @@ export class ThreadStore {
     };
 
     this.writeDefinition(definition);
-    this.index.set(definition.id, toIndexEntry(definition));
+    this.index.set(definition.id, toIndexEntry(definition, this.workspacesDir));
 
     log.info(`[ThreadStore] Created thread: ${definition.id} (agent: ${definition.agentId})`);
     return definition;
@@ -185,7 +187,7 @@ export class ThreadStore {
     if (updated.status === 'deleted') {
       this.index.delete(threadId);
     } else {
-      this.index.set(updated.id, toIndexEntry(updated));
+      this.index.set(updated.id, toIndexEntry(updated, this.workspacesDir));
     }
 
     log.info(`[ThreadStore] Updated thread: ${threadId}`);
@@ -233,7 +235,7 @@ export class ThreadStore {
 // ==================== 辅助函数 ====================
 
 /** 从完整定义提取索引条目 */
-function toIndexEntry(def: ThreadDefinition): ThreadIndexEntry {
+function toIndexEntry(def: ThreadDefinition, workspacesDir: string): ThreadIndexEntry {
   return {
     id: def.id,
     title: def.title,
@@ -243,6 +245,7 @@ function toIndexEntry(def: ThreadDefinition): ThreadIndexEntry {
     agentType: def.agentType ?? 'agent',
     messageCount: def.messageCount,
     createdAt: def.createdAt,
-    updatedAt: def.updatedAt
+    updatedAt: def.updatedAt,
+    workspacePath: path.join(workspacesDir, def.id)
   };
 }
