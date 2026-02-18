@@ -30,6 +30,7 @@ import '../logger'; // 1. 日志系统（最高优先级）
 import '../env'; // 2. 环境配置
 import '../eventbus'; // 3. 事件总线
 import '../config'; // 4. 应用配置
+import { stateManager } from '../state'; // 5. 状态管理（退出标志等）
 
 /**
  * 应用管理器
@@ -107,14 +108,8 @@ export class AppManager implements IAppManager {
 
       log.info('[App] 应用准备退出，开始清理资源...');
 
-      // 设置应用退出状态
-      import('@main/common/state')
-        .then(({ stateManager }) => {
-          stateManager.setIsQuitting(true);
-        })
-        .catch(() => {
-          /* ignore */
-        });
+      // 同步设置退出状态（必须在 cleanup 之前完成，窗口 close 处理器依赖此标志）
+      stateManager.setIsQuitting(true);
 
       // 发送 app:before-quit 事件
       eventBus.emit(EventTypes.APP_BEFORE_QUIT, {

@@ -26,20 +26,14 @@ export const BeforeQuitAppBootstrapHook: LifecycleHook = {
   critical: false,
 
   async execute(_context: LifecycleContext): Promise<void> {
+    // Tray 无需手动销毁，Electron 退出时自动清理原生对象
+
     try {
       const { ThreadWaker } = await import('@main/ai/threads/ThreadWaker');
       ThreadWaker.getInstance().stop();
       log.info('[BeforeQuitAppBootstrapHook] ThreadWaker 已停止');
     } catch (error) {
       log.error('[BeforeQuitAppBootstrapHook] ThreadWaker 停止失败:', error);
-    }
-
-    try {
-      const { trayManager } = await import('@main/common/tray');
-      trayManager.destroy();
-      log.info('[BeforeQuitAppBootstrapHook] 托盘已销毁');
-    } catch (error) {
-      log.error('[BeforeQuitAppBootstrapHook] 托盘销毁失败:', error);
     }
   }
 };
