@@ -4,6 +4,8 @@ import Container from '@/components/Container.vue';
 </script>
 
 <template>
-  <router-view />
-  <Container />
+  <div class="bg-background text-foreground transition-theme flex flex-col flex-1">
+    <router-view />
+    <Container />
+  </div>
 </template>

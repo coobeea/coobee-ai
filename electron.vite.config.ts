@@ -1,44 +1,43 @@
-import { resolve } from 'path'
-import { defineConfig } from 'electron-vite'
-import vue from '@vitejs/plugin-vue'
-import tailwindcss from '@tailwindcss/vite'
-import monacoEditorPlugin from 'vite-plugin-monaco-editor-esm'
-import path from 'node:path'
-import Icons from 'unplugin-icons/vite'
-import IconsResolver from 'unplugin-icons/resolver'
-import Components from 'unplugin-vue-components/vite'
-import vueDevTools from 'vite-plugin-vue-devtools'
-import fs from 'fs'
-import type { Plugin } from 'vite'
-import dotenv from 'dotenv'
+import { resolve } from 'path';
+import { defineConfig } from 'electron-vite';
+import vue from '@vitejs/plugin-vue';
+import tailwindcss from '@tailwindcss/vite';
+import monacoEditorPlugin from 'vite-plugin-monaco-editor-esm';
+import path from 'node:path';
+import Icons from 'unplugin-icons/vite';
+import IconsResolver from 'unplugin-icons/resolver';
+import Components from 'unplugin-vue-components/vite';
+import fs from 'fs';
+import type { Plugin } from 'vite';
+import dotenv from 'dotenv';
 
 // 手动加载 .env 文件到 process.env
-dotenv.config({ quiet: true })
+dotenv.config({ quiet: true });
 
 // 复制 WASM 等静态资源到构建输出目录
 function copyWasmAssetsPlugin(): Plugin {
   return {
     name: 'copy-wasm-assets',
     writeBundle() {
-      const outDir = path.resolve(__dirname, 'out/main')
+      const outDir = path.resolve(__dirname, 'out/main');
       const wasmFiles = [
         // @silvia-odwyer/photon-node（pi-coding-agent 的图片处理依赖）
         {
           src: path.resolve(__dirname, 'node_modules/@silvia-odwyer/photon-node/photon_rs_bg.wasm'),
           dest: path.resolve(outDir, 'photon_rs_bg.wasm')
         }
-      ]
+      ];
 
       for (const { src, dest } of wasmFiles) {
         if (fs.existsSync(src)) {
-          fs.copyFileSync(src, dest)
-          console.log(`[copy-wasm] Copied ${path.basename(src)} to output directory`)
+          fs.copyFileSync(src, dest);
+          console.log(`[copy-wasm] Copied ${path.basename(src)} to output directory`);
         } else {
-          console.warn(`[copy-wasm] WASM file not found: ${src}`)
+          console.warn(`[copy-wasm] WASM file not found: ${src}`);
         }
       }
     }
-  }
+  };
 }
 
 // 复制 libs 目录下所有模块的插件
@@ -46,30 +45,30 @@ function copyLibsPlugin(): Plugin {
   return {
     name: 'copy-libs',
     writeBundle() {
-      const sourceDir = path.resolve(__dirname, 'libs')
-      const targetDir = path.resolve(__dirname, 'out/main/libs')
+      const sourceDir = path.resolve(__dirname, 'libs');
+      const targetDir = path.resolve(__dirname, 'out/main/libs');
 
       // 确保源目录存在
       if (!fs.existsSync(sourceDir)) {
-        console.warn('[copy-libs] Source libs directory does not exist, skipping...')
-        return
+        console.warn('[copy-libs] Source libs directory does not exist, skipping...');
+        return;
       }
 
       // 确保目标目录存在
-      fs.mkdirSync(targetDir, { recursive: true })
+      fs.mkdirSync(targetDir, { recursive: true });
 
       // 复制整个 libs 目录
-      fs.cpSync(sourceDir, targetDir, { recursive: true })
+      fs.cpSync(sourceDir, targetDir, { recursive: true });
 
       // 列出复制的模块
       const modules = fs.readdirSync(sourceDir).filter((item) => {
-        return fs.statSync(path.join(sourceDir, item)).isDirectory()
-      })
+        return fs.statSync(path.join(sourceDir, item)).isDirectory();
+      });
 
-      console.log(`[copy-libs] Copied ${modules.length} modules from libs/ to output directory:`)
-      modules.forEach((module) => console.log(`  - ${module}`))
+      console.log(`[copy-libs] Copied ${modules.length} modules from libs/ to output directory:`);
+      modules.forEach((module) => console.log(`  - ${module}`));
     }
-  }
+  };
 }
 
 export default defineConfig({
@@ -87,9 +86,9 @@ export default defineConfig({
       ...Object.keys(process.env).reduce(
         (acc, key) => {
           if (key.startsWith('VITE_')) {
-            acc[`process.env.${key}`] = JSON.stringify(process.env[key])
+            acc[`process.env.${key}`] = JSON.stringify(process.env[key]);
           }
-          return acc
+          return acc;
         },
         {} as Record<string, string>
       )
@@ -101,13 +100,7 @@ export default defineConfig({
       },
       rollupOptions: {
         // 原生模块标记为外部依赖
-        external: [
-          'better-sqlite3-multiple-ciphers',
-          'fs-ext',
-          'electron',
-          'bufferutil',
-          'utf-8-validate'
-        ],
+        external: ['better-sqlite3-multiple-ciphers', 'fs-ext', 'electron', 'bufferutil', 'utf-8-validate'],
         output: {
           inlineDynamicImports: true,
           manualChunks: undefined // 禁用自动代码分割
@@ -144,7 +137,7 @@ export default defineConfig({
       monacoEditorPlugin({
         languageWorkers: ['editorWorkerService', 'typescript', 'css', 'html', 'json'],
         customDistPath(_root, buildOutDir) {
-          return path.resolve(buildOutDir, 'monacoeditorwork')
+          return path.resolve(buildOutDir, 'monacoeditorwork');
         }
       }),
       // 自动导入 Vue 组件
@@ -170,9 +163,6 @@ export default defineConfig({
             isCustomElement: (tag) => tag.startsWith('custom-')
           }
         }
-      }),
-      vueDevTools({
-        appendTo: 'src/renderer/src/main.ts'
       })
     ],
     worker: {
@@ -191,4 +181,4 @@ export default defineConfig({
       }
     }
   }
-})
+});
