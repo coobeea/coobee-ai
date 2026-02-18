@@ -1,48 +1,22 @@
 <script setup lang="ts">
 /**
- * AgentView — 智能体主视图
+ * AgentView — 智能体管理列表
  *
- * 两种状态：
- *   1. 未开始会话 → 显示智能体列表 + AI 创建入口（含实时进度）
- *   2. 会话进行中 → 三栏工作区（项目空间 | 工作台 | 对话）
+ * 纯粹的智能体 CRUD 界面：列表展示、AI 创建、技能编辑、删除。
+ * 点击智能体卡片 → 创建 Thread → 跳转 /thread/:id。
  */
 
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
-import { useChatStore } from '@/stores/chat';
+import { ref, onMounted, nextTick } from 'vue';
+import { useRouter } from 'vue-router';
 import { useAgentsStore } from '@/stores/agents';
 import { useThreadsStore } from '@/stores/threads';
-import { useCopilotStore } from '@/stores/copilot';
 import configManager from '@/config';
 
 const isMac = navigator.platform?.includes('Mac') ?? false;
-import ProjectPanel from '@/components/agent/ProjectPanel.vue';
-import WorkbenchPanel from '@/components/agent/WorkbenchPanel.vue';
-import ChatPanel from '@/components/agent/ChatPanel.vue';
-import VoicePanel from '@/components/agent/VoicePanel.vue';
-import AgentsPanel from '@/components/agent/AgentsPanel.vue';
-import { useOpenFiles } from '@/composables/useOpenFiles';
 
-const chatStore = useChatStore();
+const router = useRouter();
 const agentsStore = useAgentsStore();
 const threadsStore = useThreadsStore();
-const copilotStore = useCopilotStore();
-const { closeAllFiles } = useOpenFiles();
-
-const leftCollapsed = ref(false);
-const rightCollapsed = ref(false);
-const agentsPanelCollapsed = ref(true);
-
-/** 是否已进入工作区 */
-const isInWorkspace = ref(false);
-
-/** 项目目录（由 ProjectPanel 双向绑定） */
-const projectPath = ref<string | null>(null);
-
-/** 是否处于工作状态 */
-const isActive = computed(() => isInWorkspace.value || chatStore.sessionId !== null);
-
-/** 工作区是否就绪（必须选了目录） */
-const workspaceReady = computed(() => projectPath.value !== null);
 
 /** AI 创建：用户需求输入 */
 const aiRequirement = ref('');
@@ -63,67 +37,9 @@ interface SkillInfo {
 const availableSkills = ref<SkillInfo[]>([]);
 const skillsLoading = ref(false);
 
-watch(
-  isActive,
-  (active) => {
-    copilotStore.bubbleHidden = active;
-  },
-  { immediate: true }
-);
-
 onMounted(() => {
   agentsStore.fetchAgents();
-  if (threadsStore.activeThreadId) {
-    enterWorkspaceForThread(threadsStore.activeThreadId);
-  }
 });
-
-onUnmounted(() => {
-  copilotStore.bubbleHidden = false;
-});
-
-watch(
-  () => threadsStore.activeThreadId,
-  (newId) => {
-    if (newId) {
-      enterWorkspaceForThread(newId);
-    }
-  }
-);
-
-function enterWorkspaceForThread(threadId: string): void {
-  const thread = threadsStore.threads.find((t) => t.id === threadId);
-  if (thread) {
-    agentsStore.selectAgent(thread.agentId);
-    if (thread.workspacePath) {
-      projectPath.value = thread.workspacePath;
-    }
-  }
-  closeAllFiles();
-  isInWorkspace.value = true;
-  chatStore.loadHistory(threadId);
-}
-
-function startNewSession(): void {
-  chatStore.clearMessages();
-  closeAllFiles();
-  threadsStore.selectThread(null);
-  isInWorkspace.value = false;
-  projectPath.value = null;
-  agentsPanelCollapsed.value = true;
-}
-
-/** 打开系统目录选择对话框 */
-async function openDirectoryDialog(): Promise<void> {
-  try {
-    const result = await window.api?.openDirectory();
-    if (result) {
-      projectPath.value = result;
-    }
-  } catch (err) {
-    console.warn('[AgentView] 选择目录失败:', err);
-  }
-}
 
 function toggleCreateArea(): void {
   showCreateArea.value = !showCreateArea.value;
@@ -146,17 +62,13 @@ async function handleAiCreate(): Promise<void> {
 
 const confirmDeleteId = ref<string | null>(null);
 
-/** 开启任务：选择智能体 → 创建 Thread → 进入工作区 */
 async function handleStartTask(agentId: string): Promise<void> {
   agentsStore.selectAgent(agentId);
   const agent = agentsStore.agents.find((a) => a.id === agentId);
   const title = agent ? `${agent.name} 的任务` : '新任务';
   const thread = await threadsStore.createThread(title, agentId);
   if (thread) {
-    if (thread.workspacePath) {
-      projectPath.value = thread.workspacePath;
-    }
-    isInWorkspace.value = true;
+    router.push(`/thread/${thread.id}`);
   }
 }
 
@@ -169,14 +81,12 @@ async function handleDelete(agentId: string): Promise<void> {
   await agentsStore.deleteAgent(agentId);
 }
 
-/** 打开技能编辑面板 */
 async function openSkillsEditor(agentId: string): Promise<void> {
   const agent = agentsStore.agents.find((a) => a.id === agentId);
   if (!agent) return;
   editSkillsAgentId.value = agentId;
   editSkillsList.value = [...(agent.skills ?? [])];
 
-  // 从后端获取可用技能列表
   if (availableSkills.value.length === 0) {
     skillsLoading.value = true;
     try {
@@ -194,7 +104,6 @@ async function openSkillsEditor(agentId: string): Promise<void> {
   }
 }
 
-/** 切换技能勾选 */
 function toggleSkill(skillName: string): void {
   const idx = editSkillsList.value.indexOf(skillName);
   if (idx >= 0) {
@@ -204,7 +113,6 @@ function toggleSkill(skillName: string): void {
   }
 }
 
-/** 保存技能 */
 async function saveSkills(): Promise<void> {
   if (!editSkillsAgentId.value) return;
   await agentsStore.updateAgent(editSkillsAgentId.value, {
@@ -213,12 +121,10 @@ async function saveSkills(): Promise<void> {
   editSkillsAgentId.value = null;
 }
 
-/** 取消技能编辑 */
 function cancelSkillsEdit(): void {
   editSkillsAgentId.value = null;
 }
 
-/** 步骤图标映射 */
 function stepIcon(step: string): string {
   switch (step) {
     case 'analyzing':
@@ -256,8 +162,7 @@ function formatTime(iso: string): string {
 
 <template>
   <div class="agent-view">
-    <!-- ========== 状态 1：智能体列表 ========== -->
-    <div v-if="!isActive" class="landing">
+    <div class="landing">
       <!-- 顶栏 -->
       <header class="header">
         <div class="header-left">
@@ -392,7 +297,6 @@ function formatTime(iso: string): string {
             :key="agent.id"
             class="agent-card"
             @click="handleStartTask(agent.id)">
-            <!-- 卡片头部：头像 + 名称 + 时间 -->
             <div class="card-header">
               <div class="card-avatar">
                 <span class="i-carbon-bot inline-block h-5 w-5" />
@@ -406,10 +310,8 @@ function formatTime(iso: string): string {
               </div>
             </div>
 
-            <!-- 描述 -->
             <p class="card-desc">{{ agent.description }}</p>
 
-            <!-- 技能标签 -->
             <div v-if="agent.skills && agent.skills.length > 0" class="card-skills">
               <span v-for="skill in agent.skills.slice(0, 3)" :key="skill" class="skill-tag">
                 {{ skill }}
@@ -417,7 +319,6 @@ function formatTime(iso: string): string {
               <span v-if="agent.skills.length > 3" class="skill-more"> +{{ agent.skills.length - 3 }} </span>
             </div>
 
-            <!-- 底部操作栏 -->
             <div class="card-footer" @click.stop>
               <div class="card-actions-left">
                 <template v-if="confirmDeleteId !== agent.id">
@@ -443,40 +344,6 @@ function formatTime(iso: string): string {
       </div>
     </div>
 
-    <!-- ========== 状态 2：工作区 ========== -->
-    <template v-else>
-      <!-- 未选目录：引导页面 -->
-      <div v-if="!workspaceReady" class="dir-prompt">
-        <div class="dir-prompt-card">
-          <div class="dir-prompt-icon">
-            <span class="i-carbon-folder-add inline-block h-8 w-8" />
-          </div>
-          <h2 class="dir-prompt-title">选择项目目录</h2>
-          <p class="dir-prompt-desc">
-            请先选择一个本地目录作为工作上下文，<br />
-            智能体将以该目录下的文件进行分析和操作。
-          </p>
-          <button class="dir-prompt-btn" @click="openDirectoryDialog">
-            <span class="i-carbon-folder-add inline-block h-4 w-4" />
-            <span>选择目录</span>
-          </button>
-          <button class="dir-prompt-back" @click="startNewSession"> ← 返回列表 </button>
-        </div>
-      </div>
-
-      <!-- 已选目录：三栏工作区 -->
-      <template v-else>
-        <div class="flex min-h-0 flex-1">
-          <ProjectPanel v-model:collapsed="leftCollapsed" v-model:project-path="projectPath" />
-          <WorkbenchPanel />
-          <ChatPanel v-model:collapsed="rightCollapsed" />
-          <AgentsPanel v-model:collapsed="agentsPanelCollapsed" />
-        </div>
-
-        <VoicePanel />
-      </template>
-    </template>
-
     <!-- 技能编辑弹窗 -->
     <Teleport to="body">
       <Transition name="fade">
@@ -487,14 +354,11 @@ function formatTime(iso: string): string {
               <span>编辑技能</span>
             </div>
             <div class="skills-dialog-body">
-              <!-- 加载中 -->
               <div v-if="skillsLoading" class="skills-loading">
                 <span class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
                 <span>加载技能列表...</span>
               </div>
-              <!-- 空态 -->
               <p v-else-if="availableSkills.length === 0" class="skills-empty"> 暂无可用技能 </p>
-              <!-- 技能列表 -->
               <label
                 v-for="skill in availableSkills"
                 v-else
@@ -523,8 +387,6 @@ function formatTime(iso: string): string {
 </template>
 
 <style scoped>
-/* ====== 根容器 ====== */
-
 .agent-view {
   display: flex;
   flex-direction: column;
@@ -539,8 +401,6 @@ function formatTime(iso: string): string {
   flex: 1;
   overflow: hidden;
 }
-
-/* ====== 顶栏 ====== */
 
 .header {
   display: flex;
@@ -631,8 +491,6 @@ function formatTime(iso: string): string {
   background: hsl(var(--primary) / 0.15);
   box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.2);
 }
-
-/* ====== AI 创建区域 ====== */
 
 .slide-down-enter-active,
 .slide-down-leave-active {
@@ -789,8 +647,6 @@ function formatTime(iso: string): string {
   cursor: not-allowed;
 }
 
-/* ====== AI 创建进度 ====== */
-
 .create-progress {
   display: flex;
   flex-direction: column;
@@ -856,15 +712,11 @@ function formatTime(iso: string): string {
   line-height: 1.3;
 }
 
-/* ====== 内容区 ====== */
-
 .content {
   flex: 1;
   overflow-y: auto;
   padding: 16px 20px;
 }
-
-/* ====== 错误横幅 ====== */
 
 .error-bar {
   display: flex;
@@ -891,8 +743,6 @@ function formatTime(iso: string): string {
 .error-retry:hover {
   opacity: 0.8;
 }
-
-/* ====== 空状态 ====== */
 
 .empty-state {
   display: flex;
@@ -963,8 +813,6 @@ function formatTime(iso: string): string {
   max-width: 260px;
 }
 
-/* ====== 智能体卡片网格 ====== */
-
 .agent-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -990,8 +838,6 @@ function formatTime(iso: string): string {
     0 1px 3px hsl(var(--shadow) / 0.04);
   transform: translateY(-1px);
 }
-
-/* 卡片头部 */
 
 .card-header {
   display: flex;
@@ -1055,8 +901,6 @@ function formatTime(iso: string): string {
   flex-shrink: 0;
 }
 
-/* 描述 */
-
 .card-desc {
   font-size: 12.5px;
   color: hsl(var(--muted-foreground) / 0.6);
@@ -1067,8 +911,6 @@ function formatTime(iso: string): string {
   overflow: hidden;
   margin-bottom: 10px;
 }
-
-/* 技能标签 */
 
 .card-skills {
   display: flex;
@@ -1092,8 +934,6 @@ function formatTime(iso: string): string {
   font-size: 10px;
   color: hsl(var(--muted-foreground) / 0.4);
 }
-
-/* 卡片底部操作栏 */
 
 .card-footer {
   display: flex;
@@ -1158,8 +998,6 @@ function formatTime(iso: string): string {
   background: hsl(var(--error) / 0.08);
 }
 
-/* ====== 通用按钮 ====== */
-
 .text-btn {
   padding: 3px 8px;
   border-radius: 5px;
@@ -1195,122 +1033,6 @@ function formatTime(iso: string): string {
   opacity: 0.35;
   cursor: not-allowed;
 }
-
-/* ====== 目录选择引导 ====== */
-
-.dir-prompt {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  background: hsl(var(--background));
-}
-
-.dir-prompt-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  max-width: 360px;
-  padding: 40px;
-}
-
-.dir-prompt-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
-  background: hsl(var(--primary) / 0.08);
-  color: hsl(var(--primary) / 0.5);
-  margin-bottom: 24px;
-}
-
-.dir-prompt-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: hsl(var(--foreground));
-  margin-bottom: 8px;
-}
-
-.dir-prompt-desc {
-  font-size: 13px;
-  line-height: 1.7;
-  color: hsl(var(--muted-foreground) / 0.6);
-  margin-bottom: 28px;
-}
-
-.dir-prompt-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 24px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: hsl(var(--primary-foreground));
-  background: hsl(var(--primary));
-  transition: all 0.15s ease;
-  margin-bottom: 16px;
-}
-
-.dir-prompt-btn:hover {
-  background: hsl(var(--primary-hover));
-  box-shadow: 0 2px 12px hsl(var(--primary) / 0.2);
-}
-
-.dir-prompt-back {
-  font-size: 12px;
-  color: hsl(var(--muted-foreground) / 0.45);
-  transition: color 0.15s ease;
-}
-
-.dir-prompt-back:hover {
-  color: hsl(var(--foreground) / 0.6);
-}
-
-/* ====== 工作区顶栏 ====== */
-
-.workspace-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 28px;
-  padding: 0 12px;
-  flex-shrink: 0;
-  border-bottom: 1px solid hsl(var(--border) / 0.25);
-  background: hsl(var(--surface) / 0.6);
-  backdrop-filter: blur(8px);
-}
-
-.workspace-agent {
-  font-size: 10px;
-  font-weight: 500;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: hsl(var(--primary) / 0.08);
-  color: hsl(var(--primary));
-}
-
-.workspace-dir {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  font-weight: 400;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: hsl(var(--foreground) / 0.04);
-  color: hsl(var(--muted-foreground) / 0.6);
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ====== 技能编辑弹窗 ====== */
 
 .fade-enter-active,
 .fade-leave-active {

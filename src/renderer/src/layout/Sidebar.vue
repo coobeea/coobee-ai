@@ -56,7 +56,7 @@ const handleSettings = (): void => {
 
 const handleThreadClick = (threadId: string): void => {
   threadsStore.selectThread(threadId);
-  router.push('/agent');
+  router.push(`/thread/${threadId}`);
 };
 
 /** 格式化相对时间 */
