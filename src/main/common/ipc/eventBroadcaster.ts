@@ -228,7 +228,7 @@ class IpcEventBroadcaster {
       }
     });
 
-    log.info(`[IpcEventBroadcaster] Broadcast event: ${type} to ${sentCount} webContents`, payload);
+    log.debug(`[IpcEventBroadcaster] Broadcast: ${type} -> ${sentCount} webContents`);
   }
 
   /**

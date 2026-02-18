@@ -1,6 +1,6 @@
-import EventEmitter from 'events'
+import EventEmitter from 'events';
 
-import { log } from './logger'
+import { log } from './logger';
 
 /**
  * 事件总线
@@ -17,36 +17,36 @@ import { log } from './logger'
  */
 class EventBus extends EventEmitter {
   constructor() {
-    super()
-    this.setMaxListeners(1000) // 提高监听器数量限制
-    log.debug('[EventBus] EventBus 实例已创建')
+    super();
+    this.setMaxListeners(1000); // 提高监听器数量限制
+    log.debug('[EventBus] EventBus 实例已创建');
   }
 
-  /** 高频事件前缀，仅记录事件名不打印 payload，避免刷屏 */
-  private static readonly QUIET_PREFIXES = ['stream:', 'window:']
+  /** 高频事件前缀，不打印日志，避免刷屏 */
+  private static readonly QUIET_PREFIXES = ['stream:', 'window:', 'tab:', 'app:'];
 
   /**
    * 发送事件
    * 覆盖父类方法以添加日志记录（高频事件静默处理）
    */
   emit(eventName: string, ...args: unknown[]): boolean {
-    const quiet = EventBus.QUIET_PREFIXES.some((p) => eventName.startsWith(p))
+    const quiet = EventBus.QUIET_PREFIXES.some((p) => eventName.startsWith(p));
     if (!quiet) {
-      const listenerCount = this.listenerCount(eventName)
-      log.debug(`[EventBus] 发送事件: ${eventName} (${listenerCount} 个监听器)`, args)
+      const listenerCount = this.listenerCount(eventName);
+      log.debug(`[EventBus] 发送事件: ${eventName} (${listenerCount} 个监听器)`, args);
     }
     // 逐个调用 listener 并捕获异常，防止单个 listener 抛错阻断其他 listener
-    const listeners = this.rawListeners(eventName)
-    if (listeners.length === 0) return false
+    const listeners = this.rawListeners(eventName);
+    if (listeners.length === 0) return false;
     for (const listener of listeners) {
       try {
-        ;(listener as (...a: unknown[]) => void)(...args)
+        (listener as (...a: unknown[]) => void)(...args);
       } catch (err) {
-        log.error(`[EventBus] Listener error on "${eventName}":`, err)
+        log.error(`[EventBus] Listener error on "${eventName}":`, err);
       }
     }
-    return true
+    return true;
   }
 }
 
-export const eventBus = new EventBus()
+export const eventBus = new EventBus();
