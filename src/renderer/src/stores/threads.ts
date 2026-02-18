@@ -13,12 +13,20 @@ import { ref, computed } from 'vue';
 import configManager from '@/config';
 import { generateThreadTitle } from '@/composables/useAiAssist';
 
+/** Thread 运行时状态 */
+export type ThreadRunStatus = 'idle' | 'running' | 'tool-pending' | 'approval-pending' | 'completed' | 'error';
+
+/** Agent 分类类型 */
+export type AgentType = 'agent' | 'orchestrator' | 'swarm';
+
 /** Thread 索引条目 */
 export interface ThreadEntry {
   id: string;
   title: string;
   agentId: string;
   status: 'active' | 'archived' | 'deleted';
+  runStatus: ThreadRunStatus;
+  agentType: AgentType;
   messageCount: number;
   createdAt: string;
   updatedAt: string;

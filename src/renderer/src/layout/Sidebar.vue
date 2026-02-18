@@ -21,7 +21,7 @@
 
 import { ref, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useThreadsStore } from '@/stores/threads';
+import { useThreadsStore, type ThreadRunStatus, type AgentType } from '@/stores/threads';
 
 interface MenuItem {
   id: string;
@@ -74,6 +74,34 @@ function formatRelativeTime(iso: string): string {
   }
 }
 
+/** runStatus 状态指示器配置 */
+function getRunStatusConfig(status?: ThreadRunStatus): { icon: string; class: string; label: string } | null {
+  switch (status) {
+    case 'running':
+      return { icon: 'i-carbon-renew', class: 'status-running', label: '运行中' };
+    case 'tool-pending':
+      return { icon: 'i-carbon-tool-box', class: 'status-tool', label: '工具执行中' };
+    case 'approval-pending':
+      return { icon: 'i-carbon-pending', class: 'status-approval', label: '等待审批' };
+    case 'error':
+      return { icon: 'i-carbon-warning-alt', class: 'status-error', label: '出错' };
+    default:
+      return null;
+  }
+}
+
+/** agentType 标签 */
+function getAgentTypeLabel(type?: AgentType): string | null {
+  switch (type) {
+    case 'orchestrator':
+      return '编排';
+    case 'swarm':
+      return '群组';
+    default:
+      return null;
+  }
+}
+
 const updateActiveState = (): void => {
   const name = route.name as string;
   if (name) {
@@ -121,10 +149,31 @@ onMounted(() => updateActiveState());
           class="session-item"
           :class="{ active: threadsStore.activeThreadId === thread.id }"
           @click="handleThreadClick(thread.id)">
-          <span class="i-carbon-task icon-xs" />
+          <div class="thread-icon-wrap">
+            <span class="i-carbon-task icon-xs" />
+            <span
+              v-if="getRunStatusConfig(thread.runStatus)"
+              class="status-dot"
+              :class="getRunStatusConfig(thread.runStatus)!.class"
+              :title="getRunStatusConfig(thread.runStatus)!.label" />
+          </div>
           <div class="session-info">
-            <span class="session-title">{{ thread.title }}</span>
+            <div class="session-title-row">
+              <span class="session-title">{{ thread.title }}</span>
+              <span v-if="getAgentTypeLabel(thread.agentType)" class="agent-type-badge">
+                {{ getAgentTypeLabel(thread.agentType) }}
+              </span>
+            </div>
             <span class="session-meta">
+              <template v-if="getRunStatusConfig(thread.runStatus)">
+                <span class="run-status-label" :class="getRunStatusConfig(thread.runStatus)!.class">
+                  <span
+                    :class="[getRunStatusConfig(thread.runStatus)!.icon, 'inline-block h-2.5 w-2.5']"
+                    :style="thread.runStatus === 'running' ? 'animation: spin 1s linear infinite' : ''" />
+                  {{ getRunStatusConfig(thread.runStatus)!.label }}
+                </span>
+                ·
+              </template>
               {{ thread.messageCount }} 条 · {{ formatRelativeTime(thread.updatedAt) }}
             </span>
           </div>
@@ -250,10 +299,62 @@ onMounted(() => updateActiveState());
   color: hsl(var(--foreground) / 0.85);
 }
 
+/* thread icon + status dot */
+
+.thread-icon-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.status-dot {
+  position: absolute;
+  bottom: -1px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1px solid hsl(var(--surface));
+}
+
+.status-dot.status-running {
+  background: hsl(142 71% 45%);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.status-dot.status-tool {
+  background: hsl(217 91% 60%);
+}
+
+.status-dot.status-approval {
+  background: hsl(38 92% 50%);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.status-dot.status-error {
+  background: hsl(0 84% 60%);
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
 .session-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+}
+
+.session-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -263,6 +364,44 @@ onMounted(() => updateActiveState());
   white-space: nowrap;
   line-height: 1.35;
   font-size: 12.5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-type-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary) / 0.7);
+  letter-spacing: 0.03em;
+}
+
+.run-status-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.run-status-label.status-running {
+  color: hsl(142 71% 45%);
+}
+
+.run-status-label.status-tool {
+  color: hsl(217 91% 60%);
+}
+
+.run-status-label.status-approval {
+  color: hsl(38 92% 50%);
+}
+
+.run-status-label.status-error {
+  color: hsl(0 84% 60%);
 }
 
 .session-meta {
