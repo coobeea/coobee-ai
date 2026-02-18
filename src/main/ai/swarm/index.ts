@@ -1,24 +1,24 @@
 /**
  * Swarm 群体智能模块 — 动态 Agent 自组织协作
  *
- * @experimental 设计储备 — 本模块目前未接入产品代码。
+ * SDK 无关 — 基于 AgentRuntime 抽象层，不依赖任何特定 LLM SDK。
+ * Handoff 机制通过工具调用 + 协调器循环实现。
  *
- * ⚠️ OpenAI SDK 专用：直接依赖 @openai/agents SDK，不可用于 PiMono Runtime。
- * 待多 Agent 路线确定后评估激活时机。包含完整的编排能力，可作为高级多 Agent 模式的候选。
- *
- * 基于 OpenAI Agents SDK 的 Handoff 机制，实现动态 Agent 自组织协作。
+ * 与 Orchestration（统筹者模式）的区别：
+ * - 统筹者：先有计划，程序按计划执行 → 结构化、可预测
+ * - 蜂群：无预先计划，Agent 自主决定 Handoff → 灵活、探索性
  *
  * 核心组件：
  * - SwarmRuntime: 统一运行时（实现 AgentRuntime）
- * - SwarmCoordinator: 核心协调器（含 Triage Agent）
- * - AgentPool: 动态 Agent 池
- * - HandoffRouter: Handoff 路由管理
+ * - SwarmCoordinator: 核心协调器（Triage → Handoff 循环）
+ * - AgentPool: 动态 Agent 池（管理 AgentRuntime 实例）
+ * - HandoffRouter: Handoff 路由管理（纯逻辑）
  * - SwarmContext: 共享上下文黑板
  * - SwarmMonitor: 执行监控与指标
  * - MessageBus: Agent 间消息总线
  * - ConcurrencyManager: 并发管理器
  * - RoleRegistry: 角色注册表
- * - Swarm Tools: Agent 通信工具（共享上下文 + 消息传递）
+ * - Swarm Tools: Agent 通信 + Handoff 工具
  */
 
 // ========== 类型 ==========
@@ -35,17 +35,28 @@ export type {
   SwarmArtifact,
   SwarmContextData,
   SwarmMetrics
-} from './types'
+} from './types';
 
-export { DEFAULT_SWARM_CONFIG, createInitialSwarmState, createInitialSwarmMetrics } from './types'
+export {
+  DEFAULT_SWARM_CONFIG,
+  createInitialSwarmState,
+  createInitialSwarmMetrics,
+  HANDOFF_SIGNAL_PREFIX,
+  extractHandoffTarget
+} from './types';
 
 // ========== 核心组件 ==========
-export { SwarmRuntime, type SwarmRuntimeOptions } from './SwarmRuntime'
-export { SwarmCoordinator, type CoordinationResult } from './SwarmCoordinator'
-export { AgentPool, type AgentPoolEvent, type AgentPoolEventListener } from './AgentPool'
-export { HandoffRouter, type HandoffOption, type OnHandoffCallback } from './HandoffRouter'
-export { SwarmContext, type ContextChangeEvent, type ContextChangeListener } from './SwarmContext'
-export { SwarmMonitor, type SwarmAlert, type AlertListener } from './SwarmMonitor'
+export { SwarmRuntime, type SwarmRuntimeOptions } from './SwarmRuntime';
+export {
+  SwarmCoordinator,
+  type CoordinationResult,
+  type SwarmEvent,
+  type SwarmEventCallback
+} from './SwarmCoordinator';
+export { AgentPool, type AgentPoolEvent, type AgentPoolEventListener } from './AgentPool';
+export { HandoffRouter, type OnHandoffCallback } from './HandoffRouter';
+export { SwarmContext, type ContextChangeEvent, type ContextChangeListener } from './SwarmContext';
+export { SwarmMonitor, type SwarmAlert, type AlertListener } from './SwarmMonitor';
 
 // ========== 并发管理 ==========
 export {
@@ -55,7 +66,7 @@ export {
   type ParallelExecutionResult,
   type ConcurrencyEvent,
   type ConcurrencyEventListener
-} from './ConcurrencyManager'
+} from './ConcurrencyManager';
 
 // ========== 消息通信 ==========
 export {
@@ -64,11 +75,13 @@ export {
   type MessagePriority,
   type MessageBusEvent,
   type MessageBusEventListener
-} from './MessageBus'
+} from './MessageBus';
 
 // ========== 通信工具 ==========
 export {
   createSwarmTools,
+  createSwarmCommTools,
+  createHandoffTools,
   createReadContextTool,
   createWriteContextTool,
   createAddArtifactTool,
@@ -76,7 +89,7 @@ export {
   createSendMessageTool,
   createGetMessagesTool,
   createReportProgressTool
-} from './tools'
+} from './tools';
 
 // ========== 角色系统 ==========
 export {
@@ -88,4 +101,4 @@ export {
   reviewerRole,
   writerRole,
   analystRole
-} from './roles'
+} from './roles';
