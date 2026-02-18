@@ -2,13 +2,14 @@
 /**
  * CopilotBubble — 应用管家全局悬浮气泡 + 右侧抽屉面板
  *
- * 右下角悬浮按钮，点击后从右侧滑出抽屉式对话面板。
- * 所有页面可见，点击即可与「应用管家」Agent 对话。
+ * 右下角悬浮按钮，点击后从右侧滑出全高度抽屉对话面板。
+ * 不使用 Popup 组件（其 flex 布局定位与全局 body 样式冲突），
+ * 直接用 teleport + position:fixed 实现可靠定位。
  *
  * 消息布局：统一靠左，角色标签换行展示，内容平铺不浪费空间。
  */
 
-import { ref, nextTick, watch, computed } from 'vue';
+import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue';
 import { useCopilotStore, type CopilotBlock } from '@/stores/copilot';
 
 const copilot = useCopilotStore();
@@ -16,15 +17,6 @@ const inputText = ref('');
 const messageContainer = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
-const drawerVisible = computed({
-  get: () => copilot.visible,
-  set: (v: boolean) => {
-    if (v) copilot.open();
-    else copilot.close();
-  }
-});
-
-/** 滚动到底部 */
 function scrollToBottom(): void {
   nextTick(() => {
     if (messageContainer.value) {
@@ -33,12 +25,10 @@ function scrollToBottom(): void {
   });
 }
 
-// 新消息自动滚动
 watch(
   () => copilot.messages.length,
   () => scrollToBottom()
 );
-// 流式内容更新自动滚动
 watch(
   () => {
     const last = copilot.messages[copilot.messages.length - 1];
@@ -47,7 +37,6 @@ watch(
   () => scrollToBottom()
 );
 
-/** 打开面板时聚焦输入框 */
 watch(
   () => copilot.visible,
   (v) => {
@@ -74,7 +63,15 @@ function handleKeydown(e: KeyboardEvent): void {
   }
 }
 
-/** 渲染工具块摘要 */
+function handleEsc(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && copilot.visible) {
+    copilot.close();
+  }
+}
+
+onMounted(() => document.addEventListener('keydown', handleEsc));
+onUnmounted(() => document.removeEventListener('keydown', handleEsc));
+
 function toolSummary(block: CopilotBlock): string {
   if (block.type === 'tool') return `调用 ${block.tool.name}...`;
   return '';
@@ -89,136 +86,126 @@ function toolSummary(block: CopilotBlock): string {
     </button>
   </Transition>
 
-  <!-- 右侧抽屉面板 -->
-  <Popup
-    v-model:visible="drawerVisible"
-    position="right"
-    transition="slide-left"
-    :show-mask="true"
-    :close-on-click-overlay="true"
-    :close-on-esc="true"
-    :lock-scroll="false"
-    :z-index="9999"
-    :container-style="{ marginTop: '0', marginBottom: '0', marginLeft: 'auto', marginRight: '0', height: '100%' }">
-    <div class="copilot-drawer">
-      <!-- 面板头部 -->
-      <div class="panel-header">
-        <div class="panel-header-left">
-          <span class="i-mdi-star-four-points inline-block h-4 w-4 text-[hsl(var(--primary))]" />
-          <span class="panel-title">应用管家</span>
-        </div>
-        <div class="panel-header-right">
-          <button v-if="copilot.hasMessages" class="panel-icon-btn" title="清空对话" @click="copilot.clearMessages()">
-            <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
-          </button>
-          <button class="panel-icon-btn" title="收起" @click="copilot.close()">
-            <span class="i-carbon-close inline-block h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
+  <!-- 右侧抽屉：teleport 到 body，使用 position:fixed 直接定位 -->
+  <teleport to="body">
+    <!-- 遮罩层 -->
+    <Transition name="overlay-fade">
+      <div v-if="copilot.visible" class="drawer-overlay" @click="copilot.close()" />
+    </Transition>
 
-      <!-- 消息区域 -->
-      <div ref="messageContainer" class="panel-messages selectable">
-        <!-- 空状态 -->
-        <div v-if="!copilot.hasMessages" class="panel-empty">
-          <div class="panel-empty-icon">
-            <span class="i-mdi-star-four-points inline-block h-8 w-8" />
+    <!-- 抽屉面板 -->
+    <Transition name="drawer-slide">
+      <div v-if="copilot.visible" class="copilot-drawer">
+        <!-- 面板头部 -->
+        <div class="panel-header">
+          <div class="panel-header-left">
+            <span class="i-mdi-star-four-points inline-block h-4 w-4 text-[hsl(var(--primary))]" />
+            <span class="panel-title">应用管家</span>
           </div>
-          <p class="panel-empty-title">你好，我是应用管家</p>
-          <p class="panel-empty-sub">告诉我你想做什么，比如创建技能、管理智能体、修改配置...</p>
-          <div class="panel-suggestions">
-            <button class="suggestion-btn" @click="copilot.sendMessage('列出所有技能')">列出所有技能</button>
-            <button class="suggestion-btn" @click="copilot.sendMessage('列出所有智能体')">列出所有智能体</button>
-            <button class="suggestion-btn" @click="copilot.sendMessage('查看当前配置')">查看当前配置</button>
+          <div class="panel-header-right">
+            <button v-if="copilot.hasMessages" class="panel-icon-btn" title="清空对话" @click="copilot.clearMessages()">
+              <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
+            </button>
+            <button class="panel-icon-btn" title="收起" @click="copilot.close()">
+              <span class="i-carbon-close inline-block h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
 
-        <!-- 消息列表 -->
-        <template v-for="msg in copilot.messages" :key="msg.id">
-          <div class="msg-block">
-            <!-- 角色行：图标 + 角色名 + 时间 -->
-            <div class="msg-role-row">
-              <span class="msg-role-icon" :class="msg.role === 'user' ? 'msg-role-user' : 'msg-role-assistant'">
-                <span
-                  class="inline-block h-3 w-3"
-                  :class="msg.role === 'user' ? 'i-carbon-user' : 'i-mdi-star-four-points'" />
-              </span>
-              <span class="msg-role-name">{{ msg.role === 'user' ? '你' : '管家' }}</span>
-              <span class="msg-time">{{
-                new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-              }}</span>
+        <!-- 消息区域 -->
+        <div ref="messageContainer" class="panel-messages selectable">
+          <!-- 空状态 -->
+          <div v-if="!copilot.hasMessages" class="panel-empty">
+            <div class="panel-empty-icon">
+              <span class="i-mdi-star-four-points inline-block h-8 w-8" />
             </div>
-
-            <!-- 用户消息内容 -->
-            <div v-if="msg.role === 'user'" class="msg-content">
-              <div class="msg-text">{{ msg.content }}</div>
+            <p class="panel-empty-title">你好，我是应用管家</p>
+            <p class="panel-empty-sub">告诉我你想做什么，比如创建技能、管理智能体、修改配置...</p>
+            <div class="panel-suggestions">
+              <button class="suggestion-btn" @click="copilot.sendMessage('列出所有技能')">列出所有技能</button>
+              <button class="suggestion-btn" @click="copilot.sendMessage('列出所有智能体')">列出所有智能体</button>
+              <button class="suggestion-btn" @click="copilot.sendMessage('查看当前配置')">查看当前配置</button>
             </div>
+          </div>
 
-            <!-- 助手消息内容 -->
-            <div v-else class="msg-content">
-              <template v-if="msg.blocks.length > 0">
-                <template v-for="(block, idx) in msg.blocks" :key="idx">
-                  <!-- 文本块 -->
-                  <div v-if="block.type === 'text'" class="msg-text" v-text="block.text" />
+          <!-- 消息列表 -->
+          <template v-for="msg in copilot.messages" :key="msg.id">
+            <div class="msg-block">
+              <div class="msg-role-row">
+                <span class="msg-role-icon" :class="msg.role === 'user' ? 'msg-role-user' : 'msg-role-assistant'">
+                  <span
+                    class="inline-block h-3 w-3"
+                    :class="msg.role === 'user' ? 'i-carbon-user' : 'i-mdi-star-four-points'" />
+                </span>
+                <span class="msg-role-name">{{ msg.role === 'user' ? '你' : '管家' }}</span>
+                <span class="msg-time">{{
+                  new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+                }}</span>
+              </div>
 
-                  <!-- 思考块 -->
-                  <div v-else-if="block.type === 'thinking'" class="msg-thinking">
-                    <span class="i-carbon-idea inline-block h-3 w-3 shrink-0" />
-                    <span class="msg-thinking-text">{{ block.text }}</span>
-                  </div>
+              <div v-if="msg.role === 'user'" class="msg-content">
+                <div class="msg-text">{{ msg.content }}</div>
+              </div>
 
-                  <!-- 工具调用块 -->
-                  <div v-else-if="block.type === 'tool'" class="msg-tool">
-                    <span
-                      class="inline-block h-3 w-3 shrink-0"
-                      :class="
-                        block.tool.status === 'calling'
-                          ? 'i-carbon-renew animate-spin'
-                          : block.tool.status === 'done'
-                            ? 'i-carbon-checkmark'
-                            : 'i-carbon-warning-alt'
-                      " />
-                    <span>{{ toolSummary(block) }}</span>
-                  </div>
+              <div v-else class="msg-content">
+                <template v-if="msg.blocks.length > 0">
+                  <template v-for="(block, idx) in msg.blocks" :key="idx">
+                    <div v-if="block.type === 'text'" class="msg-text" v-text="block.text" />
+
+                    <div v-else-if="block.type === 'thinking'" class="msg-thinking">
+                      <span class="i-carbon-idea inline-block h-3 w-3 shrink-0" />
+                      <span class="msg-thinking-text">{{ block.text }}</span>
+                    </div>
+
+                    <div v-else-if="block.type === 'tool'" class="msg-tool">
+                      <span
+                        class="inline-block h-3 w-3 shrink-0"
+                        :class="
+                          block.tool.status === 'calling'
+                            ? 'i-carbon-renew animate-spin'
+                            : block.tool.status === 'done'
+                              ? 'i-carbon-checkmark'
+                              : 'i-carbon-warning-alt'
+                        " />
+                      <span>{{ toolSummary(block) }}</span>
+                    </div>
+                  </template>
                 </template>
-              </template>
 
-              <!-- 流式中无内容的占位 -->
-              <div v-else-if="msg.status === 'streaming'" class="msg-typing">
-                <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
-              </div>
+                <div v-else-if="msg.status === 'streaming'" class="msg-typing">
+                  <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
+                </div>
 
-              <!-- 错误 -->
-              <div v-if="msg.status === 'error' && msg.error" class="msg-error">
-                <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
-                {{ msg.error }}
+                <div v-if="msg.status === 'error' && msg.error" class="msg-error">
+                  <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
+                  {{ msg.error }}
+                </div>
               </div>
             </div>
-          </div>
-        </template>
+          </template>
 
-        <!-- 流式进行中指示 -->
-        <div v-if="copilot.isStreaming" class="stream-indicator">
-          <span class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
+          <div v-if="copilot.isStreaming" class="stream-indicator">
+            <span class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
+          </div>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="panel-input-area">
+          <textarea
+            ref="textareaRef"
+            v-model="inputText"
+            class="panel-input"
+            :placeholder="copilot.isStreaming ? '处理中...' : '输入消息，Enter 发送'"
+            rows="1"
+            :disabled="copilot.isStreaming"
+            @keydown="handleKeydown" />
+          <button v-if="copilot.isStreaming" class="panel-stop-btn" title="中断" @click="copilot.abort()">
+            <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
-
-      <!-- 输入区域 -->
-      <div class="panel-input-area">
-        <textarea
-          ref="textareaRef"
-          v-model="inputText"
-          class="panel-input"
-          :placeholder="copilot.isStreaming ? '处理中...' : '输入消息，Enter 发送'"
-          rows="1"
-          :disabled="copilot.isStreaming"
-          @keydown="handleKeydown" />
-        <button v-if="copilot.isStreaming" class="panel-stop-btn" title="中断" @click="copilot.abort()">
-          <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
-  </Popup>
+    </Transition>
+  </teleport>
 </template>
 
 <style scoped>
@@ -270,15 +257,50 @@ function toolSummary(block: CopilotBlock): string {
   transform: scale(0.8);
 }
 
-/* ====== 抽屉内容 ====== */
+/* ====== 遮罩层 ====== */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* 遮罩动画 */
+.overlay-fade-enter-active,
+.overlay-fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.overlay-fade-enter-from,
+.overlay-fade-leave-to {
+  opacity: 0;
+}
+
+/* ====== 抽屉面板 ====== */
 .copilot-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
   width: 400px;
-  height: 100vh;
   background: hsl(var(--background));
   border-left: 1px solid hsl(var(--border) / 0.3);
+  box-shadow: -4px 0 24px hsl(var(--shadow) / 0.12);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 抽屉滑入/滑出动画 */
+.drawer-slide-enter-active {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.drawer-slide-leave-active {
+  transition: transform 0.2s ease;
+}
+.drawer-slide-enter-from,
+.drawer-slide-leave-to {
+  transform: translateX(100%);
 }
 
 /* ====== 面板头部 ====== */
@@ -399,14 +421,13 @@ function toolSummary(block: CopilotBlock): string {
   border-color: hsl(var(--primary) / 0.2);
 }
 
-/* ====== 消息块（统一靠左，角色换行） ====== */
+/* ====== 消息块 ====== */
 .msg-block {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-/* 角色行 */
 .msg-role-row {
   display: flex;
   align-items: center;
@@ -444,7 +465,6 @@ function toolSummary(block: CopilotBlock): string {
   color: hsl(var(--muted-foreground) / 0.3);
 }
 
-/* 消息内容区（全宽） */
 .msg-content {
   padding-left: 28px;
   font-size: 13px;
@@ -453,12 +473,10 @@ function toolSummary(block: CopilotBlock): string {
   word-break: break-word;
 }
 
-/* 文本块 */
 .msg-text {
   white-space: pre-wrap;
 }
 
-/* 思考块 */
 .msg-thinking {
   display: flex;
   align-items: flex-start;
@@ -476,7 +494,6 @@ function toolSummary(block: CopilotBlock): string {
   overflow: hidden;
 }
 
-/* 工具调用块 */
 .msg-tool {
   display: flex;
   align-items: center;
@@ -489,7 +506,6 @@ function toolSummary(block: CopilotBlock): string {
   background: hsl(var(--foreground) / 0.03);
 }
 
-/* 打字指示 */
 .msg-typing {
   display: flex;
   align-items: center;
@@ -524,7 +540,6 @@ function toolSummary(block: CopilotBlock): string {
   }
 }
 
-/* 错误 */
 .msg-error {
   display: flex;
   align-items: flex-start;
@@ -534,7 +549,6 @@ function toolSummary(block: CopilotBlock): string {
   color: hsl(var(--error));
 }
 
-/* 流式指示 */
 .stream-indicator {
   display: flex;
   justify-content: center;
