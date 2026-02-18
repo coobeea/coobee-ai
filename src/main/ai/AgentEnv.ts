@@ -283,6 +283,7 @@ status.json format:
     steps: [{ id, description, agentId?, status: "pending"|"running"|"done"|"failed", startedAt?, completedAt?, error? }] }
 
 Workflow:
+  0. Use manage_agent(list) to check available agents before creating new ones
   1. Use task_plan(create) to create a plan with steps → get taskId
   2. Use task_plan(update_step) to mark each step as running/done/failed
   3. Use delegate_to_agent(taskId=...) to delegate — sub-agents share the same task directory

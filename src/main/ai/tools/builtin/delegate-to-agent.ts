@@ -84,6 +84,7 @@ export const delegateToAgentTool: ToolDefinition = {
   name: 'delegate_to_agent',
   description:
     'Delegate a sub-task to a specialized Agent. The agent runs in a sub-workspace under the current task directory. ' +
+    'Before delegating, use manage_agent(list) to check if a suitable agent already exists. ' +
     'Use this when you need a specialist (created via manage_agent) to handle a specific part of the task. ' +
     'Pass taskId to group related delegations; the tool automatically shares execution experiences between sub-agents. ' +
     'Results are written to tasks/{taskId}/results/{agentId}.md and returned as a string.',

@@ -4,7 +4,7 @@
  * 在 Builder 构建前注入运行时环境：
  *   1. 获取/创建 Agent 工作空间
  *   2. 扫描并加载 Skill（仅 agent 模式）
- *   3. 注入执行协议 + 运行时路径 + Skill 发现提示（仅 agent 模式）
+ *   3. 注入执行协议 + 运行时路径 + Skill 发现提示 + Agent 发现提示（仅 agent 模式）
  *   4. 设置会话存储目录、工作目录、上下文快照目录
  *
  * 运行模式差异：
@@ -51,7 +51,7 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
       skillManager.scanSkills(agentEnv.skillPaths, Env.paths.configDir);
       SkillManager.setCurrent(skillManager, sessionId);
 
-      // 4. 注入核心执行协议 + 运行时环境 + Skill 发现提示到 appendInstructions
+      // 4. 注入核心执行协议 + 运行时环境 + Skill 发现提示 + Agent 发现提示到 appendInstructions
       //    执行协议可通过同名 Skill 覆盖（用户在 workspace/skills/execution-protocol/ 创建即可）
       const executionProtocol = buildExecutionProtocol(skillManager);
       const runtimePathsBlock = formatRuntimePaths(agentEnv);
@@ -71,10 +71,12 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
             `\nYou can also use \`config_get\` to view current config and \`config_patch\` to modify it.\n` +
             `</skill_discovery>`
           : '';
+      const agentDiscoveryHint = await buildAgentDiscoveryHint();
       builder.appendInstructions(
         executionProtocol,
         runtimePathsBlock,
-        ...(skillDiscoveryHint ? [skillDiscoveryHint] : [])
+        ...(skillDiscoveryHint ? [skillDiscoveryHint] : []),
+        ...(agentDiscoveryHint ? [agentDiscoveryHint] : [])
       );
 
       // 5. 设置沙箱上下文（由 Runtime 的 convertTools 使用）
@@ -166,6 +168,73 @@ When you receive a user request, follow this protocol:
 
 NOTE: For simple/trivial requests (greetings, quick facts, single-step tasks), skip steps 1 and 3-5 — just answer directly.
 </execution_protocol>`;
+}
+
+// ==================== Agent 发现提示 ====================
+
+/**
+ * 构建 Agent 发现提示块
+ *
+ * 从 AgentStore 加载已注册 Agent 列表，生成 <agent_discovery> 提示：
+ *   - 已注册 Agent 的 ID / 名称 / 描述
+ *   - 三种多 Agent 协作模式的使用指引
+ *   - 模式选择决策指南
+ *
+ * 如果 AgentStore 不可用或为空，返回 undefined（不注入）。
+ */
+async function buildAgentDiscoveryHint(): Promise<string | undefined> {
+  try {
+    const { AgentStore } = await import('./agents/AgentStore');
+    const store = await AgentStore.getInstance();
+    const agents = await store.list();
+
+    const agentList =
+      agents.length > 0
+        ? agents.map((a) => `- **${a.name}** (\`${a.id}\`): ${a.description}`).join('\n')
+        : '_No registered agents yet. Use `manage_agent(create)` to create one._';
+
+    return `<agent_discovery>
+## Registered Agents
+
+${agentList}
+
+## Multi-Agent Modes
+
+You have three ways to collaborate with other agents:
+
+1. **Tool Delegation** (\`delegate_to_agent\`)
+   - You maintain control; sub-agent is like a tool call
+   - Best for: specific, well-defined sub-tasks
+   - Usage: manage_agent(list) → delegate_to_agent(agentId, task)
+
+2. **Orchestrator** (programmatic plan → parallel workers)
+   - A Planner decomposes the task, then workers execute in stages
+   - Best for: complex tasks that can be pre-decomposed
+   - Currently available as OrchestratorRuntime (not yet exposed as tool)
+
+3. **Swarm** (dynamic handoff between specialist agents)
+   - Triage routes to specialists; agents hand off to each other
+   - Best for: exploratory tasks where the path is unclear
+   - Currently available as SwarmRuntime (not yet exposed as tool)
+
+### Decision Guide
+
+- Simple sub-task → delegate_to_agent
+- Complex, decomposable task → Orchestrator (future)
+- Exploratory, uncertain task → Swarm (future)
+- Need a new specialist? → manage_agent(create) first, then delegate
+
+### Agent Lifecycle
+
+- Use \`manage_agent(list)\` to discover registered agents
+- Use \`manage_agent(create)\` to create reusable specialists
+- Use \`manage_agent(get, id)\` to read an agent's full definition
+- Temporary agents in Orchestrator/Swarm are session-scoped and auto-destroyed
+</agent_discovery>`;
+  } catch (error) {
+    log.warn('[EnvInjector] Failed to build agent discovery hint:', error);
+    return undefined;
+  }
 }
 
 // ==================== Skill 上下文环境变量 ====================
