@@ -227,15 +227,17 @@ onUnmounted(() => {
 defineExpose({ close });
 </script>
 
-<style lang="scss" scoped>
+<style scoped>
 .popup-wrapper {
-  @apply fixed inset-0 flex;
+  position: fixed;
+  inset: 0;
+  display: flex;
   overflow-y: auto;
   pointer-events: none;
+}
 
-  &:has(.popup-container) {
-    pointer-events: auto;
-  }
+.popup-wrapper:has(.popup-container) {
+  pointer-events: auto;
 }
 
 .popup-container {
@@ -245,13 +247,12 @@ defineExpose({ close });
   z-index: 1;
 }
 
-// ─── 动画 ────────────────────────────────────────────────
+/* ─── 动画 ──────────────────────────────────────────────── */
 
 .popup-fade-enter-active,
 .popup-fade-leave-active {
   transition: opacity 0.3s ease;
 }
-
 .popup-fade-enter-from,
 .popup-fade-leave-to {
   opacity: 0;
@@ -261,12 +262,7 @@ defineExpose({ close });
 .popup-slide-up-leave-active {
   transition: all 0.3s ease;
 }
-
-.popup-slide-up-enter-from {
-  opacity: 0;
-  transform: translateY(100%);
-}
-
+.popup-slide-up-enter-from,
 .popup-slide-up-leave-to {
   opacity: 0;
   transform: translateY(100%);
@@ -276,12 +272,7 @@ defineExpose({ close });
 .popup-slide-down-leave-active {
   transition: all 0.3s ease;
 }
-
-.popup-slide-down-enter-from {
-  opacity: 0;
-  transform: translateY(-100%);
-}
-
+.popup-slide-down-enter-from,
 .popup-slide-down-leave-to {
   opacity: 0;
   transform: translateY(-100%);
@@ -291,12 +282,7 @@ defineExpose({ close });
 .popup-slide-left-leave-active {
   transition: all 0.3s ease;
 }
-
-.popup-slide-left-enter-from {
-  opacity: 0;
-  transform: translateX(100%);
-}
-
+.popup-slide-left-enter-from,
 .popup-slide-left-leave-to {
   opacity: 0;
   transform: translateX(100%);
@@ -306,12 +292,7 @@ defineExpose({ close });
 .popup-slide-right-leave-active {
   transition: all 0.3s ease;
 }
-
-.popup-slide-right-enter-from {
-  opacity: 0;
-  transform: translateX(-100%);
-}
-
+.popup-slide-right-enter-from,
 .popup-slide-right-leave-to {
   opacity: 0;
   transform: translateX(-100%);
@@ -321,12 +302,7 @@ defineExpose({ close });
 .popup-zoom-leave-active {
   transition: all 0.3s ease;
 }
-
-.popup-zoom-enter-from {
-  opacity: 0;
-  transform: scale(0.8);
-}
-
+.popup-zoom-enter-from,
 .popup-zoom-leave-to {
   opacity: 0;
   transform: scale(0.8);
@@ -335,7 +311,6 @@ defineExpose({ close });
 .popup-bounce-enter-active {
   animation: popup-bounce-in 0.5s ease;
 }
-
 .popup-bounce-leave-active {
   animation: popup-bounce-out 0.3s ease;
 }
