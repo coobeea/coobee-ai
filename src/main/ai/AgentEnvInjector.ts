@@ -14,15 +14,15 @@
  * 从 AgentExecutor 中提取，专注于环境准备职责。
  */
 
-import path from 'node:path'
-import { createLogger } from '@main/common/logger'
-import { formatRuntimePaths, buildAgentEnv, type AgentEnv } from './AgentEnv'
-import { SkillManager } from './skills'
-import { createPathOnlyContext, resolveSandboxContext } from './sandbox'
-import type { SandboxContext, SandboxMode } from './sandbox'
-import type { AgentBuilder } from './AgentExecutor'
+import path from 'node:path';
+import { createLogger } from '@main/common/logger';
+import { formatRuntimePaths, buildAgentEnv, type AgentEnv } from './AgentEnv';
+import { SkillManager } from './skills';
+import { createPathOnlyContext, resolveSandboxContext } from './sandbox';
+import type { SandboxContext, SandboxMode } from './sandbox';
+import type { AgentBuilder } from './AgentExecutor';
 
-const log = createLogger('ai')
+const log = createLogger('ai');
 
 /**
  * 注入运行时环境到 Builder
@@ -31,33 +31,30 @@ const log = createLogger('ai')
  * @param builder - Builder 实例
  * @returns workspace 路径（或 undefined）
  */
-export async function injectEnv(
-  sessionId: string,
-  builder: AgentBuilder
-): Promise<string | undefined> {
+export async function injectEnv(sessionId: string, builder: AgentBuilder): Promise<string | undefined> {
   try {
-    const { Env } = await import('@main/common/env')
-    const mode = builder.getMode()
+    const { Env } = await import('@main/common/env');
+    const mode = builder.getMode();
 
     // 1. 获取/创建工作空间
-    const workspace = await Env.getAgentWorkspaceDir(sessionId)
+    const workspace = await Env.getAgentWorkspaceDir(sessionId);
 
     // 2. 构建 AgentEnv
-    const agentEnv = await buildAgentEnv(sessionId, workspace)
+    const agentEnv = await buildAgentEnv(sessionId, workspace);
 
     // ====== Agent 模式独有：Skill + 执行协议 + 运行时路径 ======
     if (mode === 'agent') {
       // 3. 扫描 Skill 并存储到 SkillManager（供 skill_list 工具按需查询）
       //    使用 agentEnv.skillPaths（已包含 Extension 贡献的 Skill 目录）
       //    传入 configDir 以加载 skills.json5 中的 Skill 配置
-      const skillManager = new SkillManager()
-      skillManager.scanSkills(agentEnv.skillPaths, Env.paths.configDir)
-      SkillManager.setCurrent(skillManager)
+      const skillManager = new SkillManager();
+      skillManager.scanSkills(agentEnv.skillPaths, Env.paths.configDir);
+      SkillManager.setCurrent(skillManager, sessionId);
 
       // 4. 注入核心执行协议 + 运行时环境 + Skill 发现提示到 appendInstructions
       //    执行协议可通过同名 Skill 覆盖（用户在 workspace/skills/execution-protocol/ 创建即可）
-      const executionProtocol = buildExecutionProtocol(skillManager)
-      const runtimePathsBlock = formatRuntimePaths(agentEnv)
+      const executionProtocol = buildExecutionProtocol(skillManager);
+      const runtimePathsBlock = formatRuntimePaths(agentEnv);
       const skillDiscoveryHint =
         skillManager.size > 0
           ? `<skill_discovery>\n` +
@@ -73,36 +70,36 @@ export async function injectEnv(
             `- Environment info → load "runtime-env" Skill\n` +
             `\nYou can also use \`config_get\` to view current config and \`config_patch\` to modify it.\n` +
             `</skill_discovery>`
-          : ''
+          : '';
       builder.appendInstructions(
         executionProtocol,
         runtimePathsBlock,
         ...(skillDiscoveryHint ? [skillDiscoveryHint] : [])
-      )
+      );
 
       // 5. 设置沙箱上下文（由 Runtime 的 convertTools 使用）
       //    从配置读取 sandbox mode，注入 COOBEE_* 环境变量
-      const envVars = buildSkillEnvVars(agentEnv)
-      const sandboxCtx = await buildSandboxContext(workspace, sessionId, envVars)
-      builder.sandboxContext(sandboxCtx)
+      const envVars = buildSkillEnvVars(agentEnv);
+      const sandboxCtx = await buildSandboxContext(workspace, sessionId, envVars);
+      builder.sandboxContext(sandboxCtx);
     }
 
     // ====== Chat & Agent 共享：基础环境设置 ======
 
     // 6. 设置会话存储目录（指向 workspace 内的 sessions/）
-    builder.sessionDir(path.join(workspace, 'sessions'))
+    builder.sessionDir(path.join(workspace, 'sessions'));
 
     // 7. 设置工作目录（统一 API：两个 Builder 都支持 workspaceRoot()）
-    builder.workspaceRoot(workspace)
+    builder.workspaceRoot(workspace);
 
     // 8. 设置上下文快照目录（Runtime 层写入）
-    builder.contextDir(path.join(workspace, 'contexts'))
+    builder.contextDir(path.join(workspace, 'contexts'));
 
-    log.info(`[EnvInjector] Injected: sessionId=${sessionId}, mode=${mode}, workspace=${workspace}`)
-    return workspace
+    log.info(`[EnvInjector] Injected: sessionId=${sessionId}, mode=${mode}, workspace=${workspace}`);
+    return workspace;
   } catch (error) {
-    log.warn(`[EnvInjector] Failed, continuing without env:`, error)
-    return undefined
+    log.warn(`[EnvInjector] Failed, continuing without env:`, error);
+    return undefined;
   }
 }
 
@@ -122,9 +119,9 @@ export async function injectEnv(
  */
 function buildExecutionProtocol(skillManager?: SkillManager): string {
   // 优先使用 SkillManager 中的 execution-protocol Skill（支持用户/Agent 覆盖）
-  const customProtocol = skillManager?.getByName('execution-protocol')
+  const customProtocol = skillManager?.getByName('execution-protocol');
   if (customProtocol?.content) {
-    return `<execution_protocol>\n${customProtocol.content}\n</execution_protocol>`
+    return `<execution_protocol>\n${customProtocol.content}\n</execution_protocol>`;
   }
 
   // 兜底：硬编码默认值（正常情况下不会走到这里，因为内置 Skill 应该总是可用的）
@@ -168,7 +165,7 @@ When you receive a user request, follow this protocol:
    - Do NOT save session-specific details — only knowledge that helps in future sessions
 
 NOTE: For simple/trivial requests (greetings, quick facts, single-step tasks), skip steps 1 and 3-5 — just answer directly.
-</execution_protocol>`
+</execution_protocol>`;
 }
 
 // ==================== Skill 上下文环境变量 ====================
@@ -190,7 +187,7 @@ function buildSkillEnvVars(env: AgentEnv): Record<string, string> {
     COOBEE_SESSION_ID: env.sessionId,
     COOBEE_USER_HOME: env.userHome,
     COOBEE_MEMORY_DIR: env.memoryDir
-  }
+  };
 }
 
 // ==================== 沙箱上下文构建 ====================
@@ -210,16 +207,16 @@ async function buildSandboxContext(
   sessionId: string,
   envVars: Record<string, string>
 ): Promise<SandboxContext> {
-  let mode: SandboxMode = 'path-only'
+  let mode: SandboxMode = 'path-only';
 
   try {
-    const { configStoreInstance } = await import('@main/common/config/ConfigStore')
+    const { configStoreInstance } = await import('@main/common/config/ConfigStore');
     if (configStoreInstance) {
-      const security = configStoreInstance.get('security')
-      const configMode = security?.sandbox?.mode
+      const security = configStoreInstance.get('security');
+      const configMode = security?.sandbox?.mode;
       if (configMode) {
-        mode = configMode
-        log.info(`[EnvInjector] Sandbox mode from config: ${mode}`)
+        mode = configMode;
+        log.info(`[EnvInjector] Sandbox mode from config: ${mode}`);
       }
     }
   } catch {
@@ -234,16 +231,16 @@ async function buildSandboxContext(
       toolPolicy: { allow: [], deny: [] },
       sessionId,
       envVars
-    }
+    };
   }
 
   // docker 模式：委托给 resolveSandboxContext（会处理 Docker 不可用的降级）
   if (mode === 'docker') {
-    const ctx = await resolveSandboxContext({ mode: 'docker', workspaceRoot: workspace }, sessionId)
-    ctx.envVars = envVars
-    return ctx
+    const ctx = await resolveSandboxContext({ mode: 'docker', workspaceRoot: workspace }, sessionId);
+    ctx.envVars = envVars;
+    return ctx;
   }
 
   // path-only 模式（默认）
-  return createPathOnlyContext(workspace, { sessionId, envVars })
+  return createPathOnlyContext(workspace, { sessionId, envVars });
 }

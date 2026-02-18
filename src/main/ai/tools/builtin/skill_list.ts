@@ -43,11 +43,11 @@ export const skillListTool: ToolDefinition = {
   execute: async function* (
     _params: Record<string, unknown>,
     _signal?: AbortSignal,
-    context?: { workspaceRoot?: string }
+    context?: { workspaceRoot?: string; sessionId?: string }
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
     yield { type: 'progress' as const, content: '[skill_list] listing...' };
 
-    const manager = SkillManager.getCurrent();
+    const manager = SkillManager.getCurrent(context?.sessionId);
 
     if (!manager || manager.size === 0) {
       return { success: true, llmContent: 'No Skills available.' };

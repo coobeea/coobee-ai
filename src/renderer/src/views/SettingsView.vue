@@ -6,100 +6,100 @@
  * 通过 Gateway RPC 与后端 config / provider 系统交互。
  */
 
-import { ref, onMounted, computed } from 'vue'
-import { gateway } from '@/plugins/gatewaySetup'
+import { ref, onMounted, computed } from 'vue';
+import { gateway } from '@/plugins/gatewaySetup';
 
 // ---- 状态 ----
 
-const configData = ref<Record<string, unknown> | null>(null)
-const loading = ref(true)
-const error = ref<string | null>(null)
-const editingJson = ref('')
-const isEditing = ref(false)
-const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+const configData = ref<Record<string, unknown> | null>(null);
+const loading = ref(true);
+const error = ref<string | null>(null);
+const editingJson = ref('');
+const isEditing = ref(false);
+const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
 // ---- 加载配置 ----
 
 async function loadConfig(): Promise<void> {
-  loading.value = true
-  error.value = null
+  loading.value = true;
+  error.value = null;
   try {
-    const result = await gateway.request<Record<string, unknown>>('config.getAll')
-    configData.value = result
-    editingJson.value = JSON.stringify(result, null, 2)
+    const result = await gateway.request<Record<string, unknown>>('config.getAll');
+    configData.value = result;
+    editingJson.value = JSON.stringify(result, null, 2);
   } catch (err: unknown) {
-    error.value = err instanceof Error ? err.message : String(err)
-    console.warn('[SettingsView] config.getAll failed (config system may not be initialized):', err)
+    error.value = err instanceof Error ? err.message : String(err);
+    console.warn('[SettingsView] config.getAll failed (config system may not be initialized):', err);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 // ---- 保存配置 ----
 
 async function saveConfig(): Promise<void> {
-  if (!isEditing.value) return
-  saveStatus.value = 'saving'
+  if (!isEditing.value) return;
+  saveStatus.value = 'saving';
   try {
-    const parsed = JSON.parse(editingJson.value) as Record<string, unknown>
-    await gateway.request('config.set', { path: '', value: parsed })
-    configData.value = parsed
-    isEditing.value = false
-    saveStatus.value = 'saved'
+    const parsed = JSON.parse(editingJson.value) as Record<string, unknown>;
+    await gateway.request('config.patch', { partial: parsed });
+    configData.value = parsed;
+    isEditing.value = false;
+    saveStatus.value = 'saved';
     setTimeout(() => {
-      saveStatus.value = 'idle'
-    }, 2000)
+      saveStatus.value = 'idle';
+    }, 2000);
   } catch (err: unknown) {
-    saveStatus.value = 'error'
-    error.value = err instanceof Error ? err.message : String(err)
+    saveStatus.value = 'error';
+    error.value = err instanceof Error ? err.message : String(err);
   }
 }
 
 function startEditing(): void {
-  editingJson.value = JSON.stringify(configData.value, null, 2)
-  isEditing.value = true
+  editingJson.value = JSON.stringify(configData.value, null, 2);
+  isEditing.value = true;
 }
 
 function cancelEditing(): void {
-  isEditing.value = false
-  editingJson.value = JSON.stringify(configData.value, null, 2)
+  isEditing.value = false;
+  editingJson.value = JSON.stringify(configData.value, null, 2);
 }
 
 // 计算属性：从配置中提取显示值
 const defaultModel = computed(() => {
-  const agents = configData.value?.agents as Record<string, unknown> | undefined
-  const defaults = agents?.defaults as Record<string, unknown> | undefined
-  const model = defaults?.model as Record<string, string> | undefined
-  return model?.primary ?? 'openai/gpt-4o'
-})
+  const models = configData.value?.models as Record<string, unknown> | undefined;
+  const defaults = models?.defaults as Record<string, unknown> | undefined;
+  const model = defaults?.model as Record<string, string> | undefined;
+  return model?.primary ?? 'openai/gpt-4o';
+});
 
 const providersList = computed(() => {
-  const models = configData.value?.models as Record<string, unknown> | undefined
-  const providers = models?.providers as Record<string, unknown> | undefined
-  return providers ? Object.keys(providers).join(', ') || '无' : '使用内置默认'
-})
+  const models = configData.value?.models as Record<string, unknown> | undefined;
+  const providers = models?.providers as Record<string, unknown> | undefined;
+  return providers ? Object.keys(providers).join(', ') || '无' : '使用内置默认';
+});
 
 const queueMode = computed(() => {
-  const messages = configData.value?.messages as Record<string, unknown> | undefined
-  const queue = messages?.queue as Record<string, unknown> | undefined
-  return (queue?.mode as string) ?? 'followup'
-})
+  const messages = configData.value?.messages as Record<string, unknown> | undefined;
+  const queue = messages?.queue as Record<string, unknown> | undefined;
+  return (queue?.mode as string) ?? 'followup';
+});
 
 const maxQueueSize = computed(() => {
-  const messages = configData.value?.messages as Record<string, unknown> | undefined
-  const queue = messages?.queue as Record<string, unknown> | undefined
-  return (queue?.cap as number) ?? 20
-})
+  const messages = configData.value?.messages as Record<string, unknown> | undefined;
+  const queue = messages?.queue as Record<string, unknown> | undefined;
+  return (queue?.cap as number) ?? 20;
+});
 
 const dropPolicy = computed(() => {
-  const messages = configData.value?.messages as Record<string, unknown> | undefined
-  const queue = messages?.queue as Record<string, unknown> | undefined
-  return (queue?.dropPolicy as string) ?? 'old'
-})
+  const messages = configData.value?.messages as Record<string, unknown> | undefined;
+  const queue = messages?.queue as Record<string, unknown> | undefined;
+  return (queue?.dropPolicy as string) ?? 'old';
+});
 
 onMounted(() => {
-  loadConfig()
-})
+  loadConfig();
+});
 </script>
 
 <template>
@@ -112,8 +112,7 @@ onMounted(() => {
       </div>
       <router-link
         to="/agent"
-        class="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs text-gray-500 transition hover:bg-gray-200 hover:text-gray-700"
-      >
+        class="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs text-gray-500 transition hover:bg-gray-200 hover:text-gray-700">
         <span class="i-carbon-arrow-left inline-block h-3 w-3"></span>
         返回
       </router-link>
@@ -127,17 +126,12 @@ onMounted(() => {
       </div>
 
       <!-- 错误提示 -->
-      <div
-        v-if="error"
-        class="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3"
-      >
+      <div v-if="error" class="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
         <span class="i-carbon-warning-alt mt-0.5 inline-block h-4 w-4 shrink-0 text-red-500"></span>
         <div>
           <p class="text-xs font-medium text-red-700">加载配置失败</p>
           <p class="mt-0.5 text-xs text-red-600">{{ error }}</p>
-          <p class="mt-1 text-[10px] text-red-400">
-            配置系统可能尚未初始化。请确保 coobee.json5 文件存在。
-          </p>
+          <p class="mt-1 text-[10px] text-red-400"> 配置系统可能尚未初始化。请确保 coobee.json5 文件存在。 </p>
         </div>
       </div>
 
@@ -155,20 +149,14 @@ onMounted(() => {
                 <!-- 默认模型 -->
                 <div>
                   <label class="mb-1 block text-[10px] font-medium text-gray-500">默认模型</label>
-                  <div
-                    class="rounded border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-xs text-gray-700"
-                  >
+                  <div class="rounded border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-xs text-gray-700">
                     {{ defaultModel }}
                   </div>
                 </div>
                 <!-- Provider 列表 -->
                 <div>
-                  <label class="mb-1 block text-[10px] font-medium text-gray-500"
-                    >已配置 Provider</label
-                  >
-                  <div
-                    class="rounded border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs text-gray-700"
-                  >
+                  <label class="mb-1 block text-[10px] font-medium text-gray-500">已配置 Provider</label>
+                  <div class="rounded border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs text-gray-700">
                     {{ providersList }}
                   </div>
                 </div>
@@ -186,27 +174,19 @@ onMounted(() => {
               <div class="grid grid-cols-3 gap-4">
                 <div>
                   <label class="mb-1 block text-[10px] font-medium text-gray-500">队列模式</label>
-                  <div
-                    class="rounded border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-xs text-gray-700"
-                  >
+                  <div class="rounded border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-xs text-gray-700">
                     {{ queueMode }}
                   </div>
                 </div>
                 <div>
-                  <label class="mb-1 block text-[10px] font-medium text-gray-500"
-                    >最大队列深度</label
-                  >
-                  <div
-                    class="rounded border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-xs text-gray-700"
-                  >
+                  <label class="mb-1 block text-[10px] font-medium text-gray-500">最大队列深度</label>
+                  <div class="rounded border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-xs text-gray-700">
                     {{ maxQueueSize }}
                   </div>
                 </div>
                 <div>
                   <label class="mb-1 block text-[10px] font-medium text-gray-500">丢弃策略</label>
-                  <div
-                    class="rounded border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-xs text-gray-700"
-                  >
+                  <div class="rounded border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-xs text-gray-700">
                     {{ dropPolicy }}
                   </div>
                 </div>
@@ -225,30 +205,24 @@ onMounted(() => {
                 <button
                   v-if="!isEditing"
                   class="flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-[10px] font-medium text-gray-600 transition hover:bg-gray-200"
-                  @click="startEditing"
-                >
+                  @click="startEditing">
                   <span class="i-carbon-edit inline-block h-3 w-3"></span>
                   编辑
                 </button>
                 <template v-else>
                   <button
                     class="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[10px] font-medium text-white transition hover:bg-primary/90"
-                    @click="saveConfig"
-                  >
+                    @click="saveConfig">
                     <span class="i-carbon-save inline-block h-3 w-3"></span>
                     保存
                   </button>
                   <button
                     class="flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-[10px] font-medium text-gray-600 transition hover:bg-gray-200"
-                    @click="cancelEditing"
-                  >
+                    @click="cancelEditing">
                     取消
                   </button>
                 </template>
-                <span
-                  v-if="saveStatus === 'saved'"
-                  class="flex items-center gap-1 text-[10px] text-emerald-500"
-                >
+                <span v-if="saveStatus === 'saved'" class="flex items-center gap-1 text-[10px] text-emerald-500">
                   <span class="i-carbon-checkmark inline-block h-3 w-3"></span>
                   已保存
                 </span>
@@ -260,8 +234,7 @@ onMounted(() => {
                 class="h-80 w-full resize-y rounded-lg bg-white p-4 font-mono text-[11px] leading-relaxed text-gray-700 outline-none"
                 :readonly="!isEditing"
                 :class="isEditing ? 'bg-white' : 'bg-gray-50/50 text-gray-500'"
-                spellcheck="false"
-              ></textarea>
+                spellcheck="false"></textarea>
             </div>
           </section>
         </div>
