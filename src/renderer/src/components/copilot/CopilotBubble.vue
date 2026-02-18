@@ -1,20 +1,28 @@
 <script setup lang="ts">
 /**
- * CopilotBubble — 应用管家全局悬浮气泡
+ * CopilotBubble — 应用管家全局悬浮气泡 + 右侧抽屉面板
  *
- * 右下角悬浮按钮 + 展开的 mini 对话面板。
+ * 右下角悬浮按钮，点击后从右侧滑出抽屉式对话面板。
  * 所有页面可见，点击即可与「应用管家」Agent 对话。
  *
  * 消息布局：统一靠左，角色标签换行展示，内容平铺不浪费空间。
  */
 
-import { ref, nextTick, watch } from 'vue';
+import { ref, nextTick, watch, computed } from 'vue';
 import { useCopilotStore, type CopilotBlock } from '@/stores/copilot';
 
 const copilot = useCopilotStore();
 const inputText = ref('');
 const messageContainer = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+
+const drawerVisible = computed({
+  get: () => copilot.visible,
+  set: (v: boolean) => {
+    if (v) copilot.open();
+    else copilot.close();
+  }
+});
 
 /** 滚动到底部 */
 function scrollToBottom(): void {
@@ -74,149 +82,152 @@ function toolSummary(block: CopilotBlock): string {
 </script>
 
 <template>
-  <div class="copilot-root">
-    <!-- 悬浮气泡按钮 -->
-    <Transition name="bubble-pop">
-      <button v-if="!copilot.visible" class="copilot-fab" title="应用管家" @click="copilot.open()">
-        <span class="i-carbon-sparkle inline-block h-5 w-5" />
-      </button>
-    </Transition>
+  <!-- 悬浮气泡按钮（固定在右下角） -->
+  <Transition name="bubble-pop">
+    <button v-if="!copilot.visible" class="copilot-fab" title="应用管家" @click="copilot.open()">
+      <span class="i-mdi-star-four-points inline-block h-5 w-5" />
+    </button>
+  </Transition>
 
-    <!-- Mini 对话面板 -->
-    <Transition name="panel-slide">
-      <div v-if="copilot.visible" class="copilot-panel">
-        <!-- 面板头部 -->
-        <div class="panel-header">
-          <div class="panel-header-left">
-            <span class="i-carbon-sparkle inline-block h-4 w-4 text-[hsl(var(--primary))]" />
-            <span class="panel-title">应用管家</span>
-          </div>
-          <div class="panel-header-right">
-            <button v-if="copilot.hasMessages" class="panel-icon-btn" title="清空对话" @click="copilot.clearMessages()">
-              <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
-            </button>
-            <button class="panel-icon-btn" title="收起" @click="copilot.close()">
-              <span class="i-carbon-chevron-down inline-block h-3.5 w-3.5" />
-            </button>
-          </div>
+  <!-- 右侧抽屉面板 -->
+  <Popup
+    v-model:visible="drawerVisible"
+    position="right"
+    transition="slide-left"
+    :show-mask="true"
+    :close-on-click-overlay="true"
+    :close-on-esc="true"
+    :lock-scroll="false"
+    :z-index="9999"
+    container-class="copilot-drawer-container">
+    <div class="copilot-drawer">
+      <!-- 面板头部 -->
+      <div class="panel-header">
+        <div class="panel-header-left">
+          <span class="i-mdi-star-four-points inline-block h-4 w-4 text-[hsl(var(--primary))]" />
+          <span class="panel-title">应用管家</span>
         </div>
-
-        <!-- 消息区域 -->
-        <div ref="messageContainer" class="panel-messages selectable">
-          <!-- 空状态 -->
-          <div v-if="!copilot.hasMessages" class="panel-empty">
-            <div class="panel-empty-icon">
-              <span class="i-carbon-sparkle inline-block h-6 w-6" />
-            </div>
-            <p class="panel-empty-title">你好，我是应用管家</p>
-            <p class="panel-empty-sub"> 告诉我你想做什么，比如创建技能、管理智能体、修改配置... </p>
-            <div class="panel-suggestions">
-              <button class="suggestion-btn" @click="copilot.sendMessage('列出所有技能')"> 列出所有技能 </button>
-              <button class="suggestion-btn" @click="copilot.sendMessage('列出所有智能体')"> 列出所有智能体 </button>
-              <button class="suggestion-btn" @click="copilot.sendMessage('查看当前配置')"> 查看当前配置 </button>
-            </div>
-          </div>
-
-          <!-- 消息列表 -->
-          <template v-for="msg in copilot.messages" :key="msg.id">
-            <div class="msg-block">
-              <!-- 角色行：图标 + 角色名 + 时间 -->
-              <div class="msg-role-row">
-                <span class="msg-role-icon" :class="msg.role === 'user' ? 'msg-role-user' : 'msg-role-assistant'">
-                  <span
-                    class="inline-block h-3 w-3"
-                    :class="msg.role === 'user' ? 'i-carbon-user' : 'i-carbon-sparkle'" />
-                </span>
-                <span class="msg-role-name">{{ msg.role === 'user' ? '你' : '管家' }}</span>
-                <span class="msg-time">{{
-                  new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-                }}</span>
-              </div>
-
-              <!-- 用户消息内容 -->
-              <div v-if="msg.role === 'user'" class="msg-content">
-                <div class="msg-text">{{ msg.content }}</div>
-              </div>
-
-              <!-- 助手消息内容 -->
-              <div v-else class="msg-content">
-                <template v-if="msg.blocks.length > 0">
-                  <template v-for="(block, idx) in msg.blocks" :key="idx">
-                    <!-- 文本块 -->
-                    <div v-if="block.type === 'text'" class="msg-text" v-text="block.text" />
-
-                    <!-- 思考块 -->
-                    <div v-else-if="block.type === 'thinking'" class="msg-thinking">
-                      <span class="i-carbon-idea inline-block h-3 w-3 shrink-0" />
-                      <span class="msg-thinking-text">{{ block.text }}</span>
-                    </div>
-
-                    <!-- 工具调用块 -->
-                    <div v-else-if="block.type === 'tool'" class="msg-tool">
-                      <span
-                        class="inline-block h-3 w-3 shrink-0"
-                        :class="
-                          block.tool.status === 'calling'
-                            ? 'i-carbon-renew animate-spin'
-                            : block.tool.status === 'done'
-                              ? 'i-carbon-checkmark'
-                              : 'i-carbon-warning-alt'
-                        " />
-                      <span>{{ toolSummary(block) }}</span>
-                    </div>
-                  </template>
-                </template>
-
-                <!-- 流式中无内容的占位 -->
-                <div v-else-if="msg.status === 'streaming'" class="msg-typing">
-                  <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
-                </div>
-
-                <!-- 错误 -->
-                <div v-if="msg.status === 'error' && msg.error" class="msg-error">
-                  <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
-                  {{ msg.error }}
-                </div>
-              </div>
-            </div>
-          </template>
-
-          <!-- 流式进行中指示 -->
-          <div v-if="copilot.isStreaming" class="stream-indicator">
-            <span class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
-          </div>
-        </div>
-
-        <!-- 输入区域 -->
-        <div class="panel-input-area">
-          <textarea
-            ref="textareaRef"
-            v-model="inputText"
-            class="panel-input"
-            :placeholder="copilot.isStreaming ? '处理中...' : '输入消息，Enter 发送'"
-            rows="1"
-            :disabled="copilot.isStreaming"
-            @keydown="handleKeydown" />
-          <button v-if="copilot.isStreaming" class="panel-stop-btn" title="中断" @click="copilot.abort()">
-            <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5" />
+        <div class="panel-header-right">
+          <button v-if="copilot.hasMessages" class="panel-icon-btn" title="清空对话" @click="copilot.clearMessages()">
+            <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
+          </button>
+          <button class="panel-icon-btn" title="收起" @click="copilot.close()">
+            <span class="i-carbon-close inline-block h-3.5 w-3.5" />
           </button>
         </div>
       </div>
-    </Transition>
-  </div>
+
+      <!-- 消息区域 -->
+      <div ref="messageContainer" class="panel-messages selectable">
+        <!-- 空状态 -->
+        <div v-if="!copilot.hasMessages" class="panel-empty">
+          <div class="panel-empty-icon">
+            <span class="i-mdi-star-four-points inline-block h-8 w-8" />
+          </div>
+          <p class="panel-empty-title">你好，我是应用管家</p>
+          <p class="panel-empty-sub">告诉我你想做什么，比如创建技能、管理智能体、修改配置...</p>
+          <div class="panel-suggestions">
+            <button class="suggestion-btn" @click="copilot.sendMessage('列出所有技能')">列出所有技能</button>
+            <button class="suggestion-btn" @click="copilot.sendMessage('列出所有智能体')">列出所有智能体</button>
+            <button class="suggestion-btn" @click="copilot.sendMessage('查看当前配置')">查看当前配置</button>
+          </div>
+        </div>
+
+        <!-- 消息列表 -->
+        <template v-for="msg in copilot.messages" :key="msg.id">
+          <div class="msg-block">
+            <!-- 角色行：图标 + 角色名 + 时间 -->
+            <div class="msg-role-row">
+              <span class="msg-role-icon" :class="msg.role === 'user' ? 'msg-role-user' : 'msg-role-assistant'">
+                <span
+                  class="inline-block h-3 w-3"
+                  :class="msg.role === 'user' ? 'i-carbon-user' : 'i-mdi-star-four-points'" />
+              </span>
+              <span class="msg-role-name">{{ msg.role === 'user' ? '你' : '管家' }}</span>
+              <span class="msg-time">{{
+                new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+              }}</span>
+            </div>
+
+            <!-- 用户消息内容 -->
+            <div v-if="msg.role === 'user'" class="msg-content">
+              <div class="msg-text">{{ msg.content }}</div>
+            </div>
+
+            <!-- 助手消息内容 -->
+            <div v-else class="msg-content">
+              <template v-if="msg.blocks.length > 0">
+                <template v-for="(block, idx) in msg.blocks" :key="idx">
+                  <!-- 文本块 -->
+                  <div v-if="block.type === 'text'" class="msg-text" v-text="block.text" />
+
+                  <!-- 思考块 -->
+                  <div v-else-if="block.type === 'thinking'" class="msg-thinking">
+                    <span class="i-carbon-idea inline-block h-3 w-3 shrink-0" />
+                    <span class="msg-thinking-text">{{ block.text }}</span>
+                  </div>
+
+                  <!-- 工具调用块 -->
+                  <div v-else-if="block.type === 'tool'" class="msg-tool">
+                    <span
+                      class="inline-block h-3 w-3 shrink-0"
+                      :class="
+                        block.tool.status === 'calling'
+                          ? 'i-carbon-renew animate-spin'
+                          : block.tool.status === 'done'
+                            ? 'i-carbon-checkmark'
+                            : 'i-carbon-warning-alt'
+                      " />
+                    <span>{{ toolSummary(block) }}</span>
+                  </div>
+                </template>
+              </template>
+
+              <!-- 流式中无内容的占位 -->
+              <div v-else-if="msg.status === 'streaming'" class="msg-typing">
+                <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
+              </div>
+
+              <!-- 错误 -->
+              <div v-if="msg.status === 'error' && msg.error" class="msg-error">
+                <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
+                {{ msg.error }}
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 流式进行中指示 -->
+        <div v-if="copilot.isStreaming" class="stream-indicator">
+          <span class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
+        </div>
+      </div>
+
+      <!-- 输入区域 -->
+      <div class="panel-input-area">
+        <textarea
+          ref="textareaRef"
+          v-model="inputText"
+          class="panel-input"
+          :placeholder="copilot.isStreaming ? '处理中...' : '输入消息，Enter 发送'"
+          rows="1"
+          :disabled="copilot.isStreaming"
+          @keydown="handleKeydown" />
+        <button v-if="copilot.isStreaming" class="panel-stop-btn" title="中断" @click="copilot.abort()">
+          <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  </Popup>
 </template>
 
 <style scoped>
-/* ====== 根容器 ====== */
-.copilot-root {
+/* ====== 悬浮按钮（固定右下角） ====== */
+.copilot-fab {
   position: fixed;
   bottom: 20px;
   right: 20px;
   z-index: 9999;
-}
-
-/* ====== 悬浮按钮 ====== */
-.copilot-fab {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -259,38 +270,21 @@ function toolSummary(block: CopilotBlock): string {
   transform: scale(0.8);
 }
 
-/* ====== 面板 ====== */
-.copilot-panel {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 380px;
-  height: 520px;
-  border-radius: 16px;
+/* ====== 抽屉容器（Popup 内部） ====== */
+:deep(.copilot-drawer-container) {
+  height: 100% !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.copilot-drawer {
+  width: 400px;
+  height: 100vh;
   background: hsl(var(--background));
-  border: 1px solid hsl(var(--border) / 0.5);
-  box-shadow:
-    0 12px 40px hsl(var(--shadow) / 0.2),
-    0 4px 12px hsl(var(--shadow) / 0.1);
+  border-left: 1px solid hsl(var(--border) / 0.3);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-/* 面板滑入动画 */
-.panel-slide-enter-active {
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.panel-slide-leave-active {
-  transition: all 0.2s ease;
-}
-.panel-slide-enter-from {
-  opacity: 0;
-  transform: translateY(16px) scale(0.95);
-}
-.panel-slide-leave-to {
-  opacity: 0;
-  transform: translateY(8px) scale(0.98);
 }
 
 /* ====== 面板头部 ====== */
@@ -298,8 +292,8 @@ function toolSummary(block: CopilotBlock): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 44px;
-  padding: 0 14px;
+  height: 48px;
+  padding: 0 16px;
   flex-shrink: 0;
   border-bottom: 1px solid hsl(var(--border) / 0.3);
   background: hsl(var(--surface) / 0.8);
@@ -313,7 +307,7 @@ function toolSummary(block: CopilotBlock): string {
 }
 
 .panel-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: hsl(var(--foreground));
 }
@@ -328,8 +322,8 @@ function toolSummary(block: CopilotBlock): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 6px;
   color: hsl(var(--muted-foreground) / 0.5);
   transition: all 0.12s ease;
@@ -344,10 +338,10 @@ function toolSummary(block: CopilotBlock): string {
 .panel-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 14px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 /* 空状态 */
@@ -358,47 +352,47 @@ function toolSummary(block: CopilotBlock): string {
   justify-content: center;
   flex: 1;
   text-align: center;
-  padding: 20px 0;
+  padding: 40px 20px;
 }
 
 .panel-empty-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   background: hsl(var(--primary) / 0.08);
   color: hsl(var(--primary) / 0.5);
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .panel-empty-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: hsl(var(--foreground) / 0.7);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .panel-empty-sub {
-  font-size: 12px;
+  font-size: 13px;
   color: hsl(var(--muted-foreground) / 0.5);
   line-height: 1.5;
-  max-width: 240px;
+  max-width: 280px;
 }
 
 .panel-suggestions {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 6px;
-  margin-top: 16px;
+  gap: 8px;
+  margin-top: 20px;
 }
 
 .suggestion-btn {
-  padding: 5px 10px;
-  border-radius: 14px;
-  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  font-size: 12px;
   font-weight: 500;
   color: hsl(var(--primary));
   background: hsl(var(--primary) / 0.06);
@@ -429,8 +423,8 @@ function toolSummary(block: CopilotBlock): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 6px;
   flex-shrink: 0;
 }
@@ -458,7 +452,7 @@ function toolSummary(block: CopilotBlock): string {
 
 /* 消息内容区（全宽） */
 .msg-content {
-  padding-left: 26px;
+  padding-left: 28px;
   font-size: 13px;
   line-height: 1.6;
   color: hsl(var(--foreground) / 0.85);
@@ -559,14 +553,14 @@ function toolSummary(block: CopilotBlock): string {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-top: 1px solid hsl(var(--border) / 0.3);
   background: hsl(var(--surface) / 0.5);
 }
 
 .panel-input {
   flex: 1;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-radius: 10px;
   border: 1px solid hsl(var(--border) / 0.4);
   background: hsl(var(--background));
@@ -576,7 +570,7 @@ function toolSummary(block: CopilotBlock): string {
   resize: none;
   outline: none;
   transition: border-color 0.15s ease;
-  max-height: 80px;
+  max-height: 120px;
   overflow-y: auto;
 }
 
@@ -596,8 +590,8 @@ function toolSummary(block: CopilotBlock): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   flex-shrink: 0;
   color: hsl(var(--primary-foreground));
