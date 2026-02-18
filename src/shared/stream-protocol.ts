@@ -14,36 +14,12 @@
 // ==================== 流式消息 ====================
 
 /**
- * 流式消息类型（粗粒度，用于 WebSocket 传输）
+ * 流式消息类型
  *
- * 对应关系（StreamChunkType → StreamMessageType）：
- *   text:delta   → text
- *   reasoning:*  → thinking
- *   tool:start   → tool_call
- *   tool:done    → tool_result
- *   handoff:*    → handoff
- *   delegate:*   → delegate
- *   hitl:*       → hitl
- *   run:start       → start
- *   run:done        → done
- *   run:error       → error
- *   run:interrupted → interrupted
- *   run:resumed     → resumed
+ * 直接透传后端 StreamChunkType，不做映射。
+ * 前端不需要的事件通过 default 分支忽略即可。
  */
-export type StreamMessageType =
-  | 'text'
-  | 'thinking'
-  | 'tool_call'
-  | 'tool_result'
-  | 'handoff'
-  | 'delegate'
-  | 'hitl'
-  | 'agent_updated'
-  | 'start'
-  | 'done'
-  | 'error'
-  | 'interrupted'
-  | 'resumed';
+export type StreamMessageType = string;
 
 /** 流式消息来源 */
 export interface StreamSource {

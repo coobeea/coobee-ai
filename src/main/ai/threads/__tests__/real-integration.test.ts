@@ -65,8 +65,8 @@ function sendRpc(method: string, params: Record<string, unknown>): Promise<Recor
  * Gateway 事件格式:
  *   {"type":"event","event":"stream.message","payload":{"sessionId":"...","message":StreamMessage}}
  *
- * StreamMessage.type (stream-protocol.ts):
- *   text / thinking / tool_call / tool_result / delegate / hitl / done / error / ...
+ * StreamMessage.type 直接透传 StreamChunkType:
+ *   text:delta / reasoning:delta / tool:start / tool:done / run:done / run:error / ...
  * 文本在 StreamMessage.content
  */
 async function subscribeAndWait(
@@ -91,10 +91,10 @@ async function subscribeAndWait(
           if (payload?.sessionId === sid) {
             const msg = payload.message;
             events.push(msg);
-            if (msg?.type === 'text') {
+            if (msg?.type === 'text:delta') {
               texts.push(msg.content || '');
             }
-            if (msg?.type === 'done' || msg?.type === 'error') {
+            if (msg?.type === 'run:done' || msg?.type === 'run:error') {
               clearTimeout(timeout);
               ws.removeListener('message', onMessage);
               resolve({ texts, events });
@@ -231,7 +231,7 @@ describe('真实集成测试', () => {
       console.log(`[Test] Agent 回复 (前300字): ${fullText.slice(0, 300)}`);
       console.log(`[Test] 事件数: ${events.length}`);
 
-      const toolEvents = events.filter((e) => e.type === 'tool_call' || e.type === 'tool_result');
+      const toolEvents = events.filter((e) => e.type === 'tool:start' || e.type === 'tool:done');
       console.log(`[Test] 工具事件数: ${toolEvents.length}`);
       expect(fullText.length).toBeGreaterThan(0);
     }, 95_000);
@@ -341,8 +341,8 @@ describe('真实集成测试', () => {
       console.log(`[Test] 委托回复 (前500字): ${fullText.slice(0, 500)}`);
       console.log(`[Test] 委托事件数: ${events.length}`);
 
-      const delegateEvents = events.filter((e) => e.type === 'delegate');
-      const toolCallEvents = events.filter((e) => e.type === 'tool_call' || e.type === 'tool_result');
+      const delegateEvents = events.filter((e) => e.type === 'delegate:start' || e.type === 'delegate:done');
+      const toolCallEvents = events.filter((e) => e.type === 'tool:start' || e.type === 'tool:done');
       console.log(`[Test] 委托事件: ${delegateEvents.length}, 工具事件: ${toolCallEvents.length}`);
       expect(fullText.length).toBeGreaterThan(0);
     }, 125_000);

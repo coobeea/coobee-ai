@@ -5,9 +5,4 @@
  * 此文件仅保留类型重导出，供需要流式类型的模块使用。
  */
 
-export type {
-  StreamMessage,
-  StreamMessageType,
-  StreamSource,
-  ConnectionState
-} from '@shared/stream-protocol'
+export type { StreamMessage, StreamSource, ConnectionState } from '@shared/stream-protocol';

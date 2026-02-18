@@ -2,7 +2,7 @@
  * useStreamHandler — 通用流式消息处理 composable
  *
  * 统一 ChatStore 和 CopilotStore 的消息类型定义与 StreamMessage → UI Message 的映射逻辑。
- * 支持所有消息类型：text, thinking, tool_call, tool_result, hitl, delegate, interrupted, resumed。
+ * StreamMessage.type 直接使用后端 StreamChunkType（如 text:delta, tool:start 等），不做映射。
  *
  * Usage:
  *   const { messages, isStreaming, handleStreamMessage, ... } = useStreamHandler({ idPrefix: 'chat' })
@@ -143,12 +143,12 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
     let assistantMsg = getCurrentAssistantMessage();
 
     switch (msg.type) {
-      case 'start':
+      case 'run:start':
         isStreaming.value = true;
         if (!assistantMsg) createAssistantMessage();
         break;
 
-      case 'text': {
+      case 'text:delta': {
         if (!assistantMsg) assistantMsg = createAssistantMessage();
         assistantMsg.content += msg.content;
         const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1];
@@ -160,7 +160,7 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
         break;
       }
 
-      case 'thinking': {
+      case 'reasoning:delta': {
         if (!assistantMsg) assistantMsg = createAssistantMessage();
         const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1];
         if (lastBlock && lastBlock.type === 'thinking') {
@@ -171,7 +171,7 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
         break;
       }
 
-      case 'tool_call': {
+      case 'tool:start': {
         if (!assistantMsg) assistantMsg = createAssistantMessage();
         assistantMsg.blocks.push({
           type: 'tool',
@@ -184,7 +184,7 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
         break;
       }
 
-      case 'tool_result': {
+      case 'tool:done': {
         if (assistantMsg) {
           for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
             const block = assistantMsg.blocks[i];
@@ -198,12 +198,12 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
         break;
       }
 
-      case 'done':
+      case 'run:done':
         if (assistantMsg) assistantMsg.status = 'done';
         isStreaming.value = false;
         break;
 
-      case 'error':
+      case 'run:error':
         if (assistantMsg) {
           assistantMsg.status = 'error';
           assistantMsg.error = msg.content;
@@ -213,52 +213,58 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
         isStreaming.value = false;
         break;
 
-      case 'hitl':
+      case 'hitl:required':
         if (!assistantMsg) assistantMsg = createAssistantMessage();
-        if (msg.data?.action === 'required') {
-          if (!assistantMsg.pendingApprovals) {
-            assistantMsg.pendingApprovals = [];
-          }
-          assistantMsg.pendingApprovals.push({
-            index: (msg.data.index as number) ?? assistantMsg.pendingApprovals.length,
-            toolName: (msg.data.toolName as string) || 'unknown',
-            arguments: msg.data.arguments as string | undefined
-          });
-        } else if (msg.data?.action === 'approved' || msg.data?.action === 'rejected') {
-          const targetIndex = msg.data.index as number | undefined;
+        if (!assistantMsg.pendingApprovals) {
+          assistantMsg.pendingApprovals = [];
+        }
+        assistantMsg.pendingApprovals.push({
+          index: (msg.data?.index as number) ?? assistantMsg.pendingApprovals.length,
+          toolName: (msg.data?.toolName as string) || 'unknown',
+          arguments: msg.data?.arguments as string | undefined
+        });
+        break;
+
+      case 'hitl:approved':
+      case 'hitl:rejected': {
+        if (assistantMsg) {
+          const targetIndex = msg.data?.index as number | undefined;
           if (assistantMsg.pendingApprovals && targetIndex != null) {
             const approval = assistantMsg.pendingApprovals.find((a) => a.index === targetIndex);
             if (approval && !approval.decision) {
-              approval.decision = msg.data.action === 'approved' ? 'approve-once' : 'reject';
+              approval.decision = msg.type === 'hitl:approved' ? 'approve-once' : 'reject';
             }
           }
         }
         break;
+      }
 
-      case 'interrupted':
+      case 'run:interrupted':
         if (assistantMsg) assistantMsg.status = 'interrupted';
         isStreaming.value = false;
         break;
 
-      case 'resumed':
+      case 'run:resumed':
         if (assistantMsg) assistantMsg.status = 'streaming';
         isStreaming.value = true;
         break;
 
-      case 'delegate': {
+      case 'delegate:start': {
         if (!assistantMsg) assistantMsg = createAssistantMessage();
-        const action = msg.data?.action as string | undefined;
-        if (action === 'start') {
-          assistantMsg.blocks.push({
-            type: 'delegate',
-            delegate: {
-              agentId: (msg.data?.agentId as string) || 'unknown',
-              agentName: msg.data?.agentName as string | undefined,
-              task: msg.data?.task as string | undefined,
-              status: 'running'
-            }
-          });
-        } else if (action === 'done') {
+        assistantMsg.blocks.push({
+          type: 'delegate',
+          delegate: {
+            agentId: (msg.data?.agentId as string) || 'unknown',
+            agentName: msg.data?.agentName as string | undefined,
+            task: msg.data?.task as string | undefined,
+            status: 'running'
+          }
+        });
+        break;
+      }
+
+      case 'delegate:done': {
+        if (assistantMsg) {
           for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
             const block = assistantMsg.blocks[i];
             if (block.type === 'delegate' && block.delegate.status === 'running') {
@@ -273,7 +279,6 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
       }
 
       default:
-        console.log(`[streamHandler:${idPrefix}] Unhandled message type: ${msg.type}`, msg);
         break;
     }
   }

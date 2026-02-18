@@ -7,9 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 
-// 直接从 shared 导入
 import type {
-  StreamMessageType as SharedStreamMessageType,
   StreamSource as SharedStreamSource,
   StreamMessage as SharedStreamMessage,
   WsServerMessage,
@@ -17,12 +15,7 @@ import type {
   ConnectionState
 } from '@shared/stream-protocol';
 
-// 从后端 streaming/types 导入（应该是 shared 的 re-export）
-import type {
-  StreamMessageType as BackendStreamMessageType,
-  StreamSource as BackendStreamSource,
-  StreamMessage as BackendStreamMessage
-} from '../types';
+import type { StreamSource as BackendStreamSource, StreamMessage as BackendStreamMessage } from '../types';
 
 describe('shared/stream-protocol 类型一致性', () => {
   // 这些测试用运行时值验证类型结构是否正确
@@ -34,7 +27,7 @@ describe('shared/stream-protocol 类型一致性', () => {
         id: 'msg-1',
         sessionId: 'session-1',
         sequence: 1,
-        type: 'text',
+        type: 'text:delta',
         content: 'hello',
         timestamp: Date.now(),
         source: { type: 'agent', id: 'a1', name: 'Agent' }
@@ -43,7 +36,7 @@ describe('shared/stream-protocol 类型一致性', () => {
       expect(msg.id).toBe('msg-1');
       expect(msg.sessionId).toBe('session-1');
       expect(msg.sequence).toBe(1);
-      expect(msg.type).toBe('text');
+      expect(msg.type).toBe('text:delta');
       expect(msg.content).toBe('hello');
       expect(msg.timestamp).toBeGreaterThan(0);
       expect(msg.source.type).toBe('agent');
@@ -54,7 +47,7 @@ describe('shared/stream-protocol 类型一致性', () => {
         id: '1',
         sessionId: 's1',
         sequence: 1,
-        type: 'tool_call',
+        type: 'tool:start',
         content: 'search',
         data: { toolName: 'search', args: {} },
         timestamp: Date.now(),
@@ -65,7 +58,7 @@ describe('shared/stream-protocol 类型一致性', () => {
         id: '2',
         sessionId: 's1',
         sequence: 2,
-        type: 'text',
+        type: 'text:delta',
         content: 'result',
         timestamp: Date.now(),
         source: { type: 'agent', id: 'a1', name: 'A' }
@@ -89,23 +82,18 @@ describe('shared/stream-protocol 类型一致性', () => {
     });
   });
 
-  describe('StreamMessageType 枚举值', () => {
-    it('包含 10 种消息类型', () => {
-      const allTypes: SharedStreamMessageType[] = [
-        'text',
-        'thinking',
-        'tool_call',
-        'tool_result',
-        'handoff',
-        'hitl',
-        'agent_updated',
-        'start',
-        'done',
-        'error'
-      ];
-
-      // 验证每个值都是合法的 StreamMessageType
-      expect(allTypes).toHaveLength(10);
+  describe('StreamMessageType 是 string', () => {
+    it('接受任意 StreamChunkType 值', () => {
+      const msg: SharedStreamMessage = {
+        id: '1',
+        sessionId: 's1',
+        sequence: 1,
+        type: 'text:delta',
+        content: 'test',
+        timestamp: Date.now(),
+        source: { type: 'agent', id: 'a1', name: 'A' }
+      };
+      expect(msg.type).toBe('text:delta');
     });
   });
 
@@ -117,7 +105,7 @@ describe('shared/stream-protocol 类型一致性', () => {
           id: '1',
           sessionId: 's1',
           sequence: 1,
-          type: 'text',
+          type: 'text:delta',
           content: 'hello',
           timestamp: Date.now(),
           source: { type: 'agent', id: 'a1', name: 'A' }
@@ -158,18 +146,16 @@ describe('shared/stream-protocol 类型一致性', () => {
 
   describe('类型兼容性（后端 re-export 与 shared 一致）', () => {
     it('后端 StreamMessage 可赋值给 shared StreamMessage', () => {
-      // TypeScript 编译期检查：如果类型不一致会编译失败
       const backendMsg: BackendStreamMessage = {
         id: '1',
         sessionId: 's1',
         sequence: 1,
-        type: 'text',
+        type: 'text:delta',
         content: 'hello',
         timestamp: Date.now(),
         source: { type: 'agent', id: 'a1', name: 'A' }
       };
 
-      // 可以赋值给 shared 类型（类型兼容）
       const sharedMsg: SharedStreamMessage = backendMsg;
       expect(sharedMsg.id).toBe('1');
     });
@@ -183,12 +169,6 @@ describe('shared/stream-protocol 类型一致性', () => {
 
       const sharedSource: SharedStreamSource = backendSource;
       expect(sharedSource.type).toBe('agent');
-    });
-
-    it('后端 StreamMessageType 可赋值给 shared StreamMessageType', () => {
-      const backendType: BackendStreamMessageType = 'text';
-      const sharedType: SharedStreamMessageType = backendType;
-      expect(sharedType).toBe('text');
     });
   });
 });
