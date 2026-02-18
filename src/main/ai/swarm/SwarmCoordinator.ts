@@ -380,9 +380,6 @@ export class SwarmCoordinator {
       .instructions(instructions)
       .sessionId(sessionId);
 
-    agentExecutor.applyProviderConfig(builder);
-    agentExecutor.applyThinkingLevel(builder);
-
     if (this.config.triageModel) {
       builder.model(this.config.triageModel);
     }
@@ -411,9 +408,6 @@ export class SwarmCoordinator {
       .sessionMode('file')
       .instructions(specialistInstructions)
       .sessionId(sessionId);
-
-    agentExecutor.applyProviderConfig(builder);
-    agentExecutor.applyThinkingLevel(builder);
 
     if (role.model) {
       builder.model(role.model);
@@ -518,9 +512,6 @@ export class SwarmCoordinator {
 - roleId 必须是可用角色中的一个`
         )
         .sessionId(sessionId);
-
-      agentExecutor.applyProviderConfig(builder);
-      agentExecutor.applyThinkingLevel(builder);
 
       if (this.config.triageModel) {
         builder.model(this.config.triageModel);

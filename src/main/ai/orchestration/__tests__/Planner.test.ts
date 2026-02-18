@@ -39,9 +39,7 @@ vi.mock('../../AgentExecutor', () => ({
         })
       };
       return builder;
-    },
-    applyProviderConfig: vi.fn(),
-    applyThinkingLevel: vi.fn()
+    }
   }
 }));
 

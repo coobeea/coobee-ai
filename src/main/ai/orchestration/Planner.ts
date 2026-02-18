@@ -158,9 +158,6 @@ Consider:
       .sessionMode('file')
       .instructions(PLANNER_INSTRUCTIONS);
 
-    agentExecutor.applyProviderConfig(builder);
-    agentExecutor.applyThinkingLevel(builder);
-
     if (this.options?.model) {
       builder.model(this.options.model);
     }

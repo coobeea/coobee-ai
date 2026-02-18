@@ -327,18 +327,13 @@ async function runSubAgent(
     builder.tools(allTools);
   }
 
-  // 模型配置
+  // piMono() 已自动注入 Provider 配置 + thinkingLevel
+  // Agent 定义中的显式配置优先覆盖
   if (agentDef.model) {
     builder.model(agentDef.model);
-  } else {
-    await applyProviderConfig(builder, agentExecutor);
   }
-
-  // 思维链
   if (agentDef.thinkingLevel) {
     builder.thinkingLevel(agentDef.thinkingLevel);
-  } else {
-    await applyDefaultThinkingLevel(builder);
   }
 
   // 子 Agent sessionId：以父 sessionId(= threadId) 为前缀，保证可追溯
@@ -396,46 +391,6 @@ function ensureDirs(dirs: string[]): void {
       fs.mkdirSync(dir, { recursive: true });
     }
   }
-}
-
-async function applyProviderConfig(
-  builder: ReturnType<typeof import('../../AgentExecutor').agentExecutor.piMono>,
-  executor: typeof import('../../AgentExecutor').agentExecutor
-): Promise<void> {
-  try {
-    const providerSystem = executor.getProviderSystem?.();
-    if (!providerSystem) return;
-
-    const { selector, registry } = providerSystem;
-    const ref = selector.resolve();
-    const provider = registry.get(ref.provider);
-    if (!provider) return;
-
-    const { resolveApiKey: resolve } = await import('../../provider/ApiKeyResolver');
-    const apiKey = resolve(provider.apiKey, provider.id);
-    if (!apiKey) return;
-
-    builder.fromProviderConfig(provider, ref.model);
-  } catch {
-    // Provider 系统未就绪，静默回退
-  }
-}
-
-async function applyDefaultThinkingLevel(
-  builder: ReturnType<typeof import('../../AgentExecutor').agentExecutor.piMono>
-): Promise<void> {
-  try {
-    const { configStoreInstance } = await import('../../../common/config/ConfigStore');
-    const config = configStoreInstance?.getAll?.();
-    const level = config?.models?.defaults?.thinkingLevel;
-    if (level) {
-      builder.thinkingLevel(level);
-      return;
-    }
-  } catch {
-    // 静默回退
-  }
-  builder.thinkingLevel('medium');
 }
 
 /** 带超时的 Promise 包装 */

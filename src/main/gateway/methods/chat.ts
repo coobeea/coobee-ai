@@ -18,7 +18,6 @@ import { log } from '@main/common/logger';
 import { agentExecutor } from '@main/ai/AgentExecutor';
 import { builtinTools } from '@main/ai/tools';
 import { ToolRegistry } from '@main/ai/tools/registry';
-import { configStoreInstance } from '@main/common/config/ConfigStore';
 import { AgentStore } from '@main/ai/agents/AgentStore';
 import type { AgentDefinition } from '@main/ai/agents/types';
 import { ThreadStore } from '@main/ai/threads/ThreadStore';
@@ -70,39 +69,7 @@ function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.pi
     builder.instructions(CHAT_INSTRUCTIONS).tools(chatTools);
   }
 
-  // 尝试从 Provider 系统获取模型配置
-  applyProviderConfig(builder);
-
-  // 从配置或默认值设置思维链级别
-  applyThinkingLevel(builder);
-
   return builder;
-}
-
-/**
- * 尝试从 Provider 系统注入模型配置（委托给 AgentExecutor 公共方法）
- */
-function applyProviderConfig(builder: ReturnType<typeof agentExecutor.piMono>): void {
-  agentExecutor.applyProviderConfig(builder);
-}
-
-/**
- * 从 coobee.json5 配置注入思维链级别
- *
- * 读取 models.defaults.thinkingLevel 配置项，默认 'medium'。
- */
-function applyThinkingLevel(builder: ReturnType<typeof agentExecutor.piMono>): void {
-  try {
-    const config = configStoreInstance?.getAll?.();
-    const level = config?.models?.defaults?.thinkingLevel;
-    if (level) {
-      builder.thinkingLevel(level);
-      return;
-    }
-  } catch {
-    // 静默回退
-  }
-  builder.thinkingLevel('medium');
 }
 
 /**
@@ -145,18 +112,13 @@ function createBuilderFromDefinition(
     }
   }
 
-  // 模型：Agent 定义优先，否则走 Provider 系统
+  // piMono() 已自动注入 Provider 配置 + thinkingLevel
+  // Agent 定义中的显式配置优先覆盖
   if (def.model) {
     builder.model(def.model);
-  } else {
-    applyProviderConfig(builder);
   }
-
-  // 思维链：Agent 定义优先，否则走全局配置
   if (def.thinkingLevel) {
     builder.thinkingLevel(def.thinkingLevel);
-  } else {
-    applyThinkingLevel(builder);
   }
 
   return builder;

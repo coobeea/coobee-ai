@@ -258,9 +258,19 @@ class AgentExecutor {
 
   // ========== Builder 工厂 ==========
 
-  /** 创建 PiMono Agent Builder */
+  /**
+   * 创建 PiMono Agent Builder（自动注入 Provider 配置 + 思维链级别）
+   *
+   * 所有通过此工厂创建的 Agent（单 Agent、Orchestrator Worker、Swarm Role 等）
+   * 天然就有 API Key、model、baseURL 和 thinkingLevel。
+   * 调用方只需关心自己的业务配置（instructions、tools、name 等）。
+   * 如需覆盖模型，在工厂返回后调 .model() 即可。
+   */
   piMono(): PiMonoBuilder {
-    return new PiMonoBuilder();
+    const builder = new PiMonoBuilder();
+    this.applyProviderConfig(builder);
+    this.applyThinkingLevel(builder);
+    return builder;
   }
 
   /** 创建 OpenAI Agent Builder */
