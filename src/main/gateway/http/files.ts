@@ -5,6 +5,7 @@
  * 挂载到 GatewayServer 的 Koa Router（prefix = /gateway），最终路径：
  *
  *   GET /gateway/files/tree?path=<dir>&depth=<n>  — 获取目录树
+ *   GET /gateway/files/content?path=<file>        — 读取文件内容（文本）
  *
  * 安全限制：
  *   - path 不能包含 .. 遍历
@@ -119,5 +120,100 @@ export function registerFileRoutes(router: Router): void {
     }
   });
 
+  // ==================== CONTENT ====================
+
+  const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+
+  router.get('/files/content', async (ctx) => {
+    const filePath = ctx.query.path as string | undefined;
+
+    if (!filePath) {
+      ctx.status = 400;
+      ctx.body = { error: 'path query parameter is required' };
+      return;
+    }
+
+    if (!isPathSafe(filePath)) {
+      ctx.status = 400;
+      ctx.body = { error: 'Invalid path: directory traversal not allowed' };
+      return;
+    }
+
+    try {
+      const stat = await fs.promises.stat(filePath);
+
+      if (stat.isDirectory()) {
+        ctx.status = 400;
+        ctx.body = { error: 'Path is a directory, not a file' };
+        return;
+      }
+
+      if (stat.size > MAX_FILE_SIZE) {
+        ctx.status = 413;
+        ctx.body = { error: `File too large (${(stat.size / 1024 / 1024).toFixed(1)}MB). Max: 2MB` };
+        return;
+      }
+
+      const content = await fs.promises.readFile(filePath, 'utf-8');
+      const ext = path.extname(filePath).slice(1).toLowerCase();
+
+      ctx.body = {
+        path: filePath,
+        name: path.basename(filePath),
+        size: stat.size,
+        language: extToLanguage(ext),
+        content
+      };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        ctx.status = 404;
+        ctx.body = { error: 'File not found' };
+        return;
+      }
+      log.error('[files.content] Error:', err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   log.info('[files] HTTP routes registered');
+}
+
+/** 文件扩展名 → Monaco Editor 语言标识 */
+function extToLanguage(ext: string): string {
+  const map: Record<string, string> = {
+    ts: 'typescript',
+    tsx: 'typescript',
+    js: 'javascript',
+    jsx: 'javascript',
+    mjs: 'javascript',
+    cjs: 'javascript',
+    vue: 'html',
+    json: 'json',
+    json5: 'json',
+    jsonl: 'json',
+    html: 'html',
+    htm: 'html',
+    css: 'css',
+    scss: 'scss',
+    less: 'less',
+    md: 'markdown',
+    yaml: 'yaml',
+    yml: 'yaml',
+    xml: 'xml',
+    svg: 'xml',
+    py: 'python',
+    sh: 'shell',
+    bash: 'shell',
+    zsh: 'shell',
+    sql: 'sql',
+    graphql: 'graphql',
+    dockerfile: 'dockerfile',
+    toml: 'ini',
+    ini: 'ini',
+    env: 'ini',
+    txt: 'plaintext',
+    log: 'plaintext'
+  };
+  return map[ext] || 'plaintext';
 }

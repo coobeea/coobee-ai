@@ -7,6 +7,7 @@
  */
 import { ref, watch, provide } from 'vue';
 import configManager from '@/config';
+import { useOpenFiles } from '@/composables/useOpenFiles';
 import FileTreeNodeVue from './FileTreeNode.vue';
 
 const projectPath = defineModel<string | null>('projectPath', { default: null });
@@ -68,8 +69,11 @@ async function toggleDir(node: FileNode): Promise<void> {
   }
 }
 
+const { openFile: openFileInWorkbench } = useOpenFiles();
+
 provide('expandedDirs', expandedDirs);
 provide('toggleDir', toggleDir);
+provide('openFile', openFileInWorkbench);
 
 async function selectDirectory(): Promise<void> {
   try {

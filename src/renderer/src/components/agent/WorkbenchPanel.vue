@@ -2,127 +2,216 @@
 /**
  * WorkbenchPanel — 工作台（中栏）
  *
- * 展示 Agent 工作空间的内容（workspace/{session-id}/）。
- * 这是 Agent 的主要产出区域：输出文件、自建 Skill、计划等。
- *
- * V1：工作空间概览 + 目录结构展示
- * TODO：文件浏览/编辑、计划视图、多智能体状态
+ * 支持多标签页的文件查看器。
+ * 左侧 ProjectPanel 点击文件 → 在此处用 Monaco Editor 展示。
+ * 无打开文件时显示空状态引导。
  */
 
-import { computed } from 'vue'
-import { useChatStore } from '@/stores/chat'
+import { ref, watch, onMounted, onBeforeUnmount, nextTick, shallowRef } from 'vue';
+import * as monaco from 'monaco-editor';
+import { useOpenFiles } from '@/composables/useOpenFiles';
 
-const chatStore = useChatStore()
+const { openFiles, activeFilePath, activeFile, closeFile, activateFile } = useOpenFiles();
 
-/** 从 sessionId 推导 workspace 路径（展示用，实际路径由后端管理） */
-const workspaceHint = computed(() => {
-  if (!chatStore.sessionId) return null
-  return `workspaces/${chatStore.sessionId}/`
-})
+const editorContainer = ref<HTMLDivElement | null>(null);
+const editorInstance = shallowRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
-/** 工作台子目录说明 */
-const directories = [
-  {
-    name: 'output/',
-    icon: 'i-carbon-document',
-    desc: '产出文件（报告、代码、文档）',
-    color: 'text-blue-500'
+function initEditor(): void {
+  if (!editorContainer.value || editorInstance.value) return;
+
+  editorInstance.value = monaco.editor.create(editorContainer.value, {
+    value: '',
+    language: 'plaintext',
+    theme: 'vs',
+    readOnly: true,
+    minimap: { enabled: false },
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: "'Menlo', 'Monaco', 'Consolas', monospace",
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    wordWrap: 'on',
+    renderLineHighlight: 'none',
+    overviewRulerLanes: 0,
+    hideCursorInOverviewRuler: true,
+    scrollbar: {
+      verticalScrollbarSize: 4,
+      horizontalScrollbarSize: 4,
+      useShadows: false
+    },
+    padding: { top: 8 }
+  });
+}
+
+function updateEditorContent(): void {
+  if (!editorInstance.value) return;
+
+  const file = activeFile.value;
+  if (!file || file.loading) {
+    editorInstance.value.setValue('');
+    return;
+  }
+
+  const model = editorInstance.value.getModel();
+  if (model) {
+    monaco.editor.setModelLanguage(model, file.language);
+  }
+  editorInstance.value.setValue(file.content);
+  editorInstance.value.revealLine(1);
+}
+
+watch(
+  () => activeFile.value,
+  () => {
+    nextTick(updateEditorContent);
   },
-  {
-    name: 'skills/',
-    icon: 'i-carbon-skill-level-advanced',
-    desc: 'Agent 自建的 Skill',
-    color: 'text-violet-500'
-  },
-  { name: 'sessions/', icon: 'i-carbon-chat', desc: '会话持久化数据', color: 'text-gray-400' },
-  {
-    name: 'contexts/',
-    icon: 'i-carbon-data-base',
-    desc: 'LLM 请求上下文快照',
-    color: 'text-gray-400'
-  },
-  {
-    name: 'events/',
-    icon: 'i-carbon-event-schedule',
-    desc: '流式事件记录',
-    color: 'text-gray-400'
-  },
-  { name: 'logs/', icon: 'i-carbon-report', desc: '运行日志', color: 'text-gray-400' }
-]
+  { deep: true }
+);
+
+watch(
+  () => openFiles.value.length,
+  (len) => {
+    if (len > 0 && !editorInstance.value) {
+      nextTick(initEditor);
+      nextTick(updateEditorContent);
+    }
+  }
+);
+
+onMounted(() => {
+  if (openFiles.value.length > 0) {
+    nextTick(initEditor);
+    nextTick(updateEditorContent);
+  }
+});
+
+onBeforeUnmount(() => {
+  editorInstance.value?.dispose();
+  editorInstance.value = null;
+});
+
+function getFileIcon(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'ts':
+    case 'tsx':
+      return 'i-carbon-logo-typescript text-blue-500';
+    case 'js':
+    case 'jsx':
+      return 'i-carbon-logo-javascript text-yellow-500';
+    case 'vue':
+      return 'i-carbon-application-web text-green-500';
+    case 'json':
+    case 'jsonl':
+      return 'i-carbon-json text-amber-600';
+    case 'md':
+      return 'i-carbon-document text-gray-500';
+    case 'css':
+    case 'scss':
+    case 'less':
+      return 'i-carbon-color-palette text-pink-500';
+    case 'html':
+      return 'i-carbon-html text-orange-500';
+    default:
+      return 'i-carbon-document-blank text-gray-400';
+  }
+}
 </script>
 
 <template>
   <main class="flex h-full min-w-0 flex-1 flex-col bg-white">
-    <!-- 面板标题 -->
-    <div class="flex h-10 shrink-0 items-center justify-between border-b border-gray-200/60 px-4">
-      <div class="flex items-center gap-1.5">
-        <span class="i-carbon-workspace inline-block h-3.5 w-3.5 text-gray-500"></span>
-        <span class="text-xs font-semibold text-gray-600">工作台</span>
-        <span
-          v-if="chatStore.sessionId"
-          class="ml-1 max-w-[200px] truncate rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-400"
-        >
-          {{ chatStore.sessionId }}
-        </span>
-      </div>
-    </div>
-
-    <!-- 内容区域 -->
-    <div class="flex-1 overflow-y-auto p-6">
-      <!-- 未创建会话 -->
-      <div v-if="!chatStore.sessionId" class="flex h-full flex-col items-center justify-center">
-        <div class="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gray-50">
-          <span class="i-carbon-workspace inline-block h-10 w-10 text-gray-300"></span>
-        </div>
-        <h2 class="mb-2 text-base font-semibold text-gray-500">等待开始</h2>
-        <p class="max-w-xs text-center text-sm leading-relaxed text-gray-400">
-          发送第一条消息后，Agent 将创建工作空间。<br />
-          产出的文件、计划和 Skill 都会显示在这里。
-        </p>
-      </div>
-
-      <!-- 已有会话 — 工作空间概览 -->
-      <div v-else class="mx-auto max-w-2xl">
-        <!-- 工作空间路径 -->
-        <div class="mb-6 rounded-xl border border-gray-100 bg-gray-50/50 p-4">
-          <div class="mb-2 flex items-center gap-2">
-            <span class="i-carbon-folder-shared inline-block h-4 w-4 text-primary"></span>
-            <span class="text-sm font-semibold text-gray-700">Agent 工作空间</span>
-          </div>
-          <p
-            class="truncate rounded-lg bg-white px-3 py-2 font-mono text-xs text-gray-500 shadow-sm"
-            :title="workspaceHint || ''"
-          >
-            {{ workspaceHint || '...' }}
-          </p>
-        </div>
-
-        <!-- 目录结构 -->
-        <div class="mb-6">
-          <h3 class="mb-3 text-xs font-semibold tracking-wide text-gray-400">目录结构</h3>
-          <div class="space-y-1">
-            <div
-              v-for="dir in directories"
-              :key="dir.name"
-              class="flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-gray-50"
-            >
-              <span :class="[dir.icon, dir.color]" class="inline-block h-4 w-4 shrink-0"></span>
-              <div class="min-w-0 flex-1">
-                <span class="font-mono text-xs font-medium text-gray-700">{{ dir.name }}</span>
-                <p class="text-[11px] text-gray-400">{{ dir.desc }}</p>
-              </div>
-              <span class="i-carbon-chevron-right inline-block h-3 w-3 text-gray-300"></span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 后续功能提示 -->
-        <div class="rounded-xl border border-dashed border-gray-200 p-4 text-center">
-          <p class="text-xs text-gray-400">
-            后续版本将支持：文件浏览与编辑 · 计划（Plan）视图 · 多智能体协作状态
-          </p>
+    <!-- 无打开文件 — 空状态 -->
+    <template v-if="openFiles.length === 0">
+      <div class="flex h-10 shrink-0 items-center border-b border-gray-200/60 px-4">
+        <div class="flex items-center gap-1.5">
+          <span class="i-carbon-workspace inline-block h-3.5 w-3.5 text-gray-500"></span>
+          <span class="text-xs font-semibold text-gray-600">工作台</span>
         </div>
       </div>
-    </div>
+      <div class="flex flex-1 flex-col items-center justify-center">
+        <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-50">
+          <span class="i-carbon-document-view inline-block h-8 w-8 text-gray-300"></span>
+        </div>
+        <p class="mb-1 text-sm font-medium text-gray-400">点击左侧文件查看内容</p>
+        <p class="text-xs text-gray-300">支持语法高亮、多标签页浏览</p>
+      </div>
+    </template>
+
+    <!-- 有打开文件 — 标签页 + 编辑器 -->
+    <template v-else>
+      <!-- 标签页栏 -->
+      <div class="flex h-9 shrink-0 items-end overflow-x-auto border-b border-gray-200/60 bg-gray-50/80">
+        <div
+          v-for="file in openFiles"
+          :key="file.path"
+          class="tab-item"
+          :class="{ active: file.path === activeFilePath }"
+          :title="file.path"
+          @click="activateFile(file.path)">
+          <span :class="getFileIcon(file.name)" class="inline-block h-3 w-3 shrink-0"></span>
+          <span class="max-w-[120px] truncate text-[11px]">{{ file.name }}</span>
+          <button class="tab-close" @click.stop="closeFile(file.path)">
+            <span class="i-carbon-close inline-block h-2.5 w-2.5"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 加载中 -->
+      <div v-if="activeFile?.loading" class="flex flex-1 items-center justify-center">
+        <span class="i-carbon-renew inline-block h-5 w-5 animate-spin text-gray-300"></span>
+      </div>
+
+      <!-- Monaco Editor -->
+      <div v-show="activeFile && !activeFile.loading" ref="editorContainer" class="min-h-0 flex-1"></div>
+    </template>
   </main>
 </template>
+
+<style scoped>
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  height: 32px;
+  cursor: pointer;
+  color: hsl(var(--muted-foreground) / 0.6);
+  border-right: 1px solid hsl(var(--border) / 0.2);
+  white-space: nowrap;
+  transition: all 0.1s ease;
+  position: relative;
+}
+
+.tab-item:hover {
+  color: hsl(var(--foreground) / 0.8);
+  background: hsl(var(--background));
+}
+
+.tab-item.active {
+  color: hsl(var(--foreground) / 0.9);
+  background: white;
+  border-bottom: 2px solid hsl(var(--primary));
+  font-weight: 500;
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  opacity: 0;
+  color: hsl(var(--muted-foreground) / 0.5);
+  transition: all 0.1s ease;
+}
+
+.tab-item:hover .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  background: hsl(var(--foreground) / 0.1);
+  color: hsl(var(--foreground) / 0.8);
+}
+</style>

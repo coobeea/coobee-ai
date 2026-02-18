@@ -20,6 +20,7 @@ defineProps<{
 
 const expandedDirs = inject<Ref<Set<string>>>('expandedDirs')!;
 const onToggleDir = inject<(node: FileNode) => void>('toggleDir')!;
+const onOpenFile = inject<(filePath: string) => void>('openFile')!;
 
 function isExpanded(nodePath: string): boolean {
   return expandedDirs.value.has(nodePath);
@@ -69,7 +70,7 @@ function getFileIcon(name: string): string {
       class="flex cursor-default items-center gap-1 py-[3px] pr-2 text-[11px] text-gray-600 transition-colors hover:bg-gray-100/80"
       :class="{ 'font-medium': node.type === 'directory' }"
       :style="{ paddingLeft: `${depth * 12 + 8}px` }"
-      @click="node.type === 'directory' ? onToggleDir(node) : undefined">
+      @click="node.type === 'directory' ? onToggleDir(node) : onOpenFile(node.path)">
       <!-- 箭头 -->
       <span
         v-if="node.type === 'directory'"
