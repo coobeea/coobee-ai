@@ -257,13 +257,14 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
     };
 
     // 6. 合并工具：sdkTools（SDK 原生）+ tools（统一 ToolDefinition 转换后）
-    // 优先使用注入的工具执行上下文，否则降级为 path-only 最小上下文
-    const sandboxContext: import('../../tools/types').ToolExecutionContext = this.options.sandboxContext || {
-      mode: 'path-only',
-      workspaceRoot: (this.options.cwd as string) || this.options.workspaceRoot || process.cwd(),
-      toolPolicy: { allow: [], deny: [], confirm: [] },
-      sessionId: this.sessionId
-    };
+    // 优先使用注入的工具执行上下文，否则降级为最小上下文
+    const { createFallbackToolContext } = await import('../shared/ToolExecutionPipeline');
+    const sandboxContext =
+      this.options.sandboxContext ||
+      createFallbackToolContext({
+        workspaceRoot: (this.options.cwd as string) || this.options.workspaceRoot || process.cwd(),
+        sessionId: this.sessionId
+      });
     const allSdkTools: PiToolDefinition[] = [
       ...((this.options.sdkTools as PiToolDefinition[]) || []),
       ...convertTools(this.options.tools || [], { sandboxContext, log })

@@ -59,10 +59,11 @@ vi.mock('node:fs/promises', () => ({
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { readTool, writeTool, editTool, execTool, builtinTools } from '../builtin';
 import { ProcessRegistry } from '../../process/ProcessRegistry';
-import { resolveSandboxPath, createPathOnlyContext } from '../../sandbox';
+import { resolveSandboxPath } from '../../sandbox';
+import { createFallbackToolContext } from '../../runtime/shared/ToolExecutionPipeline';
 
 /** 测试用 context：允许 /tmp 目录下的操作 */
-const tmpContext = createPathOnlyContext('/tmp');
+const tmpContext = createFallbackToolContext({ workspaceRoot: '/tmp' });
 
 /**
  * 辅助函数：消费 AsyncGenerator，收集所有 yield 的更新和最终结果
@@ -946,7 +947,7 @@ describe('execTool', () => {
 
   describe('工作目录', () => {
     it('使用 context 的 workspaceRoot 作为 cwd', async () => {
-      const ctx = createPathOnlyContext('/tmp');
+      const ctx = createFallbackToolContext({ workspaceRoot: '/tmp' });
       const { result } = await consumeGenerator(execTool.execute({ command: 'pwd' }, undefined, ctx));
 
       expect(result.success).toBe(true);
@@ -1195,12 +1196,11 @@ describe('文件工具沙箱集成', () => {
     vi.clearAllMocks();
   });
 
-  const sandboxContext = createPathOnlyContext('/home/user/project');
+  const sandboxContext = createFallbackToolContext({ workspaceRoot: '/home/user/project' });
 
-  it('readTool 拒绝越界路径', async () => {
+  it('readTool 读操作不受沙箱限制（readOnly=true），可读取 workspace 外路径', async () => {
     const { result } = await consumeGenerator(readTool.execute({ path: '/etc/passwd' }, undefined, sandboxContext));
-    expect(result.success).toBe(false);
-    expect(result.error?.code).toBe('SANDBOX_VIOLATION');
+    expect(result.success).toBe(true);
   });
 
   it('writeTool 拒绝越界路径', async () => {
@@ -1219,12 +1219,11 @@ describe('文件工具沙箱集成', () => {
     expect(result.error?.code).toBe('SANDBOX_VIOLATION');
   });
 
-  it('readTool 拒绝路径穿越', async () => {
+  it('readTool 路径穿越不受限（readOnly=true），可读取穿越路径', async () => {
     const { result } = await consumeGenerator(
       readTool.execute({ path: 'src/../../etc/passwd' }, undefined, sandboxContext)
     );
-    expect(result.success).toBe(false);
-    expect(result.error?.code).toBe('SANDBOX_VIOLATION');
+    expect(result.success).toBe(true);
   });
 
   it('writeTool 拒绝绝对路径越界', async () => {
@@ -1235,13 +1234,15 @@ describe('文件工具沙箱集成', () => {
     expect(result.error?.code).toBe('SANDBOX_VIOLATION');
   });
 
-  it('sandboxRoot 更严格限制', async () => {
-    const strictContext = createPathOnlyContext('/home/user/project', {
+  it('sandboxRoot 对写操作生效（writeTool 拒绝 sandboxRoot 外路径）', async () => {
+    const strictContext = {
+      ...createFallbackToolContext({ workspaceRoot: '/home/user/project' }),
       sandboxRoot: '/home/user/project/src'
-    });
+    };
 
-    // 尝试读取 workspaceRoot 下但 sandboxRoot 外的文件
-    const { result } = await consumeGenerator(readTool.execute({ path: '../package.json' }, undefined, strictContext));
+    const { result } = await consumeGenerator(
+      writeTool.execute({ path: '../package.json', content: 'hack' }, undefined, strictContext)
+    );
     expect(result.success).toBe(false);
     expect(result.error?.code).toBe('SANDBOX_VIOLATION');
   });

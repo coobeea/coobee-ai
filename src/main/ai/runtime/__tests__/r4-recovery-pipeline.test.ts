@@ -190,10 +190,12 @@ describe('M-4: ToolExecutionPipeline', () => {
 
   // 延迟导入（在 mock 之后）
   let executeToolPipeline: typeof import('../shared/ToolExecutionPipeline').executeToolPipeline;
+  let createFallbackToolContext: typeof import('../shared/ToolExecutionPipeline').createFallbackToolContext;
 
   beforeEach(async () => {
     const mod = await import('../shared/ToolExecutionPipeline');
     executeToolPipeline = mod.executeToolPipeline;
+    createFallbackToolContext = mod.createFallbackToolContext;
   });
 
   it('正常执行工具并返回结果', async () => {
@@ -218,12 +220,7 @@ describe('M-4: ToolExecutionPipeline', () => {
       mockTool,
       {},
       {
-        sandboxContext: {
-          mode: 'path-only',
-          workspaceRoot: '/tmp/test',
-          sessionId: 's1',
-          toolPolicy: { allow: [], deny: [] }
-        },
+        sandboxContext: createFallbackToolContext({ workspaceRoot: '/tmp/test', sessionId: 's1' }),
         onUpdate: (u) => updates.push(u.content)
       }
     );
@@ -257,7 +254,7 @@ describe('M-4: ToolExecutionPipeline', () => {
       failTool,
       {},
       {
-        sandboxContext: { mode: 'path-only', workspaceRoot: '/tmp/test', toolPolicy: { allow: [], deny: [] } }
+        sandboxContext: createFallbackToolContext({ workspaceRoot: '/tmp/test' })
       }
     );
 
@@ -283,7 +280,7 @@ describe('M-4: ToolExecutionPipeline', () => {
       simpleTool,
       {},
       {
-        sandboxContext: { mode: 'path-only', workspaceRoot: '/tmp/test', toolPolicy: { allow: [], deny: [] } }
+        sandboxContext: createFallbackToolContext({ workspaceRoot: '/tmp/test' })
       }
     );
 

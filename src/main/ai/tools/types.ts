@@ -118,36 +118,92 @@ export type ToolParametersSchema = z.ZodObject<any>;
 // ========== 工具执行上下文 ==========
 
 import type { SandboxContext } from '../sandbox/types';
+import type { AgentType } from '../threads/types';
+import type { AgentMode } from '../runtime/types';
 
 /**
- * 工具执行上下文
+ * 工具执行上下文 — 工具运行时的完整环境信息
  *
- * 工具运行时的完整环境信息。继承 SandboxContext（路径守卫、Docker 等），
- * 并扩展 Agent/Thread/Session 维度的上下文。
+ * 继承 SandboxContext（路径守卫、Docker 等），在此基础上提供：
+ *   - 会话标识：sessionId（必填）, threadId, parentSessionId
+ *   - Agent 信息：agentName, agentMode, agentId, agentType
+ *   - 当前工作目录：cwd（exec / file 工具的默认基准）
+ *   - 工作空间路径：sessionsDir, contextsDir, eventsDir, tasksDir, outputDir
+ *   - 系统路径：userHome, configDir, memoryDir, tempDir
  *
- * 工具通过 context 可获取：
- *   - 沙箱信息：workspaceRoot, sandboxRoot, toolPolicy, docker, envVars（来自 SandboxContext）
- *   - 会话信息：sessionId（来自 SandboxContext）, threadId, parentSessionId
- *   - Agent 信息：agentId, agentName, agentType, agentMode
- *
- * 由 AgentEnvInjector 构建，通过 Builder → Runtime → ToolExecutionPipeline 注入到每个工具。
+ * 由 AgentEnvInjector 构建，通过 Builder → Runtime → ToolExecutionPipeline 注入。
  * 大模型不感知此上下文，仅工具执行函数内部使用。
+ *
+ * 设计原则：
+ *   - 工具常用的路径预先计算好，避免工具内部 path.join 或动态 import Env
+ *   - 核心字段必填（sessionId, threadId, cwd, agentName, agentMode, 各 Dir）
+ *   - Agent 定义相关字段可选（agentId, agentType, parentSessionId）
  */
 export interface ToolExecutionContext extends SandboxContext {
+  // === 会话标识（必填，override SandboxContext 的 optional sessionId） ===
+
+  /** 当前会话 ID（必填） */
+  sessionId: string;
+
   /** 线程 ID（= 顶层 sessionId，用于关联 Thread 定义） */
-  threadId?: string;
+  threadId: string;
+
+  // === 工作目录（必填） ===
+
+  /**
+   * 当前工作目录
+   *
+   * exec 命令的默认 cwd，file 工具的相对路径基准。
+   * 通常等于 workspaceRoot，Docker 模式下为容器内工作目录。
+   */
+  cwd: string;
+
+  // === 工作空间子目录（必填，由 workspaceRoot 派生） ===
+
+  /** 会话存储目录 — {workspace}/sessions/ */
+  sessionsDir: string;
+
+  /** 上下文快照目录 — {workspace}/contexts/ */
+  contextsDir: string;
+
+  /** 事件记录目录 — {workspace}/events/ */
+  eventsDir: string;
+
+  /** 多 Agent 任务目录 — {workspace}/tasks/ */
+  tasksDir: string;
+
+  /** 工具输出目录 — {workspace}/output/ */
+  outputDir: string;
+
+  // === 系统路径（必填，避免工具动态 import Env） ===
+
+  /** 应用主目录（如 ~/.coobee-ai） */
+  userHome: string;
+
+  /** 配置目录（coobee.json5、secrets.json5 等） */
+  configDir: string;
+
+  /** 记忆根目录 */
+  memoryDir: string;
+
+  /** 系统临时目录 */
+  tempDir: string;
+
+  // === Agent 信息（核心字段必填） ===
+
+  /** Agent 名称（运行时显示名，必填） */
+  agentName: string;
+
+  /** Agent 运行模式（chat / agent / orchestrator / swarm，必填） */
+  agentMode: AgentMode;
+
+  // === Agent 信息（可选字段） ===
 
   /** Agent 定义 ID（如果关联了持久化的 AgentDefinition） */
   agentId?: string;
 
-  /** Agent 名称（运行时显示名） */
-  agentName?: string;
-
   /** Agent 类型（agent / orchestrator / swarm） */
-  agentType?: import('../threads/types').AgentType;
-
-  /** Agent 运行模式（chat / agent / orchestrator / swarm） */
-  agentMode?: import('../runtime/types').AgentMode;
+  agentType?: AgentType;
 
   /** 父会话 ID（子 Agent / Worker / Swarm Role 时存在，用于追溯委托链） */
   parentSessionId?: string;

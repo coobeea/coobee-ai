@@ -28,6 +28,7 @@ import {
   type ToolDefinition
 } from '../types';
 import type { OpenAIAgentRuntimeOptions, ContextSnapshot, CompressionResult } from './types';
+import { createFallbackToolContext } from '../shared/ToolExecutionPipeline';
 
 /** 默认最大执行轮次 */
 const DEFAULT_MAX_TURNS = 25;
@@ -610,13 +611,13 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
   private convertTools(defs: ToolDefinition[]): Tool[] {
     if (!defs.length) return [];
 
-    // 优先使用注入的工具执行上下文，否则降级为 path-only 最小上下文
-    const sandboxContext: import('../../tools/types').ToolExecutionContext = this.options.sandboxContext || {
-      mode: 'path-only',
-      workspaceRoot: this.options.workspaceRoot || process.cwd(),
-      toolPolicy: { allow: [], deny: [], confirm: [] },
-      sessionId: this.sessionId
-    };
+    // 优先使用注入的工具执行上下文，否则降级为最小上下文
+    const sandboxContext =
+      this.options.sandboxContext ||
+      createFallbackToolContext({
+        workspaceRoot: this.options.workspaceRoot || process.cwd(),
+        sessionId: this.sessionId
+      });
 
     return defs.map((def) =>
       tool({

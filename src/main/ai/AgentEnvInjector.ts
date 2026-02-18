@@ -277,8 +277,8 @@ interface AgentContextInfo {
 /**
  * 构建工具执行上下文（ToolExecutionContext）
  *
- * 在沙箱上下文基础上，注入 Agent/Session/Thread 维度的运行时信息。
- * 工具执行函数通过此上下文获取完整的运行环境。
+ * 在沙箱上下文基础上，注入 Agent/Session/Thread 维度 + 工作空间路径 + 系统路径。
+ * 工具执行函数通过此上下文获取完整的运行环境，无需自行 path.join 或动态 import Env。
  *
  * 沙箱模式从 ConfigStore 读取 security.sandbox.mode：
  *   - 'off': 无沙箱保护
@@ -324,17 +324,62 @@ async function buildToolExecutionContext(
     baseCtx = createPathOnlyContext(workspace, { sessionId, envVars });
   }
 
+  // 系统路径（从 Env 读取，失败时用合理默认值）
+  let userHome = '';
+  let configDir = '';
+  let memoryDir = '';
+  let tempDir = '';
+  try {
+    const { Env } = await import('@main/common/env');
+    userHome = Env.paths.userHome;
+    configDir = Env.paths.configDir;
+    memoryDir = Env.paths.memoryDir;
+    tempDir = Env.paths.temp;
+  } catch {
+    const os = await import('node:os');
+    userHome = path.join(os.homedir(), '.coobee-ai');
+    configDir = path.join(userHome, 'config');
+    memoryDir = path.join(userHome, 'memory');
+    tempDir = os.tmpdir();
+  }
+
   // threadId：顶层 sessionId 即为 threadId，子 Agent 的 sessionId 含 `:` 分隔符
   const threadId = sessionId.includes(':') ? sessionId.split(':')[0] : sessionId;
 
-  // 合并沙箱上下文 + Agent 上下文
+  // cwd：Docker 模式用容器内工作目录，否则用 workspaceRoot
+  const cwd = baseCtx.docker?.workdir || workspace;
+
   const toolCtx: ToolExecutionContext = {
+    // 沙箱基础
     ...baseCtx,
+    sessionId,
+
+    // 会话标识
     threadId,
+
+    // 工作目录
+    cwd,
+
+    // 工作空间子目录
+    sessionsDir: path.join(workspace, 'sessions'),
+    contextsDir: path.join(workspace, 'contexts'),
+    eventsDir: path.join(workspace, 'events'),
+    tasksDir: path.join(workspace, 'tasks'),
+    outputDir: path.join(workspace, 'output'),
+
+    // 系统路径
+    userHome,
+    configDir,
+    memoryDir,
+    tempDir,
+
+    // Agent 信息（必填）
+    agentName: agentInfo?.agentName || 'agent',
+    agentMode: agentInfo?.agentMode || 'agent',
+
+    // Agent 信息（可选）
     agentId: agentInfo?.agentId,
-    agentName: agentInfo?.agentName,
     agentType: agentInfo?.agentType,
-    agentMode: agentInfo?.agentMode,
     parentSessionId: agentInfo?.parentSessionId
   };
 
