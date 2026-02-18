@@ -14,9 +14,16 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { eventBus } from '@main/common/eventbus';
 import { createLogger } from '@main/common/logger';
 import { generateSnowflakeId } from '@main/utils/SnowflakeIdGenerator';
-import type { ThreadDefinition, ThreadIndexEntry, CreateThreadParams, UpdateThreadParams } from './types';
+import type {
+  ThreadDefinition,
+  ThreadIndexEntry,
+  ThreadRunStatus,
+  CreateThreadParams,
+  UpdateThreadParams
+} from './types';
 
 const log = createLogger('thread-store');
 
@@ -113,9 +120,11 @@ export class ThreadStore {
     };
 
     this.writeDefinition(definition);
-    this.index.set(definition.id, toIndexEntry(definition, this.workspacesDir));
+    const entry = toIndexEntry(definition, this.workspacesDir);
+    this.index.set(definition.id, entry);
 
     log.info(`[ThreadStore] Created thread: ${definition.id} (agent: ${definition.agentId})`);
+    eventBus.emit(ThreadEventType.CREATED, { thread: entry });
     return definition;
   }
 
@@ -184,6 +193,8 @@ export class ThreadStore {
 
     this.writeDefinition(updated);
 
+    const prevRunStatus = existing.runStatus;
+
     if (updated.status === 'deleted') {
       this.index.delete(threadId);
     } else {
@@ -191,6 +202,18 @@ export class ThreadStore {
     }
 
     log.info(`[ThreadStore] Updated thread: ${threadId}`);
+
+    if (updated.runStatus !== prevRunStatus) {
+      eventBus.emit(ThreadEventType.STATUS, {
+        threadId,
+        runStatus: updated.runStatus,
+        prevStatus: prevRunStatus
+      });
+    }
+    eventBus.emit(ThreadEventType.UPDATED, {
+      thread: toIndexEntry(updated, this.workspacesDir)
+    });
+
     return updated;
   }
 
@@ -207,6 +230,7 @@ export class ThreadStore {
       }
       this.index.delete(threadId);
       log.info(`[ThreadStore] Deleted thread: ${threadId}`);
+      eventBus.emit(ThreadEventType.DELETED, { threadId });
       return true;
     } catch (err) {
       log.warn(`[ThreadStore] Failed to delete thread ${threadId}:`, err);
@@ -230,6 +254,30 @@ export class ThreadStore {
     const filePath = this.getFilePath(def.id);
     fs.writeFileSync(filePath, JSON.stringify(def, null, 2), 'utf-8');
   }
+}
+
+// ==================== Thread EventBus 事件类型 ====================
+
+export const ThreadEventType = {
+  CREATED: 'thread:created',
+  UPDATED: 'thread:updated',
+  DELETED: 'thread:deleted',
+  STATUS: 'thread:status'
+} as const;
+
+export interface ThreadCreatedEvent {
+  thread: ThreadIndexEntry;
+}
+export interface ThreadUpdatedEvent {
+  thread: ThreadIndexEntry;
+}
+export interface ThreadDeletedEvent {
+  threadId: string;
+}
+export interface ThreadStatusEvent {
+  threadId: string;
+  runStatus: ThreadRunStatus;
+  prevStatus: ThreadRunStatus;
 }
 
 // ==================== 辅助函数 ====================

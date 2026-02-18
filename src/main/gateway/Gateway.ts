@@ -298,7 +298,7 @@ export class Gateway implements GatewayApi {
   // ==================== 动态方法注册（Extension 热插拔用） ====================
 
   /** 受保护的核心命名空间 */
-  private static readonly PROTECTED_NAMESPACES = ['chat', 'stream', 'worker', 'hitl', 'system'];
+  private static readonly PROTECTED_NAMESPACES = ['chat', 'stream', 'thread', 'worker', 'hitl', 'system'];
 
   /**
    * 动态注册单个方法（Extension 用）

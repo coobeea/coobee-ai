@@ -10,14 +10,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-vi.mock('@main/common/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn()
-  })
-}));
+vi.mock('@main/common/logger', () => {
+  const mockLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  return { log: mockLog, default: mockLog, createLogger: vi.fn(() => mockLog) };
+});
 
 vi.mock('@main/utils/SnowflakeIdGenerator', () => {
   let counter = 100000000000000000n;

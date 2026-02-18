@@ -14,6 +14,7 @@ import configManager from '@/config';
 import eventBus from '@/eventbus';
 import { EventTypes } from '@shared/ipc/events';
 import { GatewayClient } from '@/services/GatewayClient';
+import { initThreadWs } from '@/composables/useThreadWs';
 
 // ==================== 全局单例 ====================
 
@@ -65,6 +66,7 @@ export default {
     }
 
     isInitialized = true;
+    initThreadWs();
     connectWhenReady();
     console.log('[gatewaySetup] Waiting for backend ready before connecting');
   }
