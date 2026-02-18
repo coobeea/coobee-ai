@@ -14,7 +14,7 @@ const isCollapsed = defineModel<boolean>('collapsed', { default: false });
 
 async function selectDirectory(): Promise<void> {
   try {
-    const result = await window.electron?.ipcRenderer.invoke('shell:open-directory');
+    const result = await window.api?.openDirectory();
     if (result) {
       projectPath.value = result;
     }

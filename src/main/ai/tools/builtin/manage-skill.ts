@@ -83,7 +83,7 @@ export const manageSkillTool: ToolDefinition = {
     '"delete" to remove a user-created skill (built-in skills cannot be deleted). ' +
     'When creating skills, read the skill-creator Skill first for proper SKILL.md format.',
   category: ToolCategory.Configuration,
-  needUserConfirm: false,
+  needUserConfirm: true,
   parameters: paramsSchema,
 
   execute: async function* (params: Record<string, unknown>): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {

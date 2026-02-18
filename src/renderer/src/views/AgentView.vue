@@ -73,7 +73,7 @@ function startNewSession(): void {
 /** 打开系统目录选择对话框 */
 async function openDirectoryDialog(): Promise<void> {
   try {
-    const result = await window.electron?.ipcRenderer.invoke('shell:open-directory');
+    const result = await window.api?.openDirectory();
     if (result) {
       projectPath.value = result;
     }

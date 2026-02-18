@@ -71,7 +71,7 @@ export const manageAgentTool: ToolDefinition = {
     '"update" to modify an existing agent (version auto-increments), "delete" to remove one. ' +
     'Created agents can later be invoked via delegate_to_agent tool.',
   category: ToolCategory.Configuration,
-  needUserConfirm: false,
+  needUserConfirm: true,
   parameters: paramsSchema,
 
   execute: async function* (params: Record<string, unknown>): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {

@@ -14,6 +14,10 @@ import JSON5 from 'json5';
 import { z } from 'zod';
 import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types';
 import { ToolCategory } from '../types';
+import { CoobeeConfigSchema } from '@main/common/config/schema';
+
+/** 从 schema 推导有效的顶层配置键（避免硬编码） */
+const VALID_CONFIG_KEYS = Object.keys(CoobeeConfigSchema.shape) as string[];
 
 export const configGetTool: ToolDefinition = {
   name: 'config_get',
@@ -31,8 +35,7 @@ export const configGetTool: ToolDefinition = {
       .string()
       .optional()
       .describe(
-        'Config section to view: "models", "messages", "tools", "security", "ui", "logging". ' +
-          'Omit to view all sections.'
+        `Config section to view: ${VALID_CONFIG_KEYS.map((k) => `"${k}"`).join(', ')}. ` + 'Omit to view all sections.'
       )
   }),
 
@@ -69,11 +72,10 @@ export const configGetTool: ToolDefinition = {
       let result: unknown;
 
       if (key) {
-        const validKeys = ['models', 'messages', 'tools', 'security', 'ui', 'logging'];
-        if (!validKeys.includes(key)) {
+        if (!VALID_CONFIG_KEYS.includes(key)) {
           return {
             success: false,
-            llmContent: `Error: Unknown config key "${key}". Valid keys: ${validKeys.join(', ')}`,
+            llmContent: `Error: Unknown config key "${key}". Valid keys: ${VALID_CONFIG_KEYS.join(', ')}`,
             error: { code: 'INVALID_KEY', message: `Unknown key: ${key}` }
           };
         }

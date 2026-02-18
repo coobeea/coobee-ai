@@ -88,7 +88,7 @@ export const delegateToAgentTool: ToolDefinition = {
     'Pass taskId to group related delegations; the tool automatically shares execution experiences between sub-agents. ' +
     'Results are written to tasks/{taskId}/results/{agentId}.md and returned as a string.',
   category: ToolCategory.Execute,
-  needUserConfirm: false,
+  needUserConfirm: true,
   parameters: paramsSchema,
 
   execute: async function* (
