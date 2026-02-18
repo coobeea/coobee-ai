@@ -9,7 +9,10 @@
  */
 
 import { ref, nextTick, watch, computed } from 'vue';
-import { useCopilotStore, type CopilotBlock } from '@/stores/copilot';
+import { useCopilotStore } from '@/stores/copilot';
+import type { ContentBlock, PendingApproval } from '@/composables/useStreamHandler';
+import type { HitlApprovalDecision } from '@shared/stream-protocol';
+import HitlApprovalCard from '@/components/chat/HitlApprovalCard.vue';
 import { layerManager } from '@/utils/LayerManager';
 
 const copilot = useCopilotStore();
@@ -47,8 +50,13 @@ watch(
 );
 watch(
   () => {
-    const last = copilot.messages[copilot.messages.length - 1];
-    return last?.role === 'assistant' ? last.content.length : 0;
+    const msgs = copilot.messages;
+    if (msgs.length === 0) return 0;
+    const last = msgs[msgs.length - 1];
+    const blockCount = last.blocks?.length ?? 0;
+    const lastBlock = blockCount > 0 ? last.blocks[blockCount - 1] : null;
+    const lastLen = lastBlock ? ('text' in lastBlock ? lastBlock.text.length : 0) : 0;
+    return last.content.length + blockCount * 1000 + lastLen;
   },
   () => scrollToBottom()
 );
@@ -69,17 +77,23 @@ async function handleSend(): Promise<void> {
   const text = inputText.value.trim();
   if (!text) return;
   inputText.value = '';
+  scrollToBottom();
   await copilot.sendMessage(text);
 }
 
 function handleKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
     handleSend();
   }
 }
 
-function toolSummary(block: CopilotBlock): string {
+function handleApproval(approval: PendingApproval, decision: HitlApprovalDecision): void {
+  if (!copilot.sessionId || approval.decision) return;
+  copilot.submitDecision(copilot.sessionId, approval.index, decision);
+}
+
+function toolSummary(block: ContentBlock): string {
   if (block.type === 'tool') return `调用 ${block.tool.name}...`;
   return '';
 }
@@ -182,6 +196,14 @@ function toolSummary(block: CopilotBlock): string {
                       " />
                     <span>{{ toolSummary(block) }}</span>
                   </div>
+
+                  <div v-else-if="block.type === 'delegate'" class="msg-delegate">
+                    <span class="i-carbon-bot inline-block h-3 w-3 shrink-0" />
+                    <span>{{ block.delegate.agentName || block.delegate.agentId }}</span>
+                    <span class="msg-delegate-status">
+                      {{ block.delegate.status === 'running' ? '委托中...' : '完成' }}
+                    </span>
+                  </div>
                 </template>
               </template>
 
@@ -189,9 +211,23 @@ function toolSummary(block: CopilotBlock): string {
                 <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
               </div>
 
+              <!-- HITL 审批卡片 -->
+              <template v-if="msg.pendingApprovals?.length">
+                <HitlApprovalCard
+                  v-for="approval in msg.pendingApprovals"
+                  :key="'hitl-' + approval.index"
+                  :approval="approval"
+                  @decide="(d) => handleApproval(approval, d)" />
+              </template>
+
               <div v-if="msg.status === 'error' && msg.error" class="msg-error">
                 <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
                 {{ msg.error }}
+              </div>
+
+              <div v-if="msg.status === 'interrupted'" class="msg-interrupted">
+                <span class="i-carbon-pause-filled inline-block h-2.5 w-2.5" />
+                <span>已中断</span>
               </div>
             </div>
           </div>
@@ -515,6 +551,23 @@ function toolSummary(block: CopilotBlock): string {
   }
 }
 
+.msg-delegate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin: 3px 0;
+  border-radius: 6px;
+  font-size: 11px;
+  color: hsl(var(--primary) / 0.7);
+  background: hsl(var(--primary) / 0.04);
+}
+
+.msg-delegate-status {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground) / 0.4);
+}
+
 .msg-error {
   display: flex;
   align-items: flex-start;
@@ -522,6 +575,15 @@ function toolSummary(block: CopilotBlock): string {
   padding: 4px 0;
   font-size: 11px;
   color: hsl(var(--error));
+}
+
+.msg-interrupted {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  font-size: 10px;
+  color: hsl(var(--warning, 45 93% 47%));
 }
 
 .stream-indicator {

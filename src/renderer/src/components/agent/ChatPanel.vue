@@ -7,9 +7,11 @@
  */
 
 import { ref, nextTick, watch, onMounted, computed } from 'vue';
-import { useChatStore, type PendingApproval } from '@/stores/chat';
-import { gateway } from '@/plugins/gatewaySetup';
+import { useChatStore } from '@/stores/chat';
+import type { PendingApproval } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
+import { gateway } from '@/plugins/gatewaySetup';
+import HitlApprovalCard from '@/components/chat/HitlApprovalCard.vue';
 
 const chatStore = useChatStore();
 const inputText = ref('');
@@ -116,17 +118,6 @@ const connectionLabel = computed(() => {
 function handleApproval(approval: PendingApproval, decision: HitlApprovalDecision): void {
   if (!chatStore.sessionId || approval.decision) return;
   chatStore.submitDecision(chatStore.sessionId, approval.index, decision);
-}
-
-function getDecisionLabel(decision: HitlApprovalDecision): string {
-  switch (decision) {
-    case 'approve-once':
-      return '已允许';
-    case 'approve-always':
-      return '始终允许';
-    case 'reject':
-      return '已拒绝';
-  }
 }
 
 onMounted(() => {
@@ -367,54 +358,13 @@ onMounted(() => {
                 </span>
               </div>
 
-              <!-- HITL approvals: 已决策的折叠为摘要行，未决策的完整展开 -->
+              <!-- HITL 审批卡片（通用组件） -->
               <template v-if="msg.pendingApprovals?.length">
-                <!-- 已决策的审批 — 压缩为单行摘要 -->
-                <div
-                  v-for="approval in msg.pendingApprovals.filter((a) => a.decision)"
-                  :key="'hitl-done-' + approval.index"
-                  class="flex items-center gap-1.5 rounded px-2 py-1 text-[10px]"
-                  :class="
-                    approval.decision === 'reject' ? 'bg-red-50/40 text-red-400' : 'bg-emerald-50/40 text-emerald-500'
-                  ">
-                  <span
-                    class="inline-block h-2.5 w-2.5"
-                    :class="
-                      approval.decision === 'reject' ? 'i-carbon-close-filled' : 'i-carbon-checkmark-filled'
-                    "></span>
-                  <span>{{ getDecisionLabel(approval.decision!) }}</span>
-                  <span class="font-mono text-gray-400">{{ approval.toolName }}</span>
-                </div>
-
-                <!-- 未决策的审批 — 完整展开（通常只有最后一个） -->
-                <div
-                  v-for="approval in msg.pendingApprovals.filter((a) => !a.decision)"
-                  :key="'hitl-pending-' + approval.index"
-                  class="rounded-md border-l-2 border-l-amber-400 bg-amber-50/60 px-2 py-2">
-                  <div class="mb-1 flex items-center gap-1.5">
-                    <span class="i-carbon-locked inline-block h-3 w-3 text-amber-600"></span>
-                    <span class="text-[11px] font-medium text-gray-700">需要审批</span>
-                    <span class="font-mono text-[10px] text-gray-400">{{ approval.toolName }}</span>
-                  </div>
-
-                  <div class="mt-2 flex gap-1.5">
-                    <button
-                      class="rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-emerald-600"
-                      @click="handleApproval(approval, 'approve-once')">
-                      允许
-                    </button>
-                    <button
-                      class="rounded bg-blue-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-blue-600"
-                      @click="handleApproval(approval, 'approve-always')">
-                      始终允许
-                    </button>
-                    <button
-                      class="rounded bg-red-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-600"
-                      @click="handleApproval(approval, 'reject')">
-                      拒绝
-                    </button>
-                  </div>
-                </div>
+                <HitlApprovalCard
+                  v-for="approval in msg.pendingApprovals"
+                  :key="'hitl-' + approval.index"
+                  :approval="approval"
+                  @decide="(d) => handleApproval(approval, d)" />
               </template>
 
               <!-- error -->
