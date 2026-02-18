@@ -79,6 +79,9 @@ class AgentExecutor {
   /** 正在执行的 session 集合 */
   private busySessions = new Map<string, { startedAt: number }>();
 
+  /** 有待审批的 session（hitl:required 已触发，checkpoint 保持 approval-pending） */
+  private pendingApprovalSessions = new Set<string>();
+
   /** Provider 系统（初始化后注入） */
   private providerSystem: ProviderSystem | null = null;
 
@@ -443,18 +446,44 @@ class AgentExecutor {
    *
    * fire-and-forget：不阻塞流式输出。
    * 同步更新 checkpoint.json 和 Thread 的 runStatus。
+   *
+   * 关键设计：approval-pending 是"粘性"状态。
+   * hitl:required 设置 approval-pending 后，后续的 tool:done / run:done 不能覆盖它，
+   * 因为异步审批模式下 Agent run 正常结束，但 checkpoint 必须保持 approval-pending
+   * 等待用户审批后由 ThreadWaker 唤醒恢复。
    */
   private updateCheckpoint(checkpoint: CheckpointManager, sessionId: string, chunk: StreamChunk): void {
     switch (chunk.type) {
       case 'tool:start':
-        checkpoint.updateStatus(sessionId, 'tool-pending').catch(() => {});
-        this.syncThreadRunStatus(sessionId, 'tool-pending');
+        if (!this.pendingApprovalSessions.has(sessionId)) {
+          checkpoint.updateStatus(sessionId, 'tool-pending').catch(() => {});
+          this.syncThreadRunStatus(sessionId, 'tool-pending');
+        }
         break;
       case 'tool:done':
-        checkpoint.updateStatus(sessionId, 'running').catch(() => {});
-        this.syncThreadRunStatus(sessionId, 'running');
+        // 检测工具挂起（[SUSPENDED] 标记来自 ToolExecutionPipeline）
+        if (chunk.content?.includes('[SUSPENDED]')) {
+          this.pendingApprovalSessions.add(sessionId);
+          const pendingOp = this.parseSuspendReason(chunk.content, sessionId);
+          checkpoint
+            .save({
+              threadId: sessionId,
+              updatedAt: new Date().toISOString(),
+              runStatus: 'approval-pending',
+              pendingOperation: pendingOp
+            })
+            .catch(() => {});
+          this.syncThreadRunStatus(sessionId, 'approval-pending');
+          log.info(`[AgentExecutor] Tool suspended (approval-pending): ${sessionId}, tool=${pendingOp?.toolName}`);
+        } else if (!this.pendingApprovalSessions.has(sessionId)) {
+          checkpoint.updateStatus(sessionId, 'running').catch(() => {});
+          this.syncThreadRunStatus(sessionId, 'running');
+        }
         break;
       case 'hitl:required':
+        // 通过 Extension 的 api.services.events.emit 发出的 hitl:required
+        // 不经过 consumeAndForward，所以这个 case 是备用路径
+        this.pendingApprovalSessions.add(sessionId);
         checkpoint
           .save({
             threadId: sessionId,
@@ -472,14 +501,47 @@ class AgentExecutor {
         this.syncThreadRunStatus(sessionId, 'approval-pending');
         break;
       case 'run:error':
+        this.pendingApprovalSessions.delete(sessionId);
         checkpoint.updateStatus(sessionId, 'error').catch(() => {});
         this.syncThreadRunStatus(sessionId, 'error');
         break;
       case 'run:done':
-        checkpoint.updateStatus(sessionId, 'idle').catch(() => {});
-        this.syncThreadRunStatus(sessionId, 'idle');
+        if (this.pendingApprovalSessions.has(sessionId)) {
+          this.pendingApprovalSessions.delete(sessionId);
+          log.info(`[AgentExecutor] Run done but approval-pending, keeping checkpoint for ${sessionId}`);
+        } else {
+          checkpoint.updateStatus(sessionId, 'idle').catch(() => {});
+          this.syncThreadRunStatus(sessionId, 'idle');
+        }
         break;
     }
+  }
+
+  /**
+   * 从 [SUSPENDED] 文本中解析出 pendingOperation
+   *
+   * suspendReason 格式（来自 tool-approval）: "approval-pending:{sessionId}:{index}:{toolName}"
+   */
+  private parseSuspendReason(
+    content: string,
+    sessionId: string
+  ):
+    | { type: 'approval'; approvalId: string; toolName: string; toolCallId: string; agentSessionId: string }
+    | undefined {
+    const match = content.match(/suspended:\s*approval-pending:([^.]+)/i);
+    if (!match) return undefined;
+    const reason = match[1].trim();
+    const parts = reason.split(':');
+    // parts: [sessionId, index, toolName] → approvalId = "sessionId:index"
+    const approvalId = parts.length >= 2 ? `${parts[0]}:${parts[1]}` : reason;
+    const toolName = parts.length >= 3 ? parts[2] : 'unknown';
+    return {
+      type: 'approval',
+      approvalId,
+      toolName,
+      toolCallId: '',
+      agentSessionId: sessionId
+    };
   }
 
   /**
