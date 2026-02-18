@@ -19,6 +19,7 @@ declare module 'vue' {
     Container: typeof import('./../components/Container.vue')['default']
     CopilotBubble: typeof import('./../components/copilot/CopilotBubble.vue')['default']
     DangerButton: typeof import('./../components/Form/DangerButton.vue')['default']
+    FileTreeNode: typeof import('./../components/agent/FileTreeNode.vue')['default']
     GhostButton: typeof import('./../components/Form/GhostButton.vue')['default']
     HitlApprovalCard: typeof import('./../components/chat/HitlApprovalCard.vue')['default']
     LoadingOverlay: typeof import('./../components/LoadingOverlay.vue')['default']

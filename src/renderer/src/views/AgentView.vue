@@ -84,6 +84,7 @@ function enterWorkspaceForThread(threadId: string): void {
     }
   }
   isInWorkspace.value = true;
+  chatStore.loadHistory(threadId);
 }
 
 function startNewSession(): void {

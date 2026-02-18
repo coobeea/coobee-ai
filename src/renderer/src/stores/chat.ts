@@ -9,9 +9,10 @@
 
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import configManager from '@/config';
 import { gateway } from '@/plugins/gatewaySetup';
 import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs';
-import { useStreamHandler } from '@/composables/useStreamHandler';
+import { useStreamHandler, type StreamChatMessage } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
 
 // Re-export shared types for existing consumers
@@ -155,6 +156,165 @@ export const useChatStore = defineStore('chat', () => {
     streamUnsubscribe();
   }
 
+  /**
+   * 加载 Thread 的历史对话
+   *
+   * 从后端读取 events.jsonl + session 文件，直接构建 UI 消息列表。
+   * 使用聚合事件（*:done）而非增量事件（*:delta）来重建完整的对话。
+   */
+  async function loadHistory(threadId: string): Promise<void> {
+    const BASE = `${configManager.getBaseUrl()}/gateway/threads`;
+    try {
+      const res = await fetch(`${BASE}/${threadId}/history`);
+      if (!res.ok) return;
+
+      const data = (await res.json()) as {
+        events: { ts: string; seq: number; type: string; content: string; data?: Record<string, unknown> }[];
+        userMessages: { content: string; timestamp: number }[];
+      };
+
+      resetAll();
+      sessionId.value = threadId;
+
+      const { events, userMessages } = data;
+      if (events.length === 0 && userMessages.length === 0) return;
+
+      let currentMsg: StreamChatMessage | undefined;
+      let userIdx = 0;
+      let msgCounter = 0;
+
+      for (const evt of events) {
+        switch (evt.type) {
+          case 'run:start':
+            if (userIdx < userMessages.length) {
+              addUserMessage(userMessages[userIdx].content);
+              userIdx++;
+            }
+            currentMsg = {
+              id: `hist-assistant-${++msgCounter}`,
+              role: 'assistant',
+              content: '',
+              blocks: [],
+              status: 'streaming',
+              timestamp: new Date(evt.ts).getTime()
+            };
+            messages.value.push(currentMsg);
+            break;
+
+          case 'reasoning:done':
+            if (currentMsg) {
+              const text = (evt.data?.rawContent as string) || '';
+              if (text) currentMsg.blocks.push({ type: 'thinking', text });
+            }
+            break;
+
+          case 'text:done':
+            if (currentMsg) {
+              const text = (evt.data?.text as string) || evt.content || '';
+              if (text) {
+                currentMsg.blocks.push({ type: 'text', text });
+                currentMsg.content = text;
+              }
+            }
+            break;
+
+          case 'tool:start':
+            if (currentMsg) {
+              currentMsg.blocks.push({
+                type: 'tool',
+                tool: {
+                  name: (evt.data?.toolName as string) || evt.content,
+                  arguments: (evt.data?.arguments as string) || '',
+                  status: 'calling'
+                }
+              });
+            }
+            break;
+
+          case 'tool:done':
+            if (currentMsg) {
+              for (let i = currentMsg.blocks.length - 1; i >= 0; i--) {
+                const b = currentMsg.blocks[i];
+                if (b.type === 'tool' && b.tool.status === 'calling') {
+                  b.tool.result = evt.content || (evt.data?.output as string) || '';
+                  b.tool.status = 'done';
+                  break;
+                }
+              }
+            }
+            break;
+
+          case 'hitl:required':
+            if (currentMsg) {
+              if (!currentMsg.pendingApprovals) currentMsg.pendingApprovals = [];
+              currentMsg.pendingApprovals.push({
+                index: (evt.data?.index as number) ?? currentMsg.pendingApprovals.length,
+                toolName: (evt.data?.toolName as string) || 'unknown',
+                arguments: evt.data?.arguments as string | undefined
+              });
+            }
+            break;
+
+          case 'delegate:start':
+            if (currentMsg) {
+              currentMsg.blocks.push({
+                type: 'delegate',
+                delegate: {
+                  agentId: (evt.data?.agentId as string) || 'unknown',
+                  agentName: evt.data?.agentName as string | undefined,
+                  task: evt.data?.task as string | undefined,
+                  status: 'running'
+                }
+              });
+            }
+            break;
+
+          case 'delegate:done':
+            if (currentMsg) {
+              for (let i = currentMsg.blocks.length - 1; i >= 0; i--) {
+                const b = currentMsg.blocks[i];
+                if (b.type === 'delegate' && b.delegate.status === 'running') {
+                  b.delegate.status = 'done';
+                  b.delegate.output = evt.content || undefined;
+                  b.delegate.duration = evt.data?.duration as number | undefined;
+                  break;
+                }
+              }
+            }
+            break;
+
+          case 'run:done':
+            if (currentMsg) {
+              currentMsg.status = 'done';
+              currentMsg = undefined;
+            }
+            break;
+
+          case 'run:error':
+            if (currentMsg) {
+              currentMsg.status = 'error';
+              currentMsg.error = evt.content;
+              currentMsg = undefined;
+            }
+            break;
+
+          default:
+            break;
+        }
+      }
+
+      // 确保最后一条 assistant 消息标记完成
+      if (currentMsg && currentMsg.status === 'streaming') {
+        currentMsg.status = 'done';
+      }
+
+      // 订阅该 session 的后续实时事件
+      streamSubscribe(threadId, handleStreamMessage);
+    } catch (err) {
+      console.warn('[chatStore] loadHistory failed:', err);
+    }
+  }
+
   return {
     sessionId,
     messages,
@@ -165,6 +325,7 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     abortSession,
     submitDecision,
-    clearMessages
+    clearMessages,
+    loadHistory
   };
 });
