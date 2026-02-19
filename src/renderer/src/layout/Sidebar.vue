@@ -254,6 +254,7 @@ onMounted(() => updateActiveState());
   height: 20px;
   border-radius: 4px;
   color: hsl(var(--muted-foreground) / 0.4);
+  cursor: pointer;
   transition: all 0.12s ease;
 }
 
@@ -418,6 +419,7 @@ onMounted(() => updateActiveState());
   height: 32px;
   border-radius: 7px;
   color: hsl(var(--muted-foreground) / 0.55);
+  cursor: pointer;
   transition: all 0.15s ease;
 }
 
@@ -443,6 +445,7 @@ onMounted(() => updateActiveState());
   border-radius: 8px;
   color: hsl(var(--muted-foreground));
   font-size: 13px;
+  cursor: pointer;
   transition: all 0.15s ease;
 }
 
