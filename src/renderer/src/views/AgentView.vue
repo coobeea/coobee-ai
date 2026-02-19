@@ -292,11 +292,7 @@ function formatTime(iso: string): string {
 
         <!-- 智能体列表 -->
         <div v-else class="agent-grid">
-          <div
-            v-for="agent in agentsStore.agents"
-            :key="agent.id"
-            class="agent-card"
-            @click="handleStartTask(agent.id)">
+          <div v-for="agent in agentsStore.agents" :key="agent.id" class="agent-card">
             <div class="card-header">
               <div class="card-avatar">
                 <span class="i-carbon-bot inline-block h-5 w-5" />
@@ -319,8 +315,12 @@ function formatTime(iso: string): string {
               <span v-if="agent.skills.length > 3" class="skill-more"> +{{ agent.skills.length - 3 }} </span>
             </div>
 
-            <div class="card-footer" @click.stop>
-              <div class="card-actions-left">
+            <div class="card-footer">
+              <button class="start-task-btn" @click="handleStartTask(agent.id)">
+                <span class="i-carbon-play-filled-alt inline-block h-3.5 w-3.5" />
+                <span>运行任务</span>
+              </button>
+              <div class="card-actions-right">
                 <template v-if="confirmDeleteId !== agent.id">
                   <button class="action-icon" title="编辑技能" @click="openSkillsEditor(agent.id)">
                     <span class="i-carbon-edit inline-block h-3.5 w-3.5" />
@@ -938,13 +938,32 @@ function formatTime(iso: string): string {
 .card-footer {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid hsl(var(--border) / 0.15);
 }
 
-.card-actions-left {
+.start-task-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.08);
+  transition: all 0.15s ease;
+}
+
+.start-task-btn:hover {
+  background: hsl(var(--primary) / 0.14);
+  color: hsl(var(--primary));
+}
+
+.card-actions-right {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -952,7 +971,7 @@ function formatTime(iso: string): string {
   transition: opacity 0.15s ease;
 }
 
-.agent-card:hover .card-actions-left {
+.agent-card:hover .card-actions-right {
   opacity: 1;
 }
 
