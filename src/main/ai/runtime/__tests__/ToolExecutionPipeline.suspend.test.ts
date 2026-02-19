@@ -9,14 +9,18 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-vi.mock('@main/common/logger', () => ({
-  createLogger: () => ({
+vi.mock('@main/common/logger', () => {
+  const mockLogger = {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn()
-  })
-}));
+  };
+  return {
+    log: mockLogger,
+    createLogger: () => mockLogger
+  };
+});
 
 // Mock ExtensionManager
 const mockRunModifyingHook = vi.fn();
@@ -43,9 +47,8 @@ describe('ToolExecutionPipeline — suspend', () => {
   const mockToolExecute = vi.fn();
 
   const mockToolDef = {
-    name: 'exec',
-    description: 'Execute command',
-    needUserConfirm: true,
+    name: 'test-tool',
+    description: 'Test tool',
     execute: mockToolExecute
   };
 
@@ -66,15 +69,16 @@ describe('ToolExecutionPipeline — suspend', () => {
   it('before_tool_call 返回 suspend → 不执行工具, 返回 suspended PipelineResult', async () => {
     mockRunModifyingHook.mockResolvedValue({
       suspend: true,
-      suspendReason: 'approval-pending:thread-123:0:exec'
+      suspendReason: 'approval-pending:thread-123:0:test-tool',
+      resultText: '[SUSPENDED] Tool test-tool suspended by extension'
     });
 
-    const result = await executeToolPipeline(mockToolDef as never, { command: 'rm -rf /' }, defaultOpts as never);
+    const result = await executeToolPipeline(mockToolDef as never, { command: 'test' }, defaultOpts as never);
 
     expect(result.suspended).toBe(true);
     expect(result.blocked).toBe(false);
     expect(result.resultText).toContain('[SUSPENDED]');
-    expect(result.resultText).toContain('exec');
+    expect(result.resultText).toContain('test-tool');
     expect(mockToolExecute).not.toHaveBeenCalled();
   });
 
@@ -110,14 +114,16 @@ describe('ToolExecutionPipeline — suspend', () => {
     expect(result.resultText).toBe('Command executed');
   });
 
-  it('suspend 的 resultText 包含不要重试的提示', async () => {
+  it('suspend 的 resultText 包含暂停标记', async () => {
     mockRunModifyingHook.mockResolvedValue({
       suspend: true,
-      suspendReason: 'approval-pending'
+      suspendReason: 'approval-pending',
+      resultText: '[SUSPENDED] Please wait. Do NOT retry — the system will resume automatically.'
     });
 
     const result = await executeToolPipeline(mockToolDef as never, {}, defaultOpts as never);
 
+    expect(result.resultText).toContain('[SUSPENDED]');
     expect(result.resultText).toContain('Do NOT retry');
     expect(result.resultText).toContain('automatically');
   });

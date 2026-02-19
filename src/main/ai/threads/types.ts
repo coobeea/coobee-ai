@@ -142,5 +142,7 @@ export interface ThreadCheckpoint {
     toolName: string;
     toolCallId: string;
     agentSessionId: string;
+    /** 工具参数（JSON 字符串，用于重启后恢复显示） */
+    arguments?: string;
   };
 }

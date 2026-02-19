@@ -555,7 +555,8 @@ class AgentExecutor {
               approvalId: (chunk.data as Record<string, unknown>)?.approvalId as string,
               toolName: ((chunk.data as Record<string, unknown>)?.toolName as string) || chunk.content,
               toolCallId: ((chunk.data as Record<string, unknown>)?.toolCallId as string) || '',
-              agentSessionId: sessionId
+              agentSessionId: sessionId,
+              arguments: ((chunk.data as Record<string, unknown>)?.arguments as string) || '{}'
             }
           })
           .catch(() => {});

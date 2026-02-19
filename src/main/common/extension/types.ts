@@ -172,6 +172,8 @@ export interface BeforeToolCallResult {
   /** 异步挂起：工具需要审批但不阻塞 Agent run，run 正常结束后等待事件唤醒 */
   suspend?: boolean;
   suspendReason?: string;
+  /** 自定义结果文本（用于 suspend 或 block 时的消息） */
+  resultText?: string;
   params?: Record<string, unknown>;
 }
 

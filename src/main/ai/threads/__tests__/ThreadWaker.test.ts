@@ -172,7 +172,7 @@ describe('ThreadWaker', () => {
 
   // ========== approval-done ==========
 
-  describe('approval-done', () => {
+  describe('tool-done (approval resume)', () => {
     const approvalCheckpoint: ThreadCheckpoint = {
       threadId: 'thread-approval',
       updatedAt: '2025-01-01T00:00:00.000Z',
@@ -186,7 +186,7 @@ describe('ThreadWaker', () => {
       }
     };
 
-    it('用户批准 → 执行工具 → resume Agent', async () => {
+    it('工具执行完成 + 提供 toolResult → 注入结果 resume Agent', async () => {
       mockCheckpointLoad.mockResolvedValue(approvalCheckpoint);
 
       const waker = ThreadWaker.getInstance();
@@ -195,18 +195,18 @@ describe('ThreadWaker', () => {
 
       await handler({
         threadId: 'thread-approval',
-        reason: 'approval-done',
-        approvalDecision: 'approve-once'
+        reason: 'tool-done',
+        toolResult: 'Tool execution result'
       } satisfies ThreadWakeEvent);
 
       expect(mockSubmitViaPipeline).toHaveBeenCalledWith(
         'thread-approval',
-        expect.stringContaining('approved and executed'),
+        expect.stringContaining('Tool execution result'),
         'agent'
       );
     });
 
-    it('用户批准 + 提供 toolResult → 直接使用 toolResult', async () => {
+    it('工具执行失败 → 注入失败消息', async () => {
       mockCheckpointLoad.mockResolvedValue(approvalCheckpoint);
 
       const waker = ThreadWaker.getInstance();
@@ -215,36 +215,11 @@ describe('ThreadWaker', () => {
 
       await handler({
         threadId: 'thread-approval',
-        reason: 'approval-done',
-        approvalDecision: 'approve-once',
-        toolResult: 'Pre-computed result'
+        reason: 'tool-done',
+        toolResult: 'Tool "test-tool" failed: execution error'
       } satisfies ThreadWakeEvent);
 
-      expect(mockSubmitViaPipeline).toHaveBeenCalledWith(
-        'thread-approval',
-        expect.stringContaining('Pre-computed result'),
-        'agent'
-      );
-    });
-
-    it('用户拒绝 → resume with rejection message', async () => {
-      mockCheckpointLoad.mockResolvedValue(approvalCheckpoint);
-
-      const waker = ThreadWaker.getInstance();
-      waker.start();
-      const handler = mockEventBus.on.mock.calls[0][1];
-
-      await handler({
-        threadId: 'thread-approval',
-        reason: 'approval-done',
-        approvalDecision: 'reject'
-      } satisfies ThreadWakeEvent);
-
-      expect(mockSubmitViaPipeline).toHaveBeenCalledWith(
-        'thread-approval',
-        expect.stringContaining('rejected'),
-        'agent'
-      );
+      expect(mockSubmitViaPipeline).toHaveBeenCalledWith('thread-approval', expect.stringContaining('failed'), 'agent');
     });
 
     it('无 pendingOperation 时 warn 并跳过', async () => {
@@ -258,7 +233,7 @@ describe('ThreadWaker', () => {
       waker.start();
       const handler = mockEventBus.on.mock.calls[0][1];
 
-      await handler({ threadId: 't', reason: 'approval-done' });
+      await handler({ threadId: 't', reason: 'tool-done' });
 
       expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('No pending approval'));
     });
@@ -273,8 +248,8 @@ describe('ThreadWaker', () => {
 
       await handler({
         threadId: 'thread-approval',
-        reason: 'approval-done',
-        approvalDecision: 'approve-once'
+        reason: 'tool-done',
+        toolResult: 'Test result'
       });
 
       expect(mockLog.error).toHaveBeenCalledWith(expect.stringContaining('Pipeline not available'));
