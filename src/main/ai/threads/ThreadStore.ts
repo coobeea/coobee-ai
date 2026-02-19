@@ -123,9 +123,23 @@ export class ThreadStore {
     const entry = toIndexEntry(definition, this.workspacesDir);
     this.index.set(definition.id, entry);
 
+    // 立即创建工作空间目录结构（sessions、contexts、events 等）
+    await this.createWorkspaceDirectories(id);
+
     log.info(`[ThreadStore] Created thread: ${definition.id} (agent: ${definition.agentId})`);
     eventBus.emit(ThreadEventType.CREATED, { thread: entry });
     return definition;
+  }
+
+  /** 创建 Thread 的工作空间目录结构 */
+  private async createWorkspaceDirectories(threadId: string): Promise<void> {
+    try {
+      const { Env } = await import('@main/common/env');
+      // getAgentWorkspaceDir 会自动创建所有必要的子目录
+      await Env.getAgentWorkspaceDir(threadId);
+    } catch (err) {
+      log.warn(`[ThreadStore] Failed to create workspace directories for thread ${threadId}:`, err);
+    }
   }
 
   /** 获取 Thread 完整定义 */
