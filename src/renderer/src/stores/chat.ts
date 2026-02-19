@@ -45,6 +45,7 @@ export const useChatStore = defineStore('chat', () => {
   const sessionId = ref<string | null>(null);
   const isQueued = ref(false);
   const queueStatus = ref<QueueStatusInfo | null>(null);
+  const mode = ref<'agent' | 'orchestrator' | 'swarm' | 'delegate'>('agent');
 
   // ---- 对外 Actions ----
 
@@ -71,6 +72,7 @@ export const useChatStore = defineStore('chat', () => {
       }>('chat.send', {
         message: text,
         sessionId: sessionId.value,
+        mode: mode.value,
         ...(agentId ? { agentId } : {})
       });
 
@@ -336,6 +338,7 @@ export const useChatStore = defineStore('chat', () => {
     isQueued,
     queueStatus,
 
+    mode,
     sendMessage,
     abortSession,
     submitDecision,
