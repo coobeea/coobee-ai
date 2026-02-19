@@ -7,12 +7,13 @@ export default defineConfig({
     environment: 'node',
     include: [
       'src/main/ai/**/__tests__/**/*.test.ts',
-      'src/main/common/server/__tests__/**/*.test.ts',
+      'src/main/common/server/**/__tests__/**/*.test.ts',
       'src/main/gateway/__tests__/**/*.test.ts',
       'src/main/common/extension/__tests__/**/*.test.ts',
       'src/main/common/config/__tests__/**/*.test.ts',
       'src/main/common/middleware/__tests__/**/*.test.ts',
       'src/main/lifecycle/__tests__/**/*.test.ts',
+      'src/renderer/**/__tests__/**/*.test.ts',
       'extensions/**/__tests__/**/*.test.ts'
     ],
     // 自动加载 .env 文件中的环境变量
