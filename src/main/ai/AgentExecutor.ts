@@ -30,7 +30,6 @@ import { PiMonoBuilder } from './runtime/pimono/PiMonoBuilder';
 import { OpenAIBuilder } from './runtime/openai/OpenAIBuilder';
 import { createStreamEmitter, type IStreamEmitter } from './streaming/StreamEmitter';
 import type { StreamSource } from './streaming/types';
-import { hitlApprovalManager } from './hitl/HitlApprovalManager';
 import { injectEnv } from './AgentEnvInjector';
 import { AgentEventWriter } from './AgentEventWriter';
 import { resolveApiKey } from './provider/ApiKeyResolver';
@@ -782,8 +781,6 @@ class AgentExecutor {
       log.error(`[AgentExecutor] Error: sessionId=${sessionId}, duration=${duration}ms`, error);
       throw error;
     } finally {
-      // 清理会话资源
-      hitlApprovalManager.cleanupSession(sessionId);
       eventWriter?.unregister(sessionId);
       SkillManager.clearSession(sessionId);
       await this.destroyRuntime(runtime);
