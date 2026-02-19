@@ -262,10 +262,9 @@ export const useChatStore = defineStore('chat', () => {
             if (currentMsg?.pendingApprovals) {
               const targetIndex = evt.data?.index as number | undefined;
               if (targetIndex != null) {
-                const approval = currentMsg.pendingApprovals.find((a) => a.index === targetIndex);
-                if (approval) {
-                  approval.decision = evt.type === 'hitl:approved' ? 'approve-once' : 'reject';
-                }
+                // 从 pendingApprovals 中移除已处理的审批
+                // 避免在重新加载历史时显示已过期的审批弹窗
+                currentMsg.pendingApprovals = currentMsg.pendingApprovals.filter((a) => a.index !== targetIndex);
               }
             }
             break;

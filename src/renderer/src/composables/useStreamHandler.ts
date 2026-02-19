@@ -227,13 +227,12 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
 
       case 'hitl:approved':
       case 'hitl:rejected': {
-        if (assistantMsg) {
+        if (assistantMsg && assistantMsg.pendingApprovals) {
           const targetIndex = msg.data?.index as number | undefined;
-          if (assistantMsg.pendingApprovals && targetIndex != null) {
-            const approval = assistantMsg.pendingApprovals.find((a) => a.index === targetIndex);
-            if (approval && !approval.decision) {
-              approval.decision = msg.type === 'hitl:approved' ? 'approve-once' : 'reject';
-            }
+          if (targetIndex != null) {
+            // 从 pendingApprovals 中移除已处理的审批
+            // 确保 UI 不再显示审批按钮
+            assistantMsg.pendingApprovals = assistantMsg.pendingApprovals.filter((a) => a.index !== targetIndex);
           }
         }
         break;
