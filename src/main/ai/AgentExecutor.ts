@@ -406,25 +406,6 @@ class AgentExecutor {
           turnToolCallCount = 0;
         } else if (chunk.type === 'tool:done') {
           turnToolCallCount++;
-
-          // 检测 suspended 状态：如果工具需要审批，立即停止消费后续 chunks
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if ((chunk.data as any)?.suspended === true) {
-            log.info(`[AgentExecutor] Tool suspended detected, stopping stream consumption: ${sessionId}`);
-
-            // 发出 run:done 事件，表示此轮执行完成（因为 suspended）
-            const doneChunk: StreamChunk = { type: 'run:done', content: '' };
-            eventWriter.dispatch(doneChunk);
-            yield doneChunk;
-
-            // 提前返回（不再消费后续 chunks，SDK 会自然结束）
-            return {
-              output: '',
-              toolCalls: [],
-              duration: Date.now() - (turnStartTime || Date.now()),
-              metadata: { agentId: runtime.id, sessionId, suspended: true }
-            };
-          }
         }
 
         yield chunk;

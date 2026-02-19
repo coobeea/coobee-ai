@@ -348,12 +348,23 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
       // 2. 设置事件订阅 → push 到 queue
       let fullOutput = '';
       let apiError: string | null = null;
+      let suspended = false; // 标记是否遇到 suspended
       const toolCalls: ExecutionResult['toolCalls'] = [];
 
       const unsubscribe = setupEventSubscription(
         this.piSession,
         {
-          onChunk: (chunk) => queue.push(chunk),
+          onChunk: (chunk) => {
+            // 检测 suspended 状态：如果工具需要审批，立即中止 SDK 执行
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (chunk.type === 'tool:done' && (chunk.data as any)?.suspended === true) {
+              suspended = true;
+              log.info(`[PiMonoRuntime] Tool suspended detected, aborting session: ${this.sessionId}`);
+              // 调用 SDK 的 abort() 方法停止执行
+              void this.piSession.abort();
+            }
+            queue.push(chunk);
+          },
           onTextDelta: (text) => {
             fullOutput += text;
           },
@@ -405,6 +416,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
       return {
         output: fullOutput,
         ...(apiError ? { error: apiError } : {}),
+        ...(suspended ? { suspended: true } : {}),
         toolCalls,
         duration: Date.now() - startTime,
         metadata: {
