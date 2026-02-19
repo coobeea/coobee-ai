@@ -196,7 +196,8 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
 
     // 2. 认证配置
     //    通过 AuthStorage 注入 API key，使用自定义 provider 名称
-    const authStorage = new AuthStorage();
+    //    新版本使用静态工厂方法 AuthStorage.inMemory() 创建实例
+    const authStorage = AuthStorage.inMemory();
     authStorage.setRuntimeApiKey(CUSTOM_PROVIDER, this.options.apiKey);
     const modelRegistry = new ModelRegistry(authStorage);
 
