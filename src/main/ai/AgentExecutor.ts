@@ -780,9 +780,10 @@ class AgentExecutor {
     } catch (error: unknown) {
       const duration = Date.now() - startTime;
       log.error(`[AgentExecutor] Error: sessionId=${sessionId}, duration=${duration}ms`, error);
-      hitlApprovalManager.cleanupSession(sessionId);
       throw error;
     } finally {
+      // 清理会话资源
+      hitlApprovalManager.cleanupSession(sessionId);
       eventWriter?.unregister(sessionId);
       SkillManager.clearSession(sessionId);
       await this.destroyRuntime(runtime);
