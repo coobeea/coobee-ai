@@ -199,7 +199,14 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
       }
 
       case 'run:done':
-        if (assistantMsg) assistantMsg.status = 'done';
+        if (assistantMsg) {
+          assistantMsg.status = 'done';
+          // 清理未处理的审批（异步模式下 agent run 可能在审批前就结束）
+          // 避免显示已过期的审批弹窗
+          if (assistantMsg.pendingApprovals && assistantMsg.pendingApprovals.length > 0) {
+            assistantMsg.pendingApprovals = [];
+          }
+        }
         isStreaming.value = false;
         break;
 

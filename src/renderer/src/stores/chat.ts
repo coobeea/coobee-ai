@@ -301,6 +301,11 @@ export const useChatStore = defineStore('chat', () => {
           case 'run:done':
             if (currentMsg) {
               currentMsg.status = 'done';
+              // 清理未处理的审批（异步模式下 agent run 可能在审批前就结束）
+              // 避免显示已过期的审批弹窗
+              if (currentMsg.pendingApprovals && currentMsg.pendingApprovals.length > 0) {
+                currentMsg.pendingApprovals = [];
+              }
               currentMsg = undefined;
             }
             break;
