@@ -94,7 +94,18 @@ function handleApproval(approval: PendingApproval, decision: HitlApprovalDecisio
 }
 
 function toolSummary(block: ContentBlock): string {
-  if (block.type === 'tool') return `调用 ${block.tool.name}...`;
+  if (block.type === 'tool') {
+    if (block.tool.status === 'approval-pending') {
+      return `${block.tool.name} (等待审批)`;
+    }
+    if (block.tool.status === 'calling') {
+      return `调用 ${block.tool.name}...`;
+    }
+    if (block.tool.status === 'done') {
+      return `${block.tool.name} 完成`;
+    }
+    return `${block.tool.name} 失败`;
+  }
   return '';
 }
 </script>
@@ -190,9 +201,11 @@ function toolSummary(block: ContentBlock): string {
                       :class="
                         block.tool.status === 'calling'
                           ? 'i-carbon-renew animate-spin'
-                          : block.tool.status === 'done'
-                            ? 'i-carbon-checkmark'
-                            : 'i-carbon-warning-alt'
+                          : block.tool.status === 'approval-pending'
+                            ? 'i-carbon-locked text-blue-600'
+                            : block.tool.status === 'done'
+                              ? 'i-carbon-checkmark'
+                              : 'i-carbon-warning-alt'
                       " />
                     <span>{{ toolSummary(block) }}</span>
                   </div>

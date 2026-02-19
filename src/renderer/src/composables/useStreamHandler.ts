@@ -17,7 +17,13 @@ export interface ToolCallInfo {
   name: string;
   arguments: string;
   result?: string;
-  status: 'calling' | 'done' | 'error';
+  status: 'calling' | 'done' | 'error' | 'approval-pending';
+  /** 审批信息（如果工具需要审批） */
+  approval?: {
+    index: number;
+    approvalId?: string;
+    decision?: HitlApprovalDecision;
+  };
 }
 
 export interface DelegateInfo {
@@ -186,11 +192,29 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
 
       case 'tool:done': {
         if (assistantMsg) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const suspended = (msg.data as any)?.suspended === true;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const suspendReason = (msg.data as any)?.suspendReason;
+
           for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
             const block = assistantMsg.blocks[i];
             if (block.type === 'tool' && block.tool.status === 'calling') {
               block.tool.result = msg.content;
-              block.tool.status = 'done';
+
+              // 如果工具需要审批，状态设置为 approval-pending，而不是 done
+              if (suspended) {
+                block.tool.status = 'approval-pending';
+                // 从 suspendReason 解析 approvalId
+                // 格式: "approval-pending:sessionId:index:toolName"
+                const match = suspendReason?.match(/approval-pending:([^:]+:[^:]+):/);
+                block.tool.approval = {
+                  index: -1, // 会在 hitl:required 事件中更新
+                  approvalId: match ? match[1] : undefined
+                };
+              } else {
+                block.tool.status = 'done';
+              }
               break;
             }
           }
@@ -218,26 +242,62 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
         isStreaming.value = false;
         break;
 
-      case 'hitl:required':
+      case 'hitl:required': {
         if (!assistantMsg) assistantMsg = createAssistantMessage();
+
+        const toolName = (msg.data?.toolName as string) || 'unknown';
+        const approvalIndex = (msg.data?.index as number) ?? 0;
+
+        // 找到对应的工具块，更新审批信息
+        for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
+          const block = assistantMsg.blocks[i];
+          if (block.type === 'tool' && block.tool.name === toolName && block.tool.status === 'approval-pending') {
+            // 更新审批 index
+            if (block.tool.approval) {
+              block.tool.approval.index = approvalIndex;
+            }
+            break;
+          }
+        }
+
+        // 为了兼容性，仍然维护 pendingApprovals 数组（用于底部备用显示）
         if (!assistantMsg.pendingApprovals) {
           assistantMsg.pendingApprovals = [];
         }
         assistantMsg.pendingApprovals.push({
-          index: (msg.data?.index as number) ?? assistantMsg.pendingApprovals.length,
-          toolName: (msg.data?.toolName as string) || 'unknown',
+          index: approvalIndex,
+          toolName,
           arguments: msg.data?.arguments as string | undefined
         });
         break;
+      }
 
       case 'hitl:approved':
       case 'hitl:rejected': {
-        if (assistantMsg && assistantMsg.pendingApprovals) {
+        if (assistantMsg) {
           const targetIndex = msg.data?.index as number | undefined;
+          const decision: HitlApprovalDecision = msg.type === 'hitl:approved' ? 'approve-once' : 'reject';
+
           if (targetIndex != null) {
-            // 从 pendingApprovals 中移除已处理的审批
-            // 确保 UI 不再显示审批按钮
-            assistantMsg.pendingApprovals = assistantMsg.pendingApprovals.filter((a) => a.index !== targetIndex);
+            // 更新对应工具块的审批决策
+            for (const block of assistantMsg.blocks) {
+              if (block.type === 'tool' && block.tool.approval && block.tool.approval.index === targetIndex) {
+                block.tool.approval.decision = decision;
+
+                // 更新工具状态
+                if (decision !== 'reject') {
+                  block.tool.status = 'calling'; // 审批通过后，工具开始执行
+                } else {
+                  block.tool.status = 'error'; // 拒绝后显示为失败
+                }
+                break;
+              }
+            }
+
+            // 从 pendingApprovals 中移除已处理的审批（兼容底部显示）
+            if (assistantMsg.pendingApprovals) {
+              assistantMsg.pendingApprovals = assistantMsg.pendingApprovals.filter((a) => a.index !== targetIndex);
+            }
           }
         }
         break;
