@@ -95,15 +95,9 @@ async function executeToolCore(
         if (hookResult.params) {
           typedParams = { ...typedParams, ...hookResult.params };
         }
-        // Extension 仍可返回 suspend（例如特殊场景下的暂停）
-        // 注意：核心审批逻辑已在 Phase 1 处理，这里的 suspend 用于其他目的
+        // suspend 逻辑已在 Phase 1 统一处理，Extension hook 不应返回 suspend
         if (hookResult.suspend) {
-          return {
-            resultText: hookResult.resultText || '[SUSPENDED] Tool execution suspended by extension',
-            blocked: false,
-            suspended: true,
-            suspendReason: hookResult.suspendReason || 'extension-suspend'
-          };
+          log.warn(`[ToolPipeline] Extension returned suspend in Phase 1.5, ignoring (审批逻辑已在 Phase 1 处理)`);
         }
       }
     }
