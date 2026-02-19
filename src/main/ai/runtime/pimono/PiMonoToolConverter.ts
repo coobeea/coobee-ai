@@ -92,6 +92,20 @@ export function convertTools(defs: ToolDefinition[], options: ConvertToolsOption
               : undefined
           });
 
+          // 处理 suspended 状态（HITL 审批）
+          // 注意：pi-SDK 不原生支持 suspended，但我们在 details 中保留信息用于调试
+          if (result.suspended) {
+            return {
+              content: [{ type: 'text', text: result.resultText }],
+              details: {
+                name: def.name,
+                status: 'suspended',
+                suspendReason: result.suspendReason
+              }
+            };
+          }
+
+          // 正常返回
           return {
             content: [{ type: 'text', text: result.resultText }],
             details: { name: def.name }

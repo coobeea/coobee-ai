@@ -406,6 +406,25 @@ class AgentExecutor {
           turnToolCallCount = 0;
         } else if (chunk.type === 'tool:done') {
           turnToolCallCount++;
+
+          // 检测 suspended 状态：如果工具需要审批，立即停止消费后续 chunks
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if ((chunk.data as any)?.suspended === true) {
+            log.info(`[AgentExecutor] Tool suspended detected, stopping stream consumption: ${sessionId}`);
+
+            // 发出 run:done 事件，表示此轮执行完成（因为 suspended）
+            const doneChunk: StreamChunk = { type: 'run:done', content: '' };
+            eventWriter.dispatch(doneChunk);
+            yield doneChunk;
+
+            // 提前返回（不再消费后续 chunks，SDK 会自然结束）
+            return {
+              output: '',
+              toolCalls: [],
+              duration: Date.now() - (turnStartTime || Date.now()),
+              metadata: { agentId: runtime.id, sessionId, suspended: true }
+            };
+          }
         }
 
         yield chunk;
@@ -522,10 +541,13 @@ class AgentExecutor {
         }
         break;
       case 'tool:done':
-        // 检测工具挂起（[SUSPENDED] 标记来自 ToolExecutionPipeline）
-        if (chunk.content?.includes('[SUSPENDED]')) {
+        // 检测工具挂起（suspended 标志来自 ToolExecutionPipeline → PiMonoStreamAdapter）
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((chunk.data as any)?.suspended === true) {
           this.pendingApprovalSessions.add(sessionId);
-          const pendingOp = this.parseSuspendReason(chunk.content, sessionId);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const suspendReason = (chunk.data as any)?.suspendReason;
+          const pendingOp = this.parseSuspendReason(suspendReason, sessionId);
           checkpoint
             .save({
               threadId: sessionId,
@@ -581,23 +603,32 @@ class AgentExecutor {
   }
 
   /**
-   * 从 [SUSPENDED] 文本中解析出 pendingOperation
+   * 从 suspendReason 中解析出 pendingOperation
    *
-   * suspendReason 格式（来自 tool-approval）: "approval-pending:{sessionId}:{index}:{toolName}"
+   * suspendReason 格式（来自 ToolExecutionPipeline）: "approval-pending:{approvalId}:{toolName}"
+   * 例如: "approval-pending:282850582706069504:0:write"
    */
   private parseSuspendReason(
-    content: string,
+    suspendReason: string,
     sessionId: string
   ):
     | { type: 'approval'; approvalId: string; toolName: string; toolCallId: string; agentSessionId: string }
     | undefined {
-    const match = content.match(/suspended:\s*approval-pending:([^.]+)/i);
-    if (!match) return undefined;
-    const reason = match[1].trim();
-    const parts = reason.split(':');
-    // parts: [sessionId, index, toolName] → approvalId = "sessionId:index"
-    const approvalId = parts.length >= 2 ? `${parts[0]}:${parts[1]}` : reason;
-    const toolName = parts.length >= 3 ? parts[2] : 'unknown';
+    if (!suspendReason) return undefined;
+
+    // 去除可能的前缀（如果有的话）
+    const reason = suspendReason.replace(/^suspended:\s*/i, '').trim();
+
+    // 匹配格式: approval-pending:{approvalId}:{toolName}
+    const match = reason.match(/^approval-pending:([^:]+:[^:]+):(.+)$/);
+    if (!match) {
+      log.warn(`[AgentExecutor] Failed to parse suspendReason: ${suspendReason}`);
+      return undefined;
+    }
+
+    const approvalId = match[1]; // "sessionId:index"
+    const toolName = match[2]; // "write"
+
     return {
       type: 'approval',
       approvalId,
