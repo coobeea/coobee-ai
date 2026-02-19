@@ -214,9 +214,9 @@ export async function executeToolPipeline(
   const typedParams = params;
   const sessionId = opts.sandboxContext.sessionId || '';
 
-  // === Phase 1: 审批判断（内置核心逻辑）===
+  // === Phase 1: 审批判断（仅 exec 工具）===
 
-  // 1.1 exec 工具的安全策略检查
+  // 只有 exec 工具需要通过 ExecPolicy 审批
   if (def.name === 'exec' && params.command) {
     try {
       const { checkExecPolicy } = await import('../../sandbox/exec-policy');
@@ -244,13 +244,8 @@ export async function executeToolPipeline(
       }
     } catch (error) {
       log.warn(`[ToolPipeline] ExecPolicy check failed for ${def.name}:`, error);
-      // 检查失败，降级到 needUserConfirm 判断
+      // 检查失败，继续执行（不阻塞）
     }
-  }
-
-  // 1.2 通用工具的 needUserConfirm 检查
-  if (def.needUserConfirm && def.name !== 'exec') {
-    return await requestUserApproval(sessionId, def.name, typedParams, def, opts);
   }
 
   // === Phase 1.5-4: 执行工具核心流程 ===

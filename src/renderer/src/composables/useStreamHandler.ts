@@ -201,11 +201,9 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
       case 'run:done':
         if (assistantMsg) {
           assistantMsg.status = 'done';
-          // 清理未处理的审批（异步模式下 agent run 可能在审批前就结束）
-          // 避免显示已过期的审批弹窗
-          if (assistantMsg.pendingApprovals && assistantMsg.pendingApprovals.length > 0) {
-            assistantMsg.pendingApprovals = [];
-          }
+          // 不清除 pendingApprovals！
+          // 在异步审批模式下，Agent run 正常结束，但审批可能还在等待中
+          // 只有当收到 hitl:approved 或 hitl:rejected 事件时才清除对应的审批项
         }
         isStreaming.value = false;
         break;
