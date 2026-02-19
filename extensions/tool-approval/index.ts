@@ -180,18 +180,18 @@ async function requestApproval(
 
     if (!decision) {
       api.logger.warn(`[tool-approval] Timeout: approvalId=${approvalId}`);
-      emitDecisionEvent(sessionId, index, toolName, 'rejected', 'timeout');
+      await emitDecisionEvent(sessionId, index, toolName, 'rejected', 'timeout');
       return { block: true, blockReason: 'Approval timeout — tool execution blocked' };
     }
 
     if (decision === 'reject') {
       api.logger.info(`[tool-approval] Rejected: approvalId=${approvalId}`);
-      emitDecisionEvent(sessionId, index, toolName, 'rejected');
+      await emitDecisionEvent(sessionId, index, toolName, 'rejected');
       return { block: true, blockReason: 'User rejected tool execution' };
     }
 
     api.logger.info(`[tool-approval] Approved: approvalId=${approvalId}, decision=${decision}`);
-    emitDecisionEvent(sessionId, index, toolName, 'approved');
+    await emitDecisionEvent(sessionId, index, toolName, 'approved');
 
     if (decision === 'approve-always' && learnFn && toolName === 'exec' && params.command) {
       try {

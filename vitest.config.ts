@@ -1,5 +1,5 @@
-import { defineConfig } from 'vitest/config'
-import { resolve } from 'path'
+import { defineConfig } from 'vitest/config';
+import { resolve } from 'path';
 
 export default defineConfig({
   test: {
@@ -12,7 +12,8 @@ export default defineConfig({
       'src/main/common/extension/__tests__/**/*.test.ts',
       'src/main/common/config/__tests__/**/*.test.ts',
       'src/main/common/middleware/__tests__/**/*.test.ts',
-      'src/main/lifecycle/__tests__/**/*.test.ts'
+      'src/main/lifecycle/__tests__/**/*.test.ts',
+      'extensions/**/__tests__/**/*.test.ts'
     ],
     // 自动加载 .env 文件中的环境变量
     env: {
@@ -51,4 +52,4 @@ export default defineConfig({
       junit: './test-results/junit.xml'
     }
   }
-})
+});
