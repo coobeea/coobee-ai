@@ -97,6 +97,9 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
   // Session 压缩器
   private compressor?: SessionCompressor;
 
+  // 当前执行的 AbortSignal（用于工具执行）
+  private currentSignal?: AbortSignal;
+
   // 时间
   private createdAt: number;
 
@@ -191,6 +194,9 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
   ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
     const startTime = Date.now();
     const maxTurns = config?.maxTurns ?? this.options.maxTurns ?? DEFAULT_MAX_TURNS;
+
+    // 保存当前的 AbortSignal，供工具执行使用
+    this.currentSignal = (config as Record<string, unknown>)?.signal as AbortSignal | undefined;
 
     log.info(`Running stream: ${this.name}`);
 
@@ -637,7 +643,8 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
                 content: update.content,
                 data: { delta: update.content }
               });
-            }
+            },
+            signal: this.currentSignal // 传入当前的 AbortSignal
           });
           return result.resultText;
         }

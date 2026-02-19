@@ -353,7 +353,7 @@ class AgentExecutor {
    * 每个 chunk 同时通过 StreamEmitter.forward() 广播到 EventBus。
    */
   async *stream(request: Omit<ExecuteRequest, 'onChunk'>): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
-    const { sessionId, message, builder } = request;
+    const { sessionId, message, builder, signal } = request;
 
     if (!builder) {
       throw new Error('stream() requires a builder. Use submit() with runtime for pre-built runtimes.');
@@ -380,8 +380,8 @@ class AgentExecutor {
       runtime = await builder.sessionId(sessionId).build();
       eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
 
-      // 2. 透传 stream()（同步触发 Extension Hook）
-      const gen = runtime.stream(message);
+      // 2. 透传 stream()（同步触发 Extension Hook），传入 signal
+      const gen = runtime.stream(message, { signal });
       let turnStartTime = 0;
       let turnToolCallCount = 0;
 
@@ -736,7 +736,7 @@ class AgentExecutor {
         runtime = request.runtime;
         eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
 
-        const gen = runtime.stream(message);
+        const gen = runtime.stream(message, { signal });
         const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal);
 
         const duration = Date.now() - startTime;
@@ -761,8 +761,8 @@ class AgentExecutor {
       runtime = await builder.sessionId(sessionId).build();
       eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
 
-      // 2. 流式执行（HITL 在 before_tool_call Hook 中自动处理）
-      const gen = runtime.stream(message);
+      // 2. 流式执行（HITL 在 before_tool_call Hook 中自动处理），传入 signal
+      const gen = runtime.stream(message, { signal });
       const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal);
 
       const duration = Date.now() - startTime;

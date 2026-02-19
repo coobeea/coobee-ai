@@ -50,13 +50,11 @@ vi.mock('../CheckpointManager', () => ({
 }));
 
 // Mock AgentExecutor
-const mockSubmit = vi.fn().mockReturnValue({ status: 'streaming' });
-const mockCreateBuilderFromFactory = vi.fn().mockReturnValue({});
+const mockSubmitViaPipeline = vi.fn().mockReturnValue({ status: 'executing', sessionId: 'test' });
 
 vi.mock('../../AgentExecutor', () => ({
   agentExecutor: {
-    submit: mockSubmit,
-    createBuilderFromFactory: mockCreateBuilderFromFactory
+    submitViaPipeline: mockSubmitViaPipeline
   }
 }));
 
@@ -137,7 +135,7 @@ describe('ThreadWaker', () => {
       await handler({ threadId: 'nonexistent', reason: 'approval-done' });
 
       expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('No checkpoint'));
-      expect(mockSubmit).not.toHaveBeenCalled();
+      expect(mockSubmitViaPipeline).not.toHaveBeenCalled();
     });
 
     it('idle 状态跳过', async () => {
@@ -153,7 +151,7 @@ describe('ThreadWaker', () => {
       await handler({ threadId: 'thread-idle', reason: 'approval-done' });
 
       expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('already idle'));
-      expect(mockSubmit).not.toHaveBeenCalled();
+      expect(mockSubmitViaPipeline).not.toHaveBeenCalled();
     });
 
     it('completed 状态跳过', async () => {
@@ -168,7 +166,7 @@ describe('ThreadWaker', () => {
       const handler = mockEventBus.on.mock.calls[0][1];
       await handler({ threadId: 't', reason: 'approval-done' });
 
-      expect(mockSubmit).not.toHaveBeenCalled();
+      expect(mockSubmitViaPipeline).not.toHaveBeenCalled();
     });
   });
 
@@ -201,12 +199,11 @@ describe('ThreadWaker', () => {
         approvalDecision: 'approve-once'
       } satisfies ThreadWakeEvent);
 
-      expect(mockCreateBuilderFromFactory).toHaveBeenCalledWith('agent');
-      expect(mockSubmit).toHaveBeenCalledWith({
-        sessionId: 'thread-approval',
-        message: expect.stringContaining('approved and executed'),
-        builder: expect.anything()
-      });
+      expect(mockSubmitViaPipeline).toHaveBeenCalledWith(
+        'thread-approval',
+        expect.stringContaining('approved and executed'),
+        'agent'
+      );
     });
 
     it('用户批准 + 提供 toolResult → 直接使用 toolResult', async () => {
@@ -223,11 +220,11 @@ describe('ThreadWaker', () => {
         toolResult: 'Pre-computed result'
       } satisfies ThreadWakeEvent);
 
-      expect(mockSubmit).toHaveBeenCalledWith({
-        sessionId: 'thread-approval',
-        message: expect.stringContaining('Pre-computed result'),
-        builder: expect.anything()
-      });
+      expect(mockSubmitViaPipeline).toHaveBeenCalledWith(
+        'thread-approval',
+        expect.stringContaining('Pre-computed result'),
+        'agent'
+      );
     });
 
     it('用户拒绝 → resume with rejection message', async () => {
@@ -243,11 +240,11 @@ describe('ThreadWaker', () => {
         approvalDecision: 'reject'
       } satisfies ThreadWakeEvent);
 
-      expect(mockSubmit).toHaveBeenCalledWith({
-        sessionId: 'thread-approval',
-        message: expect.stringContaining('rejected'),
-        builder: expect.anything()
-      });
+      expect(mockSubmitViaPipeline).toHaveBeenCalledWith(
+        'thread-approval',
+        expect.stringContaining('rejected'),
+        'agent'
+      );
     });
 
     it('无 pendingOperation 时 warn 并跳过', async () => {
@@ -266,8 +263,8 @@ describe('ThreadWaker', () => {
       expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('No pending approval'));
     });
 
-    it('无 builderFactory 时 error 并跳过', async () => {
-      mockCreateBuilderFromFactory.mockReturnValue(null);
+    it('Pipeline 不可用时 error 并跳过', async () => {
+      mockSubmitViaPipeline.mockReturnValueOnce(null);
       mockCheckpointLoad.mockResolvedValue(approvalCheckpoint);
 
       const waker = ThreadWaker.getInstance();
@@ -280,7 +277,7 @@ describe('ThreadWaker', () => {
         approvalDecision: 'approve-once'
       });
 
-      expect(mockLog.error).toHaveBeenCalledWith(expect.stringContaining('No builderFactory'));
+      expect(mockLog.error).toHaveBeenCalledWith(expect.stringContaining('Pipeline not available'));
     });
   });
 
@@ -299,7 +296,6 @@ describe('ThreadWaker', () => {
           agentSessionId: 't-restart'
         }
       });
-      mockCreateBuilderFromFactory.mockReturnValue({});
 
       const waker = ThreadWaker.getInstance();
       waker.start();
@@ -307,11 +303,7 @@ describe('ThreadWaker', () => {
 
       await handler({ threadId: 't-restart', reason: 'restart-recovery' });
 
-      expect(mockSubmit).toHaveBeenCalledWith({
-        sessionId: 't-restart',
-        message: expect.stringContaining('restarted'),
-        builder: expect.anything()
-      });
+      expect(mockSubmitViaPipeline).toHaveBeenCalledWith('t-restart', expect.stringContaining('restarted'), 'agent');
     });
 
     it('running → 恢复消息提示继续', async () => {
@@ -320,7 +312,6 @@ describe('ThreadWaker', () => {
         runStatus: 'running',
         updatedAt: ''
       });
-      mockCreateBuilderFromFactory.mockReturnValue({});
 
       const waker = ThreadWaker.getInstance();
       waker.start();
@@ -328,11 +319,7 @@ describe('ThreadWaker', () => {
 
       await handler({ threadId: 't-running', reason: 'restart-recovery' });
 
-      expect(mockSubmit).toHaveBeenCalledWith({
-        sessionId: 't-running',
-        message: expect.stringContaining('in progress'),
-        builder: expect.anything()
-      });
+      expect(mockSubmitViaPipeline).toHaveBeenCalledWith('t-running', expect.stringContaining('in progress'), 'agent');
     });
 
     it('error 状态不恢复', async () => {

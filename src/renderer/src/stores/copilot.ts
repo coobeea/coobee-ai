@@ -44,14 +44,27 @@ export const useCopilotStore = defineStore('copilot', () => {
 
   // ---- Stream 订阅 ----
   let unregisterStream: (() => void) | null = null;
+  let unregisterConnect: (() => void) | null = null;
 
   // ---- Getters ----
   const hasMessages = computed(() => messages.value.length > 0);
 
   /** 初始化独立的流式事件监听 */
   function initStreamListener(): void {
-    if (unregisterStream) return;
+    // 如果已经初始化，不重复注册
+    if (unregisterStream && unregisterConnect) return;
 
+    // 清理旧的监听器（如果有）
+    if (unregisterStream) {
+      unregisterStream();
+      unregisterStream = null;
+    }
+    if (unregisterConnect) {
+      unregisterConnect();
+      unregisterConnect = null;
+    }
+
+    // 注册流式消息监听
     unregisterStream = gateway.on('stream.message', (payload) => {
       const data = payload as { sessionId?: string; message?: StreamMessage } | undefined;
       if (!data?.message || !data.sessionId) return;
@@ -59,7 +72,8 @@ export const useCopilotStore = defineStore('copilot', () => {
       handleStreamMessage(data.message);
     });
 
-    gateway.onConnect(() => {
+    // 注册重连监听
+    unregisterConnect = gateway.onConnect(() => {
       if (sessionId.value) {
         gateway
           .request('stream.subscribe', { sessionId: sessionId.value })
@@ -163,6 +177,21 @@ export const useCopilotStore = defineStore('copilot', () => {
     sessionId.value = null;
   }
 
+  /**
+   * 清理所有监听器，防止内存泄漏
+   * 在应用销毁时调用
+   */
+  function cleanup(): void {
+    if (unregisterStream) {
+      unregisterStream();
+      unregisterStream = null;
+    }
+    if (unregisterConnect) {
+      unregisterConnect();
+      unregisterConnect = null;
+    }
+  }
+
   return {
     // State
     visible,
@@ -179,6 +208,7 @@ export const useCopilotStore = defineStore('copilot', () => {
     sendMessage,
     submitDecision,
     abort,
-    clearMessages
+    clearMessages,
+    cleanup
   };
 });

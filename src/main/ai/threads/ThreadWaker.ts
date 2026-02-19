@@ -226,23 +226,20 @@ export class ThreadWaker {
 
       log.info(`[ThreadWaker] Resuming thread ${threadId} with message: ${message.slice(0, 100)}...`);
 
-      // 使用 builderFactory 创建 builder（与 chat.send 相同逻辑）
-      const builder = agentExecutor.createBuilderFromFactory?.('agent');
-      if (!builder) {
-        log.error(`[ThreadWaker] No builderFactory available, cannot resume thread ${threadId}`);
+      // 使用 submitViaPipeline 而非 submit，确保走 MessagePipeline 流程
+      // 享受队列、runId 竞态防护、中断等能力
+      const result = agentExecutor.submitViaPipeline(threadId, message, 'agent');
+
+      if (!result) {
+        log.error(`[ThreadWaker] Pipeline not available, cannot resume thread ${threadId}`);
         return;
       }
 
-      const result = agentExecutor.submit({
-        sessionId: threadId,
-        message,
-        builder
-      });
-
-      if (result.status === 'busy') {
-        log.warn(`[ThreadWaker] Thread ${threadId} is busy, resume queued or skipped`);
+      // status: 'executing' | 'queued' | 'merged' | 'interrupted'
+      if (result.status === 'executing') {
+        log.info(`[ThreadWaker] Thread ${threadId} resumed successfully (executing)`);
       } else {
-        log.info(`[ThreadWaker] Thread ${threadId} resumed successfully`);
+        log.info(`[ThreadWaker] Thread ${threadId} resume submitted (status: ${result.status})`);
       }
     } catch (error) {
       log.error(`[ThreadWaker] Failed to submit resume message for ${threadId}:`, error);

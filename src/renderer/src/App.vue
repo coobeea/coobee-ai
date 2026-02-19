@@ -15,9 +15,13 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import Container from '@/components/Container.vue';
 import eventBus from '@/eventbus';
 import { EventTypes } from '@shared/ipc/events';
+import { streamCleanup } from '@/composables/useStreamWs';
+import { cleanupThreadWs } from '@/composables/useThreadWs';
+import { useCopilotStore } from '@/stores/copilot';
 
 const isReady = ref(false);
 let timeoutId: ReturnType<typeof setTimeout> | null = null;
+const copilotStore = useCopilotStore();
 
 function markReady(): void {
   if (isReady.value) return;
@@ -59,6 +63,11 @@ onMounted(async () => {
 onUnmounted(() => {
   eventBus.off(EventTypes.BACKEND_READY, onBackendReady);
   if (timeoutId) clearTimeout(timeoutId);
+
+  // 清理全局监听器，防止内存泄漏
+  streamCleanup();
+  cleanupThreadWs();
+  copilotStore.cleanup();
 });
 </script>
 
