@@ -53,14 +53,16 @@ export interface PipelineOptions {
 // ==================== Core ====================
 
 /**
- * 执行工具的完整管线
+ * 执行工具核心流程（Phase 1.5 - 4）
+ *
+ * 包含：before_tool_call Hook、sandbox policy、execute、after_tool_call Hook
  *
  * @param def    - 工具定义
- * @param params - 工具参数（来自 LLM）
+ * @param params - 工具参数
  * @param opts   - 管线选项
  * @returns 管线执行结果
  */
-export async function executeToolPipeline(
+async function executeToolCore(
   def: ToolDefinition,
   params: Record<string, unknown>,
   opts: PipelineOptions
@@ -69,7 +71,7 @@ export async function executeToolPipeline(
   const toolStartTime = Date.now();
   const sessionId = opts.sandboxContext.sessionId || '';
 
-  // === Phase 1: before_tool_call Hook ===
+  // === Phase 1.5: before_tool_call Hook (Extension 扩展点) ===
   try {
     const { ExtensionManager } = await import('../../../common/extension');
     const runner = ExtensionManager.getHookRunner();
@@ -81,19 +83,7 @@ export async function executeToolPipeline(
         needUserConfirm: def.needUserConfirm ?? false
       });
       if (hookResult) {
-        // 异步挂起：工具需要审批但不阻塞 Agent run
-        if (hookResult.suspend) {
-          const reason = hookResult.suspendReason || 'approval-pending';
-          return {
-            resultText:
-              `[SUSPENDED] Tool "${def.name}" execution suspended: ${reason}. ` +
-              `The tool will be executed after approval. Do NOT retry this tool call — ` +
-              `the system will resume automatically when the approval is received.`,
-            blocked: false,
-            suspended: true,
-            suspendReason: reason
-          };
-        }
+        // Extension 可以 block 或修改参数
         if (hookResult.block) {
           return {
             resultText: `Error: Tool blocked — ${hookResult.blockReason || 'no reason'}`,
@@ -105,10 +95,13 @@ export async function executeToolPipeline(
         if (hookResult.params) {
           typedParams = { ...typedParams, ...hookResult.params };
         }
+        // suspend 不应该在这里返回（应在 Phase 1 处理）
+        if (hookResult.suspend) {
+          log.warn(`[ToolPipeline] Extension returned suspend in Phase 1.5, ignoring (should be handled in Phase 1)`);
+        }
       }
     }
   } catch (error) {
-    // Extension hook 失败不阻断工具执行，但记录日志以便排查
     log.warn(`[ToolPipeline] before_tool_call hook failed for ${def.name}:`, error);
   }
 
@@ -126,7 +119,6 @@ export async function executeToolPipeline(
       };
     }
   } catch (error) {
-    // sandbox 导入失败不阻断，但记录日志
     log.warn(`[ToolPipeline] Sandbox policy check failed for ${def.name}:`, error);
   }
 
@@ -195,7 +187,6 @@ export async function executeToolPipeline(
       }
     }
   } catch (error) {
-    // Extension hook 失败不阻断，但记录日志
     log.warn(`[ToolPipeline] after_tool_call / tool_result_persist hook failed for ${def.name}:`, error);
   }
 
@@ -205,6 +196,66 @@ export async function executeToolPipeline(
     suspended: false,
     rawResult: toolResult
   };
+}
+
+/**
+ * 执行工具的完整管线（入口）
+ *
+ * @param def    - 工具定义
+ * @param params - 工具参数（来自 LLM）
+ * @param opts   - 管线选项
+ * @returns 管线执行结果
+ */
+export async function executeToolPipeline(
+  def: ToolDefinition,
+  params: Record<string, unknown>,
+  opts: PipelineOptions
+): Promise<PipelineResult> {
+  const typedParams = params;
+  const sessionId = opts.sandboxContext.sessionId || '';
+
+  // === Phase 1: 审批判断（内置核心逻辑）===
+
+  // 1.1 exec 工具的安全策略检查
+  if (def.name === 'exec' && params.command) {
+    try {
+      const { checkExecPolicy } = await import('../../sandbox/exec-policy');
+      const policy = checkExecPolicy(params.command as string);
+
+      if (policy.action === 'deny') {
+        log.warn(`[ToolPipeline] ExecPolicy deny: "${String(params.command).slice(0, 50)}", reason=${policy.reason}`);
+        return {
+          resultText: `Error: Command rejected by security policy: ${policy.reason}`,
+          blocked: true,
+          suspended: false,
+          blockReason: `Security policy: ${policy.reason}`
+        };
+      }
+
+      // policy.action === 'allow' → 自动放行，跳过审批
+      if (policy.action === 'allow') {
+        log.info(`[ToolPipeline] ExecPolicy allow: "${String(params.command).slice(0, 50)}"`);
+        // 继续执行，不需要审批
+      }
+
+      // policy.action === 'ask' → 需要用户审批
+      if (policy.action === 'ask') {
+        return await requestUserApproval(sessionId, def.name, typedParams, def, opts);
+      }
+    } catch (error) {
+      log.warn(`[ToolPipeline] ExecPolicy check failed for ${def.name}:`, error);
+      // 检查失败，降级到 needUserConfirm 判断
+    }
+  }
+
+  // 1.2 通用工具的 needUserConfirm 检查
+  if (def.needUserConfirm && def.name !== 'exec') {
+    return await requestUserApproval(sessionId, def.name, typedParams, def, opts);
+  }
+
+  // === Phase 1.5-4: 执行工具核心流程 ===
+  // 审批通过或不需要审批时，执行完整流程
+  return await executeToolCore(def, typedParams, opts);
 }
 
 /**
@@ -235,5 +286,156 @@ export function createFallbackToolContext(opts: { workspaceRoot: string; session
     tempDir: os.tmpdir(),
     agentName: 'agent',
     agentMode: 'agent'
+  };
+}
+
+// ==================== 审批逻辑（内置核心功能）====================
+
+/** 会话级审批计数器（用于生成 approvalId）*/
+const sessionApprovalCounters = new Map<string, number>();
+
+/**
+ * 重置会话的审批计数器（会话开始时调用）
+ */
+export function resetApprovalCounter(sessionId: string): void {
+  sessionApprovalCounters.delete(sessionId);
+}
+
+/**
+ * 请求用户审批（异步模式 - OpenClaw 风格）
+ *
+ * 流程：
+ *   1. 发送 hitl:required 事件到前端
+ *   2. 启动后台任务（fire-and-forget）：等待审批 → 执行工具 → 发送完成事件
+ *   3. 立即返回 suspended（不等待）
+ *
+ * @param def - 工具定义（用于后台执行）
+ * @param params - 工具参数
+ * @param opts - Pipeline 选项（包含 context 和 signal）
+ * @returns PipelineResult (suspended)
+ */
+async function requestUserApproval(
+  sessionId: string,
+  toolName: string,
+  params: Record<string, unknown>,
+  def: ToolDefinition,
+  opts: PipelineOptions
+): Promise<PipelineResult> {
+  // 获取审批索引
+  const index = sessionApprovalCounters.get(sessionId) ?? 0;
+  sessionApprovalCounters.set(sessionId, index + 1);
+
+  const approvalId = `${sessionId}:${index}`;
+
+  log.info(`[ToolPipeline] Requesting approval: approvalId=${approvalId}, tool=${toolName}`);
+
+  // 1. 发送 hitl:required 事件到前端
+  try {
+    const { AgentEventWriter } = await import('../../AgentEventWriter');
+    AgentEventWriter.dispatchForSession(sessionId, {
+      type: 'hitl:required',
+      content: `Approval required: ${toolName}`,
+      data: {
+        index,
+        toolName,
+        arguments: JSON.stringify(params),
+        action: 'required',
+        approvalId
+      }
+    });
+  } catch (error) {
+    log.warn(`[ToolPipeline] Failed to emit hitl:required:`, error);
+  }
+
+  // 2. 启动后台任务（fire-and-forget）
+  void (async () => {
+    try {
+      log.info(`[ToolPipeline] Background task started: approvalId=${approvalId}`);
+
+      // 2.1 等待用户审批
+      const { hitlApprovalManager } = await import('../../hitl/HitlApprovalManager');
+      const decision = await hitlApprovalManager.waitForSingleDecision(approvalId, 300000); // 5分钟超时
+
+      if (!decision || decision === 'reject') {
+        log.info(`[ToolPipeline] Background: approval ${decision ? 'rejected' : 'timeout'}: ${approvalId}`);
+
+        // 发送拒绝事件
+        const { AgentEventWriter } = await import('../../AgentEventWriter');
+        AgentEventWriter.dispatchForSession(sessionId, {
+          type: 'hitl:rejected',
+          content: `rejected: ${toolName}`,
+          data: { index, toolName, action: 'rejected', reason: decision ? undefined : 'timeout' }
+        });
+
+        // 发送唤醒事件（带拒绝结果）
+        const { eventBus } = await import('../../../common/eventbus');
+        eventBus.emit('thread:wake', {
+          threadId: sessionId,
+          reason: 'tool-done',
+          toolResult: `Tool "${toolName}" was ${decision ? 'rejected by user' : 'timed out'}.`,
+          toolName
+        });
+        return;
+      }
+
+      log.info(`[ToolPipeline] Background: approved: ${approvalId}, decision=${decision}`);
+
+      // 发送批准事件
+      const { AgentEventWriter } = await import('../../AgentEventWriter');
+      AgentEventWriter.dispatchForSession(sessionId, {
+        type: 'hitl:approved',
+        content: `approved: ${toolName}`,
+        data: { index, toolName, action: 'approved' }
+      });
+
+      // 2.2 执行工具核心流程（Phase 1.5-4）
+      log.info(`[ToolPipeline] Background: executing tool core: ${toolName}`);
+
+      // 🔑 关键：直接调用核心流程，不再走审批判断
+      const pipelineResult = await executeToolCore(def, params, opts);
+
+      // 检查执行结果
+      if (pipelineResult.blocked) {
+        throw new Error(`Tool blocked: ${pipelineResult.blockReason || 'unknown'}`);
+      }
+      if (pipelineResult.suspended) {
+        throw new Error('Tool should not suspend again after approval');
+      }
+
+      const resultText = pipelineResult.resultText;
+      log.info(`[ToolPipeline] Background: tool executed: ${toolName}, length=${resultText.length}`);
+
+      // 2.4 发送完成事件，唤醒 Agent
+      const { eventBus } = await import('../../../common/eventbus');
+      eventBus.emit('thread:wake', {
+        threadId: sessionId,
+        reason: 'tool-done',
+        toolResult: resultText,
+        toolName
+      });
+    } catch (error) {
+      log.error(`[ToolPipeline] Background task failed: ${toolName}`, error);
+
+      // 发送错误事件
+      const { eventBus } = await import('../../../common/eventbus');
+      eventBus.emit('thread:wake', {
+        threadId: sessionId,
+        reason: 'tool-done',
+        toolResult: `Tool "${toolName}" failed: ${error instanceof Error ? error.message : String(error)}`,
+        toolName
+      });
+    }
+  })();
+
+  // 3. 立即返回 suspended（不等待后台任务）
+  return {
+    resultText:
+      `Tool "${toolName}" requires user approval. ` +
+      `The request has been sent to the user. ` +
+      `Please wait for their decision. ` +
+      `Do NOT retry this tool call — the system will resume automatically when the approval is received.`,
+    blocked: false,
+    suspended: true,
+    suspendReason: `approval-pending:${approvalId}:${toolName}`
   };
 }

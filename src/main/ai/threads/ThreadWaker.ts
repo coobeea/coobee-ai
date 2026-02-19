@@ -107,7 +107,12 @@ export class ThreadWaker {
   private async resumeThread(threadId: string, checkpoint: ThreadCheckpoint, event: ThreadWakeEvent): Promise<void> {
     const checkpointMgr = CheckpointManager.getInstance();
 
-    if (event.reason === 'approval-done') {
+    if (event.reason === 'tool-done') {
+      // 工具执行完成（由后台任务执行），接收结果并继续
+      await this.handleApprovalResume(threadId, checkpoint, event);
+    } else if (event.reason === 'approval-done') {
+      // 兼容旧的 reason（已废弃）
+      log.warn(`[ThreadWaker] Deprecated reason 'approval-done', use 'tool-done' instead`);
       await this.handleApprovalResume(threadId, checkpoint, event);
     } else if (event.reason === 'restart-recovery') {
       await this.handleRestartRecovery(threadId, checkpoint);
@@ -123,9 +128,12 @@ export class ThreadWaker {
    * 审批完成后恢复执行
    *
    * 流程：
-   *   1. 如果用户拒绝 → 向 Agent 发送拒绝消息
-   *   2. 如果用户批准 → 执行工具 → 向 Agent 发送工具结果
-   *   3. 重新启动 Agent run
+   *   1. 接收工具执行结果（已由后台任务执行完成）
+   *   2. 将结果作为系统消息注入
+   *   3. 继续 Agent run
+   *
+   * 注意：工具已在 ToolExecutionPipeline 的后台任务中执行，
+   *      这里只是接收结果并继续执行流程。
    */
   private async handleApprovalResume(
     threadId: string,
@@ -138,58 +146,20 @@ export class ThreadWaker {
       return;
     }
 
-    let resumeMessage: string;
-
-    if (event.approvalDecision === 'reject') {
-      resumeMessage =
-        `[System] The user rejected the execution of tool "${pending.toolName}". ` +
-        `Please acknowledge this and continue without executing that tool.`;
-    } else {
-      // 用户批准 → 执行工具并收集结果
-      const toolResult = event.toolResult || (await this.executeApprovedTool(pending, event));
-      resumeMessage = `[System] The tool "${pending.toolName}" has been approved and executed. Result:\n${toolResult}`;
+    // 工具结果应该在 event.toolResult 中（由后台任务执行后发送）
+    if (!event.toolResult) {
+      log.warn(`[ThreadWaker] No toolResult in wake event for ${threadId}`);
+      return;
     }
 
-    // 重新启动 Agent run
+    const resumeMessage = `[System] Tool "${pending.toolName}" execution result:\n${event.toolResult}`;
+
+    // 重新启动 Agent run（注入工具结果）
     await this.submitResumeMessage(threadId, resumeMessage);
   }
 
-  /**
-   * 执行已批准的工具
-   */
-  private async executeApprovedTool(
-    pending: NonNullable<ThreadCheckpoint['pendingOperation']>,
-    event: ThreadWakeEvent
-  ): Promise<string> {
-    try {
-      const { ToolRegistry } = await import('../tools/registry');
-      const { builtinTools } = await import('../tools/builtin');
-
-      const toolMap = new Map(builtinTools.map((t) => [t.name, t]));
-      const extensionTools = ToolRegistry.getInstance().getAll();
-      for (const ext of extensionTools) {
-        toolMap.set(ext.name, ext);
-      }
-
-      const toolDef = toolMap.get(pending.toolName);
-      if (!toolDef) {
-        return `Error: Tool "${pending.toolName}" not found`;
-      }
-
-      const params = event.toolParams || {};
-      const gen = toolDef.execute(params);
-      let iterResult = await gen.next();
-      while (!iterResult.done) {
-        iterResult = await gen.next();
-      }
-
-      const result = iterResult.value;
-      return result.llmContent || (result.success ? 'Success' : `Error: ${result.error?.message || 'unknown'}`);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return `Error executing tool: ${msg}`;
-    }
-  }
+  // executeApprovedTool 已移除
+  // 工具现在由 ToolExecutionPipeline 的后台任务执行
 
   /**
    * 系统重启后恢复

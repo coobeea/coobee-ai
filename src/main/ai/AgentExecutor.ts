@@ -569,7 +569,8 @@ class AgentExecutor {
         break;
       case 'run:done':
         if (this.pendingApprovalSessions.has(sessionId)) {
-          this.pendingApprovalSessions.delete(sessionId);
+          // 审批等待中：不删除 pending 状态，不更新 checkpoint
+          // checkpoint 保持 approval-pending，等待 ThreadWaker 恢复
           log.info(`[AgentExecutor] Run done but approval-pending, keeping checkpoint for ${sessionId}`);
         } else {
           checkpoint.updateStatus(sessionId, 'idle').catch(() => {});
@@ -753,6 +754,10 @@ class AgentExecutor {
       const workspace = await injectEnv(sessionId, builder);
       eventWriter = new AgentEventWriter(workspace);
       eventWriter.register(sessionId);
+
+      // 重置审批计数器（会话开始）
+      const { resetApprovalCounter } = await import('./runtime/shared/ToolExecutionPipeline');
+      resetApprovalCounter(sessionId);
 
       // === Extension Hooks: message_received + session_start + before_agent_start ===
       await this.runExtensionHooks(sessionId, message, builder);
