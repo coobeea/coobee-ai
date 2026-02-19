@@ -247,24 +247,25 @@ describe('ToolExecutionPipeline 审批流程', () => {
   // 测试 4: needUserConfirm 触发审批
   // ==========================================
 
-  it('needUserConfirm=true → 触发审批', async () => {
+  it('exec 工具非白名单命令 → 触发审批', async () => {
+    // 使用既不在白名单也不在黑名单的命令
+    const command = 'custom-dangerous-script.sh';
     let toolExecuted = false;
 
-    const testTool: ToolDefinition = {
-      name: 'test-confirm',
-      description: 'Tool needing confirmation',
+    const execTool: ToolDefinition = {
+      name: 'exec',
+      description: 'Execute command',
       category: ToolCategory.Execute,
-      needUserConfirm: true,
-      parameters: z.object({ data: z.string() }),
+      parameters: z.object({ command: z.string() }),
       async *execute() {
         toolExecuted = true;
-        yield { type: 'progress', content: '' };
-        return { success: true, llmContent: 'Done' };
+        yield { type: 'progress', content: 'executing...' };
+        return { success: true, llmContent: 'Command executed' };
       }
     };
 
     const context = createFallbackToolContext({ workspaceRoot: tmpWorkspace, sessionId });
-    const result = await executeToolPipeline(testTool, { data: 'test' }, { sandboxContext: context });
+    const result = await executeToolPipeline(execTool, { command }, { sandboxContext: context });
 
     expect(result.suspended).toBe(true);
     expect(toolExecuted).toBe(false);
@@ -338,29 +339,31 @@ describe('ToolExecutionPipeline 审批流程', () => {
   // ==========================================
 
   it('同一会话多次审批 → approvalId 递增', async () => {
-    const testTool: ToolDefinition = {
-      name: 'test-multi',
-      description: 'Test',
+    const command1 = 'dangerous-command-1';
+    const command2 = 'dangerous-command-2';
+
+    const execTool: ToolDefinition = {
+      name: 'exec',
+      description: 'Execute command',
       category: ToolCategory.Execute,
-      needUserConfirm: true,
-      parameters: z.object({}),
+      parameters: z.object({ command: z.string() }),
       async *execute() {
-        yield { type: 'progress', content: '' };
-        return { success: true, llmContent: 'ok' };
+        yield { type: 'progress', content: 'executing...' };
+        return { success: true, llmContent: 'Command executed' };
       }
     };
 
     const context = createFallbackToolContext({ workspaceRoot: tmpWorkspace, sessionId });
 
     // 第一次调用
-    const result1 = await executeToolPipeline(testTool, {}, { sandboxContext: context });
+    const result1 = await executeToolPipeline(execTool, { command: command1 }, { sandboxContext: context });
     expect(result1.suspended).toBe(true);
 
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(hitlApprovalManager.hasSinglePending(`${sessionId}:0`)).toBe(true);
 
     // 第二次调用
-    const result2 = await executeToolPipeline(testTool, {}, { sandboxContext: context });
+    const result2 = await executeToolPipeline(execTool, { command: command2 }, { sandboxContext: context });
     expect(result2.suspended).toBe(true);
 
     await new Promise((resolve) => setTimeout(resolve, 100));

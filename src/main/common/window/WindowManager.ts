@@ -1632,7 +1632,7 @@ export class WindowManager implements IWindowManager {
         const tabViewInfo = windowInfo.tabViews.get(tabId);
 
         // ✅ 关键修复：移除所有事件监听器，打破循环引用
-        if (tabViewInfo && !tabViewInfo.view.webContents.isDestroyed()) {
+        if (tabViewInfo?.view && !tabViewInfo.view.webContents.isDestroyed()) {
           tabViewInfo.view.webContents.removeAllListeners();
           log.debug(`[WindowManager] 已移除 Tab 的所有事件监听器: tabId=${tabId}`);
         }
