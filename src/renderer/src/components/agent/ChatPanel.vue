@@ -8,7 +8,7 @@
 
 import { ref, nextTick, watch, onMounted } from 'vue';
 import { useChatStore } from '@/stores/chat';
-import type { PendingApproval, ToolCallInfo } from '@/composables/useStreamHandler';
+import type { PendingApproval } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
 import { gateway } from '@/plugins/gatewaySetup';
 import HitlApprovalCard from '@/components/chat/HitlApprovalCard.vue';
@@ -104,24 +104,21 @@ function resetTextareaHeight(): void {
 
 function handleApproval(approval: PendingApproval, decision: HitlApprovalDecision): void {
   if (!chatStore.sessionId || approval.decision) return;
-  chatStore.submitDecision(chatStore.sessionId, approval.index, decision);
-}
-
-function handleToolApproval(tool: ToolCallInfo, decision: HitlApprovalDecision): void {
-  if (!chatStore.sessionId || !tool.approval || tool.approval.decision) return;
-
-  // 更新工具的审批决策
-  tool.approval.decision = decision;
 
   // 提交决策到后端
-  chatStore.submitDecision(chatStore.sessionId, tool.approval.index, decision);
+  chatStore.submitDecision(chatStore.sessionId, approval.index, decision);
 
-  // 更新工具状态
-  if (decision !== 'reject') {
-    tool.status = 'calling'; // 审批通过后，工具开始执行
-  } else {
-    tool.status = 'error'; // 拒绝后显示为失败
-  }
+  // 添加一条用户消息，显示决策结果
+  const decisionText = decision === 'approve-once' ? '已允许' : decision === 'approve-always' ? '始终允许' : '已拒绝';
+
+  chatStore.messages.push({
+    id: `user-decision-${Date.now()}`,
+    role: 'user',
+    content: `[${decisionText}执行 ${approval.toolName} 工具]`,
+    blocks: [],
+    status: 'done',
+    timestamp: Date.now()
+  });
 }
 
 onMounted(() => {
@@ -266,58 +263,6 @@ onMounted(() => {
                     {{ block.tool.result }}
                   </div>
                 </div>
-                <!-- 审批区域（集成在工具块内） -->
-                <div
-                  v-if="block.tool.approval"
-                  class="border-t px-2 py-2"
-                  :class="{
-                    'border-blue-100 bg-blue-50/50': !block.tool.approval.decision,
-                    'border-emerald-100 bg-emerald-50/30':
-                      block.tool.approval.decision && block.tool.approval.decision !== 'reject',
-                    'border-red-100 bg-red-50/30': block.tool.approval.decision === 'reject'
-                  }">
-                  <!-- 等待审批 - 显示按钮 -->
-                  <div v-if="!block.tool.approval.decision" class="flex items-center gap-2">
-                    <span class="i-carbon-locked inline-block h-3 w-3 text-blue-600"></span>
-                    <span class="text-[10px] font-medium text-blue-700">需要审批</span>
-                    <span class="flex-1"></span>
-                    <button
-                      class="rounded bg-emerald-500 px-2 py-1 text-[10px] font-medium text-white hover:bg-emerald-600 cursor-pointer"
-                      @click="handleToolApproval(block.tool, 'approve-once')">
-                      允许
-                    </button>
-                    <button
-                      class="rounded bg-blue-500 px-2 py-1 text-[10px] font-medium text-white hover:bg-blue-600 cursor-pointer"
-                      @click="handleToolApproval(block.tool, 'approve-always')">
-                      始终允许
-                    </button>
-                    <button
-                      class="rounded bg-red-500 px-2 py-1 text-[10px] font-medium text-white hover:bg-red-600 cursor-pointer"
-                      @click="handleToolApproval(block.tool, 'reject')">
-                      拒绝
-                    </button>
-                  </div>
-
-                  <!-- 已决策 - 显示结果 -->
-                  <div v-else class="flex items-center gap-1.5 text-[10px]">
-                    <span
-                      class="inline-block h-2.5 w-2.5"
-                      :class="
-                        block.tool.approval.decision === 'reject'
-                          ? 'i-carbon-close-filled text-red-500'
-                          : 'i-carbon-checkmark-filled text-emerald-500'
-                      " />
-                    <span :class="block.tool.approval.decision === 'reject' ? 'text-red-600' : 'text-emerald-600'">
-                      {{
-                        block.tool.approval.decision === 'approve-once'
-                          ? '已允许'
-                          : block.tool.approval.decision === 'approve-always'
-                            ? '始终允许'
-                            : '已拒绝'
-                      }}
-                    </span>
-                  </div>
-                </div>
               </div>
 
               <!-- delegate block -->
@@ -384,10 +329,10 @@ onMounted(() => {
               </span>
             </div>
 
-            <!-- HITL 审批卡片（通用组件） -->
+            <!-- HITL 审批卡片（必须等到 run:done 后才显示） -->
             <template v-if="msg.pendingApprovals?.length">
               <HitlApprovalCard
-                v-for="approval in msg.pendingApprovals"
+                v-for="approval in msg.pendingApprovals.filter((a) => a.canShow)"
                 :key="'hitl-' + approval.index"
                 :approval="approval"
                 @decide="(d) => handleApproval(approval, d)" />

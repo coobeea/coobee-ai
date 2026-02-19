@@ -18,12 +18,6 @@ export interface ToolCallInfo {
   arguments: string;
   result?: string;
   status: 'calling' | 'done' | 'error' | 'approval-pending';
-  /** 审批信息（如果工具需要审批） */
-  approval?: {
-    index: number;
-    approvalId?: string;
-    decision?: HitlApprovalDecision;
-  };
 }
 
 export interface DelegateInfo {
@@ -40,6 +34,8 @@ export interface PendingApproval {
   toolName: string;
   arguments?: string;
   decision?: HitlApprovalDecision;
+  /** 是否可以显示（必须等到 run:done 后） */
+  canShow?: boolean;
 }
 
 export type ContentBlock =
@@ -194,8 +190,6 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
         if (assistantMsg) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const suspended = (msg.data as any)?.suspended === true;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const suspendReason = (msg.data as any)?.suspendReason;
 
           for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
             const block = assistantMsg.blocks[i];
@@ -205,13 +199,6 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
               // 如果工具需要审批，状态设置为 approval-pending，而不是 done
               if (suspended) {
                 block.tool.status = 'approval-pending';
-                // 从 suspendReason 解析 approvalId
-                // 格式: "approval-pending:sessionId:index:toolName"
-                const match = suspendReason?.match(/approval-pending:([^:]+:[^:]+):/);
-                block.tool.approval = {
-                  index: -1, // 会在 hitl:required 事件中更新
-                  approvalId: match ? match[1] : undefined
-                };
               } else {
                 block.tool.status = 'done';
               }
@@ -225,9 +212,15 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
       case 'run:done':
         if (assistantMsg) {
           assistantMsg.status = 'done';
-          // 不清除 pendingApprovals！
           // 在异步审批模式下，Agent run 正常结束，但审批可能还在等待中
-          // 只有当收到 hitl:approved 或 hitl:rejected 事件时才清除对应的审批项
+          // run:done 后，标记所有 pending 的审批为可显示状态
+          if (assistantMsg.pendingApprovals) {
+            for (const approval of assistantMsg.pendingApprovals) {
+              if (!approval.decision) {
+                approval.canShow = true;
+              }
+            }
+          }
         }
         isStreaming.value = false;
         break;
@@ -248,55 +241,31 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
         const toolName = (msg.data?.toolName as string) || 'unknown';
         const approvalIndex = (msg.data?.index as number) ?? 0;
 
-        // 找到对应的工具块，更新审批信息
-        for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
-          const block = assistantMsg.blocks[i];
-          if (block.type === 'tool' && block.tool.name === toolName && block.tool.status === 'approval-pending') {
-            // 更新审批 index
-            if (block.tool.approval) {
-              block.tool.approval.index = approvalIndex;
-            }
-            break;
-          }
-        }
-
-        // 为了兼容性，仍然维护 pendingApprovals 数组（用于底部备用显示）
+        // 只维护 pendingApprovals 数组，在消息底部显示
+        // canShow 默认为 false，等到 run:done 后才设置为 true
         if (!assistantMsg.pendingApprovals) {
           assistantMsg.pendingApprovals = [];
         }
         assistantMsg.pendingApprovals.push({
           index: approvalIndex,
           toolName,
-          arguments: msg.data?.arguments as string | undefined
+          arguments: msg.data?.arguments as string | undefined,
+          canShow: false // 必须等到 run:done 后才显示
         });
         break;
       }
 
       case 'hitl:approved':
       case 'hitl:rejected': {
-        if (assistantMsg) {
+        if (assistantMsg && assistantMsg.pendingApprovals) {
           const targetIndex = msg.data?.index as number | undefined;
           const decision: HitlApprovalDecision = msg.type === 'hitl:approved' ? 'approve-once' : 'reject';
 
           if (targetIndex != null) {
-            // 更新对应工具块的审批决策
-            for (const block of assistantMsg.blocks) {
-              if (block.type === 'tool' && block.tool.approval && block.tool.approval.index === targetIndex) {
-                block.tool.approval.decision = decision;
-
-                // 更新工具状态
-                if (decision !== 'reject') {
-                  block.tool.status = 'calling'; // 审批通过后，工具开始执行
-                } else {
-                  block.tool.status = 'error'; // 拒绝后显示为失败
-                }
-                break;
-              }
-            }
-
-            // 从 pendingApprovals 中移除已处理的审批（兼容底部显示）
-            if (assistantMsg.pendingApprovals) {
-              assistantMsg.pendingApprovals = assistantMsg.pendingApprovals.filter((a) => a.index !== targetIndex);
+            // 更新 pendingApprovals 中对应项的 decision
+            const approval = assistantMsg.pendingApprovals.find((a) => a.index === targetIndex);
+            if (approval) {
+              approval.decision = decision;
             }
           }
         }

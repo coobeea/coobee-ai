@@ -576,8 +576,10 @@ class AgentExecutor {
           // checkpoint 保持 approval-pending，等待 ThreadWaker 恢复
           log.info(`[AgentExecutor] Run done but approval-pending, keeping checkpoint for ${sessionId}`);
         } else {
-          checkpoint.updateStatus(sessionId, 'idle').catch(() => {});
-          this.syncThreadRunStatus(sessionId, 'idle');
+          // 正常完成，设置为 completed（不是 idle）
+          // 这样系统重启后不会尝试恢复已完成的对话
+          checkpoint.updateStatus(sessionId, 'completed').catch(() => {});
+          this.syncThreadRunStatus(sessionId, 'completed');
         }
         break;
     }

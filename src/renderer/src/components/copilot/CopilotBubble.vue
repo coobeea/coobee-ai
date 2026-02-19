@@ -90,7 +90,21 @@ function handleKeydown(e: KeyboardEvent): void {
 
 function handleApproval(approval: PendingApproval, decision: HitlApprovalDecision): void {
   if (!copilot.sessionId || approval.decision) return;
+
+  // 提交决策到后端
   copilot.submitDecision(copilot.sessionId, approval.index, decision);
+
+  // 添加一条用户消息，显示决策结果
+  const decisionText = decision === 'approve-once' ? '已允许' : decision === 'approve-always' ? '始终允许' : '已拒绝';
+
+  copilot.messages.push({
+    id: `user-decision-${Date.now()}`,
+    role: 'user',
+    content: `[${decisionText}执行 ${approval.toolName} 工具]`,
+    blocks: [],
+    status: 'done',
+    timestamp: Date.now()
+  });
 }
 
 function toolSummary(block: ContentBlock): string {
@@ -224,10 +238,10 @@ function toolSummary(block: ContentBlock): string {
                 <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
               </div>
 
-              <!-- HITL 审批卡片 -->
+              <!-- HITL 审批卡片（必须等到 run:done 后才显示） -->
               <template v-if="msg.pendingApprovals?.length">
                 <HitlApprovalCard
-                  v-for="approval in msg.pendingApprovals"
+                  v-for="approval in msg.pendingApprovals.filter((a) => a.canShow)"
                   :key="'hitl-' + approval.index"
                   :approval="approval"
                   @decide="(d) => handleApproval(approval, d)" />
