@@ -230,7 +230,7 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
     const piSkills = (this.options.skills || []).map((s) => ({
       name: s.name,
       description: s.description,
-      filePath: '',
+      filePath: s.filePath || '',
       baseDir: '',
       source: 'runtime-options',
       disableModelInvocation: false
@@ -238,9 +238,10 @@ export class PiMonoAgentRuntime extends AbstractAgentRuntime {
     // 如果有 skills，将内容拼接到 appendInstructions 中
     // 因为 pi-SDK 的 Skill 只有 name/description（用于提示词标注），
     // 实际内容需要通过 appendSystemPrompt 注入
-    const skillContentParts = (this.options.skills || []).map(
-      (s) => `<skill name="${s.name}">\n${s.content}\n</skill>`
-    );
+    const skillContentParts = (this.options.skills || []).map((s) => {
+      const pathInfo = s.filePath ? `\nPath: ${s.filePath}` : '';
+      return `<skill name="${s.name}"${pathInfo ? ` path="${s.filePath}"` : ''}>\n${s.content}\n</skill>`;
+    });
     const allAppendParts = [...skillContentParts, ...(this.options.appendInstructions || [])];
 
     const resourceLoader = {

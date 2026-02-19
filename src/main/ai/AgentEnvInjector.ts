@@ -60,9 +60,11 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
         skillManager.size > 0
           ? `<skill_discovery>\n` +
             `You have ${skillManager.size} Skills available. ` +
-            `Use the \`skill_list\` tool to discover them. ` +
-            `When you find a relevant Skill, use the \`read\` tool to read its SKILL.md file, ` +
-            `then follow the instructions within.\n\n` +
+            `Use the \`skill_list\` tool to discover them.\n\n` +
+            `**IMPORTANT**: Before using any Skill, you MUST:\n` +
+            `1. Use the \`read\` tool to read its SKILL.md file (path provided by skill_list)\n` +
+            `2. Follow the instructions within the SKILL.md file\n` +
+            `3. Do NOT attempt to use a Skill without reading its documentation first\n\n` +
             `Key Skills for self-management:\n` +
             `- Configuration changes → load "system-config" Skill\n` +
             `- Creating new Skills → load "skill-creator" Skill\n` +
