@@ -15,6 +15,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
+// ===== Mock logger (避免触发 env/electron 导入) =====
+vi.mock('@main/common/logger', () => {
+  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  return { default: log, log, createLogger: vi.fn(() => log) };
+});
+
 // ===== Mock Electron =====
 vi.mock('electron', () => {
   const base = path.join(process.cwd(), 'test-results');

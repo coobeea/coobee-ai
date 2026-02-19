@@ -33,6 +33,7 @@ const rightCollapsed = ref(false);
 const agentsPanelCollapsed = ref(true);
 
 const projectPath = ref<string | null>(null);
+// workspaceReady: 非 null 即为 ready（包括空字符串）
 const workspaceReady = computed(() => projectPath.value !== null);
 
 const threadId = computed(() => route.params.id as string);
@@ -43,6 +44,10 @@ function enterWorkspaceForThread(id: string): void {
     agentsStore.selectAgent(thread.agentId);
     if (thread.workspacePath) {
       projectPath.value = thread.workspacePath;
+    } else {
+      // 如果 thread 没有 workspacePath，使用空字符串标记为已就绪
+      // 用户可以继续使用对话功能，只是项目面板可能为空
+      projectPath.value = '';
     }
   }
   threadsStore.selectThread(id);
@@ -69,7 +74,7 @@ function goBackToAgents(): void {
 }
 
 onMounted(() => {
-  copilotStore.bubbleHidden = true;
+  copilotStore.hideBubble();
   if (threadId.value) {
     enterWorkspaceForThread(threadId.value);
   }
@@ -83,7 +88,7 @@ watch(threadId, (newId) => {
 });
 
 onUnmounted(() => {
-  copilotStore.bubbleHidden = false;
+  copilotStore.showBubble();
 });
 </script>
 

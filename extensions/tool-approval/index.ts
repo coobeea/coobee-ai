@@ -23,21 +23,58 @@ import type { ExtensionApi } from '../../src/main/common/extension';
 /** 默认审批超时（5 分钟） — 可通过 coobee.json5 security.approvals.timeoutMs 覆盖 */
 const DEFAULT_APPROVAL_TIMEOUT_MS = 300_000;
 
-// ==================== 会话级计数器 ====================
+// ==================== 会话级计数器（带 TTL） ====================
+
+/** 计数器条目（带最后访问时间） */
+interface CounterEntry {
+  count: number;
+  lastAccessTime: number;
+}
 
 /** 每个 session 的审批索引计数器（从 0 开始递增） */
-const sessionCounters = new Map<string, number>();
+const sessionCounters = new Map<string, CounterEntry>();
+
+/** 计数器 TTL（1 小时无活动后自动清理） */
+const COUNTER_TTL_MS = 60 * 60 * 1000;
+
+/** 上次清理时间 */
+let lastCleanupTime = Date.now();
 
 /** 获取下一个审批索引 */
 function getNextApprovalIndex(sessionId: string): number {
-  const current = sessionCounters.get(sessionId) ?? 0;
-  sessionCounters.set(sessionId, current + 1);
+  const entry = sessionCounters.get(sessionId) ?? { count: 0, lastAccessTime: Date.now() };
+  const current = entry.count;
+  sessionCounters.set(sessionId, { count: current + 1, lastAccessTime: Date.now() });
+
+  // 定期清理（每 10 分钟检查一次）
+  if (Date.now() - lastCleanupTime > 10 * 60 * 1000) {
+    cleanupIdleCounters();
+  }
+
   return current;
 }
 
 /** 重置会话计数器 */
 function resetSessionCounter(sessionId: string): void {
   sessionCounters.delete(sessionId);
+}
+
+/** 清理空闲计数器（TTL 机制） */
+function cleanupIdleCounters(): void {
+  lastCleanupTime = Date.now();
+  const now = Date.now();
+  let cleaned = 0;
+
+  for (const [sessionId, entry] of sessionCounters.entries()) {
+    if (now - entry.lastAccessTime > COUNTER_TTL_MS) {
+      sessionCounters.delete(sessionId);
+      cleaned++;
+    }
+  }
+
+  if (cleaned > 0) {
+    console.log(`[tool-approval] Cleaned up ${cleaned} idle counters`);
+  }
 }
 
 // ==================== Extension 模块 ====================

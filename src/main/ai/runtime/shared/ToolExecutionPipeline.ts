@@ -16,6 +16,7 @@
 
 import path from 'node:path';
 import os from 'node:os';
+import { log } from '@main/common/logger';
 import type { ToolDefinition, ToolExecutionContext, ToolResult, ToolStreamUpdate } from '../../tools/types';
 
 // ==================== Types ====================
@@ -106,8 +107,9 @@ export async function executeToolPipeline(
         }
       }
     }
-  } catch {
-    // Extension hook 失败不阻断工具执行
+  } catch (error) {
+    // Extension hook 失败不阻断工具执行，但记录日志以便排查
+    log.warn(`[ToolPipeline] before_tool_call hook failed for ${def.name}:`, error);
   }
 
   // === Phase 2: sandbox toolPolicy 检查 ===
@@ -123,8 +125,9 @@ export async function executeToolPipeline(
         blockReason: msg
       };
     }
-  } catch {
-    // sandbox 导入失败不阻断
+  } catch (error) {
+    // sandbox 导入失败不阻断，但记录日志
+    log.warn(`[ToolPipeline] Sandbox policy check failed for ${def.name}:`, error);
   }
 
   // === Phase 3: 执行工具 ===
@@ -140,8 +143,31 @@ export async function executeToolPipeline(
     iterResult = await gen.next();
   }
 
-  // 最终结果
+  // 最终结果 + 校验
   const toolResult = iterResult.value;
+
+  // 校验 toolResult 结构
+  if (!toolResult || typeof toolResult !== 'object') {
+    log.warn(`[ToolPipeline] Tool ${def.name} returned invalid result (not an object):`, toolResult);
+    return {
+      resultText: 'Error: Tool returned invalid result structure',
+      blocked: true,
+      suspended: false,
+      blockReason: 'Invalid tool result (not an object)'
+    };
+  }
+
+  // 校验必需字段
+  if (typeof toolResult.success !== 'boolean') {
+    log.warn(`[ToolPipeline] Tool ${def.name} missing 'success' field:`, toolResult);
+    return {
+      resultText: 'Error: Tool result missing success field',
+      blocked: true,
+      suspended: false,
+      blockReason: 'Invalid tool result (missing success field)'
+    };
+  }
+
   let resultText =
     toolResult.llmContent || (toolResult.success ? 'Success' : `Error: ${toolResult.error?.message || 'unknown'}`);
 
@@ -168,8 +194,9 @@ export async function executeToolPipeline(
         resultText = persistResult.result;
       }
     }
-  } catch {
-    // Extension hook 失败不阻断
+  } catch (error) {
+    // Extension hook 失败不阻断，但记录日志
+    log.warn(`[ToolPipeline] after_tool_call / tool_result_persist hook failed for ${def.name}:`, error);
   }
 
   return {

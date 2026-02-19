@@ -192,6 +192,18 @@ export const useCopilotStore = defineStore('copilot', () => {
     }
   }
 
+  // ---- Actions: Bubble Visibility ----
+
+  /** 隐藏悬浮球（通常在进入 ThreadView 时） */
+  function hideBubble(): void {
+    bubbleHidden.value = true;
+  }
+
+  /** 显示悬浮球（通常在离开 ThreadView 时） */
+  function showBubble(): void {
+    bubbleHidden.value = false;
+  }
+
   return {
     // State
     visible,
@@ -209,6 +221,8 @@ export const useCopilotStore = defineStore('copilot', () => {
     submitDecision,
     abort,
     clearMessages,
-    cleanup
+    cleanup,
+    hideBubble,
+    showBubble
   };
 });

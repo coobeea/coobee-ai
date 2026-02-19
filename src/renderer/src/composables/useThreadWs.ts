@@ -24,10 +24,7 @@ export function initThreadWs(): void {
     gateway.on('thread.created', (payload) => {
       const { thread } = payload as { thread: ThreadEntry };
       if (!thread?.id) return;
-      const exists = store.threads.some((t) => t.id === thread.id);
-      if (!exists) {
-        store.threads.unshift(thread);
-      }
+      store.handleThreadCreated(thread);
     })
   );
 
@@ -35,10 +32,7 @@ export function initThreadWs(): void {
     gateway.on('thread.updated', (payload) => {
       const { thread } = payload as { thread: ThreadEntry };
       if (!thread?.id) return;
-      const idx = store.threads.findIndex((t) => t.id === thread.id);
-      if (idx >= 0) {
-        store.threads[idx] = thread;
-      }
+      store.handleThreadUpdated(thread);
     })
   );
 
@@ -46,10 +40,7 @@ export function initThreadWs(): void {
     gateway.on('thread.deleted', (payload) => {
       const { threadId } = payload as { threadId: string };
       if (!threadId) return;
-      store.threads = store.threads.filter((t) => t.id !== threadId);
-      if (store.activeThreadId === threadId) {
-        store.activeThreadId = null;
-      }
+      store.handleThreadDeleted(threadId);
     })
   );
 
@@ -57,10 +48,7 @@ export function initThreadWs(): void {
     gateway.on('thread.status', (payload) => {
       const { threadId, runStatus } = payload as { threadId: string; runStatus: ThreadRunStatus };
       if (!threadId) return;
-      const idx = store.threads.findIndex((t) => t.id === threadId);
-      if (idx >= 0) {
-        store.threads[idx] = { ...store.threads[idx], runStatus };
-      }
+      store.handleThreadStatusChanged(threadId, runStatus);
     })
   );
 

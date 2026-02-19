@@ -194,6 +194,40 @@ export const useThreadsStore = defineStore('threads', () => {
     activeThreadId.value = threadId;
   }
 
+  // ==================== WebSocket Event Handlers ====================
+
+  /** 处理 thread.created 事件（从 WebSocket 推送） */
+  function handleThreadCreated(thread: ThreadEntry): void {
+    const exists = threads.value.some((t) => t.id === thread.id);
+    if (!exists) {
+      threads.value.unshift(thread);
+    }
+  }
+
+  /** 处理 thread.updated 事件（从 WebSocket 推送） */
+  function handleThreadUpdated(thread: ThreadEntry): void {
+    const idx = threads.value.findIndex((t) => t.id === thread.id);
+    if (idx >= 0) {
+      threads.value[idx] = thread;
+    }
+  }
+
+  /** 处理 thread.deleted 事件（从 WebSocket 推送） */
+  function handleThreadDeleted(threadId: string): void {
+    threads.value = threads.value.filter((t) => t.id !== threadId);
+    if (activeThreadId.value === threadId) {
+      activeThreadId.value = null;
+    }
+  }
+
+  /** 处理 thread.status 事件（从 WebSocket 推送） */
+  function handleThreadStatusChanged(threadId: string, runStatus: ThreadRunStatus): void {
+    const idx = threads.value.findIndex((t) => t.id === threadId);
+    if (idx >= 0) {
+      threads.value[idx] = { ...threads.value[idx], runStatus };
+    }
+  }
+
   return {
     // State
     threads,
@@ -210,6 +244,11 @@ export const useThreadsStore = defineStore('threads', () => {
     createThreadWithAutoTitle,
     updateThread,
     deleteThread,
-    selectThread
+    selectThread,
+    // WebSocket Event Handlers
+    handleThreadCreated,
+    handleThreadUpdated,
+    handleThreadDeleted,
+    handleThreadStatusChanged
   };
 });
