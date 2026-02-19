@@ -267,7 +267,9 @@ function toIndexEntry(def: AgentDefinition): AgentIndexEntry {
     description: def.description,
     createdBy: def.createdBy,
     version: def.version,
-    updatedAt: def.updatedAt
+    updatedAt: def.updatedAt,
+    tools: def.tools,
+    skills: def.skills
   };
 }
 

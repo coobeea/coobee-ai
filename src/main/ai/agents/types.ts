@@ -81,6 +81,10 @@ export interface AgentIndexEntry {
   createdBy: 'user' | 'agent' | 'system';
   version: number;
   updatedAt: string;
+  /** 启用的工具名称列表（用于前端展示） */
+  tools?: string[];
+  /** 关联的 Skill 名称列表（用于前端展示） */
+  skills?: string[];
 }
 
 // ==================== 创建 / 更新参数 ====================
