@@ -122,19 +122,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Mode 选择器 -->
-    <div class="flex h-9 shrink-0 items-center border-b border-gray-200/40 px-3">
-      <label class="text-[10px] font-medium text-gray-500 mr-2">模式</label>
-      <select
-        v-model="chatStore.mode"
-        class="flex-1 rounded-md border border-gray-300/60 bg-white px-2 py-1 text-xs text-gray-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-        <option value="agent">Agent（单代理）</option>
-        <option value="delegate">Delegate（子任务）</option>
-        <option value="orchestrator">Orchestrator（编排）</option>
-        <option value="swarm">Swarm（蜂群）</option>
-      </select>
-    </div>
-
     <!-- 消息区域 -->
     <div ref="messageContainer" class="selectable flex-1 overflow-y-auto" @scroll="handleScroll">
       <!-- 空状态 -->

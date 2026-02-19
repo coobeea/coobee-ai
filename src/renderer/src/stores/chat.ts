@@ -45,7 +45,6 @@ export const useChatStore = defineStore('chat', () => {
   const sessionId = ref<string | null>(null);
   const isQueued = ref(false);
   const queueStatus = ref<QueueStatusInfo | null>(null);
-  const mode = ref<'agent' | 'orchestrator' | 'swarm' | 'delegate'>('agent');
 
   // ---- 对外 Actions ----
 
@@ -64,6 +63,21 @@ export const useChatStore = defineStore('chat', () => {
         // agents store 未初始化时忽略
       }
 
+      // 从 Thread 获取 mode（agentMode/agentType）
+      let mode: 'agent' | 'orchestrator' | 'swarm' | 'delegate' = 'agent';
+      if (sessionId.value) {
+        try {
+          const { useThreadsStore } = await import('./threads');
+          const threadsStore = useThreadsStore();
+          const thread = threadsStore.threads.find((t) => t.id === sessionId.value);
+          if (thread?.agentType) {
+            mode = thread.agentType;
+          }
+        } catch {
+          // threads store 未初始化时使用默认值
+        }
+      }
+
       const result = await gateway.request<{
         sessionId: string;
         status: string;
@@ -72,7 +86,7 @@ export const useChatStore = defineStore('chat', () => {
       }>('chat.send', {
         message: text,
         sessionId: sessionId.value,
-        mode: mode.value,
+        mode,
         ...(agentId ? { agentId } : {})
       });
 
@@ -341,8 +355,6 @@ export const useChatStore = defineStore('chat', () => {
     isStreaming,
     isQueued,
     queueStatus,
-
-    mode,
     sendMessage,
     abortSession,
     submitDecision,
