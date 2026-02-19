@@ -23,9 +23,10 @@ import type { AgentDefinition } from '@main/ai/agents/types';
 import { ThreadStore } from '@main/ai/threads/ThreadStore';
 import { GatewayErrorCode, GatewayMethodError } from '../protocol';
 import type { MethodGroup } from '../protocol';
-import type { AgentMode } from '@main/ai/runtime/types';
+import type { AgentMode, SkillDefinition } from '@main/ai/runtime/types';
 import { OrchestratorRuntime } from '@main/ai/orchestration/OrchestratorRuntime';
 import { SwarmRuntime } from '@main/ai/swarm/SwarmRuntime';
+import { SkillManager } from '@main/ai/skills';
 
 /** Chat 模式禁用的工具名称列表 */
 const CHAT_MODE_BLOCKED_TOOLS = new Set(['exec']);
@@ -89,26 +90,33 @@ function createBuilderFromDefinition(
     .sessionMode('file')
     .instructions(def.instructions);
 
-  // 解析工具集
+  // 解析工具集 — 始终加载所有可用工具（不受 def.tools 限制）
   const extensionTools = ToolRegistry.getInstance().getAll();
   const toolMap = new Map(builtinTools.map((t) => [t.name, t]));
   for (const ext of extensionTools) {
     toolMap.set(ext.name, ext);
   }
+  const allTools = Array.from(toolMap.values());
 
-  if (def.tools && def.tools.length > 0) {
-    // Agent 定义中指定了工具列表 → 只加载指定的工具
-    const selectedTools = def.tools
-      .map((name) => toolMap.get(name))
-      .filter((t): t is NonNullable<typeof t> => t !== undefined);
-    builder.tools(selectedTools);
+  // 根据模式过滤工具
+  if (agentMode === 'chat') {
+    builder.tools(allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name)));
   } else {
-    // 未指定工具 → 继承全部工具（与默认 Agent 相同）
-    const allTools = Array.from(toolMap.values());
-    if (agentMode === 'chat') {
-      builder.tools(allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name)));
-    } else {
-      builder.tools(allTools);
+    builder.tools(allTools);
+  }
+
+  // 加载 Skills：从 def.skills 读取 skill names，扫描并加载 SKILL.md 内容
+  if (def.skills && def.skills.length > 0) {
+    try {
+      const skillDefs = loadSkillDefinitions(def.skills);
+      if (skillDefs.length > 0) {
+        builder.skills(skillDefs);
+        log.info(
+          `[createBuilderFromDefinition] Loaded ${skillDefs.length} skills: ${skillDefs.map((s) => s.name).join(', ')}`
+        );
+      }
+    } catch (err) {
+      log.warn(`[createBuilderFromDefinition] Failed to load skills:`, err);
     }
   }
 
@@ -122,6 +130,46 @@ function createBuilderFromDefinition(
   }
 
   return builder;
+}
+
+/**
+ * 加载 Skills 定义
+ *
+ * @param skillNames Skill 名称数组（来自 Agent 配置）
+ * @returns SkillDefinition 数组
+ */
+function loadSkillDefinitions(skillNames: string[]): SkillDefinition[] {
+  try {
+    // 动态导入 Env（避免顶层加载）
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Env } = require('@main/common/env');
+
+    // 获取搜索路径
+    const searchPaths = Env.getSkillSearchPaths();
+    const configDir = Env.paths.configDir;
+
+    // 扫描所有可用 Skills
+    const manager = new SkillManager();
+    const allSkills = manager.scanSkills(searchPaths, configDir);
+
+    // 根据名称过滤
+    const skillMap = new Map(allSkills.map((s) => [s.name, s]));
+    const result: SkillDefinition[] = [];
+
+    for (const name of skillNames) {
+      const skill = skillMap.get(name);
+      if (skill) {
+        result.push(skill);
+      } else {
+        log.warn(`[loadSkillDefinitions] Skill not found: ${name}`);
+      }
+    }
+
+    return result;
+  } catch (err) {
+    log.error(`[loadSkillDefinitions] Failed to load skills:`, err);
+    return [];
+  }
 }
 
 // 注册 Builder 工厂，供 Pipeline executor 使用
