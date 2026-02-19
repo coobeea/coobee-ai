@@ -108,8 +108,8 @@ export const useThreadsStore = defineStore('threads', () => {
         method: 'POST',
         body: JSON.stringify({ title, agentId })
       });
-      // 新创建的 thread 插入列表头部（最新在前）
-      threads.value = [result.thread, ...threads.value];
+      // 不在这里插入列表，等待 WebSocket 事件 (thread.created) 来更新
+      // 这样避免重复插入
       activeThreadId.value = result.thread.id;
       return result.thread;
     } catch (err) {

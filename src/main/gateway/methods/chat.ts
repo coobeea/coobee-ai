@@ -15,6 +15,7 @@
  */
 
 import { log } from '@main/common/logger';
+import { Env } from '@main/common/env';
 import { agentExecutor } from '@main/ai/AgentExecutor';
 import { builtinTools } from '@main/ai/tools';
 import { ToolRegistry } from '@main/ai/tools/registry';
@@ -108,16 +109,25 @@ function createBuilderFromDefinition(
   // 加载 Skills：从 def.skills 读取 skill names，扫描并加载 SKILL.md 内容
   if (def.skills && def.skills.length > 0) {
     try {
+      log.info(`[createBuilderFromDefinition] Loading skills for agent ${def.id}: ${def.skills.join(', ')}`);
       const skillDefs = loadSkillDefinitions(def.skills);
+      log.info(`[createBuilderFromDefinition] Found ${skillDefs.length} skill definitions`);
       if (skillDefs.length > 0) {
+        for (const skill of skillDefs) {
+          log.info(`[createBuilderFromDefinition] - ${skill.name}: content length = ${skill.content.length}`);
+        }
         builder.skills(skillDefs);
         log.info(
-          `[createBuilderFromDefinition] Loaded ${skillDefs.length} skills: ${skillDefs.map((s) => s.name).join(', ')}`
+          `[createBuilderFromDefinition] Successfully loaded ${skillDefs.length} skills: ${skillDefs.map((s) => s.name).join(', ')}`
         );
+      } else {
+        log.warn(`[createBuilderFromDefinition] No skills found for: ${def.skills.join(', ')}`);
       }
     } catch (err) {
-      log.warn(`[createBuilderFromDefinition] Failed to load skills:`, err);
+      log.error(`[createBuilderFromDefinition] Failed to load skills:`, err);
     }
+  } else {
+    log.info(`[createBuilderFromDefinition] Agent ${def.id} has no skills configured`);
   }
 
   // piMono() 已自动注入 Provider 配置 + thinkingLevel
@@ -133,24 +143,31 @@ function createBuilderFromDefinition(
 }
 
 /**
- * 加载 Skills 定义
+ * 加载 Skills 定义（同步版本）
  *
  * @param skillNames Skill 名称数组（来自 Agent 配置）
  * @returns SkillDefinition 数组
  */
 function loadSkillDefinitions(skillNames: string[]): SkillDefinition[] {
   try {
-    // 动态导入 Env（避免顶层加载）
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { Env } = require('@main/common/env');
-
-    // 获取搜索路径
-    const searchPaths = Env.getSkillSearchPaths();
+    // 直接使用 Env（顶层 import）
+    const searchPaths = [
+      Env.paths.builtinSkillsDir,
+      Env.paths.userSkillsDir
+      // 注意：workspace-specific skills 需要 workspace 路径，这里暂不支持
+      // 因为 createBuilderFromDefinition 调用时 workspace 还未创建
+    ];
     const configDir = Env.paths.configDir;
+
+    log.info(`[loadSkillDefinitions] Searching in paths: ${searchPaths.join(', ')}`);
 
     // 扫描所有可用 Skills
     const manager = new SkillManager();
     const allSkills = manager.scanSkills(searchPaths, configDir);
+
+    log.info(
+      `[loadSkillDefinitions] Scanned ${allSkills.length} total skills: ${allSkills.map((s) => s.name).join(', ')}`
+    );
 
     // 根据名称过滤
     const skillMap = new Map(allSkills.map((s) => [s.name, s]));

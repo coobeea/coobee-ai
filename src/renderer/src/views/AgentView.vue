@@ -10,6 +10,7 @@ import { ref, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAgentsStore } from '@/stores/agents';
 import { useThreadsStore } from '@/stores/threads';
+import { useChatStore } from '@/stores/chat';
 import configManager from '@/config';
 
 const isMac = navigator.platform?.includes('Mac') ?? false;
@@ -68,7 +69,16 @@ async function handleStartTask(agentId: string): Promise<void> {
   const title = agent ? `${agent.name} 的任务` : '新任务';
   const thread = await threadsStore.createThread(title, agentId);
   if (thread) {
-    router.push(`/thread/${thread.id}`);
+    // 跳转到 Thread 页面
+    await router.push(`/thread/${thread.id}`);
+
+    // 等待页面加载完成，然后自动发送初始消息启动 Agent
+    await nextTick();
+    setTimeout(() => {
+      const chatStore = useChatStore();
+      // 发送一条简单的启动消息，让 Agent 根据自己的 instructions 决定如何响应
+      chatStore.sendMessage('你好');
+    }, 300);
   }
 }
 
