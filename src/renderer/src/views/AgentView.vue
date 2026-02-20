@@ -9,7 +9,7 @@
 import { ref, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAgentsStore } from '@/stores/agents';
-import { useThreadsStore } from '@/stores/threads';
+import { useThreadsStore, type AgentType } from '@/stores/threads';
 import { useChatStore } from '@/stores/chat';
 import configManager from '@/config';
 
@@ -63,11 +63,57 @@ async function handleAiCreate(): Promise<void> {
 
 const confirmDeleteId = ref<string | null>(null);
 
-async function handleStartTask(agentId: string): Promise<void> {
+/** 运行模式选择弹窗状态 */
+const showModeSelector = ref(false);
+const pendingAgentId = ref<string | null>(null);
+const selectedMode = ref<AgentType>('agent');
+
+/** 运行模式选项 */
+const modeOptions: { value: AgentType; label: string; description: string; icon: string }[] = [
+  {
+    value: 'agent',
+    label: '单 Agent',
+    description: '标准模式，单个智能体独立完成任务',
+    icon: 'i-carbon-bot'
+  },
+  {
+    value: 'orchestrator',
+    label: '编排器',
+    description: '自动分解任务，多个子 Agent 并行协作',
+    icon: 'i-carbon-flow'
+  },
+  {
+    value: 'swarm',
+    label: 'Swarm',
+    description: '智能体群组，动态切换处理不同子任务',
+    icon: 'i-carbon-network-3'
+  }
+];
+
+function openModeSelector(agentId: string): void {
+  pendingAgentId.value = agentId;
+  selectedMode.value = 'agent';
+  showModeSelector.value = true;
+}
+
+function closeModeSelector(): void {
+  showModeSelector.value = false;
+  pendingAgentId.value = null;
+}
+
+async function confirmStartTask(): Promise<void> {
+  if (!pendingAgentId.value) return;
+  const agentId = pendingAgentId.value;
+  const mode = selectedMode.value;
+  closeModeSelector();
+  await handleStartTask(agentId, mode);
+}
+
+async function handleStartTask(agentId: string, mode: AgentType = 'agent'): Promise<void> {
   agentsStore.selectAgent(agentId);
   const agent = agentsStore.agents.find((a) => a.id === agentId);
   const title = agent ? `${agent.name} 的任务` : '新任务';
-  const thread = await threadsStore.createThread(title, agentId);
+  const thread = await threadsStore.createThread(title, agentId, mode);
   if (thread) {
     // 跳转到 Thread 页面
     await router.push(`/thread/${thread.id}`);
@@ -326,7 +372,7 @@ function formatTime(iso: string): string {
             </div>
 
             <div class="card-footer">
-              <button class="start-task-btn" @click="handleStartTask(agent.id)">
+              <button class="start-task-btn" @click="openModeSelector(agent.id)">
                 <span class="i-carbon-play-filled-alt inline-block h-3.5 w-3.5" />
                 <span>运行任务</span>
               </button>
@@ -388,6 +434,43 @@ function formatTime(iso: string): string {
             <div class="skills-dialog-footer">
               <button class="text-btn" @click="cancelSkillsEdit">取消</button>
               <button class="primary-btn" @click="saveSkills">保存</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- 运行模式选择弹窗 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showModeSelector" class="skills-overlay" @click.self="closeModeSelector">
+          <div class="skills-dialog mode-dialog">
+            <div class="skills-dialog-header">
+              <span class="i-carbon-play-filled-alt inline-block h-4 w-4" />
+              <span>选择运行模式</span>
+            </div>
+            <div class="skills-dialog-body mode-options">
+              <label
+                v-for="option in modeOptions"
+                :key="option.value"
+                class="mode-option"
+                :class="{ selected: selectedMode === option.value }">
+                <input v-model="selectedMode" type="radio" name="agentMode" :value="option.value" class="mode-radio" />
+                <div class="mode-icon">
+                  <span :class="option.icon" class="inline-block h-5 w-5" />
+                </div>
+                <div class="mode-info">
+                  <span class="mode-label">{{ option.label }}</span>
+                  <span class="mode-desc">{{ option.description }}</span>
+                </div>
+              </label>
+            </div>
+            <div class="skills-dialog-footer">
+              <button class="text-btn" @click="closeModeSelector">取消</button>
+              <button class="primary-btn" @click="confirmStartTask">
+                <span class="i-carbon-play-filled-alt inline-block h-3.5 w-3.5" />
+                开始
+              </button>
             </div>
           </div>
         </div>
@@ -1195,5 +1278,84 @@ function formatTime(iso: string): string {
   gap: 8px;
   padding: 12px 20px;
   border-top: 1px solid hsl(var(--border) / 0.25);
+}
+
+/* 运行模式选择弹窗样式 */
+.mode-dialog {
+  width: 420px;
+}
+
+.mode-options {
+  gap: 8px;
+}
+
+.mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid hsl(var(--border) / 0.3);
+  background: hsl(var(--surface) / 0.5);
+}
+
+.mode-option:hover {
+  background: hsl(var(--surface));
+  border-color: hsl(var(--border) / 0.5);
+}
+
+.mode-option.selected {
+  background: hsl(var(--primary) / 0.06);
+  border-color: hsl(var(--primary) / 0.25);
+}
+
+.mode-radio {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mode-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  background: hsl(var(--foreground) / 0.04);
+  color: hsl(var(--muted-foreground) / 0.5);
+  transition: all 0.15s ease;
+}
+
+.mode-option.selected .mode-icon {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+}
+
+.mode-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mode-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.85);
+  line-height: 1.3;
+}
+
+.mode-option.selected .mode-label {
+  color: hsl(var(--primary));
+}
+
+.mode-desc {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground) / 0.55);
+  line-height: 1.5;
 }
 </style>

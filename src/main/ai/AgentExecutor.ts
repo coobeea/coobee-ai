@@ -82,7 +82,13 @@ class AgentExecutor {
   private busySessions = new Map<string, { startedAt: number }>();
 
   /** 有待审批的 session（hitl:required 已触发，checkpoint 保持 approval-pending） */
-  private pendingApprovalSessions = new Set<string>();
+  private pendingApprovalSessions = new Map<string, { addedAt: number }>();
+
+  /** 审批等待 TTL（2 小时） */
+  private static readonly APPROVAL_TTL_MS = 2 * 60 * 60 * 1000;
+
+  /** 上次清理时间 */
+  private lastApprovalCleanupTime = Date.now();
 
   /** Provider 系统（初始化后注入） */
   private providerSystem: ProviderSystem | null = null;
@@ -317,6 +323,29 @@ class AgentExecutor {
   }
 
   /**
+   * 清理过期的审批等待（TTL 机制）
+   * 每 5 分钟检查一次，清理超过 2 小时的条目
+   */
+  private cleanupExpiredApprovals(): void {
+    const now = Date.now();
+    // 每 5 分钟检查一次
+    if (now - this.lastApprovalCleanupTime < 5 * 60 * 1000) return;
+    this.lastApprovalCleanupTime = now;
+
+    let cleanedCount = 0;
+    for (const [sid, entry] of this.pendingApprovalSessions) {
+      if (now - entry.addedAt > AgentExecutor.APPROVAL_TTL_MS) {
+        this.pendingApprovalSessions.delete(sid);
+        cleanedCount++;
+      }
+    }
+
+    if (cleanedCount > 0) {
+      log.info(`[AgentExecutor] Cleaned up ${cleanedCount} expired pending approvals`);
+    }
+  }
+
+  /**
    * 提交并等待执行完成（阻塞）
    *
    * 适用于需要同步获取结果的场景（如测试）。
@@ -504,7 +533,41 @@ class AgentExecutor {
       }
 
       onChunk?.(chunk);
-      r = await gen.next();
+
+      // 使用 Promise.race 让 abort 信号能在 gen.next() 阻塞期间生效
+      if (signal) {
+        const abortPromise = new Promise<{ done: true; value: ExecutionResult }>((resolve) => {
+          const onAbort = (): void => {
+            signal.removeEventListener('abort', onAbort);
+            resolve({ done: true, value: { output: '', error: 'Aborted by user' } });
+          };
+          if (signal.aborted) {
+            resolve({ done: true, value: { output: '', error: 'Aborted by user' } });
+          } else {
+            signal.addEventListener('abort', onAbort, { once: true });
+            // 当 gen.next() 正常完成时也需要清理监听器
+            gen.next().then(
+              (result) => {
+                signal.removeEventListener('abort', onAbort);
+                resolve(result as { done: true; value: ExecutionResult });
+              },
+              (err) => {
+                signal.removeEventListener('abort', onAbort);
+                throw err;
+              }
+            );
+          }
+        });
+        r = await abortPromise;
+        if (signal.aborted && !r.done) {
+          log.info(`[AgentExecutor] Aborted during gen.next(): sessionId=${sessionId}`);
+          await gen.return({ output: '', error: 'Aborted by user' } as ExecutionResult);
+          checkpoint.updateStatus(sessionId, 'idle').catch(() => {});
+          return { output: '', error: 'Aborted by user' };
+        }
+      } else {
+        r = await gen.next();
+      }
     }
 
     // 执行完成 - 但如果在等待审批，不覆盖 approval-pending 状态
@@ -540,7 +603,7 @@ class AgentExecutor {
         // 检测工具挂起（suspended 标志来自 ToolExecutionPipeline → PiMonoStreamAdapter）
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((chunk.data as any)?.suspended === true) {
-          this.pendingApprovalSessions.add(sessionId);
+          this.pendingApprovalSessions.set(sessionId, { addedAt: Date.now() });
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const suspendReason = (chunk.data as any)?.suspendReason;
           const pendingOp = this.parseSuspendReason(suspendReason, sessionId);
@@ -562,7 +625,7 @@ class AgentExecutor {
       case 'hitl:required':
         // 通过 Extension 的 api.services.events.emit 发出的 hitl:required
         // 不经过 consumeAndForward，所以这个 case 是备用路径
-        this.pendingApprovalSessions.add(sessionId);
+        this.pendingApprovalSessions.set(sessionId, { addedAt: Date.now() });
         checkpoint
           .save({
             threadId: sessionId,
@@ -750,6 +813,9 @@ class AgentExecutor {
     const { sessionId, message, builder, onChunk, signal } = request;
     let runtime: AgentRuntime | null = null;
 
+    // 定期清理过期的审批等待
+    this.cleanupExpiredApprovals();
+
     log.info(`[AgentExecutor] Execute: sessionId=${sessionId}, message="${message.slice(0, 50)}..."`);
     const startTime = Date.now();
 
@@ -901,6 +967,10 @@ class AgentExecutor {
         durationMs
       });
       await runner.runVoidHook('session_end', { sessionId });
+
+      // 清理审批计数器（会话结束）
+      const { resetApprovalCounter } = await import('./runtime/shared/ToolExecutionPipeline');
+      resetApprovalCounter(sessionId);
     } catch (err) {
       log.warn('[AgentExecutor] Extension hooks (end) failed:', err);
     }

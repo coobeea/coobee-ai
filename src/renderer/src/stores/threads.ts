@@ -102,11 +102,15 @@ export const useThreadsStore = defineStore('threads', () => {
   }
 
   /** 创建 Thread */
-  async function createThread(title: string, agentId: string): Promise<ThreadEntry | null> {
+  async function createThread(
+    title: string,
+    agentId: string,
+    agentType: AgentType = 'agent'
+  ): Promise<ThreadEntry | null> {
     try {
       const result = await apiRequest<{ thread: ThreadEntry }>('', {
         method: 'POST',
-        body: JSON.stringify({ title, agentId })
+        body: JSON.stringify({ title, agentId, agentType })
       });
       // 不在这里插入列表，等待 WebSocket 事件 (thread.created) 来更新
       // 这样避免重复插入

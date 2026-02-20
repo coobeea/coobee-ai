@@ -71,9 +71,10 @@ export function registerThreadRoutes(router: Router): void {
 
   router.post('/threads', async (ctx) => {
     const body = ctx.request.body as Record<string, unknown> | undefined;
-    const { title, agentId } = (body ?? {}) as {
+    const { title, agentId, agentType } = (body ?? {}) as {
       title?: string;
       agentId?: string;
+      agentType?: 'agent' | 'orchestrator' | 'swarm';
     };
 
     if (!title || !agentId) {
@@ -87,6 +88,7 @@ export function registerThreadRoutes(router: Router): void {
       const thread = await store.create({
         title,
         agentId,
+        agentType: agentType || 'agent',
         metadata: (body?.metadata as Record<string, unknown>) ?? undefined
       });
       ctx.status = 201;
