@@ -44,7 +44,10 @@ export class AgentEventWriter {
     this.eventsFile = workspace ? path.join(workspace, 'events', 'events.jsonl') : null;
   }
 
-  // ==================== 生命周期 ====================
+  /** 彻底清理当前实例（供异常销毁时备用） */
+  destroy(sessionId: string): void {
+    this.unregister(sessionId);
+  }
 
   /** 注册到会话注册表 + 设置 emitter */
   register(sessionId: string): void {

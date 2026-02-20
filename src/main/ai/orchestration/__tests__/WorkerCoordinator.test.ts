@@ -138,14 +138,14 @@ describe('WorkerCoordinator', () => {
       expect(capturedStatus).toBe('busy');
     });
 
-    it('执行失败时 Worker 状态为 error', async () => {
+    it('执行失败时 Worker 状态恢复为 idle（防止泄漏）', async () => {
       mockRunResult.mockRejectedValue(new Error('execution failed'));
 
       const worker = await coordinator.getOrCreateWorker('code');
 
       await expect(coordinator.executeSubTask(createSubTask(), worker)).rejects.toThrow('execution failed');
 
-      expect(worker.status).toBe('error');
+      expect(worker.status).toBe('idle');
     });
 
     it('构建包含依赖信息的提示词', async () => {
