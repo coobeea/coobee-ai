@@ -79,6 +79,8 @@ const TRIAGE_INSTRUCTIONS = `你是一个智能任务分诊员（Triage Agent）
 - 对于综合性任务，选择最核心的专家先交接
 - 交接前，先将任务分析结果写入共享上下文，方便专家参考`;
 
+import { AsyncLock } from '../utils/AsyncLock';
+
 /**
  * Swarm 核心协调器
  */
@@ -93,6 +95,7 @@ export class SwarmCoordinator {
 
   private state: SwarmState = createInitialSwarmState();
   private onEvent: SwarmEventCallback | null = null;
+  private stateLock = new AsyncLock();
 
   constructor(private readonly config: SwarmConfig) {
     this.pool = new AgentPool(config);
@@ -136,8 +139,10 @@ export class SwarmCoordinator {
    */
   async coordinate(task: SwarmTask): Promise<CoordinationResult> {
     const startTime = Date.now();
-    this.state.status = 'triaging';
-    this.state.startedAt = startTime;
+    await this.updateState({
+      status: 'triaging',
+      startedAt: startTime
+    });
     this.router.resetChain();
     this.monitor.startExecution(task.id);
 
@@ -151,8 +156,10 @@ export class SwarmCoordinator {
 
       const triageRuntime = await this.createTriageRuntime(roles);
       let currentRuntime: AgentRuntime = triageRuntime;
+      let currentPoolId: string | undefined = undefined;
+      let isCurrentFromPool = false;
 
-      this.state.status = 'executing';
+      await this.updateState({ status: 'executing' });
       let finalOutput = '';
 
       for (let depth = 0; depth <= this.config.maxHandoffDepth; depth++) {
@@ -193,19 +200,25 @@ export class SwarmCoordinator {
           break;
         }
 
-        await currentRuntime.destroy();
+        if (isCurrentFromPool && currentPoolId) {
+          this.pool.releaseAgent(currentPoolId, true);
+        } else {
+          await currentRuntime.destroy();
+        }
 
         const contextSummary = this.context.toSummary();
         const enrichedInput = contextSummary
           ? `${task.input}\n\n---\n## 来自之前分析的共享上下文\n${contextSummary}`
           : task.input;
 
-        const { runtime: nextRuntime } = await this.pool.acquireAgent(
+        const { runtime: nextRuntime, poolId: nextPoolId } = await this.pool.acquireAgent(
           targetRole,
           this.buildRoleTools(targetRole.id, roles)
         );
 
         currentRuntime = nextRuntime;
+        currentPoolId = nextPoolId;
+        isCurrentFromPool = true;
         currentRoleId = handoffTarget;
         currentInput = enrichedInput;
       }
@@ -265,34 +278,53 @@ export class SwarmCoordinator {
 
     try {
       const runtimes = new Map<string, AgentRuntime>();
+      const acquiredPoolIds: string[] = [];
       const roleIds = [...new Set(subTasks.map((t) => t.roleId))];
 
       for (const roleId of roleIds) {
         const role = this.roleRegistry.getRole(roleId);
         if (!role) continue;
-        const { runtime } = await this.pool.acquireAgent(role);
+        const { runtime, poolId } = await this.pool.acquireAgent(role);
         runtimes.set(roleId, runtime);
+        acquiredPoolIds.push(poolId);
       }
 
-      const parallelResult = await this.concurrency.executeParallel(subTasks, runtimes);
+      try {
+        const parallelResult = await this.concurrency.executeParallel(subTasks, runtimes);
 
-      this.state.status = 'completed';
-      this.state.completedAt = Date.now();
-      this.state.progress = 100;
-      this.monitor.completeExecution(true);
+        // 释放所有已获取的 Agent
+        for (const poolId of acquiredPoolIds) {
+          this.pool.releaseAgent(poolId, true);
+        }
 
-      return {
-        output: parallelResult.aggregatedOutput,
-        state: { ...this.state },
-        rolesUsed: [...new Set(parallelResult.results.map((r) => r.roleId))],
-        handoffCount: 0,
-        duration: Date.now() - startTime
-      };
+        this.updateState({
+          status: 'completed',
+          completedAt: Date.now(),
+          progress: 100
+        });
+        this.monitor.completeExecution(true);
+
+        return {
+          output: parallelResult.aggregatedOutput,
+          state: { ...this.state },
+          rolesUsed: [...new Set(parallelResult.results.map((r) => r.roleId))],
+          handoffCount: 0,
+          duration: Date.now() - startTime
+        };
+      } catch (error) {
+        // 执行阶段失败，释放资源
+        for (const poolId of acquiredPoolIds) {
+          this.pool.releaseAgent(poolId, false);
+        }
+        throw error;
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.state.status = 'failed';
-      this.state.error = errorMessage;
-      this.state.completedAt = Date.now();
+      this.updateState({
+        status: 'failed',
+        error: errorMessage,
+        completedAt: Date.now()
+      });
       this.monitor.completeExecution(false, errorMessage);
 
       return {
@@ -321,6 +353,13 @@ export class SwarmCoordinator {
   }
 
   // ========== 内部方法 ==========
+
+  /** 线程安全地更新内部状态 */
+  private async updateState(updates: Partial<SwarmState>): Promise<void> {
+    await this.stateLock.run(async () => {
+      Object.assign(this.state, updates);
+    });
+  }
 
   /**
    * 从执行结果中检测 Handoff 信号
