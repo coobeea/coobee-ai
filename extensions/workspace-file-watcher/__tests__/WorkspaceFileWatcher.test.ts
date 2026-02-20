@@ -16,7 +16,7 @@ const mockLog = vi.hoisted(() => ({
   debug: vi.fn()
 }));
 
-vi.mock('@main/common/logger', () => ({
+vi.mock('../../../src/main/common/logger', () => ({
   createLogger: () => mockLog
 }));
 
@@ -26,14 +26,14 @@ const mockEventBus = vi.hoisted(() => ({
   emit: vi.fn()
 }));
 
-vi.mock('@main/common/eventbus', () => ({
+vi.mock('../../../src/main/common/eventbus', () => ({
   eventBus: mockEventBus
 }));
 
 // Mock Env with real temp dir
 let mockWorkspacesDir: string;
 
-vi.mock('@main/common/env', async () => {
+vi.mock('../../../src/main/common/env', async () => {
   return {
     Env: {
       paths: {
@@ -46,7 +46,7 @@ vi.mock('@main/common/env', async () => {
 });
 
 import { WorkspaceFileWatcher } from '../WorkspaceFileWatcher';
-import { StreamEventType } from '@main/ai/streaming/types';
+import { StreamEventType } from '../../../src/main/ai/streaming/types';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

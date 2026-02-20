@@ -20,9 +20,9 @@
 
 import { watch, type FSWatcher } from 'chokidar';
 import path from 'node:path';
-import { eventBus } from '@main/common/eventbus';
-import { createLogger } from '@main/common/logger';
-import { StreamEventType, type StreamEvent } from '@main/ai/streaming/types';
+import { eventBus } from '../../src/main/common/eventbus';
+import { createLogger } from '../../src/main/common/logger';
+import { StreamEventType, type StreamEvent } from '../../src/main/ai/streaming/types';
 
 const log = createLogger('workspace-file-watcher');
 
@@ -188,7 +188,7 @@ export class WorkspaceFileWatcher {
       return;
     }
 
-    const { Env } = await import('@main/common/env');
+    const { Env } = await import('../../src/main/common/env');
     const watchPath = path.join(Env.paths.workspacesDir, threadId);
 
     const watcher = watch(watchPath, {

@@ -4,7 +4,7 @@
  * 监控 Agent 工作空间文件变化并实时推送到前端。
  */
 
-import type { ExtensionModule } from '@main/common/extension';
+import type { ExtensionModule } from '../../src/main/common/extension';
 import { WorkspaceFileWatcher } from './WorkspaceFileWatcher';
 
 export const extension: ExtensionModule = {
