@@ -507,8 +507,13 @@ class AgentExecutor {
       r = await gen.next();
     }
 
-    // 执行完成
-    checkpoint.updateStatus(sessionId, 'idle').catch(() => {});
+    // 执行完成 - 但如果在等待审批，不覆盖 approval-pending 状态
+    if (!this.pendingApprovalSessions.has(sessionId)) {
+      checkpoint.updateStatus(sessionId, 'completed').catch(() => {});
+    } else {
+      log.info(`[AgentExecutor] Execute loop done but approval-pending, keeping checkpoint for ${sessionId}`);
+    }
+
     return r.value;
   }
 

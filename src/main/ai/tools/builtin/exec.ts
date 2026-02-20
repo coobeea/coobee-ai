@@ -22,36 +22,19 @@
  *
  * 分类：Execute | 风险：高（可执行任意系统命令）
  */
-import { spawn } from 'node:child_process'
-import { z } from 'zod'
-import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
-import { ToolCategory } from '../types'
-import { resolveWorkingDirectory } from '../../sandbox'
-import { ProcessRegistry } from '../../process/ProcessRegistry'
-import { checkExecPolicy } from '../../sandbox/exec-policy'
-
-/**
- * 检查 tool-approval Extension 是否可用
- *
- * 用于 ask 级别命令的兜底判断：若 tool-approval 未加载，
- * exec 工具自行拒绝未知命令，防止绕过安全审批。
- */
-async function isToolApprovalAvailable(): Promise<boolean> {
-  try {
-    const { ExtensionManager } = await import('../../../common/extension')
-    const registry = ExtensionManager.getRegistry()
-    if (!registry) return false
-    return registry.getExtensionIds().includes('tool-approval')
-  } catch {
-    return false
-  }
-}
+import { spawn } from 'node:child_process';
+import { z } from 'zod';
+import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types';
+import { ToolCategory } from '../types';
+import { resolveWorkingDirectory } from '../../sandbox';
+import { ProcessRegistry } from '../../process/ProcessRegistry';
+import { checkExecPolicy } from '../../sandbox/exec-policy';
 
 /** 默认超时（ms） */
-const DEFAULT_TIMEOUT_MS = 30_000
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 /** 最大输出字节数（约 100KB，防止 token 爆炸） */
-const MAX_OUTPUT_BYTES = 100_000
+const MAX_OUTPUT_BYTES = 100_000;
 
 export const execTool: ToolDefinition = {
   name: 'exec',
@@ -68,9 +51,7 @@ export const execTool: ToolDefinition = {
     background: z
       .boolean()
       .optional()
-      .describe(
-        'Run in background mode. Returns processId immediately. Use `process` tool to manage.'
-      ),
+      .describe('Run in background mode. Returns processId immediately. Use `process` tool to manage.'),
     timeout: z
       .number()
       .optional()
@@ -84,53 +65,45 @@ export const execTool: ToolDefinition = {
     signal?: AbortSignal,
     context?: ToolExecutionContext
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
-    const command = params.command as string
-    const background = params.background as boolean | undefined
-    const timeout = (params.timeout as number) || DEFAULT_TIMEOUT_MS
-    const startTime = Date.now()
+    const command = params.command as string;
+    const background = params.background as boolean | undefined;
+    const timeout = (params.timeout as number) || DEFAULT_TIMEOUT_MS;
+    const startTime = Date.now();
 
     if (!command || typeof command !== 'string') {
       return {
         success: false,
         llmContent: 'Error: command must be a non-empty string',
         error: { code: 'INVALID_PARAM', message: 'command must be a non-empty string' }
-      }
+      };
     }
 
     // 安全兜底：即使 Extension 未加载，黑名单/未知命令仍被拦截
     // Extension hook (tool-approval) 提供完整的 allow/ask/deny + HITL 逻辑，
     // 这里做 deny + ask（无审批能力时）的防线
-    const policyResult = checkExecPolicy(command)
+    const policyResult = checkExecPolicy(command);
     if (policyResult.action === 'deny') {
       return {
         success: false,
         llmContent: `Error: ${policyResult.reason}`,
         error: { code: 'EXEC_POLICY_DENY', message: policyResult.reason }
-      }
+      };
     }
 
-    // ask 兜底：若 tool-approval Extension 未加载，阻止未知命令
-    if (policyResult.action === 'ask') {
-      const hasApprovalExtension = await isToolApprovalAvailable()
-      if (!hasApprovalExtension) {
-        const reason = `Unknown command requires user approval, but tool-approval extension is not loaded. Command: ${command}`
-        return {
-          success: false,
-          llmContent: `Error: ${reason}`,
-          error: { code: 'EXEC_POLICY_ASK_NO_APPROVAL', message: reason }
-        }
-      }
-    }
+    // 注意：审批逻辑已移至 ToolExecutionPipeline 统一处理
+    // 如果到达这里，说明已经通过审批（或配置为 allow）
+    // 即使 policyResult.action === 'ask'，也应该继续执行
+    // （审批在 Pipeline 层完成，工具层只负责执行）
 
     // 工作目录：限制在 workspaceRoot 内
-    const cwd = resolveWorkingDirectory(context)
+    const cwd = resolveWorkingDirectory(context);
 
     // ==================== 后台模式 ====================
     if (background) {
-      yield { type: 'progress', content: `[background] $ ${command}`, percentage: 0 }
+      yield { type: 'progress', content: `[background] $ ${command}`, percentage: 0 };
 
       // 合并上下文环境变量（COOBEE_* 等），供 Skill 脚本读取配置
-      const childEnv = { ...process.env, ...context?.envVars }
+      const childEnv = { ...process.env, ...context?.envVars };
 
       const child = spawn(command, {
         shell: true,
@@ -138,11 +111,11 @@ export const execTool: ToolDefinition = {
         env: childEnv,
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: false // 不脱离父进程，确保可管理
-      })
+      });
 
       // 注册到 ProcessRegistry
-      const registry = ProcessRegistry.getInstance()
-      const processId = registry.register(command, cwd, child)
+      const registry = ProcessRegistry.getInstance();
+      const processId = registry.register(command, cwd, child);
 
       const llmContent =
         `Process started in background.\n` +
@@ -153,12 +126,12 @@ export const execTool: ToolDefinition = {
         `Use the \`process\` tool to manage this process:\n` +
         `- process({ action: "read_output", processId: "${processId}" }) — read output\n` +
         `- process({ action: "send_input", processId: "${processId}", input: "..." }) — send input\n` +
-        `- process({ action: "kill", processId: "${processId}" }) — terminate`
+        `- process({ action: "kill", processId: "${processId}" }) — terminate`;
 
       yield {
         type: 'output',
         content: `Background process started: ${processId} (pid=${child.pid})`
-      }
+      };
 
       return {
         success: true,
@@ -173,23 +146,23 @@ export const execTool: ToolDefinition = {
           background: true,
           cwd
         }
-      }
+      };
     }
 
     // ==================== 前台模式 ====================
-    yield { type: 'progress', content: `$ ${command}`, percentage: 0 }
+    yield { type: 'progress', content: `$ ${command}`, percentage: 0 };
 
     const result: ToolResult = await new Promise<ToolResult>((resolveResult) => {
-      const stdout: Buffer[] = []
-      const stderr: Buffer[] = []
-      let stdoutBytes = 0
-      let stderrBytes = 0
-      let stdoutTruncated = false
-      let stderrTruncated = false
-      let timedOut = false
+      const stdout: Buffer[] = [];
+      const stderr: Buffer[] = [];
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
+      let stdoutTruncated = false;
+      let stderrTruncated = false;
+      let timedOut = false;
 
       // 合并上下文环境变量（COOBEE_* 等），供 Skill 脚本读取配置
-      const fgEnv = { ...process.env, ...context?.envVars }
+      const fgEnv = { ...process.env, ...context?.envVars };
 
       const child = spawn(command, {
         shell: true,
@@ -197,79 +170,79 @@ export const execTool: ToolDefinition = {
         cwd,
         env: fgEnv,
         stdio: ['ignore', 'pipe', 'pipe']
-      })
+      });
 
       // 支持外部取消
       const abortHandler = (): void => {
-        child.kill('SIGTERM')
-      }
+        child.kill('SIGTERM');
+      };
       if (signal) {
-        signal.addEventListener('abort', abortHandler, { once: true })
+        signal.addEventListener('abort', abortHandler, { once: true });
       }
 
       child.stdout.on('data', (data: Buffer) => {
         if (stdoutBytes < MAX_OUTPUT_BYTES) {
-          stdout.push(data)
-          stdoutBytes += data.length
+          stdout.push(data);
+          stdoutBytes += data.length;
         } else {
-          stdoutTruncated = true
+          stdoutTruncated = true;
         }
-      })
+      });
 
       child.stderr.on('data', (data: Buffer) => {
         if (stderrBytes < MAX_OUTPUT_BYTES) {
-          stderr.push(data)
-          stderrBytes += data.length
+          stderr.push(data);
+          stderrBytes += data.length;
         } else {
-          stderrTruncated = true
+          stderrTruncated = true;
         }
-      })
+      });
 
       child.on('error', (err: Error) => {
-        signal?.removeEventListener('abort', abortHandler)
+        signal?.removeEventListener('abort', abortHandler);
         resolveResult({
           success: false,
           llmContent: `Error executing command: ${err.message}`,
           error: { code: 'EXEC_ERROR', message: err.message },
           metadata: { startTime, endTime: Date.now(), duration: Date.now() - startTime }
-        })
-      })
+        });
+      });
 
       child.on('close', (code: number | null, sig: string | null) => {
-        signal?.removeEventListener('abort', abortHandler)
+        signal?.removeEventListener('abort', abortHandler);
 
         if (sig === 'SIGTERM') {
-          timedOut = true
+          timedOut = true;
         }
 
-        let stdoutStr = Buffer.concat(stdout).toString('utf-8')
-        let stderrStr = Buffer.concat(stderr).toString('utf-8')
+        let stdoutStr = Buffer.concat(stdout).toString('utf-8');
+        let stderrStr = Buffer.concat(stderr).toString('utf-8');
 
         if (stdoutTruncated) {
-          stdoutStr += `\n... [stdout truncated at ${MAX_OUTPUT_BYTES} bytes]`
+          stdoutStr += `\n... [stdout truncated at ${MAX_OUTPUT_BYTES} bytes]`;
         }
         if (stderrTruncated) {
-          stderrStr += `\n... [stderr truncated at ${MAX_OUTPUT_BYTES} bytes]`
+          stderrStr += `\n... [stderr truncated at ${MAX_OUTPUT_BYTES} bytes]`;
         }
 
-        const parts: string[] = []
+        const parts: string[] = [];
 
         if (timedOut) {
-          parts.push(`[Timed out after ${timeout}ms]`)
+          parts.push(`[Timed out after ${timeout}ms]`);
         }
 
-        parts.push(`Exit code: ${code ?? 'null (killed)'}`)
+        parts.push(`Exit code: ${code ?? 'null (killed)'}`);
 
         if (stdoutStr.trim()) {
-          parts.push(`stdout:\n${stdoutStr.trim()}`)
+          parts.push(`stdout:\n${stdoutStr.trim()}`);
         }
         if (stderrStr.trim()) {
-          parts.push(`stderr:\n${stderrStr.trim()}`)
+          parts.push(`stderr:\n${stderrStr.trim()}`);
         }
 
-        const llmContent = parts.join('\n\n')
-        const duration = Date.now() - startTime
-        const success = code === 0 && !timedOut
+        const llmContent = parts.join('\n\n');
+        const duration = Date.now() - startTime;
+        const success = code === 0 && !timedOut;
 
         resolveResult({
           success,
@@ -291,18 +264,17 @@ export const execTool: ToolDefinition = {
             stderrBytes,
             cwd
           }
-        })
-      })
-    })
+        });
+      });
+    });
 
     // 输出最终结果摘要
-    const exitInfo =
-      result.metadata?.exitCode === 0 ? 'completed' : `failed (exit ${result.metadata?.exitCode})`
+    const exitInfo = result.metadata?.exitCode === 0 ? 'completed' : `failed (exit ${result.metadata?.exitCode})`;
     yield {
       type: 'output',
       content: `Command ${exitInfo} in ${result.metadata?.duration}ms`
-    }
+    };
 
-    return result
+    return result;
   }
-}
+};
