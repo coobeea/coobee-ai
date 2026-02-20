@@ -65,11 +65,13 @@ export const useChatStore = defineStore('chat', () => {
 
       // 从 Thread 获取 mode（agentMode/agentType）
       let mode: 'agent' | 'orchestrator' | 'swarm' | 'delegate' = 'agent';
-      if (sessionId.value) {
+      const oldSessionId = sessionId.value;
+
+      if (oldSessionId) {
         try {
           const { useThreadsStore } = await import('./threads');
           const threadsStore = useThreadsStore();
-          const thread = threadsStore.threads.find((t) => t.id === sessionId.value);
+          const thread = threadsStore.threads.find((t) => t.id === oldSessionId);
           if (thread?.agentType) {
             mode = thread.agentType;
           }
@@ -85,7 +87,7 @@ export const useChatStore = defineStore('chat', () => {
         queuePosition?: number;
       }>('chat.send', {
         message: text,
-        sessionId: sessionId.value,
+        sessionId: oldSessionId,
         mode,
         ...(agentId ? { agentId } : {})
       });
@@ -98,6 +100,9 @@ export const useChatStore = defineStore('chat', () => {
           return;
         }
 
+        if (oldSessionId && oldSessionId !== sid) {
+          streamUnsubscribe(oldSessionId);
+        }
         sessionId.value = sid;
 
         if (status === 'queued' || status === 'merged') {
@@ -175,10 +180,12 @@ export const useChatStore = defineStore('chat', () => {
 
   function clearMessages(): void {
     resetAll();
+    if (sessionId.value) {
+      streamUnsubscribe(sessionId.value);
+    }
     sessionId.value = null;
     isQueued.value = false;
     queueStatus.value = null;
-    streamUnsubscribe();
   }
 
   /**

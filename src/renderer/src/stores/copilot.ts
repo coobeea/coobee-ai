@@ -11,8 +11,9 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { gateway } from '@/plugins/gatewaySetup';
+import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs';
 import { useStreamHandler } from '@/composables/useStreamHandler';
-import type { StreamMessage, HitlApprovalDecision } from '@shared/stream-protocol';
+import type { HitlApprovalDecision } from '@shared/stream-protocol';
 
 // Re-export shared types for consumers
 export type {
@@ -42,44 +43,17 @@ export const useCopilotStore = defineStore('copilot', () => {
   const sessionId = ref<string | null>(null);
   const bubbleHidden = ref(false);
 
-  // ---- Stream 订阅 ----
-  let unregisterStream: (() => void) | null = null;
-  let unregisterConnect: (() => void) | null = null;
-
   // ---- Getters ----
   const hasMessages = computed(() => messages.value.length > 0);
 
   /** 初始化独立的流式事件监听 */
   function initStreamListener(): void {
-    // 如果已经初始化，不重复注册
-    if (unregisterStream && unregisterConnect) return;
-
-    // 清理旧的监听器（如果有）
-    if (unregisterStream) {
-      unregisterStream();
-      unregisterStream = null;
+    // 统一复用 useStreamWs 进行订阅注册
+    // Copilot 不再自行监听和重连，完全委托给 useStreamWs.ts 处理
+    // 取消了以前自己的 stream.subscribe 和 stream.message 监听
+    if (sessionId.value) {
+      streamSubscribe(sessionId.value, handleStreamMessage);
     }
-    if (unregisterConnect) {
-      unregisterConnect();
-      unregisterConnect = null;
-    }
-
-    // 注册流式消息监听
-    unregisterStream = gateway.on('stream.message', (payload) => {
-      const data = payload as { sessionId?: string; message?: StreamMessage } | undefined;
-      if (!data?.message || !data.sessionId) return;
-      if (data.sessionId !== sessionId.value) return;
-      handleStreamMessage(data.message);
-    });
-
-    // 注册重连监听
-    unregisterConnect = gateway.onConnect(() => {
-      if (sessionId.value) {
-        gateway
-          .request('stream.subscribe', { sessionId: sessionId.value })
-          .catch((err) => console.error('[copilot] 重连后恢复订阅失败:', err));
-      }
-    });
   }
 
   // ---- Actions ----
@@ -119,11 +93,15 @@ export const useCopilotStore = defineStore('copilot', () => {
           return;
         }
 
+        const oldSessionId = sessionId.value;
+        if (oldSessionId && oldSessionId !== result.sessionId) {
+          streamUnsubscribe(oldSessionId);
+        }
+
         sessionId.value = result.sessionId;
 
-        gateway
-          .request('stream.subscribe', { sessionId: result.sessionId })
-          .catch((err) => console.error('[copilot] 流式订阅失败:', err));
+        // 使用统一的 streamSubscribe，代替 gateway.request
+        streamSubscribe(result.sessionId, handleStreamMessage);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -183,6 +161,9 @@ export const useCopilotStore = defineStore('copilot', () => {
 
   function clearMessages(): void {
     resetAll();
+    if (sessionId.value) {
+      streamUnsubscribe(sessionId.value);
+    }
     sessionId.value = null;
   }
 
@@ -191,14 +172,10 @@ export const useCopilotStore = defineStore('copilot', () => {
    * 在应用销毁时调用
    */
   function cleanup(): void {
-    if (unregisterStream) {
-      unregisterStream();
-      unregisterStream = null;
+    if (sessionId.value) {
+      streamUnsubscribe(sessionId.value);
     }
-    if (unregisterConnect) {
-      unregisterConnect();
-      unregisterConnect = null;
-    }
+    // unregisterStream 和 unregisterConnect 已经被重构移除了
   }
 
   // ---- Actions: Bubble Visibility ----
