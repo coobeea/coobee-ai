@@ -293,7 +293,7 @@ export const chatMethods: MethodGroup = {
         }
 
         if (!agentDef) {
-          const pipelineResult = agentExecutor.submitViaPipeline(sid, message, mode);
+          const pipelineResult = await agentExecutor.submitViaPipeline(sid, message, mode);
           if (pipelineResult) {
             return {
               sessionId: sid,

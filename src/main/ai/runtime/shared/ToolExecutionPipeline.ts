@@ -309,11 +309,35 @@ export function createFallbackToolContext(opts: { workspaceRoot: string; session
 /** 会话级审批计数器（用于生成 approvalId）*/
 const sessionApprovalCounters = new Map<string, number>();
 
+/** 用于保证计数器递增原子性的锁 */
+let approvalCounterMutex = Promise.resolve();
+
 /**
  * 重置会话的审批计数器（会话开始时调用）
  */
 export function resetApprovalCounter(sessionId: string): void {
   sessionApprovalCounters.delete(sessionId);
+}
+
+/**
+ * 获取并递增会话的审批计数器（保证原子性）
+ */
+async function getNextApprovalIndex(sessionId: string): Promise<number> {
+   
+  await approvalCounterMutex;
+  let release: () => void;
+   
+  approvalCounterMutex = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  try {
+    const index = sessionApprovalCounters.get(sessionId) ?? 0;
+    sessionApprovalCounters.set(sessionId, index + 1);
+    return index;
+  } finally {
+    release!();
+  }
 }
 
 /**
@@ -337,8 +361,7 @@ async function requestUserApproval(
   opts: PipelineOptions
 ): Promise<PipelineResult> {
   // 获取审批索引
-  const index = sessionApprovalCounters.get(sessionId) ?? 0;
-  sessionApprovalCounters.set(sessionId, index + 1);
+  const index = await getNextApprovalIndex(sessionId);
 
   const approvalId = `${sessionId}:${index}`;
 

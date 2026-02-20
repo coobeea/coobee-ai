@@ -61,7 +61,7 @@ export class ThreadWaker {
    */
   start(): void {
     if (this.listening) return;
-    eventBus.on('thread:wake', this.handleWake);
+    eventBus.on('thread:wake', this.handleWake.bind(this));
     this.listening = true;
     log.info('[ThreadWaker] Started listening for thread:wake events');
   }
@@ -71,15 +71,12 @@ export class ThreadWaker {
    */
   stop(): void {
     if (!this.listening) return;
-    eventBus.removeListener('thread:wake', this.handleWake);
+    eventBus.removeListener('thread:wake', this.handleWake.bind(this));
     this.listening = false;
     log.info('[ThreadWaker] Stopped');
   }
 
-  /**
-   * 处理唤醒事件
-   */
-  private handleWake = async (event: ThreadWakeEvent): Promise<void> => {
+  private async handleWake(event: ThreadWakeEvent): Promise<void> {
     const { threadId, reason } = event;
     log.info(`[ThreadWaker] Wake event: threadId=${threadId}, reason=${reason}`);
 
@@ -99,7 +96,7 @@ export class ThreadWaker {
     } catch (error) {
       log.error(`[ThreadWaker] Failed to wake thread ${threadId}:`, error);
     }
-  };
+  }
 
   /**
    * 恢复挂起的 Thread
@@ -202,7 +199,7 @@ export class ThreadWaker {
 
       // 使用 submitViaPipeline 而非 submit，确保走 MessagePipeline 流程
       // 享受队列、runId 竞态防护、中断等能力
-      const result = agentExecutor.submitViaPipeline(threadId, message, 'agent');
+      const result = await agentExecutor.submitViaPipeline(threadId, message, 'agent');
 
       if (!result) {
         log.error(`[ThreadWaker] Pipeline not available, cannot resume thread ${threadId}`);

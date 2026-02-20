@@ -242,10 +242,10 @@ class AgentExecutor {
    * @param message - 用户消息
    * @param mode - Agent 模式（默认 'agent'），管线执行器据此创建 Builder
    */
-  submitViaPipeline(sessionId: string, message: string, mode: AgentMode = 'agent'): SubmitResult | null {
+  async submitViaPipeline(sessionId: string, message: string, mode: AgentMode = 'agent'): Promise<SubmitResult | null> {
     if (!this.pipeline) return null;
     this.sessionModes.set(sessionId, mode);
-    return this.pipeline.submit(sessionId, message);
+    return await this.pipeline.submit(sessionId, message);
   }
 
   /**
@@ -369,12 +369,25 @@ class AgentExecutor {
 
   /** 查询 session 状态 */
   getStatus(sessionId: string): SessionStatus {
+    if (this.pipeline) {
+      const status = this.pipeline.getQueueStatus(sessionId);
+      if (status.isRunning) {
+        // pipeline is running, try to get startedAt from busySessions if it's there
+        const info = this.busySessions.get(sessionId);
+        return { busy: true, startedAt: info?.startedAt };
+      }
+    }
+
     const info = this.busySessions.get(sessionId);
     return info ? { busy: true, startedAt: info.startedAt } : { busy: false };
   }
 
   /** 获取所有活跃 session */
   getActiveSessions(): Array<{ sessionId: string; startedAt: number }> {
+    // If pipeline is used, we should ideally combine pipeline active sessions and busySessions.
+    // However, pipeline's getQueueStatus doesn't provide a way to list ALL active sessions easily.
+    // Given the architecture, busySessions is populated during execute(), which pipeline also calls.
+    // So busySessions should still be the source of truth for "currently executing" sessions.
     return Array.from(this.busySessions.entries()).map(([sessionId, info]) => ({
       sessionId,
       startedAt: info.startedAt

@@ -43,7 +43,7 @@ export class MessagePipeline {
   /**
    * 提交消息
    */
-  submit(sessionId: string, message: string, opts?: SubmitOptions): SubmitResult {
+  async submit(sessionId: string, message: string, opts?: SubmitOptions): Promise<SubmitResult> {
     // 定期清理空闲队列（每 5 分钟检查一次）
     if (Date.now() - this.lastCleanupTime > 5 * 60 * 1000) {
       this.cleanupIdleQueues();
@@ -63,12 +63,12 @@ export class MessagePipeline {
       case 'interrupt':
         return this.handleInterrupt(queue, sessionId, message);
       case 'steer':
-        return this.handleSteer(queue, sessionId, message, opts);
+        return await this.handleSteer(queue, sessionId, message, opts);
       case 'collect':
       case 'followup':
-        return this.handleQueue(queue, sessionId, message, opts);
+        return await this.handleQueue(queue, sessionId, message, opts);
       default:
-        return this.handleQueue(queue, sessionId, message, opts);
+        return await this.handleQueue(queue, sessionId, message, opts);
     }
   }
 
@@ -161,16 +161,26 @@ export class MessagePipeline {
     return { status: 'interrupted', sessionId };
   }
 
-  private handleSteer(queue: SessionQueue, sessionId: string, message: string, opts?: SubmitOptions): SubmitResult {
+  private async handleSteer(
+    queue: SessionQueue,
+    sessionId: string,
+    message: string,
+    opts?: SubmitOptions
+  ): Promise<SubmitResult> {
     // steer 模式：将消息作为"注入"处理
     // 基础实现：入队，等当前 run 结束后作为下一条处理
-    queue.enqueue(sessionId, message, opts?.metadata);
+    await queue.enqueue(sessionId, message, opts?.metadata);
     this.fireMessageQueued(sessionId, message, queue);
     return { status: 'merged', sessionId };
   }
 
-  private handleQueue(queue: SessionQueue, sessionId: string, message: string, opts?: SubmitOptions): SubmitResult {
-    queue.enqueue(sessionId, message, opts?.metadata);
+  private async handleQueue(
+    queue: SessionQueue,
+    sessionId: string,
+    message: string,
+    opts?: SubmitOptions
+  ): Promise<SubmitResult> {
+    await queue.enqueue(sessionId, message, opts?.metadata);
     this.fireMessageQueued(sessionId, message, queue);
     return {
       status: 'queued',

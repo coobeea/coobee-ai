@@ -5,10 +5,25 @@ import type { PendingMessage, QueueSettings, SessionPipelineState } from './type
 import { DEFAULT_QUEUE_SETTINGS } from './types';
 
 let messageCounter = 0;
+let messageCounterMutex = Promise.resolve();
 
 /** 生成唯一消息 ID */
-function generateMessageId(): string {
-  return `msg-${Date.now()}-${++messageCounter}`;
+async function generateMessageId(): Promise<string> {
+  await messageCounterMutex;
+  let release: () => void;
+   
+  messageCounterMutex = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  try {
+    if (messageCounter >= Number.MAX_SAFE_INTEGER) {
+      messageCounter = 0;
+    }
+    return `msg-${Date.now()}-${++messageCounter}`;
+  } finally {
+    release!();
+  }
 }
 
 export class SessionQueue {
@@ -69,11 +84,12 @@ export class SessionQueue {
   }
 
   /** 入队 */
-  enqueue(sessionId: string, message: string, metadata?: Record<string, unknown>): PendingMessage {
+  async enqueue(sessionId: string, message: string, metadata?: Record<string, unknown>): Promise<PendingMessage> {
     this.lastAccessTime = Date.now();
 
+    const id = await generateMessageId();
     const pending: PendingMessage = {
-      id: generateMessageId(),
+      id,
       sessionId,
       message,
       enqueuedAt: Date.now(),
