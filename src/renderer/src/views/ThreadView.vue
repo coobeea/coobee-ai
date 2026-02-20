@@ -52,6 +52,10 @@ function enterWorkspaceForThread(id: string): void {
   }
   threadsStore.selectThread(id);
   closeAllFiles();
+
+  // 在发起网络请求前，直接先切换 Store 的 active sessionId，
+  // 以便 loadHistory 能识别过期请求
+  chatStore.sessionId = id;
   chatStore.loadHistory(id);
 }
 

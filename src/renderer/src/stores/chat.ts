@@ -196,6 +196,9 @@ export const useChatStore = defineStore('chat', () => {
    */
   async function loadHistory(threadId: string): Promise<void> {
     const BASE = `${configManager.getBaseUrl()}/gateway/threads`;
+    // 使用当前请求的 ID，如果 fetch 返回时 active threadId 已经变了，则丢弃结果
+    const currentLoadThreadId = threadId;
+
     try {
       const res = await fetch(`${BASE}/${threadId}/history`);
       if (!res.ok) return;
@@ -205,8 +208,12 @@ export const useChatStore = defineStore('chat', () => {
         userMessages: { content: string; timestamp: number }[];
       };
 
+      // 快速切换会话导致过期的请求返回了数据，直接丢弃
+      if (sessionId.value !== currentLoadThreadId) {
+        return;
+      }
+
       resetAll();
-      sessionId.value = threadId;
 
       const { events, userMessages } = data;
       if (events.length === 0 && userMessages.length === 0) return;
