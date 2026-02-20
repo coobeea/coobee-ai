@@ -152,6 +152,10 @@ export class ThreadWaker {
       return;
     }
 
+    // 清理 AgentExecutor 的 pendingApprovalSessions（审批已完成）
+    const { agentExecutor } = await import('../AgentExecutor');
+    agentExecutor.clearPendingApproval(threadId);
+
     const resumeMessage = `[System] Tool "${pending.toolName}" execution result:\n${event.toolResult}`;
 
     // 重新启动 Agent run（注入工具结果）

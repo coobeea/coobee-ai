@@ -307,6 +307,16 @@ class AgentExecutor {
   }
 
   /**
+   * 清理审批等待状态（ThreadWaker 恢复后调用）
+   */
+  clearPendingApproval(sessionId: string): void {
+    const deleted = this.pendingApprovalSessions.delete(sessionId);
+    if (deleted) {
+      log.info(`[AgentExecutor] Cleared pending approval for ${sessionId}`);
+    }
+  }
+
+  /**
    * 提交并等待执行完成（阻塞）
    *
    * 适用于需要同步获取结果的场景（如测试）。
