@@ -88,4 +88,28 @@ export class HttpServer {
       log.info(`[HttpServer] Listening on http://127.0.0.1:${SERVER_PORT} (HTTP + WebSocket)`);
     });
   }
+
+  /** 彻底关闭服务器和底层连接 */
+  close(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.httpServer) {
+        resolve();
+        return;
+      }
+
+      this.httpServer.close((err) => {
+        if (err) {
+          log.error('[HttpServer] Error closing server:', err);
+          reject(err);
+        } else {
+          log.info('[HttpServer] Server closed completely.');
+          resolve();
+        }
+      });
+
+      if (typeof this.httpServer.closeAllConnections === 'function') {
+        this.httpServer.closeAllConnections();
+      }
+    });
+  }
 }

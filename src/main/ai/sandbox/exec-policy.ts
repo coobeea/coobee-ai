@@ -68,7 +68,7 @@ const SAFE_BINS: ReadonlySet<string> = new Set([
   'rg',
   'ag',
   'awk',
-  'sed', // sed 可以修改文件，但通常在管道中使用
+  // 'sed', // sed 可以修改文件，已移除，防止绕过 write 审批
   'sort',
   'uniq',
   'diff',

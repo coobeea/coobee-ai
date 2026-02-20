@@ -82,11 +82,40 @@ export function registerSkillRoutes(router: Router): void {
   router.post('/skills/import', async (ctx) => {
     try {
       const body = ctx.request.body as { sourcePath?: string } | undefined;
-      const sourcePath = body?.sourcePath;
+      let sourcePath = body?.sourcePath;
 
       if (!sourcePath) {
         ctx.status = 400;
         ctx.body = { error: '缺少 sourcePath 参数' };
+        return;
+      }
+
+      // 处理路径安全
+      const Env = await getEnv();
+      const workspacesDir = Env.paths.workspacesDir;
+
+      // 如果不是绝对路径，默认从 workspacesDir 开始解析
+      if (!path.isAbsolute(sourcePath)) {
+        sourcePath = path.resolve(workspacesDir, sourcePath);
+      } else {
+        sourcePath = path.normalize(sourcePath);
+      }
+
+      // 验证路径安全，防止越界读取敏感系统文件
+      const resolvedSource = path.resolve(sourcePath);
+      // 假设我们允许从 workspaces, downloads, desktop 导入
+      const allowedRoots = [
+        path.resolve(workspacesDir),
+        path.resolve(Env.paths.downloads),
+        path.resolve(Env.paths.desktop),
+        path.resolve(Env.paths.documents)
+      ];
+
+      const isAllowed = allowedRoots.some((root) => resolvedSource.startsWith(root));
+      if (!isAllowed) {
+        log.warn(`[skills.import] Attempted to import from disallowed path: ${resolvedSource}`);
+        ctx.status = 403;
+        ctx.body = { error: '出于安全原因，只允许从工作空间、下载、桌面或文档目录导入技能' };
         return;
       }
 
@@ -97,7 +126,6 @@ export function registerSkillRoutes(router: Router): void {
         return;
       }
 
-      const Env = await getEnv();
       const userSkillsDir = Env.paths.userSkillsDir;
 
       // 确保用户技能目录存在

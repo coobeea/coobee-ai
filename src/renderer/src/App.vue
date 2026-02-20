@@ -17,6 +17,7 @@ import eventBus from '@/eventbus';
 import { EventTypes } from '@shared/ipc/events';
 import { streamCleanup } from '@/composables/useStreamWs';
 import { cleanupThreadWs } from '@/composables/useThreadWs';
+import { workerCleanup } from '@/composables/useWorkerWs';
 import { useCopilotStore } from '@/stores/copilot';
 
 const isReady = ref(false);
@@ -67,6 +68,7 @@ onUnmounted(() => {
   // 清理全局监听器，防止内存泄漏
   streamCleanup();
   cleanupThreadWs();
+  workerCleanup();
   copilotStore.cleanup();
 });
 </script>

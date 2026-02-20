@@ -135,15 +135,28 @@ export class GatewayServer {
   }
 
   /** 关闭 GatewayServer */
-  close(): void {
-    for (const [ws, meta] of this.clients) {
-      if (meta.heartbeatTimer) clearInterval(meta.heartbeatTimer);
-      ws.close();
-    }
-    this.clients.clear();
-    this.wss?.close();
-    this.initialized = false;
-    log.info('[GatewayServer] Closed');
+  close(): Promise<void> {
+    return new Promise((resolve) => {
+      // 停止心跳并关闭所有 WebSocket 客户端
+      for (const [ws, meta] of this.clients) {
+        if (meta.heartbeatTimer) clearInterval(meta.heartbeatTimer);
+        ws.terminate(); // 使用 terminate 强制断开而不是 close()
+      }
+      this.clients.clear();
+
+      if (this.wss) {
+        // 关闭 WebSocketServer
+        this.wss.close(() => {
+          this.initialized = false;
+          log.info('[GatewayServer] Closed');
+          resolve();
+        });
+      } else {
+        this.initialized = false;
+        log.info('[GatewayServer] Closed (no WSS)');
+        resolve();
+      }
+    });
   }
 
   // ==================== WS 通信 ====================

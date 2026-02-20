@@ -160,17 +160,26 @@ describe('GatewayServer 心跳机制', () => {
     expect(ws.ping).not.toHaveBeenCalled();
   });
 
-  it('关闭 GatewayServer → 清理所有连接和心跳', () => {
+  it('关闭 GatewayServer → 清理所有连接和心跳', async () => {
     const server = createServer(5000);
     const ws1 = connect();
     const ws2 = connect();
 
     expect(server.clientCount).toBe(2);
 
-    server.close();
+    // Mock close behavior so it returns
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((server as any).wss) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (server as any).wss.close = vi.fn((cb) => {
+        if (cb) cb();
+      });
+    }
 
-    expect(ws1.close).toHaveBeenCalled();
-    expect(ws2.close).toHaveBeenCalled();
+    await server.close();
+
+    expect(ws1.terminate).toHaveBeenCalled();
+    expect(ws2.terminate).toHaveBeenCalled();
     expect(server.clientCount).toBe(0);
 
     vi.advanceTimersByTime(50_000);

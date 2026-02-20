@@ -70,6 +70,10 @@ class LayerManager {
   reset(): void {
     this.counter = this.baseZIndex;
     this.stack = [];
+    if (this.escListenerAttached && typeof document !== 'undefined') {
+      document.removeEventListener('keydown', this.handleEsc);
+      this.escListenerAttached = false;
+    }
   }
 
   /** 获取当前堆栈快照（调试用） */

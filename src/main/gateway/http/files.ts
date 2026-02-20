@@ -31,9 +31,20 @@ export interface FileTreeNode {
   children?: FileTreeNode[];
 }
 
-function isPathSafe(targetPath: string): boolean {
+function isPathSafe(targetPath: string, rootDir?: string): boolean {
   const normalized = path.normalize(targetPath);
-  return !normalized.includes('..');
+  if (normalized.includes('..')) {
+    return false;
+  }
+
+  if (rootDir) {
+    const resolved = path.resolve(targetPath);
+    const resolvedRoot = path.resolve(rootDir);
+    if (!resolved.startsWith(resolvedRoot)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 async function buildTree(dirPath: string, depth: number, currentDepth: number): Promise<FileTreeNode[]> {
@@ -86,7 +97,10 @@ export function registerFileRoutes(router: Router): void {
       return;
     }
 
-    if (!isPathSafe(dirPath)) {
+    const { Env } = await import('@main/common/env');
+    const workspacesDir = Env.paths.workspacesDir;
+
+    if (!isPathSafe(dirPath, workspacesDir)) {
       ctx.status = 400;
       ctx.body = { error: 'Invalid path: directory traversal not allowed' };
       return;
@@ -133,7 +147,10 @@ export function registerFileRoutes(router: Router): void {
       return;
     }
 
-    if (!isPathSafe(filePath)) {
+    const { Env } = await import('@main/common/env');
+    const workspacesDir = Env.paths.workspacesDir;
+
+    if (!isPathSafe(filePath, workspacesDir)) {
       ctx.status = 400;
       ctx.body = { error: 'Invalid path: directory traversal not allowed' };
       return;
