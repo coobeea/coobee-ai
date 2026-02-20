@@ -1,0 +1,6 @@
+{
+  "id": "workspace-file-watcher",
+  "name": "Workspace File Watcher",
+  "version": "1.0.0",
+  "description": "监控 Agent 工作空间文件变化并实时推送到前端"
+}
