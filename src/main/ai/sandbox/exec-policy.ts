@@ -25,9 +25,9 @@
  * @module sandbox/exec-policy
  */
 
-import fs from 'node:fs'
-import path from 'node:path'
-import { log } from '../../common/logger'
+import fs from 'node:fs';
+import path from 'node:path';
+import { log } from '../../common/logger';
 
 // ==================== 类型定义 ====================
 
@@ -35,7 +35,7 @@ import { log } from '../../common/logger'
 export type PolicyDecision =
   | { action: 'allow'; reason: string }
   | { action: 'deny'; reason: string }
-  | { action: 'ask'; reason: string }
+  | { action: 'ask'; reason: string };
 
 // ==================== 安全白名单 ====================
 
@@ -138,7 +138,7 @@ const SAFE_BINS: ReadonlySet<string> = new Set([
   'bc',
   'tee',
   'xargs'
-])
+]);
 
 // ==================== 危险命令黑名单 ====================
 
@@ -185,18 +185,18 @@ const DANGER_PATTERNS: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
   // 敏感文件访问
   { pattern: /\/etc\/shadow/i, reason: 'access /etc/shadow' },
   { pattern: /\/etc\/sudoers/i, reason: 'access /etc/sudoers' }
-]
+];
 
 // ==================== Allowlist 持久化 ====================
 
 /** allowlist 文件名（存放在 configDir 中） */
-const ALLOWLIST_FILE = 'learned-commands.json'
+const ALLOWLIST_FILE = 'learned-commands.json';
 
 /** 内存缓存（与文件保持同步） */
-let learnedAllowlist = new Set<string>()
+let learnedAllowlist = new Set<string>();
 
 /** 是否已从文件加载 */
-let loaded = false
+let loaded = false;
 
 /**
  * 获取 allowlist 文件路径
@@ -206,47 +206,47 @@ let loaded = false
 function getAllowlistPath(): string | null {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { Env } = require('../../common/config')
-    const configDir = Env?.paths?.configDir
-    return configDir ? path.join(configDir, ALLOWLIST_FILE) : null
+    const { Env } = require('../../common/env');
+    const configDir = Env?.paths?.configDir;
+    return configDir ? path.join(configDir, ALLOWLIST_FILE) : null;
   } catch {
-    return null
+    return null;
   }
 }
 
 /** 从文件加载 allowlist（启动时调用一次） */
 function loadAllowlist(): void {
-  if (loaded) return
-  loaded = true
+  if (loaded) return;
+  loaded = true;
 
-  const filePath = getAllowlistPath()
-  if (!filePath || !fs.existsSync(filePath)) return
+  const filePath = getAllowlistPath();
+  if (!filePath || !fs.existsSync(filePath)) return;
 
   try {
-    const raw = fs.readFileSync(filePath, 'utf-8')
-    const data = JSON.parse(raw)
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(raw);
     if (Array.isArray(data)) {
-      learnedAllowlist = new Set(data.filter((s: unknown) => typeof s === 'string'))
-      log.info(`[ExecPolicy] Loaded ${learnedAllowlist.size} learned commands from file`)
+      learnedAllowlist = new Set(data.filter((s: unknown) => typeof s === 'string'));
+      log.info(`[ExecPolicy] Loaded ${learnedAllowlist.size} learned commands from file`);
     }
   } catch (err) {
-    log.warn('[ExecPolicy] Failed to load learned-commands.json:', err)
+    log.warn('[ExecPolicy] Failed to load learned-commands.json:', err);
   }
 }
 
 /** 将 allowlist 同步写入文件 */
 function saveAllowlist(): void {
-  const filePath = getAllowlistPath()
-  if (!filePath) return
+  const filePath = getAllowlistPath();
+  if (!filePath) return;
 
   try {
-    const dir = path.dirname(filePath)
+    const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(filePath, JSON.stringify(Array.from(learnedAllowlist), null, 2), 'utf-8')
+    fs.writeFileSync(filePath, JSON.stringify(Array.from(learnedAllowlist), null, 2), 'utf-8');
   } catch (err) {
-    log.warn('[ExecPolicy] Failed to save learned-commands.json:', err)
+    log.warn('[ExecPolicy] Failed to save learned-commands.json:', err);
   }
 }
 
@@ -260,9 +260,9 @@ function saveAllowlist(): void {
  */
 export function checkExecPolicy(command: string): PolicyDecision {
   // 确保 allowlist 已从文件加载
-  loadAllowlist()
+  loadAllowlist();
 
-  const trimmed = command.trim()
+  const trimmed = command.trim();
 
   // 1. 黑名单检查（不可覆盖）
   for (const { pattern, reason } of DANGER_PATTERNS) {
@@ -270,19 +270,19 @@ export function checkExecPolicy(command: string): PolicyDecision {
       return {
         action: 'deny',
         reason: `Dangerous command blocked: ${reason}`
-      }
+      };
     }
   }
 
   // 2. 提取首个命令 token（处理管道、重定向等）
-  const bin = extractCommandBin(trimmed)
+  const bin = extractCommandBin(trimmed);
 
   // 3. 安全白名单
   if (bin && SAFE_BINS.has(bin)) {
     return {
       action: 'allow',
       reason: `Safe command: ${bin}`
-    }
+    };
   }
 
   // 4. 动态 allowlist（文件持久化）
@@ -290,14 +290,14 @@ export function checkExecPolicy(command: string): PolicyDecision {
     return {
       action: 'allow',
       reason: `Learned allowlist: ${bin}`
-    }
+    };
   }
 
   // 5. 未知命令 → 需要审批
   return {
     action: 'ask',
     reason: `Unknown command: ${bin || trimmed.slice(0, 50)}`
-  }
+  };
 }
 
 /**
@@ -306,12 +306,12 @@ export function checkExecPolicy(command: string): PolicyDecision {
  * 同时写入文件持久化，应用重启后仍然有效。
  */
 export function learnExecCommand(command: string): void {
-  loadAllowlist()
-  const bin = extractCommandBin(command.trim())
+  loadAllowlist();
+  const bin = extractCommandBin(command.trim());
   if (bin && !SAFE_BINS.has(bin)) {
-    learnedAllowlist.add(bin)
-    saveAllowlist()
-    log.info(`[ExecPolicy] Learned allowlist: ${bin} (persisted)`)
+    learnedAllowlist.add(bin);
+    saveAllowlist();
+    log.info(`[ExecPolicy] Learned allowlist: ${bin} (persisted)`);
   }
 }
 
@@ -319,19 +319,19 @@ export function learnExecCommand(command: string): void {
  * 获取当前动态 allowlist 内容（用于调试/显示/前端展示）
  */
 export function getLearnedAllowlist(): string[] {
-  loadAllowlist()
-  return Array.from(learnedAllowlist)
+  loadAllowlist();
+  return Array.from(learnedAllowlist);
 }
 
 /**
  * 从 allowlist 中移除指定命令
  */
 export function unlearnExecCommand(command: string): void {
-  const bin = extractCommandBin(command.trim())
+  const bin = extractCommandBin(command.trim());
   if (bin && learnedAllowlist.has(bin)) {
-    learnedAllowlist.delete(bin)
-    saveAllowlist()
-    log.info(`[ExecPolicy] Removed from allowlist: ${bin}`)
+    learnedAllowlist.delete(bin);
+    saveAllowlist();
+    log.info(`[ExecPolicy] Removed from allowlist: ${bin}`);
   }
 }
 
@@ -339,9 +339,9 @@ export function unlearnExecCommand(command: string): void {
  * 清空动态 allowlist
  */
 export function clearLearnedAllowlist(): void {
-  learnedAllowlist.clear()
-  saveAllowlist()
-  log.info('[ExecPolicy] Allowlist cleared')
+  learnedAllowlist.clear();
+  saveAllowlist();
+  log.info('[ExecPolicy] Allowlist cleared');
 }
 
 // ==================== 内部 ====================
@@ -357,22 +357,22 @@ export function clearLearnedAllowlist(): void {
  */
 function extractCommandBin(command: string): string | null {
   // 跳过环境变量赋值 (VAR=val ...)
-  let trimmed = command
+  let trimmed = command;
   while (/^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/.test(trimmed)) {
-    trimmed = trimmed.replace(/^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/, '')
+    trimmed = trimmed.replace(/^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/, '');
   }
 
   // 提取第一个 token
-  const match = trimmed.match(/^(?:\.\/)?([^\s|;&]+)/)
-  if (!match) return null
+  const match = trimmed.match(/^(?:\.\/)?([^\s|;&]+)/);
+  if (!match) return null;
 
-  let bin = match[1]
+  let bin = match[1];
 
   // 去除路径前缀（`/usr/bin/python3` → `python3`）
-  const lastSlash = bin.lastIndexOf('/')
+  const lastSlash = bin.lastIndexOf('/');
   if (lastSlash >= 0) {
-    bin = bin.slice(lastSlash + 1)
+    bin = bin.slice(lastSlash + 1);
   }
 
-  return bin || null
+  return bin || null;
 }
