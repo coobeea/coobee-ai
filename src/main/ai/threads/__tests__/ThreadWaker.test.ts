@@ -51,10 +51,12 @@ vi.mock('../CheckpointManager', () => ({
 
 // Mock AgentExecutor
 const mockSubmitViaPipeline = vi.fn().mockReturnValue({ status: 'executing', sessionId: 'test' });
+const mockClearPendingApproval = vi.fn();
 
 vi.mock('../../AgentExecutor', () => ({
   agentExecutor: {
-    submitViaPipeline: mockSubmitViaPipeline
+    submitViaPipeline: mockSubmitViaPipeline,
+    clearPendingApproval: mockClearPendingApproval
   }
 }));
 

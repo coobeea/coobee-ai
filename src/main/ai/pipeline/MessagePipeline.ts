@@ -149,6 +149,7 @@ export class MessagePipeline {
 
   private handleInterrupt(queue: SessionQueue, sessionId: string, message: string): SubmitResult {
     // 中断当前 run
+    log.info(`[MessagePipeline] Interrupting session ${sessionId}, starting new run`);
     this.abortManager.abort(sessionId);
     queue.clear();
     queue.isRunning = false;
@@ -180,6 +181,11 @@ export class MessagePipeline {
 
   private executeWithLifecycle(queue: SessionQueue, sessionId: string, message: string): void {
     queue.isRunning = true;
+    // runId 递增（Node.js 单线程，同步操作无竞态）
+    // 防御性处理：Number.MAX_SAFE_INTEGER 后重置
+    if (this.nextRunId >= Number.MAX_SAFE_INTEGER) {
+      this.nextRunId = 0;
+    }
     const runId = ++this.nextRunId;
     this.currentRunIds.set(sessionId, runId);
     const signal = this.abortManager.create(sessionId);

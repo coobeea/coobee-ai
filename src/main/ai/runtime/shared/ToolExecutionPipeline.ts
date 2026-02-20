@@ -102,7 +102,13 @@ async function executeToolCore(
       }
     }
   } catch (error) {
-    log.warn(`[ToolPipeline] before_tool_call hook failed for ${def.name}:`, error);
+    // before_tool_call Hook 失败不阻塞工具执行，但记录完整错误
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : undefined;
+    log.error(
+      `[ToolPipeline] before_tool_call hook failed for ${def.name}: ${errMsg}`,
+      errStack ? { stack: errStack } : undefined
+    );
   }
 
   // === Phase 2: sandbox toolPolicy 检查 ===
@@ -119,7 +125,15 @@ async function executeToolCore(
       };
     }
   } catch (error) {
-    log.warn(`[ToolPipeline] Sandbox policy check failed for ${def.name}:`, error);
+    // Sandbox 策略检查失败应阻止执行（安全优先）
+    const errMsg = error instanceof Error ? error.message : String(error);
+    log.error(`[ToolPipeline] Sandbox policy check failed for ${def.name}: ${errMsg}`);
+    return {
+      resultText: `Error: Sandbox policy check failed — ${errMsg}`,
+      blocked: true,
+      suspended: false,
+      blockReason: `Sandbox policy check error: ${errMsg}`
+    };
   }
 
   // === Phase 3: 执行工具 ===
@@ -187,7 +201,13 @@ async function executeToolCore(
       }
     }
   } catch (error) {
-    log.warn(`[ToolPipeline] after_tool_call / tool_result_persist hook failed for ${def.name}:`, error);
+    // after_tool_call Hook 失败不影响工具结果返回，但记录完整错误
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : undefined;
+    log.error(
+      `[ToolPipeline] after_tool_call / tool_result_persist hook failed for ${def.name}: ${errMsg}`,
+      errStack ? { stack: errStack } : undefined
+    );
   }
 
   return {
