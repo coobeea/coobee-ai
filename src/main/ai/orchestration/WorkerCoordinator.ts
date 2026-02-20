@@ -173,7 +173,9 @@ export class WorkerCoordinator implements IWorkerCoordinator {
         raw: result
       };
     } catch (error) {
-      entry.info.status = 'error';
+      // Worker 发生错误时，不要将其标记为永久 error 导致泄漏，而是重置为 idle 以便回收或重试
+      entry.info.status = 'idle';
+      entry.info.currentTaskId = undefined;
       throw error;
     } finally {
       // 销毁临时 Runtime

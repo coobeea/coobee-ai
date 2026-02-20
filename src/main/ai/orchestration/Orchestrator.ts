@@ -170,7 +170,11 @@ export class Orchestrator implements IOrchestrator {
 
       // 完成
       this.runningTasks.delete(task.id);
-      this.subTaskResults.clear();
+
+      // 清理当前任务的子任务缓存，避免误删并行运行的其他任务结果
+      for (const subTask of plan.subTasks) {
+        this.subTaskResults.delete(subTask.id);
+      }
 
       const endTime = Date.now();
       const completedCount = subTaskResults.filter((r) => r.status === 'completed').length;
@@ -196,7 +200,6 @@ export class Orchestrator implements IOrchestrator {
       };
     } catch (error: unknown) {
       this.runningTasks.delete(task.id);
-      this.subTaskResults.clear();
 
       log.error('[Orchestrator] Task failed:', error);
 

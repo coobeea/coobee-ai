@@ -14,35 +14,35 @@
  *   - submitDecision() 幂等安全（重复提交同一 index 不会重复计数）
  */
 
-import { log } from '@main/common/logger'
-import type { HitlApprovalDecision } from '@shared/stream-protocol'
+import { log } from '@main/common/logger';
+import type { HitlApprovalDecision } from '@shared/stream-protocol';
 
 // ==================== 类型定义 ====================
 
 /** 等待中的审批条目 */
 interface PendingApproval {
   /** 各工具的决策（null = 尚未决策） */
-  decisions: (HitlApprovalDecision | null)[]
+  decisions: (HitlApprovalDecision | null)[];
   /** 已提交决策的工具数量 */
-  resolvedCount: number
+  resolvedCount: number;
   /** resolve 回调（唤醒等待的 Promise） */
-  resolve: (decisions: HitlApprovalDecision[] | null) => void
+  resolve: (decisions: HitlApprovalDecision[] | null) => void;
   /** 超时计时器 */
-  timer: ReturnType<typeof setTimeout>
+  timer: ReturnType<typeof setTimeout>;
   /** 创建时间（用于调试） */
-  createdAt: number
+  createdAt: number;
 }
 
 // ==================== 常量 ====================
 
 /** 默认审批超时（120 秒，与 OpenClaw 对齐） */
-export const DEFAULT_HITL_TIMEOUT_MS = 120_000
+export const DEFAULT_HITL_TIMEOUT_MS = 120_000;
 
 // ==================== HitlApprovalManager ====================
 
 export class HitlApprovalManager {
   /** 等待中的审批请求（key = sessionId） */
-  private pending = new Map<string, PendingApproval>()
+  private pending = new Map<string, PendingApproval>();
 
   /**
    * 等待所有工具的审批决策
@@ -64,16 +64,16 @@ export class HitlApprovalManager {
     timeoutMs: number = DEFAULT_HITL_TIMEOUT_MS
   ): Promise<HitlApprovalDecision[] | null> {
     // 清理旧的 pending（如果有的话，防止泄漏）
-    this.cleanup(sessionId)
+    this.cleanup(sessionId);
 
     return new Promise<HitlApprovalDecision[] | null>((resolve) => {
-      const decisions: (HitlApprovalDecision | null)[] = new Array(count).fill(null)
+      const decisions: (HitlApprovalDecision | null)[] = new Array(count).fill(null);
 
       const timer = setTimeout(() => {
-        log.warn(`[HitlApprovalManager] Timeout: sessionId=${sessionId}, ${timeoutMs}ms elapsed`)
-        this.pending.delete(sessionId)
-        resolve(null)
-      }, timeoutMs)
+        log.warn(`[HitlApprovalManager] Timeout: sessionId=${sessionId}, ${timeoutMs}ms elapsed`);
+        this.pending.delete(sessionId);
+        resolve(null);
+      }, timeoutMs);
 
       this.pending.set(sessionId, {
         decisions,
@@ -81,12 +81,10 @@ export class HitlApprovalManager {
         resolve,
         timer,
         createdAt: Date.now()
-      })
+      });
 
-      log.info(
-        `[HitlApprovalManager] Waiting: sessionId=${sessionId}, tools=${count}, timeout=${timeoutMs}ms`
-      )
-    })
+      log.info(`[HitlApprovalManager] Waiting: sessionId=${sessionId}, tools=${count}, timeout=${timeoutMs}ms`);
+    });
   }
 
   /**
@@ -100,82 +98,82 @@ export class HitlApprovalManager {
    * @returns true = 提交成功，false = 无对应的 pending 或 index 无效
    */
   submitDecision(sessionId: string, index: number, decision: HitlApprovalDecision): boolean {
-    const entry = this.pending.get(sessionId)
+    const entry = this.pending.get(sessionId);
     if (!entry) {
-      log.warn(`[HitlApprovalManager] No pending approval: sessionId=${sessionId}`)
-      return false
+      log.warn(`[HitlApprovalManager] No pending approval: sessionId=${sessionId}`);
+      return false;
     }
 
     if (index < 0 || index >= entry.decisions.length) {
       log.warn(
         `[HitlApprovalManager] Invalid index: sessionId=${sessionId}, index=${index}, total=${entry.decisions.length}`
-      )
-      return false
+      );
+      return false;
     }
 
     // 幂等：已有决策不重复计数
     if (entry.decisions[index] !== null) {
       log.info(
         `[HitlApprovalManager] Already decided: sessionId=${sessionId}, index=${index}, replacing ${entry.decisions[index]} with ${decision}`
-      )
-      entry.decisions[index] = decision
-      return true
+      );
+      entry.decisions[index] = decision;
+      return true;
     }
 
-    entry.decisions[index] = decision
-    entry.resolvedCount++
+    entry.decisions[index] = decision;
+    entry.resolvedCount++;
 
     log.info(
       `[HitlApprovalManager] Decision: sessionId=${sessionId}, index=${index}, decision=${decision}, progress=${entry.resolvedCount}/${entry.decisions.length}`
-    )
+    );
 
     // 所有工具都有决策 → resolve Promise 唤醒执行循环
     if (entry.resolvedCount >= entry.decisions.length) {
-      clearTimeout(entry.timer)
-      this.pending.delete(sessionId)
-      entry.resolve(entry.decisions as HitlApprovalDecision[])
+      clearTimeout(entry.timer);
+      this.pending.delete(sessionId);
+      entry.resolve(entry.decisions as HitlApprovalDecision[]);
 
-      log.info(`[HitlApprovalManager] All decided: sessionId=${sessionId}, resolving`)
+      log.info(`[HitlApprovalManager] All decided: sessionId=${sessionId}, resolving`);
     }
 
-    return true
+    return true;
   }
 
   /**
    * 查询某 session 是否有等待中的审批
    */
   hasPending(sessionId: string): boolean {
-    return this.pending.has(sessionId)
+    return this.pending.has(sessionId);
   }
 
   /**
    * 获取等待中的审批信息（用于状态查询）
    */
   getPendingInfo(sessionId: string): {
-    totalCount: number
-    resolvedCount: number
-    decisions: (HitlApprovalDecision | null)[]
+    totalCount: number;
+    resolvedCount: number;
+    decisions: (HitlApprovalDecision | null)[];
   } | null {
-    const entry = this.pending.get(sessionId)
-    if (!entry) return null
+    const entry = this.pending.get(sessionId);
+    if (!entry) return null;
 
     return {
       totalCount: entry.decisions.length,
       resolvedCount: entry.resolvedCount,
       decisions: [...entry.decisions]
-    }
+    };
   }
 
   /**
    * 清理指定 session 的 pending（取消等待）
    */
   cleanup(sessionId: string): void {
-    const entry = this.pending.get(sessionId)
+    const entry = this.pending.get(sessionId);
     if (entry) {
-      clearTimeout(entry.timer)
-      this.pending.delete(sessionId)
-      entry.resolve(null)
-      log.info(`[HitlApprovalManager] Cleaned up: sessionId=${sessionId}`)
+      clearTimeout(entry.timer);
+      this.pending.delete(sessionId);
+      entry.resolve(null);
+      log.info(`[HitlApprovalManager] Cleaned up: sessionId=${sessionId}`);
     }
   }
 
@@ -183,19 +181,21 @@ export class HitlApprovalManager {
    * 清理所有 pending（关闭时调用）
    */
   cleanupAll(): void {
-    for (const [sessionId, entry] of this.pending) {
-      clearTimeout(entry.timer)
-      entry.resolve(null)
-      log.info(`[HitlApprovalManager] Cleaned up (shutdown): sessionId=${sessionId}`)
+    const pendingEntries = Array.from(this.pending.entries());
+    for (const [sessionId, entry] of pendingEntries) {
+      clearTimeout(entry.timer);
+      entry.resolve(null);
+      log.info(`[HitlApprovalManager] Cleaned up (shutdown): sessionId=${sessionId}`);
     }
-    this.pending.clear()
+    this.pending.clear();
     // 同时清理 single 模式
-    for (const [approvalId, entry] of this.singlePending) {
-      clearTimeout(entry.timer)
-      entry.resolve(null)
-      log.info(`[HitlApprovalManager] Cleaned up single (shutdown): approvalId=${approvalId}`)
+    const singleEntries = Array.from(this.singlePending.entries());
+    for (const [approvalId, entry] of singleEntries) {
+      clearTimeout(entry.timer);
+      entry.resolve(null);
+      log.info(`[HitlApprovalManager] Cleaned up single (shutdown): approvalId=${approvalId}`);
     }
-    this.singlePending.clear()
+    this.singlePending.clear();
   }
 
   // ==================== 单工具调用审批（per-call 模式） ====================
@@ -204,11 +204,11 @@ export class HitlApprovalManager {
   private singlePending = new Map<
     string,
     {
-      resolve: (decision: HitlApprovalDecision | null) => void
-      timer: ReturnType<typeof setTimeout>
-      createdAt: number
+      resolve: (decision: HitlApprovalDecision | null) => void;
+      timer: ReturnType<typeof setTimeout>;
+      createdAt: number;
     }
-  >()
+  >();
 
   /**
    * 等待单个工具调用的审批决策
@@ -224,30 +224,28 @@ export class HitlApprovalManager {
     timeoutMs: number = DEFAULT_HITL_TIMEOUT_MS
   ): Promise<HitlApprovalDecision | null> {
     // 清理旧的（如果有）
-    const old = this.singlePending.get(approvalId)
+    const old = this.singlePending.get(approvalId);
     if (old) {
-      clearTimeout(old.timer)
-      this.singlePending.delete(approvalId)
-      old.resolve(null)
+      clearTimeout(old.timer);
+      this.singlePending.delete(approvalId);
+      old.resolve(null);
     }
 
     return new Promise<HitlApprovalDecision | null>((resolve) => {
       const timer = setTimeout(() => {
-        log.warn(`[HitlApprovalManager] Single timeout: approvalId=${approvalId}, ${timeoutMs}ms`)
-        this.singlePending.delete(approvalId)
-        resolve(null)
-      }, timeoutMs)
+        log.warn(`[HitlApprovalManager] Single timeout: approvalId=${approvalId}, ${timeoutMs}ms`);
+        this.singlePending.delete(approvalId);
+        resolve(null);
+      }, timeoutMs);
 
       this.singlePending.set(approvalId, {
         resolve,
         timer,
         createdAt: Date.now()
-      })
+      });
 
-      log.info(
-        `[HitlApprovalManager] Single waiting: approvalId=${approvalId}, timeout=${timeoutMs}ms`
-      )
-    })
+      log.info(`[HitlApprovalManager] Single waiting: approvalId=${approvalId}, timeout=${timeoutMs}ms`);
+    });
   }
 
   /**
@@ -258,18 +256,18 @@ export class HitlApprovalManager {
    * @returns true = 提交成功
    */
   submitSingleDecision(approvalId: string, decision: HitlApprovalDecision): boolean {
-    const entry = this.singlePending.get(approvalId)
+    const entry = this.singlePending.get(approvalId);
     if (!entry) {
-      log.warn(`[HitlApprovalManager] No single pending: approvalId=${approvalId}`)
-      return false
+      log.warn(`[HitlApprovalManager] No single pending: approvalId=${approvalId}`);
+      return false;
     }
 
-    clearTimeout(entry.timer)
-    this.singlePending.delete(approvalId)
-    entry.resolve(decision)
+    clearTimeout(entry.timer);
+    this.singlePending.delete(approvalId);
+    entry.resolve(decision);
 
-    log.info(`[HitlApprovalManager] Single decided: approvalId=${approvalId}, decision=${decision}`)
-    return true
+    log.info(`[HitlApprovalManager] Single decided: approvalId=${approvalId}, decision=${decision}`);
+    return true;
   }
 
   /**
@@ -277,16 +275,16 @@ export class HitlApprovalManager {
    */
   cleanupSession(sessionId: string): void {
     // 清理 batch 模式
-    this.cleanup(sessionId)
+    this.cleanup(sessionId);
 
     // 清理 single 模式（前缀匹配 sessionId:*）
-    const prefix = `${sessionId}:`
+    const prefix = `${sessionId}:`;
     for (const [approvalId, entry] of this.singlePending) {
       if (approvalId.startsWith(prefix)) {
-        clearTimeout(entry.timer)
-        this.singlePending.delete(approvalId)
-        entry.resolve(null)
-        log.info(`[HitlApprovalManager] Cleaned up single: approvalId=${approvalId}`)
+        clearTimeout(entry.timer);
+        this.singlePending.delete(approvalId);
+        entry.resolve(null);
+        log.info(`[HitlApprovalManager] Cleaned up single: approvalId=${approvalId}`);
       }
     }
   }
@@ -295,10 +293,10 @@ export class HitlApprovalManager {
    * 查询某 approvalId 是否有等待中的单工具审批
    */
   hasSinglePending(approvalId: string): boolean {
-    return this.singlePending.has(approvalId)
+    return this.singlePending.has(approvalId);
   }
 }
 
 // ==================== 单例导出 ====================
 
-export const hitlApprovalManager = new HitlApprovalManager()
+export const hitlApprovalManager = new HitlApprovalManager();

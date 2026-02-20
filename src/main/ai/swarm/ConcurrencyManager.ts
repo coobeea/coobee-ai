@@ -189,7 +189,6 @@ export class ConcurrencyManager {
     try {
       const result = await runtime.run(input);
       const completedAt = Date.now();
-      this.runningCount--;
 
       this.emitEvent({
         type: 'task_completed',
@@ -210,7 +209,6 @@ export class ConcurrencyManager {
       };
     } catch (error) {
       const completedAt = Date.now();
-      this.runningCount--;
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       this.emitEvent({
@@ -231,6 +229,8 @@ export class ConcurrencyManager {
         startedAt,
         completedAt
       };
+    } finally {
+      this.runningCount--;
     }
   }
 
