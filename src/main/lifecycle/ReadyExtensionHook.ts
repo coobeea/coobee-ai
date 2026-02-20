@@ -31,15 +31,15 @@ export const ReadyExtensionHook: LifecycleHook = {
       const { ToolRegistry } = await import('@main/ai/tools/registry');
       const { eventBus } = await import('@main/common/eventbus');
 
-      // 1. 获取搜索路径
-      const searchPaths = await Env.getExtensionSearchPaths();
+      // 1. 获取全局搜索路径（只加载 builtin 和 user Extension）
+      const globalSearchPaths = [Env.paths.builtinExtensionsDir, Env.paths.userExtensionsDir];
 
       // 2. 创建注册中心和加载器（传递 eventBus 引用）
       const registry = new ExtensionRegistry();
       const loader = new ExtensionLoader(registry, eventBus);
 
-      // 3. 加载所有 Extension
-      await loader.loadAll(searchPaths);
+      // 3. 加载全局 Extension（任务级 Extension 由 AgentExecutor 动态加载）
+      await loader.loadAll(globalSearchPaths);
 
       // 4. 将 Extension 工具注入 ToolRegistry
       for (const { tool } of registry.getTools()) {
@@ -50,11 +50,11 @@ export const ReadyExtensionHook: LifecycleHook = {
         }
       }
 
-      // 5. 初始化全局管理器
-      ExtensionManager.initialize(registry);
+      // 5. 初始化全局管理器（传递 loader 引用，用于动态加载任务级 Extension）
+      ExtensionManager.initialize(registry, loader);
 
-      // 6. 启动 fs.watch 热插拔
-      loader.watch(searchPaths);
+      // 6. 启动 fs.watch 热插拔（只监听全局目录）
+      loader.watch(globalSearchPaths);
       activeLoader = loader;
 
       const extIds = registry.getExtensionIds();

@@ -421,6 +421,15 @@ class AgentExecutor {
 
     let eventWriter: AgentEventWriter | null = null;
 
+    // 加载任务级 Extension（如果存在）
+    const { ExtensionManager } = await import('@main/common/extension');
+    const loader = ExtensionManager.getLoader?.();
+    if (loader) {
+      await loader.loadWorkspaceExtensions(sessionId).catch((err) => {
+        log.warn(`[AgentExecutor] Failed to load workspace extensions for ${sessionId}:`, err);
+      });
+    }
+
     try {
       // 0. 注入运行时环境
       const workspace = await injectEnv(sessionId, builder);
@@ -474,6 +483,15 @@ class AgentExecutor {
       await this.destroyRuntime(runtime);
       runtime = null;
       this.busySessions.delete(sessionId);
+
+      // 卸载任务级 Extension
+      const { ExtensionManager } = await import('@main/common/extension');
+      const loader = ExtensionManager.getLoader?.();
+      if (loader) {
+        await loader.unloadWorkspaceExtensions(sessionId).catch((err) => {
+          log.warn(`[AgentExecutor] Failed to unload workspace extensions for ${sessionId}:`, err);
+        });
+      }
     }
   }
 
@@ -834,6 +852,15 @@ class AgentExecutor {
 
     let eventWriter: AgentEventWriter | null = null;
 
+    // 加载任务级 Extension（如果存在）
+    const { ExtensionManager } = await import('@main/common/extension');
+    const loader = ExtensionManager.getLoader?.();
+    if (loader) {
+      await loader.loadWorkspaceExtensions(sessionId).catch((err) => {
+        log.warn(`[AgentExecutor] Failed to load workspace extensions for ${sessionId}:`, err);
+      });
+    }
+
     try {
       if (request.runtime) {
         // === 预构建 Runtime 路径（Orchestrator / Swarm） ===
@@ -894,6 +921,13 @@ class AgentExecutor {
       SkillManager.clearSession(sessionId);
       await this.destroyRuntime(runtime);
       runtime = null;
+
+      // 卸载任务级 Extension (loader 来自 execute() 开始时的导入)
+      if (loader) {
+        await loader.unloadWorkspaceExtensions(sessionId).catch((err) => {
+          log.warn(`[AgentExecutor] Failed to unload workspace extensions for ${sessionId}:`, err);
+        });
+      }
     }
   }
 

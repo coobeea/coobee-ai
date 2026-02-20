@@ -26,6 +26,8 @@ export class ExtensionLoader {
   private loadedExtensions = new Map<string, string>();
   /** extensionId → Extension 模块实例（用于调用 unregister） */
   private loadedModules = new Map<string, ExtensionModule>();
+  /** threadId → 该任务加载的 workspace Extension ID 列表 */
+  private workspaceExtensions = new Map<string, string[]>();
   /** fs.watch 返回的 watcher 列表 */
   private watchers: fs.FSWatcher[] = [];
   /** 防抖定时器 */
@@ -280,6 +282,78 @@ export class ExtensionLoader {
    */
   getLoadedIds(): string[] {
     return [...this.loadedExtensions.keys()];
+  }
+
+  /**
+   * 加载任务级 Extension
+   *
+   * 在 Agent 任务启动时调用，只加载该任务 workspace 下的 Extension。
+   *
+   * @param threadId 任务 ID (thread ID)
+   */
+  async loadWorkspaceExtensions(threadId: string): Promise<void> {
+    const { Env } = await import('@main/common/env');
+    const workspace = await Env.getAgentWorkspaceDir(threadId);
+    const workspaceExtDir = path.join(workspace, 'extensions');
+
+    // 如果目录不存在，直接返回
+    if (!fs.existsSync(workspaceExtDir)) {
+      return;
+    }
+
+    const loadedIds: string[] = [];
+
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(workspaceExtDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const extDir = path.join(workspaceExtDir, entry.name);
+
+      // 记录加载前的 Extension ID（用于追踪新加载的）
+      const beforeIds = new Set(this.loadedExtensions.keys());
+
+      await this.load(extDir, 'workspace');
+
+      // 找出新加载的 Extension ID
+      for (const id of this.loadedExtensions.keys()) {
+        if (!beforeIds.has(id)) {
+          loadedIds.push(id);
+        }
+      }
+    }
+
+    if (loadedIds.length > 0) {
+      this.workspaceExtensions.set(threadId, loadedIds);
+      log.info(
+        `[ExtensionLoader] Loaded ${loadedIds.length} workspace extension(s) for thread ${threadId}: ${loadedIds.join(', ')}`
+      );
+    }
+  }
+
+  /**
+   * 卸载任务级 Extension
+   *
+   * 在 Agent 任务完成/出错时调用，清理该任务的 Extension。
+   *
+   * @param threadId 任务 ID (thread ID)
+   */
+  async unloadWorkspaceExtensions(threadId: string): Promise<void> {
+    const extensionIds = this.workspaceExtensions.get(threadId);
+    if (!extensionIds || extensionIds.length === 0) {
+      return;
+    }
+
+    for (const extensionId of extensionIds) {
+      await this.unload(extensionId);
+    }
+
+    this.workspaceExtensions.delete(threadId);
+    log.info(`[ExtensionLoader] Unloaded ${extensionIds.length} workspace extension(s) for thread ${threadId}`);
   }
 
   // ---- 内部方法 ----
