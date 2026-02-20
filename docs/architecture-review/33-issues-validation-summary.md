@@ -17,16 +17,16 @@
 
 ## P0 级问题现况
 
-| ID     | 描述                                 | 状态     | 证据/位置                                              | 后续动作                                    |
-| ------ | ------------------------------------ | -------- | ------------------------------------------------------ | ------------------------------------------- |
-| F-P0-1 | GatewayClient WebSocket 监听器泄漏   | 未修复   | `useStreamWs.ts` 未见清理调用                          | 在 App 级增加 cleanup 并验证会话切换场景    |
-| F-P0-2 | Copilot onConnect 监听器泄漏         | 未修复   | `copilot.ts` 未持久化取消函数                          | 参照建议添加 cleanup                        |
-| F-P0-3 | streamCleanup/cleanupThreadWs 未调用 | 未修复   | `App.vue` 无调用                                       | 在根组件 onUnmounted 调用                   |
-| B-P0-1 | MessagePipeline runId 竞态           | 部分修复 | `MessagePipeline.ts` 增加溢出重置，但无原子保证        | 补充锁/单线程保证说明与测试                 |
-| B-P0-2 | pendingApprovalSessions 无 TTL       | 已修复   | `AgentExecutor.ts` Map+TTL 清理（e02d9cd）             | 补回归测试覆盖                              |
-| M-P0-1 | 前端无 Orchestrator/Swarm 入口       | 部分修复 | AgentView 新增模式选择；需确认 chat.send 传递/后端消费 | 验证 mode 贯通并补 UI 流程测试              |
-| M-P0-2 | 子 Agent 审批无法处理                | 未修复   | 前端仍仅订阅主 thread                                  | 选择方案并实现（订阅子 session 或后端转发） |
-| T-P0-1 | tool-approval Extension 无测试       | 未修复   | 未新增测试目录                                         | 按场景补集成测试                            |
+| ID     | 描述                                 | 状态     | 证据/位置                                                                         | 后续动作                                    |
+| ------ | ------------------------------------ | -------- | --------------------------------------------------------------------------------- | ------------------------------------------- |
+| F-P0-1 | GatewayClient WebSocket 监听器泄漏   | 已修复   | `useStreamWs.streamCleanup` + `App.vue onUnmounted` 调用                          | 会话切换/窗口关闭场景回归                   |
+| F-P0-2 | Copilot onConnect 监听器泄漏         | 已修复   | `copilot.ts` 保存/清理 unregisterConnect，`App.vue` 调用 `copilotStore.cleanup()` | 补充监听泄漏单测（可选）                    |
+| F-P0-3 | streamCleanup/cleanupThreadWs 未调用 | 已修复   | `App.vue onUnmounted` 调用 `streamCleanup` 与 `cleanupThreadWs`                   | 做关闭/重启场景回归                         |
+| B-P0-1 | MessagePipeline runId 竞态           | 部分修复 | `MessagePipeline.ts` 溢出重置；仍缺锁/原子保证                                    | 补充锁/单线程保证说明与测试                 |
+| B-P0-2 | pendingApprovalSessions 无 TTL       | 已修复   | `AgentExecutor.ts` Map+TTL 清理（e02d9cd）                                        | 补回归测试覆盖                              |
+| M-P0-1 | 前端无 Orchestrator/Swarm 入口       | 已修复   | AgentView 模式选择 + `threadsStore` / `chatStore` 传递 `mode`                     | 补前端端到端用例                            |
+| M-P0-2 | 子 Agent 审批无法处理                | 未修复   | 前端仍仅订阅主 thread                                                             | 选择方案并实现（订阅子 session 或后端转发） |
+| T-P0-1 | tool-approval Extension 无测试       | 未修复   | 未新增测试目录                                                                    | 按场景补集成测试                            |
 
 ---
 
@@ -62,12 +62,11 @@
 
 ## 优先级行动清单（按紧急度）
 
-1. 补齐前端资源泄漏 P0（F-P0-1~3）并做快速回归。
-2. 验证并贯通 Orchestrator/Swarm 端到端流（前端选择 → chat.send → 后端 runtime）。
-3. 解决子 Agent 审批阻塞（选择订阅或转发方案）。
-4. 补 tool-approval 关键测试；为新增 TTL/计数器清理补单测。
-5. MessagePipeline 竞态加锁或测试验证单线程安全；consume abort 改进。
-6. 建立最小 CI（lint+typecheck+核心测试）。
+1. 验证并贯通 Orchestrator/Swarm 端到端流（前端选择 → chat.send → 后端 runtime）。
+2. 解决子 Agent 审批阻塞（选择订阅或转发方案）。
+3. 补 tool-approval 关键测试；为新增 TTL/计数器清理补单测。
+4. MessagePipeline 竞态加锁或测试验证单线程安全；consume abort 改进。
+5. 建立最小 CI（lint+typecheck+核心测试）。
 
 ---
 
