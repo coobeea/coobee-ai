@@ -32,7 +32,7 @@ export type ExtensionOrigin = 'builtin' | 'user' | 'workspace';
 export interface ExtensionModule {
   id: string;
   name: string;
-  register: (api: ExtensionApi) => void;
+  register: (api: ExtensionApi) => void | Promise<void>;
 }
 
 /** Extension 日志 */
@@ -41,6 +41,13 @@ export interface ExtensionLogger {
   warn(msg: string, ...args: unknown[]): void;
   error(msg: string, ...args: unknown[]): void;
   debug(msg: string, ...args: unknown[]): void;
+}
+
+/** Extension EventBus 接口 */
+export interface ExtensionEventBus {
+  on<T = unknown>(event: string, handler: (data: T) => void): void;
+  off<T = unknown>(event: string, handler: (data: T) => void): void;
+  emit<T = unknown>(event: string, data: T): void;
 }
 
 // ==================== ExtensionApi ====================
@@ -89,6 +96,13 @@ export interface ExtensionApi {
    * 而非直接 import 内部模块路径。
    */
   services: ExtensionServices;
+
+  /**
+   * EventBus 接口（延迟加载）
+   *
+   * 避免 Extension 直接 import eventbus，防止触发 env/logger 初始化链。
+   */
+  eventBus: ExtensionEventBus;
 
   /** 注册工具 */
   registerTool(tool: ToolDefinition): void;

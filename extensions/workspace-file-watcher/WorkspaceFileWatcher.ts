@@ -20,11 +20,24 @@
 
 import { watch, type FSWatcher } from 'chokidar';
 import path from 'node:path';
-import { eventBus } from '../../src/main/common/eventbus';
-import { createLogger } from '../../src/main/common/logger';
-import { StreamEventType, type StreamEvent } from '../../src/main/ai/streaming/types';
+import type { StreamEvent } from '../../src/main/ai/streaming/types';
+import type { ExtensionLogger, ExtensionEventBus } from '../../src/main/common/extension';
 
-const log = createLogger('workspace-file-watcher');
+// Lazy imports to avoid module initialization issues with jiti
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let StreamEventType: any;
+let log: ExtensionLogger;
+let eventBus: ExtensionEventBus;
+
+async function initDeps(logger: ExtensionLogger, bus: ExtensionEventBus): Promise<void> {
+  if (StreamEventType) return;
+
+  log = logger;
+  eventBus = bus;
+
+  const streamingModule = await import('../../src/main/ai/streaming/types');
+  StreamEventType = streamingModule.StreamEventType;
+}
 
 /** 单个监控实例 */
 interface WatcherInstance {
@@ -87,8 +100,11 @@ export class WorkspaceFileWatcher {
   /**
    * 启动监听 EventBus 事件
    */
-  start(): void {
+  async start(logger: ExtensionLogger, bus: ExtensionEventBus): Promise<void> {
     if (this.listening) return;
+
+    // Initialize dependencies
+    await initDeps(logger, bus);
 
     // 监听 stream:message 事件（任何 chunk → 续期）
     eventBus.on(StreamEventType.MESSAGE, this.handleStreamMessage.bind(this));

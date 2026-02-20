@@ -9,26 +9,18 @@ import os from 'os';
 import path from 'path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-const mockLog = vi.hoisted(() => ({
+const mockLogger = {
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
   debug: vi.fn()
-}));
+};
 
-vi.mock('../../../src/main/common/logger', () => ({
-  createLogger: () => mockLog
-}));
-
-const mockEventBus = vi.hoisted(() => ({
+const mockEventBus = {
   on: vi.fn(),
   off: vi.fn(),
   emit: vi.fn()
-}));
-
-vi.mock('../../../src/main/common/eventbus', () => ({
-  eventBus: mockEventBus
-}));
+};
 
 // Mock Env with real temp dir
 let mockWorkspacesDir: string;
@@ -73,18 +65,18 @@ describe('WorkspaceFileWatcher', () => {
   // ========== 生命周期 ==========
 
   describe('start / stop', () => {
-    it('start 注册 EventBus 监听器', () => {
+    it('start 注册 EventBus 监听器', async () => {
       const watcher = WorkspaceFileWatcher.getInstance();
-      watcher.start();
+      await watcher.start(mockLogger, mockEventBus);
 
       expect(mockEventBus.on).toHaveBeenCalledWith(StreamEventType.MESSAGE, expect.any(Function));
       expect(mockEventBus.on).toHaveBeenCalledWith(StreamEventType.END, expect.any(Function));
       expect(mockEventBus.on).toHaveBeenCalledWith(StreamEventType.ERROR, expect.any(Function));
     });
 
-    it('stop 移除监听器并清理所有监控', () => {
+    it('stop 移除监听器并清理所有监控', async () => {
       const watcher = WorkspaceFileWatcher.getInstance();
-      watcher.start();
+      await watcher.start(mockLogger, mockEventBus);
       watcher.stop();
 
       expect(mockEventBus.off).toHaveBeenCalledWith(StreamEventType.MESSAGE, expect.any(Function));
@@ -98,7 +90,7 @@ describe('WorkspaceFileWatcher', () => {
   describe('handleStreamMessage', () => {
     it('首次 stream:message 启动监控', async () => {
       const watcher = WorkspaceFileWatcher.getInstance();
-      watcher.start();
+      await watcher.start(mockLogger, mockEventBus);
 
       // Create thread workspace directory
       const threadDir = path.join(mockWorkspacesDir, 'thread-1');
@@ -117,7 +109,7 @@ describe('WorkspaceFileWatcher', () => {
 
     it('跳过子 Agent sessionId（含 ":"）', async () => {
       const watcher = WorkspaceFileWatcher.getInstance();
-      watcher.start();
+      await watcher.start(mockLogger, mockEventBus);
 
       const handler = mockEventBus.on.mock.calls.find((call) => call[0] === StreamEventType.MESSAGE)?.[1];
 
@@ -133,7 +125,7 @@ describe('WorkspaceFileWatcher', () => {
   describe('handleStreamEnd / handleStreamError', () => {
     it('stream:end 停止监控', async () => {
       const watcher = WorkspaceFileWatcher.getInstance();
-      watcher.start();
+      await watcher.start(mockLogger, mockEventBus);
 
       const threadDir = path.join(mockWorkspacesDir, 'thread-1');
       fs.mkdirSync(threadDir, { recursive: true });
@@ -155,7 +147,7 @@ describe('WorkspaceFileWatcher', () => {
 
     it('stream:error 停止监控', async () => {
       const watcher = WorkspaceFileWatcher.getInstance();
-      watcher.start();
+      await watcher.start(mockLogger, mockEventBus);
 
       const threadDir = path.join(mockWorkspacesDir, 'thread-1');
       fs.mkdirSync(threadDir, { recursive: true });
@@ -181,7 +173,7 @@ describe('WorkspaceFileWatcher', () => {
   describe('file change events', () => {
     it('文件变化 → 去抖 300ms → 批量推送', async () => {
       const watcher = WorkspaceFileWatcher.getInstance({ debounceMs: 300 });
-      watcher.start();
+      await watcher.start(mockLogger, mockEventBus);
 
       const threadDir = path.join(mockWorkspacesDir, 'thread-1');
       fs.mkdirSync(threadDir, { recursive: true });
@@ -213,7 +205,7 @@ describe('WorkspaceFileWatcher', () => {
   describe('multi-task isolation', () => {
     it('多个任务独立监控，互不干扰', async () => {
       const watcher = WorkspaceFileWatcher.getInstance();
-      watcher.start();
+      await watcher.start(mockLogger, mockEventBus);
 
       const thread1Dir = path.join(mockWorkspacesDir, 'thread-1');
       const thread2Dir = path.join(mockWorkspacesDir, 'thread-2');
@@ -247,7 +239,7 @@ describe('WorkspaceFileWatcher', () => {
   describe('stopAll', () => {
     it('stopAll 清理所有监控', async () => {
       const watcher = WorkspaceFileWatcher.getInstance();
-      watcher.start();
+      await watcher.start(mockLogger, mockEventBus);
 
       const thread1Dir = path.join(mockWorkspacesDir, 'thread-1');
       const thread2Dir = path.join(mockWorkspacesDir, 'thread-2');

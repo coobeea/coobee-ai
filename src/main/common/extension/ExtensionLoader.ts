@@ -12,7 +12,7 @@ import path from 'node:path';
 import { createJiti } from 'jiti';
 import { createLogger } from '@main/common/logger';
 import { ExtensionRegistry } from './ExtensionRegistry';
-import { createExtensionApi } from './ExtensionApi';
+import { createExtensionApi, createEventBusWrapper } from './ExtensionApi';
 import type { ExtensionManifest, ExtensionModule, ExtensionOrigin } from './types';
 
 const jiti = createJiti(import.meta.url);
@@ -30,8 +30,17 @@ export class ExtensionLoader {
   private debounceTimers = new Map<string, NodeJS.Timeout>();
   /** searchPath → origin 映射（loadAll 时记录） */
   private pathOrigins = new Map<string, ExtensionOrigin>();
+  /** 共享的 EventBus 引用（传递给 Extension，避免它们自己导入） */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private eventBusRef?: any;
 
-  constructor(private registry: ExtensionRegistry) {}
+  constructor(
+    private registry: ExtensionRegistry,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    eventBusRef?: any
+  ) {
+    this.eventBusRef = eventBusRef;
+  }
 
   /**
    * 扫描多级目录，加载所有 Extension
@@ -142,10 +151,11 @@ export class ExtensionLoader {
         return;
       }
 
-      // 调用 register
-      const api = createExtensionApi(manifest.id, manifest.name, origin, this.registry);
+      // 调用 register（支持异步）
+      const eventBusApi = this.eventBusRef ? createEventBusWrapper(this.eventBusRef) : undefined;
+      const api = createExtensionApi(manifest.id, manifest.name, origin, this.registry, eventBusApi);
       try {
-        mod.register(api);
+        await mod.register(api);
       } catch (err) {
         log.error(`[ExtensionLoader] register() failed for "${manifest.id}":`, err);
         // 注册失败，清理已注册的内容

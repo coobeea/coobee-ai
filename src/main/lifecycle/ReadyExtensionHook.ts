@@ -10,11 +10,11 @@
  * 前置条件：Gateway 已初始化（由 ReadyGatewayHook 完成）
  */
 
-import { LifecyclePhase, type LifecycleContext, type LifecycleHook } from '@main/common/types'
-import { log } from '@main/common/logger'
+import { LifecyclePhase, type LifecycleContext, type LifecycleHook } from '@main/common/types';
+import { log } from '@main/common/logger';
 
 /** 模块级引用，供退出时清理 */
-let activeLoader: { stopWatch(): void } | null = null
+let activeLoader: { stopWatch(): void } | null = null;
 
 export const ReadyExtensionHook: LifecycleHook = {
   name: 'ready-extension',
@@ -23,49 +23,47 @@ export const ReadyExtensionHook: LifecycleHook = {
   critical: false, // Extension 加载失败不阻止应用启动
 
   async execute(_context: LifecycleContext): Promise<void> {
-    log.info('[ReadyExtensionHook] Initializing Extension system...')
+    log.info('[ReadyExtensionHook] Initializing Extension system...');
 
     try {
-      const { Env } = await import('@main/common/env')
-      const { ExtensionRegistry, ExtensionLoader, ExtensionManager } =
-        await import('@main/common/extension')
-      const { ToolRegistry } = await import('@main/ai/tools/registry')
+      const { Env } = await import('@main/common/env');
+      const { ExtensionRegistry, ExtensionLoader, ExtensionManager } = await import('@main/common/extension');
+      const { ToolRegistry } = await import('@main/ai/tools/registry');
+      const { eventBus } = await import('@main/common/eventbus');
 
       // 1. 获取搜索路径
-      const searchPaths = await Env.getExtensionSearchPaths()
+      const searchPaths = await Env.getExtensionSearchPaths();
 
-      // 2. 创建注册中心和加载器
-      const registry = new ExtensionRegistry()
-      const loader = new ExtensionLoader(registry)
+      // 2. 创建注册中心和加载器（传递 eventBus 引用）
+      const registry = new ExtensionRegistry();
+      const loader = new ExtensionLoader(registry, eventBus);
 
       // 3. 加载所有 Extension
-      await loader.loadAll(searchPaths)
+      await loader.loadAll(searchPaths);
 
       // 4. 将 Extension 工具注入 ToolRegistry
       for (const { tool } of registry.getTools()) {
         try {
-          ToolRegistry.getInstance().register(tool)
+          ToolRegistry.getInstance().register(tool);
         } catch (err) {
-          log.warn(`[ReadyExtensionHook] Failed to register extension tool "${tool.name}":`, err)
+          log.warn(`[ReadyExtensionHook] Failed to register extension tool "${tool.name}":`, err);
         }
       }
 
       // 5. 初始化全局管理器
-      ExtensionManager.initialize(registry)
+      ExtensionManager.initialize(registry);
 
       // 6. 启动 fs.watch 热插拔
-      loader.watch(searchPaths)
-      activeLoader = loader
+      loader.watch(searchPaths);
+      activeLoader = loader;
 
-      const extIds = registry.getExtensionIds()
-      log.info(
-        `[ReadyExtensionHook] Extension system initialized — ${extIds.length} extensions loaded`
-      )
+      const extIds = registry.getExtensionIds();
+      log.info(`[ReadyExtensionHook] Extension system initialized — ${extIds.length} extensions loaded`);
     } catch (error) {
-      log.error('[ReadyExtensionHook] Failed to initialize Extension system:', error)
+      log.error('[ReadyExtensionHook] Failed to initialize Extension system:', error);
     }
   }
-}
+};
 
 /**
  * 退出时停止 Extension 文件监听
@@ -78,9 +76,9 @@ export const BeforeQuitExtensionHook: LifecycleHook = {
 
   async execute(): Promise<void> {
     if (activeLoader) {
-      activeLoader.stopWatch()
-      activeLoader = null
-      log.info('[BeforeQuitExtensionHook] Extension watchers stopped')
+      activeLoader.stopWatch();
+      activeLoader = null;
+      log.info('[BeforeQuitExtensionHook] Extension watchers stopped');
     }
   }
-}
+};

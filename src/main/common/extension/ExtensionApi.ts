@@ -5,27 +5,28 @@
  * 包含 services 属性提供解耦的系统服务访问。
  */
 
-import { ExtensionRegistry } from './ExtensionRegistry'
+import { ExtensionRegistry } from './ExtensionRegistry';
 import type {
   ExtensionApi,
   ExtensionOrigin,
   ExtensionLogger,
   ExtensionServices,
+  ExtensionEventBus,
   ExtensionHookName,
   ExtensionHookHandler
-} from './types'
+} from './types';
 
 /**
  * 创建 Extension 专属日志器
  */
 function createExtensionLogger(extensionId: string): ExtensionLogger {
-  const prefix = `[Extension:${extensionId}]`
+  const prefix = `[Extension:${extensionId}]`;
   return {
     info: (msg, ...args) => console.log(prefix, msg, ...args),
     warn: (msg, ...args) => console.warn(prefix, msg, ...args),
     error: (msg, ...args) => console.error(prefix, msg, ...args),
     debug: (msg, ...args) => console.debug(prefix, msg, ...args)
-  }
+  };
 }
 
 /**
@@ -35,7 +36,8 @@ export function createExtensionApi(
   extensionId: string,
   name: string,
   origin: ExtensionOrigin,
-  registry: ExtensionRegistry
+  registry: ExtensionRegistry,
+  bus?: ExtensionEventBus
 ): ExtensionApi {
   return {
     id: extensionId,
@@ -43,25 +45,55 @@ export function createExtensionApi(
     origin,
     logger: createExtensionLogger(extensionId),
     services: createExtensionServices(),
+    eventBus: bus || createEventBusWrapper(null),
     registerTool(tool) {
-      registry.registerTool(extensionId, tool)
+      registry.registerTool(extensionId, tool);
     },
-    on<K extends ExtensionHookName>(
-      hookName: K,
-      handler: ExtensionHookHandler<K>,
-      opts?: { priority?: number }
-    ) {
+    on<K extends ExtensionHookName>(hookName: K, handler: ExtensionHookHandler<K>, opts?: { priority?: number }) {
       registry.registerHook<K>({
         extensionId,
         hookName,
         handler,
         priority: opts?.priority ?? 0
-      })
+      });
     },
     registerGatewayMethod(method, handler) {
-      registry.registerGatewayMethod(extensionId, method, handler)
+      registry.registerGatewayMethod(extensionId, method, handler);
     }
+  };
+}
+
+/**
+ * 创建 Extension EventBus 包装器
+ *
+ * 将系统 EventBus 包装为 ExtensionEventBus 接口。
+ * 由 ReadyExtensionHook 在 app 就绪后导入并传递。
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createEventBusWrapper(bus: any): ExtensionEventBus {
+  if (!bus) {
+    // Fallback：如果未提供 eventBus，返回 no-op 实现
+    return {
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      on() {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      off() {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      emit() {}
+    };
   }
+
+  return {
+    on(event, handler) {
+      bus.on(event, handler);
+    },
+    off(event, handler) {
+      bus.off(event, handler);
+    },
+    emit(event, data) {
+      bus.emit(event, data);
+    }
+  };
 }
 
 /**
@@ -74,18 +106,18 @@ function createExtensionServices(): ExtensionServices {
   return {
     hitl: {
       async waitForSingleDecision(approvalId, timeoutMs) {
-        const { hitlApprovalManager } = await import('../../ai/hitl/HitlApprovalManager')
-        return hitlApprovalManager.waitForSingleDecision(approvalId, timeoutMs)
+        const { hitlApprovalManager } = await import('../../ai/hitl/HitlApprovalManager');
+        return hitlApprovalManager.waitForSingleDecision(approvalId, timeoutMs);
       },
       submitSingleDecision(approvalId, decision) {
         // 同步版本 — 需要 top-level await 或者调用方已确保模块加载
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { hitlApprovalManager } = require('../../ai/hitl/HitlApprovalManager')
-        return hitlApprovalManager.submitSingleDecision(approvalId, decision)
+        const { hitlApprovalManager } = require('../../ai/hitl/HitlApprovalManager');
+        return hitlApprovalManager.submitSingleDecision(approvalId, decision);
       },
       async cleanupSession(sessionId) {
-        const { hitlApprovalManager } = await import('../../ai/hitl/HitlApprovalManager')
-        hitlApprovalManager.cleanupSession(sessionId)
+        const { hitlApprovalManager } = await import('../../ai/hitl/HitlApprovalManager');
+        hitlApprovalManager.cleanupSession(sessionId);
       }
     },
     events: {
@@ -94,12 +126,12 @@ function createExtensionServices(): ExtensionServices {
         // 不再需要手动同时调用 StreamEmitter 和 EventWriter
         import('../../ai/AgentEventWriter')
           .then(({ AgentEventWriter }) => {
-            AgentEventWriter.dispatchForSession(sessionId, chunk as never)
+            AgentEventWriter.dispatchForSession(sessionId, chunk as never);
           })
           .catch(() => {
             // 分发失败不阻断
-          })
+          });
       }
     }
-  }
+  };
 }

@@ -11,14 +11,14 @@ export const extension: ExtensionModule = {
   id: 'workspace-file-watcher',
   name: 'Workspace File Watcher',
 
-  register(api) {
-    const { logger } = api;
+  async register(api) {
+    const { logger, eventBus } = api;
 
     logger.info('Initializing Workspace File Watcher...');
 
     // 初始化并启动监控
     const watcher = WorkspaceFileWatcher.getInstance();
-    watcher.start();
+    await watcher.start(logger, eventBus);
 
     logger.info('Workspace File Watcher started successfully');
 
