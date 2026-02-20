@@ -33,6 +33,8 @@ export interface ExtensionModule {
   id: string;
   name: string;
   register: (api: ExtensionApi) => void | Promise<void>;
+  /** 可选的卸载回调（热重载或应用退出时调用） */
+  unregister?: () => void | Promise<void>;
 }
 
 /** Extension 日志 */

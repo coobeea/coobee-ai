@@ -76,6 +76,13 @@ export class WorkspaceFileWatcher {
   /** 是否已启动监听 EventBus */
   private listening = false;
 
+  /** 保存 bound 函数引用，用于正确移除 EventBus 监听器 */
+  private boundHandlers = {
+    message: null as ((event: StreamEvent) => Promise<void>) | null,
+    end: null as ((event: StreamEvent) => void) | null,
+    error: null as ((event: StreamEvent) => void) | null
+  };
+
   private constructor(options?: WatcherOptions) {
     this.keepaliveTimeout = options?.keepaliveTimeout ?? 60_000; // 60s
     this.debounceMs = options?.debounceMs ?? 300; // 300ms
@@ -106,12 +113,17 @@ export class WorkspaceFileWatcher {
     // Initialize dependencies
     await initDeps(logger, bus);
 
+    // 创建 bound 函数引用（保证 on/off 使用相同引用）
+    this.boundHandlers.message = this.handleStreamMessage.bind(this);
+    this.boundHandlers.end = this.handleStreamEnd.bind(this);
+    this.boundHandlers.error = this.handleStreamError.bind(this);
+
     // 监听 stream:message 事件（任何 chunk → 续期）
-    eventBus.on(StreamEventType.MESSAGE, this.handleStreamMessage.bind(this));
+    eventBus.on(StreamEventType.MESSAGE, this.boundHandlers.message);
 
     // 监听 stream:end / stream:error 事件（任务结束 → 停止监控）
-    eventBus.on(StreamEventType.END, this.handleStreamEnd.bind(this));
-    eventBus.on(StreamEventType.ERROR, this.handleStreamError.bind(this));
+    eventBus.on(StreamEventType.END, this.boundHandlers.end);
+    eventBus.on(StreamEventType.ERROR, this.boundHandlers.error);
 
     this.listening = true;
     log.info('[WorkspaceFileWatcher] Started listening to EventBus events');
@@ -123,9 +135,21 @@ export class WorkspaceFileWatcher {
   stop(): void {
     if (!this.listening) return;
 
-    eventBus.off(StreamEventType.MESSAGE, this.handleStreamMessage.bind(this));
-    eventBus.off(StreamEventType.END, this.handleStreamEnd.bind(this));
-    eventBus.off(StreamEventType.ERROR, this.handleStreamError.bind(this));
+    // 使用保存的 bound 函数引用移除监听器
+    if (this.boundHandlers.message) {
+      eventBus.off(StreamEventType.MESSAGE, this.boundHandlers.message);
+    }
+    if (this.boundHandlers.end) {
+      eventBus.off(StreamEventType.END, this.boundHandlers.end);
+    }
+    if (this.boundHandlers.error) {
+      eventBus.off(StreamEventType.ERROR, this.boundHandlers.error);
+    }
+
+    // 清空引用
+    this.boundHandlers.message = null;
+    this.boundHandlers.end = null;
+    this.boundHandlers.error = null;
 
     this.stopAll();
     this.listening = false;

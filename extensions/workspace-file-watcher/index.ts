@@ -21,9 +21,12 @@ export const extension: ExtensionModule = {
     await watcher.start(logger, eventBus);
 
     logger.info('Workspace File Watcher started successfully');
+  },
 
-    // Extension 卸载时清理资源（虽然目前没有热卸载机制，但保持良好实践）
-    // 可在未来支持 Extension 热重载时使用
+  unregister() {
+    // 清理所有资源：EventBus 监听器 + FSWatcher + Timer
+    const watcher = WorkspaceFileWatcher.getInstance();
+    watcher.stop();
   }
 };
 

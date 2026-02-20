@@ -24,6 +24,8 @@ const DEBOUNCE_MS = 300;
 export class ExtensionLoader {
   /** extensionId → 已加载的 Extension 目录路径 */
   private loadedExtensions = new Map<string, string>();
+  /** extensionId → Extension 模块实例（用于调用 unregister） */
+  private loadedModules = new Map<string, ExtensionModule>();
   /** fs.watch 返回的 watcher 列表 */
   private watchers: fs.FSWatcher[] = [];
   /** 防抖定时器 */
@@ -113,7 +115,7 @@ export class ExtensionLoader {
       }
     }
 
-    // 同 ID 覆盖：先卸载旧版
+    // 同 ID 覆盖：先卸载旧版（热重载场景）
     if (this.loadedExtensions.has(manifest.id)) {
       await this.unload(manifest.id);
     }
@@ -156,6 +158,8 @@ export class ExtensionLoader {
       const api = createExtensionApi(manifest.id, manifest.name, origin, this.registry, eventBusApi);
       try {
         await mod.register(api);
+        // 保存模块实例，用于后续调用 unregister
+        this.loadedModules.set(manifest.id, mod);
       } catch (err) {
         log.error(`[ExtensionLoader] register() failed for "${manifest.id}":`, err);
         // 注册失败，清理已注册的内容
@@ -196,14 +200,26 @@ export class ExtensionLoader {
    * 同时从 ExtensionRegistry 和 ToolRegistry 清理该 Extension 注册的资源。
    */
   async unload(extensionId: string): Promise<void> {
-    // 先获取该 Extension 注册的工具名，用于同步清理 ToolRegistry
+    // 1. 调用 Extension 的 unregister 回调（让 Extension 清理自己的资源）
+    const mod = this.loadedModules.get(extensionId);
+    if (mod?.unregister) {
+      try {
+        await mod.unregister();
+        log.info(`[ExtensionLoader] Called unregister() for "${extensionId}"`);
+      } catch (err) {
+        log.error(`[ExtensionLoader] unregister() failed for "${extensionId}":`, err);
+      }
+    }
+
+    // 2. 获取该 Extension 注册的工具名，用于同步清理 ToolRegistry
     const removedTools = this.registry.unregisterToolsByExtension(extensionId);
-    // 清理 ExtensionRegistry（hooks、gateway methods、skill dirs，tools 已在上一步清理）
+
+    // 3. 清理 ExtensionRegistry（hooks、gateway methods、skill dirs，tools 已在上一步清理）
     this.registry.unregisterHooksByExtension(extensionId);
     this.registry.unregisterGatewayMethodsByExtension(extensionId);
     this.registry.unregisterSkillDirsByExtension(extensionId);
 
-    // 同步清理 ToolRegistry（动态 import 避免 common→ai 编译时依赖）
+    // 4. 同步清理 ToolRegistry（动态 import 避免 common→ai 编译时依赖）
     if (removedTools.length > 0) {
       try {
         const { ToolRegistry } = await import('../../ai/tools/registry');
@@ -218,7 +234,10 @@ export class ExtensionLoader {
       }
     }
 
+    // 5. 清理本地记录
     this.loadedExtensions.delete(extensionId);
+    this.loadedModules.delete(extensionId);
+
     log.info(`[ExtensionLoader] Unloaded "${extensionId}"`);
   }
 
