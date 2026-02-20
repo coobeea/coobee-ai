@@ -4,18 +4,18 @@
  * 监听 EventBus 上的 'thread:wake' 事件，从 checkpoint 恢复挂起的 Thread。
  *
  * 架构设计（职责分离）：
- *   - ThreadStore = 任务状态的真相源（runStatus）
- *   - Checkpoint = 执行快照（pendingOperation、activeAgent）
+ *   - ThreadStore (.home/threads/*.json) = 任务状态的"真相源"（runStatus）
+ *   - Checkpoint (.home/workspaces/*/checkpoint.json) = 执行快照（pendingOperation、activeAgent）
  *
  * 唤醒流程：
- *   1. 系统启动：扫描 ThreadStore 找未完成任务
- *   2. 检查 ThreadStore 确认任务状态
- *   3. 读取 Checkpoint 获取恢复细节
+ *   1. 系统启动：扫描 ThreadStore → 找到 runStatus 未完成的任务
+ *   2. 检查 ThreadStore 的任务状态（真相源）
+ *   3. 读取 Checkpoint → 获取恢复细节（pendingOperation 等）
  *   4. 如果有 pendingOperation（审批完成后）：
  *      a. 执行被挂起的工具
  *      b. 将工具结果作为系统消息注入
  *      c. 重新启动 Agent run
- *   5. 更新 ThreadStore 状态
+ *   5. 更新 Thread 状态
  *
  * 事件格式：
  *   eventBus.emit('thread:wake', {
@@ -87,10 +87,11 @@ export class ThreadWaker {
     log.info(`[ThreadWaker] Wake event: threadId=${threadId}, reason=${reason}`);
 
     try {
+      // 1. 检查 ThreadStore 的任务状态（真相源）
       const { ThreadStore } = await import('./ThreadStore');
       const threadStore = await ThreadStore.getInstance();
       const threadDef = await threadStore.get(threadId);
-
+      
       if (!threadDef) {
         log.warn(`[ThreadWaker] Thread ${threadId} not found in ThreadStore, skipping`);
         return;
@@ -101,6 +102,7 @@ export class ThreadWaker {
         return;
       }
 
+      // 2. 读取 Checkpoint 获取恢复细节（pendingOperation 等）
       const checkpoint = await CheckpointManager.getInstance().load(threadId);
       if (!checkpoint) {
         log.warn(`[ThreadWaker] No checkpoint found for ${threadId}, cannot recover`);
@@ -130,6 +132,7 @@ export class ThreadWaker {
       log.info(`[ThreadWaker] Unhandled wake reason: ${event.reason}`);
     }
 
+    // 更新 ThreadStore 状态为 running（真相源）
     const { ThreadStore } = await import('./ThreadStore');
     const threadStore = await ThreadStore.getInstance();
     await threadStore.update(threadId, { runStatus: 'running' });
@@ -182,10 +185,11 @@ export class ThreadWaker {
    * 不自动重新执行，而是通知用户中断了什么
    */
   private async handleRestartRecovery(threadId: string, checkpoint: ThreadCheckpoint): Promise<void> {
+    // 从 ThreadStore 读取任务状态（真相源）
     const { ThreadStore } = await import('./ThreadStore');
     const threadStore = await ThreadStore.getInstance();
     const threadDef = await threadStore.get(threadId);
-
+    
     if (!threadDef) {
       log.warn(`[ThreadWaker] Thread ${threadId} not found in ThreadStore during recovery`);
       return;
@@ -241,16 +245,25 @@ export class ThreadWaker {
   }
 
   /**
-   * 系统启动时扫描未完成的 Thread 并恢复
+   * 系统启动时扫描未完成的 Thread 并触发恢复
+   * 
+   * 设计原则：
+   *   - ThreadStore 是任务状态的"真相源"（runStatus）
+   *   - Checkpoint 只记录执行快照（pendingOperation、activeAgent）
+   *   - 恢复流程：扫描 ThreadStore → 找未完成任务 → 读 Checkpoint 获取恢复细节
    */
   async recoverOnStartup(): Promise<void> {
     try {
       const { ThreadStore } = await import('./ThreadStore');
       const threadStore = await ThreadStore.getInstance();
-
+      
+      // 扫描 ThreadStore 找到所有未完成的 Thread（以 Thread 状态为准）
       const allThreads = await threadStore.list();
       const pendingThreads = allThreads.filter(
-        (thread) => thread.status === 'active' && thread.runStatus !== 'idle' && thread.runStatus !== 'completed'
+        (thread) => 
+          thread.status === 'active' && 
+          thread.runStatus !== 'idle' && 
+          thread.runStatus !== 'completed'
       );
 
       if (pendingThreads.length === 0) {

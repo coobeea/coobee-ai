@@ -49,6 +49,21 @@ vi.mock('../CheckpointManager', () => ({
   }
 }));
 
+// Mock ThreadStore
+const mockThreadStoreGet = vi.fn();
+const mockThreadStoreList = vi.fn();
+const mockThreadStoreUpdate = vi.fn();
+
+vi.mock('../ThreadStore', () => ({
+  ThreadStore: {
+    getInstance: vi.fn().mockResolvedValue({
+      get: mockThreadStoreGet,
+      list: mockThreadStoreList,
+      update: mockThreadStoreUpdate
+    })
+  }
+}));
+
 // Mock AgentExecutor
 const mockSubmitViaPipeline = vi.fn().mockReturnValue({ status: 'executing', sessionId: 'test' });
 const mockClearPendingApproval = vi.fn();
@@ -90,6 +105,7 @@ describe('ThreadWaker', () => {
     vi.clearAllMocks();
     ThreadWaker.resetInstance();
     mockCheckpointUpdateStatus.mockResolvedValue(undefined);
+    mockThreadStoreUpdate.mockResolvedValue({});
   });
 
   afterEach(() => {
@@ -127,6 +143,20 @@ describe('ThreadWaker', () => {
 
   describe('handleWake', () => {
     it('无检查点时跳过', async () => {
+      mockThreadStoreGet.mockResolvedValue({
+        id: 'nonexistent',
+        runStatus: 'running',
+        status: 'active',
+        title: 'No Checkpoint',
+        agentId: 'test-agent',
+        sessionId: 'nonexistent',
+        agentMode: 'agent',
+        agentType: 'agent',
+        messageCount: 0,
+        createdAt: '',
+        updatedAt: ''
+      });
+
       mockCheckpointLoad.mockResolvedValue(null);
 
       const waker = ThreadWaker.getInstance();
@@ -141,6 +171,20 @@ describe('ThreadWaker', () => {
     });
 
     it('idle 状态跳过', async () => {
+      mockThreadStoreGet.mockResolvedValue({
+        id: 'thread-idle',
+        runStatus: 'idle',
+        status: 'active',
+        title: 'Idle Thread',
+        agentId: 'test-agent',
+        sessionId: 'thread-idle',
+        agentMode: 'agent',
+        agentType: 'agent',
+        messageCount: 0,
+        createdAt: '',
+        updatedAt: ''
+      });
+
       mockCheckpointLoad.mockResolvedValue({
         threadId: 'thread-idle',
         runStatus: 'idle',
@@ -157,6 +201,20 @@ describe('ThreadWaker', () => {
     });
 
     it('completed 状态跳过', async () => {
+      mockThreadStoreGet.mockResolvedValue({
+        id: 't',
+        runStatus: 'completed',
+        status: 'active',
+        title: 'Completed Thread',
+        agentId: 'test-agent',
+        sessionId: 't',
+        agentMode: 'agent',
+        agentType: 'agent',
+        messageCount: 0,
+        createdAt: '',
+        updatedAt: ''
+      });
+
       mockCheckpointLoad.mockResolvedValue({
         threadId: 't',
         runStatus: 'completed',
@@ -189,6 +247,20 @@ describe('ThreadWaker', () => {
     };
 
     it('工具执行完成 + 提供 toolResult → 注入结果 resume Agent', async () => {
+      mockThreadStoreGet.mockResolvedValue({
+        id: 'thread-approval',
+        runStatus: 'approval-pending',
+        status: 'active',
+        title: 'Approval Thread',
+        agentId: 'test-agent',
+        sessionId: 'thread-approval',
+        agentMode: 'agent',
+        agentType: 'agent',
+        messageCount: 0,
+        createdAt: '',
+        updatedAt: ''
+      });
+
       mockCheckpointLoad.mockResolvedValue(approvalCheckpoint);
 
       const waker = ThreadWaker.getInstance();
@@ -209,6 +281,20 @@ describe('ThreadWaker', () => {
     });
 
     it('工具执行失败 → 注入失败消息', async () => {
+      mockThreadStoreGet.mockResolvedValue({
+        id: 'thread-approval',
+        runStatus: 'approval-pending',
+        status: 'active',
+        title: 'Approval Thread',
+        agentId: 'test-agent',
+        sessionId: 'thread-approval',
+        agentMode: 'agent',
+        agentType: 'agent',
+        messageCount: 0,
+        createdAt: '',
+        updatedAt: ''
+      });
+
       mockCheckpointLoad.mockResolvedValue(approvalCheckpoint);
 
       const waker = ThreadWaker.getInstance();
@@ -225,6 +311,20 @@ describe('ThreadWaker', () => {
     });
 
     it('无 pendingOperation 时 warn 并跳过', async () => {
+      mockThreadStoreGet.mockResolvedValue({
+        id: 't',
+        runStatus: 'approval-pending',
+        status: 'active',
+        title: 'Test',
+        agentId: 'test-agent',
+        sessionId: 't',
+        agentMode: 'agent',
+        agentType: 'agent',
+        messageCount: 0,
+        createdAt: '',
+        updatedAt: ''
+      });
+
       mockCheckpointLoad.mockResolvedValue({
         threadId: 't',
         runStatus: 'approval-pending',
@@ -241,6 +341,20 @@ describe('ThreadWaker', () => {
     });
 
     it('Pipeline 不可用时 error 并跳过', async () => {
+      mockThreadStoreGet.mockResolvedValue({
+        id: 'thread-approval',
+        runStatus: 'approval-pending',
+        status: 'active',
+        title: 'Approval Thread',
+        agentId: 'test-agent',
+        sessionId: 'thread-approval',
+        agentMode: 'agent',
+        agentType: 'agent',
+        messageCount: 0,
+        createdAt: '',
+        updatedAt: ''
+      });
+
       mockSubmitViaPipeline.mockReturnValueOnce(null);
       mockCheckpointLoad.mockResolvedValue(approvalCheckpoint);
 
@@ -262,6 +376,20 @@ describe('ThreadWaker', () => {
 
   describe('restart-recovery', () => {
     it('approval-pending → 恢复消息包含工具名称', async () => {
+      mockThreadStoreGet.mockResolvedValue({
+        id: 't-restart',
+        runStatus: 'approval-pending',
+        status: 'active',
+        title: 'Test',
+        agentId: 'test-agent',
+        sessionId: 't-restart',
+        agentMode: 'agent',
+        agentType: 'agent',
+        messageCount: 0,
+        createdAt: '',
+        updatedAt: ''
+      });
+
       mockCheckpointLoad.mockResolvedValue({
         threadId: 't-restart',
         runStatus: 'approval-pending',
@@ -284,6 +412,20 @@ describe('ThreadWaker', () => {
     });
 
     it('running → 恢复消息提示继续', async () => {
+      mockThreadStoreGet.mockResolvedValue({
+        id: 't-running',
+        runStatus: 'running',
+        status: 'active',
+        title: 'Test',
+        agentId: 'test-agent',
+        sessionId: 't-running',
+        agentMode: 'agent',
+        agentType: 'agent',
+        messageCount: 0,
+        createdAt: '',
+        updatedAt: ''
+      });
+
       mockCheckpointLoad.mockResolvedValue({
         threadId: 't-running',
         runStatus: 'running',
@@ -300,6 +442,20 @@ describe('ThreadWaker', () => {
     });
 
     it('error 状态不恢复', async () => {
+      mockThreadStoreGet.mockResolvedValue({
+        id: 't-error',
+        runStatus: 'error',
+        status: 'active',
+        title: 'Test',
+        agentId: 'test-agent',
+        sessionId: 't-error',
+        agentMode: 'agent',
+        agentType: 'agent',
+        messageCount: 0,
+        createdAt: '',
+        updatedAt: ''
+      });
+
       mockCheckpointLoad.mockResolvedValue({
         threadId: 't-error',
         runStatus: 'error',
@@ -319,10 +475,35 @@ describe('ThreadWaker', () => {
   // ========== recoverOnStartup ==========
 
   describe('recoverOnStartup', () => {
-    it('扫描 pending 检查点并发出 wake 事件', async () => {
-      mockCheckpointFindPending.mockResolvedValue([
-        { threadId: 't-1', runStatus: 'running', updatedAt: '' },
-        { threadId: 't-2', runStatus: 'approval-pending', updatedAt: '' }
+    it('扫描 ThreadStore 找未完成任务并发出 wake 事件', async () => {
+      mockThreadStoreList.mockResolvedValue([
+        {
+          id: 't-1',
+          runStatus: 'running',
+          status: 'active',
+          title: 'Test 1',
+          agentId: 'agent1',
+          createdAt: '',
+          updatedAt: ''
+        },
+        {
+          id: 't-2',
+          runStatus: 'approval-pending',
+          status: 'active',
+          title: 'Test 2',
+          agentId: 'agent2',
+          createdAt: '',
+          updatedAt: ''
+        },
+        {
+          id: 't-3',
+          runStatus: 'idle',
+          status: 'active',
+          title: 'Test 3',
+          agentId: 'agent3',
+          createdAt: '',
+          updatedAt: ''
+        }
       ]);
 
       const waker = ThreadWaker.getInstance();
@@ -340,7 +521,26 @@ describe('ThreadWaker', () => {
     });
 
     it('无 pending 时不发出事件', async () => {
-      mockCheckpointFindPending.mockResolvedValue([]);
+      mockThreadStoreList.mockResolvedValue([
+        {
+          id: 't-idle',
+          runStatus: 'idle',
+          status: 'active',
+          title: 'Idle',
+          agentId: 'agent',
+          createdAt: '',
+          updatedAt: ''
+        },
+        {
+          id: 't-completed',
+          runStatus: 'completed',
+          status: 'active',
+          title: 'Completed',
+          agentId: 'agent',
+          createdAt: '',
+          updatedAt: ''
+        }
+      ]);
 
       const waker = ThreadWaker.getInstance();
       await waker.recoverOnStartup();
