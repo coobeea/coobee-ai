@@ -42,11 +42,14 @@ export default defineConfig({
         'src/main/lifecycle/__tests__/**'
       ]
     },
-    alias: {
-      '@': resolve(__dirname, 'src'),
-      '@main': resolve(__dirname, 'src/main'),
-      '@shared': resolve(__dirname, 'src/shared')
-    },
+    alias: [
+      { find: '@/config', replacement: resolve(__dirname, 'src/renderer/src/config.ts') },
+      { find: '@/plugins', replacement: resolve(__dirname, 'src/renderer/src/plugins') },
+      { find: '@/composables', replacement: resolve(__dirname, 'src/renderer/src/composables') },
+      { find: '@main', replacement: resolve(__dirname, 'src/main') },
+      { find: '@shared', replacement: resolve(__dirname, 'src/shared') },
+      { find: '@', replacement: resolve(__dirname, 'src') }
+    ],
     // 报告器：verbose 输出 + JUnit XML
     reporters: ['verbose', 'junit'],
     outputFile: {

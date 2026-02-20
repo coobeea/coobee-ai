@@ -34,6 +34,8 @@ export interface PendingApproval {
   toolName: string;
   arguments?: string;
   decision?: HitlApprovalDecision;
+  /** 审批所属的 session（支持子 Agent），缺省为当前 thread */
+  sessionId?: string;
   /** 是否可以显示（必须等到 run:done 后） */
   canShow?: boolean;
 }
@@ -240,6 +242,7 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
 
         const toolName = (msg.data?.toolName as string) || 'unknown';
         const approvalIndex = (msg.data?.index as number) ?? 0;
+        const approvalSessionId = (msg.data?.subSessionId as string) || msg.sessionId;
 
         // 只维护 pendingApprovals 数组，在消息底部显示
         // canShow 默认为 false，等到 run:done 后才设置为 true
@@ -250,6 +253,7 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
           index: approvalIndex,
           toolName,
           arguments: msg.data?.arguments as string | undefined,
+          sessionId: approvalSessionId,
           canShow: false // 必须等到 run:done 后才显示
         });
         break;

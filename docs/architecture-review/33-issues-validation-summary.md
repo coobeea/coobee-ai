@@ -17,35 +17,35 @@
 
 ## P0 级问题现况
 
-| ID     | 描述                                 | 状态     | 证据/位置                                                                         | 后续动作                                    |
-| ------ | ------------------------------------ | -------- | --------------------------------------------------------------------------------- | ------------------------------------------- |
-| F-P0-1 | GatewayClient WebSocket 监听器泄漏   | 已修复   | `useStreamWs.streamCleanup` + `App.vue onUnmounted` 调用                          | 会话切换/窗口关闭场景回归                   |
-| F-P0-2 | Copilot onConnect 监听器泄漏         | 已修复   | `copilot.ts` 保存/清理 unregisterConnect，`App.vue` 调用 `copilotStore.cleanup()` | 补充监听泄漏单测（可选）                    |
-| F-P0-3 | streamCleanup/cleanupThreadWs 未调用 | 已修复   | `App.vue onUnmounted` 调用 `streamCleanup` 与 `cleanupThreadWs`                   | 做关闭/重启场景回归                         |
-| B-P0-1 | MessagePipeline runId 竞态           | 部分修复 | `MessagePipeline.ts` 溢出重置；仍缺锁/原子保证                                    | 补充锁/单线程保证说明与测试                 |
-| B-P0-2 | pendingApprovalSessions 无 TTL       | 已修复   | `AgentExecutor.ts` Map+TTL 清理（e02d9cd）                                        | 补回归测试覆盖                              |
-| M-P0-1 | 前端无 Orchestrator/Swarm 入口       | 已修复   | AgentView 模式选择 + `threadsStore` / `chatStore` 传递 `mode`                     | 补前端端到端用例                            |
-| M-P0-2 | 子 Agent 审批无法处理                | 未修复   | 前端仍仅订阅主 thread                                                             | 选择方案并实现（订阅子 session 或后端转发） |
-| T-P0-1 | tool-approval Extension 无测试       | 未修复   | 未新增测试目录                                                                    | 按场景补集成测试                            |
+| ID     | 描述                                 | 状态   | 证据/位置                                                                         | 后续动作                          |
+| ------ | ------------------------------------ | ------ | --------------------------------------------------------------------------------- | --------------------------------- |
+| F-P0-1 | GatewayClient WebSocket 监听器泄漏   | 已修复 | `useStreamWs.streamCleanup` + `App.vue onUnmounted` 调用                          | 会话切换/窗口关闭场景回归         |
+| F-P0-2 | Copilot onConnect 监听器泄漏         | 已修复 | `copilot.ts` 保存/清理 unregisterConnect，`App.vue` 调用 `copilotStore.cleanup()` | 补充监听泄漏单测（可选）          |
+| F-P0-3 | streamCleanup/cleanupThreadWs 未调用 | 已修复 | `App.vue onUnmounted` 调用 `streamCleanup` 与 `cleanupThreadWs`                   | 做关闭/重启场景回归               |
+| B-P0-1 | MessagePipeline runId 竞态           | 已修复 | `MessagePipeline.ts` runId 互斥分配 + wrap；新增单测验证                          | 关注高并发回归                    |
+| B-P0-2 | pendingApprovalSessions 无 TTL       | 已修复 | `AgentExecutor.ts` Map+TTL 清理（e02d9cd）                                        | 补回归测试覆盖                    |
+| M-P0-1 | 前端无 Orchestrator/Swarm 入口       | 已修复 | AgentView 模式选择 + `threadsStore` / `chatStore` 传递 `mode`                     | 补前端端到端用例                  |
+| M-P0-2 | 子 Agent 审批无法处理                | 已修复 | AgentEventWriter 转发 + 前端 pendingApproval 携带 subSessionId 并提交到子会话     | 回归：子 Agent 审批通过/拒绝/超时 |
+| T-P0-1 | tool-approval Extension 无测试       | 未修复 | Extension 当前不存在，测试亦缺失                                                  | 需补回扩展或调整策略，并补测试    |
 
 ---
 
 ## P1 级问题现况（摘重要项）
 
-| ID     | 描述                                    | 状态     | 证据/位置                                                  | 后续动作                  |
-| ------ | --------------------------------------- | -------- | ---------------------------------------------------------- | ------------------------- |
-| F-P1-1 | Thread 无 workspacePath 卡住            | 未验证   | -                                                          | 补逻辑/弹窗校验           |
-| F-P1-2 | Store 状态直接修改                      | 未修复   | `ThreadView.vue` 仍可能直接改 store                        | 封装 action               |
-| B-P1-2 | ToolExecutionPipeline Hook 错误处理不足 | 部分修复 | 082f23f 强化 error 日志与 sandbox 失败阻断                 | 补重试/可恢复策略         |
-| B-P1-3 | sessionApprovalCounters 永不清理        | 已修复   | `AgentExecutor.ts` session_end 调用 `resetApprovalCounter` | 可加单测验证              |
-| B-P1-4 | consumeAndForward abort 检查不及时      | 未修复   | `AgentExecutor.ts` 未改                                    | 引入 Promise.race + abort |
-| M-P1-1 | sessionId 命名不统一                    | 未修复   | 文档缺规范                                                 | 编写规范并应用            |
-| M-P1-2 | PlanVersionManager 未集成               | 未修复   | Orchestrator 未调用                                        | 评估接入                  |
-| T-P1-2 | CI/CD 测试缺失                          | 未修复   | 无 CI 工作流                                               | 补 GitHub Actions         |
-| T-P1-3 | pre-commit 不跑测试                     | 未修复   | `scripts/pre-commit.mjs`                                   | 增加关键测试              |
-| P-P1-2 | 并发控制机制不完善                      | 部分修复 | runId 溢出防护；无全局限流                                 | 设计统一限流              |
-| S-P1-1 | ExecPolicy 学习风险                     | 未修复   | exec-policy 无审计                                         | 增加审计与人工确认        |
-| O-P1-1 | 日志系统不完整                          | 未修复   | logger 无结构化                                            | 引入结构化日志            |
+| ID     | 描述                                    | 状态     | 证据/位置                                                  | 后续动作           |
+| ------ | --------------------------------------- | -------- | ---------------------------------------------------------- | ------------------ |
+| F-P1-1 | Thread 无 workspacePath 卡住            | 未验证   | -                                                          | 补逻辑/弹窗校验    |
+| F-P1-2 | Store 状态直接修改                      | 未修复   | `ThreadView.vue` 仍可能直接改 store                        | 封装 action        |
+| B-P1-2 | ToolExecutionPipeline Hook 错误处理不足 | 部分修复 | 082f23f 强化 error 日志与 sandbox 失败阻断                 | 补重试/可恢复策略  |
+| B-P1-3 | sessionApprovalCounters 永不清理        | 已修复   | `AgentExecutor.ts` session_end 调用 `resetApprovalCounter` | 可加单测验证       |
+| B-P1-4 | consumeAndForward abort 检查不及时      | 已修复   | `AgentExecutor.ts` Promise.race 检查 abort，提前返回       | 高并发回归         |
+| M-P1-1 | sessionId 命名不统一                    | 未修复   | 文档缺规范                                                 | 编写规范并应用     |
+| M-P1-2 | PlanVersionManager 未集成               | 未修复   | Orchestrator 未调用                                        | 评估接入           |
+| T-P1-2 | CI/CD 测试缺失                          | 未修复   | 无 CI 工作流                                               | 补 GitHub Actions  |
+| T-P1-3 | pre-commit 不跑测试                     | 未修复   | `scripts/pre-commit.mjs`                                   | 增加关键测试       |
+| P-P1-2 | 并发控制机制不完善                      | 部分修复 | runId 溢出防护；无全局限流                                 | 设计统一限流       |
+| S-P1-1 | ExecPolicy 学习风险                     | 未修复   | exec-policy 无审计                                         | 增加审计与人工确认 |
+| O-P1-1 | 日志系统不完整                          | 未修复   | logger 无结构化                                            | 引入结构化日志     |
 
 ---
 
@@ -62,11 +62,10 @@
 
 ## 优先级行动清单（按紧急度）
 
-1. 验证并贯通 Orchestrator/Swarm 端到端流（前端选择 → chat.send → 后端 runtime）。
-2. 解决子 Agent 审批阻塞（选择订阅或转发方案）。
-3. 补 tool-approval 关键测试；为新增 TTL/计数器清理补单测。
-4. MessagePipeline 竞态加锁或测试验证单线程安全；consume abort 改进。
-5. 建立最小 CI（lint+typecheck+核心测试）。
+1. Orchestrator/Swarm 端到端流：入口+Gateway 单测已补，若需要可再做全链路 e2e。
+2. CI 工作流：新增 .github/workflows/ci.yml，待推送触发首跑。
+3. tool-approval Extension/测试缺失，需决定恢复或移除相关策略。
+4. 中低优先项（构建性能、结构化日志等）后续迭代。
 
 ---
 

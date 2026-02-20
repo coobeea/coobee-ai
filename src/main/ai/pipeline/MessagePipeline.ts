@@ -29,6 +29,8 @@ export class MessagePipeline {
   /** 每个 session 当前活跃的 runId（用于竞态防护） */
   private currentRunIds = new Map<string, number>();
   private nextRunId = 0;
+  /** runId 分配互斥，避免高并发时重复分配 */
+  private runIdMutex: Promise<void> = Promise.resolve();
 
   /** 上次清理时间戳 */
   private lastCleanupTime = Date.now();
@@ -181,25 +183,22 @@ export class MessagePipeline {
 
   private executeWithLifecycle(queue: SessionQueue, sessionId: string, message: string): void {
     queue.isRunning = true;
-    // runId 递增（Node.js 单线程，同步操作无竞态）
-    // 防御性处理：Number.MAX_SAFE_INTEGER 后重置
-    if (this.nextRunId >= Number.MAX_SAFE_INTEGER) {
-      this.nextRunId = 0;
-    }
-    const runId = ++this.nextRunId;
-    this.currentRunIds.set(sessionId, runId);
-    const signal = this.abortManager.create(sessionId);
-
     // 异步执行（不阻塞）
-    this.doExecute(queue, sessionId, message, signal, runId).catch((err) => {
-      log.error(`[MessagePipeline] Unhandled error in session ${sessionId}:`, err);
-      eventBus.emit(StreamEventType.ERROR, {
-        type: StreamEventType.ERROR,
-        sessionId,
-        error: err instanceof Error ? err.message : String(err),
-        timestamp: Date.now()
+    void (async () => {
+      const runId = await this.allocateRunId();
+      this.currentRunIds.set(sessionId, runId);
+      const signal = this.abortManager.create(sessionId);
+
+      this.doExecute(queue, sessionId, message, signal, runId).catch((err) => {
+        log.error(`[MessagePipeline] Unhandled error in session ${sessionId}:`, err);
+        eventBus.emit(StreamEventType.ERROR, {
+          type: StreamEventType.ERROR,
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+          timestamp: Date.now()
+        });
       });
-    });
+    })();
   }
 
   private async doExecute(
@@ -239,17 +238,22 @@ export class MessagePipeline {
     queue.draining = true;
     const mode = queue.settings.mode;
     const strategy = mode === 'collect' ? 'collect' : 'followup';
+    let lastRunId = runId;
 
     // 触发 queue_drain_start 钩子
     this.fireQueueDrainStart(sessionId, strategy, queue.length);
 
     try {
       const drainExecutor = async (_sid: string, msg: string): Promise<void> => {
-        // drain 期间检查 abort 和 runId
-        if (this.abortManager.isAborted(sessionId) || this.currentRunIds.get(sessionId) !== runId) {
+        // drain 期间检查 abort 和 runId 被新执行占用
+        if (this.abortManager.isAborted(sessionId) || this.currentRunIds.get(sessionId) !== lastRunId) {
           queue.clear();
           return;
         }
+        // 为本次执行分配新的 runId
+        const newRunId = await this.allocateRunId();
+        this.currentRunIds.set(sessionId, newRunId);
+        lastRunId = newRunId;
         this.fireMessageDequeued(sessionId, msg, queue);
         const signal = this.abortManager.create(sessionId);
         try {
@@ -267,7 +271,7 @@ export class MessagePipeline {
     } finally {
       queue.draining = false;
       // 仅当仍是当前 run 时才更新状态
-      if (this.currentRunIds.get(sessionId) === runId) {
+      if (this.currentRunIds.get(sessionId) === lastRunId) {
         queue.isRunning = false;
         this.cleanupSession(sessionId);
       }
@@ -287,6 +291,26 @@ export class MessagePipeline {
 
   // ─── 辅助方法 ──────────────────────────────────
 
+  /** 分配唯一 runId，带互斥与溢出保护 */
+  private async allocateRunId(): Promise<number> {
+    // 等待上一个分配完成，确保 runId 不重复
+    await this.runIdMutex;
+    let release: () => void;
+    this.runIdMutex = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    try {
+      if (this.nextRunId >= Number.MAX_SAFE_INTEGER) {
+        this.nextRunId = 0;
+      }
+      this.nextRunId += 1;
+      return this.nextRunId;
+    } finally {
+      release!();
+    }
+  }
+
   private getOrCreateQueue(sessionId: string): SessionQueue {
     let queue = this.queues.get(sessionId);
     if (!queue) {
@@ -294,6 +318,11 @@ export class MessagePipeline {
       this.queues.set(sessionId, queue);
     }
     return queue;
+  }
+
+  /** 仅用于测试/诊断 */
+  getRunId(sessionId: string): number | undefined {
+    return this.currentRunIds.get(sessionId);
   }
 
   // ─── Extension Hook 触发 ──────────────────────

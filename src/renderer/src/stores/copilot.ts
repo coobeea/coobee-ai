@@ -136,8 +136,17 @@ export const useCopilotStore = defineStore('copilot', () => {
    */
   async function submitDecision(sid: string, index: number, decision: HitlApprovalDecision): Promise<void> {
     try {
+      let targetSessionId = sid;
+      const lastMsg = messages.value[messages.value.length - 1];
+      if (lastMsg?.pendingApprovals) {
+        const approval = lastMsg.pendingApprovals.find((a) => a.index === index);
+        if (approval?.sessionId) {
+          targetSessionId = approval.sessionId;
+        }
+      }
+
       const result = await gateway.request<{ ok: boolean; error?: string }>('hitl.decide', {
-        sessionId: sid,
+        sessionId: targetSessionId,
         index,
         decision
       });
