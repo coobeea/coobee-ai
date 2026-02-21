@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { GatewayApi } from '../../protocol/types';
+import type { GatewayApi } from '../protocol/types';
 
 // 使用 vi.hoisted 确保 mock 在模块加载前初始化
 const { mockEventBus } = vi.hoisted(() => {
@@ -25,7 +25,13 @@ vi.mock('@main/common/logger', () => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn()
-  }
+  },
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  }))
 }));
 
 describe('EventBridge 清理机制', () => {
@@ -45,7 +51,7 @@ describe('EventBridge 清理机制', () => {
 
   describe('StreamBridge', () => {
     it('初始化时注册 4 个监听器', async () => {
-      const { initStreamBridge } = await import('../StreamBridge');
+      const { initStreamBridge } = await import('../events/StreamBridge');
       const { StreamEventType } = await import('@main/ai/streaming/types');
 
       initStreamBridge(mockGateway);
@@ -58,7 +64,7 @@ describe('EventBridge 清理机制', () => {
     });
 
     it('返回清理函数，调用后移除所有监听器', async () => {
-      const { initStreamBridge } = await import('../StreamBridge');
+      const { initStreamBridge } = await import('../events/StreamBridge');
       const { StreamEventType } = await import('@main/ai/streaming/types');
 
       const cleanup = initStreamBridge(mockGateway);
@@ -88,7 +94,7 @@ describe('EventBridge 清理机制', () => {
 
   describe('ThreadBridge', () => {
     it('初始化时注册 4 个监听器', async () => {
-      const { initThreadBridge } = await import('../ThreadBridge');
+      const { initThreadBridge } = await import('../events/ThreadBridge');
       const { ThreadEventType } = await import('@main/ai/threads/ThreadStore');
 
       initThreadBridge(mockGateway);
@@ -101,7 +107,7 @@ describe('EventBridge 清理机制', () => {
     });
 
     it('返回清理函数，调用后移除所有监听器', async () => {
-      const { initThreadBridge } = await import('../ThreadBridge');
+      const { initThreadBridge } = await import('../events/ThreadBridge');
       const { ThreadEventType } = await import('@main/ai/threads/ThreadStore');
 
       const cleanup = initThreadBridge(mockGateway);
@@ -131,8 +137,8 @@ describe('EventBridge 清理机制', () => {
 
   describe('EventBridge 集成', () => {
     it('多个 EventBridge 的清理函数互不干扰', async () => {
-      const { initStreamBridge } = await import('../StreamBridge');
-      const { initThreadBridge } = await import('../ThreadBridge');
+      const { initStreamBridge } = await import('../events/StreamBridge');
+      const { initThreadBridge } = await import('../events/ThreadBridge');
 
       const cleanup1 = initStreamBridge(mockGateway);
       const cleanup2 = initThreadBridge(mockGateway);
