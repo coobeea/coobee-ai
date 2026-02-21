@@ -10,14 +10,14 @@
 
 import { ref, nextTick, watch, computed } from 'vue';
 import { useCopilotStore } from '@/stores/copilot';
-import type { ContentBlock, PendingApproval } from '@/composables/useStreamHandler';
+import type { PendingApproval } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
-import HitlApprovalCard from '@/components/chat/HitlApprovalCard.vue';
+import ChatMessages from '@/components/chat/ChatMessages.vue';
 import { layerManager } from '@/utils/LayerManager';
 
 const copilot = useCopilotStore();
 const inputText = ref('');
-const messageContainer = ref<HTMLElement | null>(null);
+const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 const drawerVisible = computed({
@@ -37,11 +37,7 @@ const drawerContainerStyle = {
 };
 
 function scrollToBottom(): void {
-  nextTick(() => {
-    if (messageContainer.value) {
-      messageContainer.value.scrollTop = messageContainer.value.scrollHeight;
-    }
-  });
+  chatMessagesRef.value?.scrollToBottom();
 }
 
 watch(
@@ -106,22 +102,6 @@ function handleApproval(approval: PendingApproval, decision: HitlApprovalDecisio
     timestamp: Date.now()
   });
 }
-
-function toolSummary(block: ContentBlock): string {
-  if (block.type === 'tool') {
-    if (block.tool.status === 'approval-pending') {
-      return `${block.tool.name} (等待审批)`;
-    }
-    if (block.tool.status === 'calling') {
-      return `调用 ${block.tool.name}...`;
-    }
-    if (block.tool.status === 'done') {
-      return `${block.tool.name} 完成`;
-    }
-    return `${block.tool.name} 失败`;
-  }
-  return '';
-}
 </script>
 
 <template>
@@ -165,9 +145,13 @@ function toolSummary(block: ContentBlock): string {
       </div>
 
       <!-- 消息区域 -->
-      <div ref="messageContainer" class="panel-messages selectable">
-        <!-- 空状态 -->
-        <div v-if="!copilot.hasMessages" class="panel-empty">
+      <ChatMessages
+        ref="chatMessagesRef"
+        :messages="copilot.messages"
+        :is-streaming="copilot.isStreaming"
+        mode="copilot"
+        @decide="handleApproval">
+        <template #empty>
           <div class="panel-empty-icon">
             <span class="i-mdi-star-four-points inline-block h-8 w-8" />
           </div>
@@ -178,92 +162,8 @@ function toolSummary(block: ContentBlock): string {
             <button class="suggestion-btn" @click="copilot.sendMessage('列出所有智能体')">列出所有智能体</button>
             <button class="suggestion-btn" @click="copilot.sendMessage('查看当前配置')">查看当前配置</button>
           </div>
-        </div>
-
-        <!-- 消息列表 -->
-        <template v-for="msg in copilot.messages" :key="msg.id">
-          <div class="msg-block">
-            <div class="msg-role-row">
-              <span class="msg-role-icon" :class="msg.role === 'user' ? 'msg-role-user' : 'msg-role-assistant'">
-                <span
-                  class="inline-block h-3 w-3"
-                  :class="msg.role === 'user' ? 'i-carbon-user' : 'i-mdi-star-four-points'" />
-              </span>
-              <span class="msg-role-name">{{ msg.role === 'user' ? '你' : '管家' }}</span>
-              <span class="msg-time">{{
-                new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-              }}</span>
-            </div>
-
-            <div v-if="msg.role === 'user'" class="msg-content">
-              <div class="msg-text">{{ msg.content }}</div>
-            </div>
-
-            <div v-else class="msg-content">
-              <template v-if="msg.blocks.length > 0">
-                <template v-for="(block, idx) in msg.blocks" :key="idx">
-                  <div v-if="block.type === 'text'" class="msg-text" v-text="block.text" />
-
-                  <div v-else-if="block.type === 'thinking'" class="msg-thinking">
-                    <span class="i-carbon-idea inline-block h-3 w-3 shrink-0" />
-                    <span class="msg-thinking-text">{{ block.text }}</span>
-                  </div>
-
-                  <div v-else-if="block.type === 'tool'" class="msg-tool">
-                    <span
-                      class="inline-block h-3 w-3 shrink-0"
-                      :class="
-                        block.tool.status === 'calling'
-                          ? 'i-carbon-renew animate-spin'
-                          : block.tool.status === 'approval-pending'
-                            ? 'i-carbon-locked text-blue-600'
-                            : block.tool.status === 'done'
-                              ? 'i-carbon-checkmark'
-                              : 'i-carbon-warning-alt'
-                      " />
-                    <span>{{ toolSummary(block) }}</span>
-                  </div>
-
-                  <div v-else-if="block.type === 'delegate'" class="msg-delegate">
-                    <span class="i-carbon-bot inline-block h-3 w-3 shrink-0" />
-                    <span>{{ block.delegate.agentName || block.delegate.agentId }}</span>
-                    <span class="msg-delegate-status">
-                      {{ block.delegate.status === 'running' ? '委托中...' : '完成' }}
-                    </span>
-                  </div>
-                </template>
-              </template>
-
-              <div v-else-if="msg.status === 'streaming'" class="msg-typing">
-                <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
-              </div>
-
-              <!-- HITL 审批卡片（必须等到 run:done 后才显示） -->
-              <template v-if="msg.pendingApprovals?.length">
-                <HitlApprovalCard
-                  v-for="approval in msg.pendingApprovals.filter((a) => a.canShow)"
-                  :key="'hitl-' + approval.index"
-                  :approval="approval"
-                  @decide="(d) => handleApproval(approval, d)" />
-              </template>
-
-              <div v-if="msg.status === 'error' && msg.error" class="msg-error">
-                <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
-                {{ msg.error }}
-              </div>
-
-              <div v-if="msg.status === 'interrupted'" class="msg-interrupted">
-                <span class="i-carbon-pause-filled inline-block h-2.5 w-2.5" />
-                <span>已中断</span>
-              </div>
-            </div>
-          </div>
         </template>
-
-        <div v-if="copilot.isStreaming" class="stream-indicator">
-          <span class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
-        </div>
-      </div>
+      </ChatMessages>
 
       <!-- 输入区域 -->
       <div class="panel-input-area">
@@ -542,82 +442,6 @@ function toolSummary(block: ContentBlock): string {
   font-size: 11px;
   color: hsl(var(--muted-foreground) / 0.6);
   background: hsl(var(--foreground) / 0.03);
-}
-
-.msg-typing {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 0;
-}
-
-.typing-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: hsl(var(--muted-foreground) / 0.3);
-  animation: typing-bounce 1.2s ease-in-out infinite;
-}
-
-.typing-dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.typing-dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes typing-bounce {
-  0%,
-  60%,
-  100% {
-    transform: translateY(0);
-  }
-  30% {
-    transform: translateY(-4px);
-  }
-}
-
-.msg-delegate {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  margin: 3px 0;
-  border-radius: 6px;
-  font-size: 11px;
-  color: hsl(var(--primary) / 0.7);
-  background: hsl(var(--primary) / 0.04);
-}
-
-.msg-delegate-status {
-  font-size: 10px;
-  color: hsl(var(--muted-foreground) / 0.4);
-}
-
-.msg-error {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 4px 0;
-  font-size: 11px;
-  color: hsl(var(--error));
-}
-
-.msg-interrupted {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 0;
-  font-size: 10px;
-  color: hsl(var(--warning, 45 93% 47%));
-}
-
-.stream-indicator {
-  display: flex;
-  justify-content: center;
-  padding: 4px;
-  color: hsl(var(--primary) / 0.4);
 }
 
 /* ====== 输入区域 ====== */

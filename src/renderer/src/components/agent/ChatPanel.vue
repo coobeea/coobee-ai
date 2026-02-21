@@ -6,45 +6,21 @@
  * 从原 ChatView.vue 提取，适配窄面板布局。
  */
 
-import { ref, nextTick, watch, onMounted } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { useChatStore } from '@/stores/chat';
 import type { PendingApproval } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
 import { gateway } from '@/plugins/gatewaySetup';
-import HitlApprovalCard from '@/components/chat/HitlApprovalCard.vue';
+import ChatMessages from '@/components/chat/ChatMessages.vue';
 
 const chatStore = useChatStore();
 const inputText = ref('');
-const messageContainer = ref<HTMLElement | null>(null);
+const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const isCollapsed = defineModel<boolean>('collapsed', { default: false });
 
-// ========== 智能滚动：用户往上浏览时不强制拉回底部 ==========
-
-/** 用户是否已手动向上滚动（脱离底部） */
-const userScrolledUp = ref(false);
-
-/** 判断是否在底部附近（容差 60px） */
-function isNearBottom(): boolean {
-  const el = messageContainer.value;
-  if (!el) return true;
-  return el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-}
-
-/** 监听用户滚动 — 检测是否脱离底部 */
-function handleScroll(): void {
-  userScrolledUp.value = !isNearBottom();
-}
-
-/** 滚动到底部（仅在用户没有向上浏览时执行） */
 function scrollToBottom(force = false): void {
-  if (!force && userScrolledUp.value) return;
-  nextTick(() => {
-    if (messageContainer.value) {
-      messageContainer.value.scrollTop = messageContainer.value.scrollHeight;
-      userScrolledUp.value = false;
-    }
-  });
+  chatMessagesRef.value?.scrollToBottom(force);
 }
 
 // 新消息到达 → 自动滚动（除非用户在看上面的内容）
@@ -137,246 +113,20 @@ onMounted(() => {
     </div>
 
     <!-- 消息区域 -->
-    <div ref="messageContainer" class="selectable flex-1 overflow-y-auto" @scroll="handleScroll">
-      <!-- 空状态 -->
-      <div v-if="chatStore.messages.length === 0" class="flex h-full flex-col items-center justify-center px-6">
+    <ChatMessages
+      ref="chatMessagesRef"
+      :messages="chatStore.messages"
+      :is-streaming="chatStore.isStreaming"
+      mode="thread"
+      @decide="handleApproval">
+      <template #empty>
         <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
           <span class="i-carbon-chat-bot inline-block h-6 w-6 text-primary"></span>
         </div>
         <h2 class="mb-1 text-sm font-semibold text-gray-600">有什么可以帮您？</h2>
         <p class="text-center text-xs text-gray-400">输入消息开始对话</p>
-      </div>
-
-      <!-- 消息列表 -->
-      <div v-else class="px-3 py-3">
-        <div v-for="msg in chatStore.messages" :key="msg.id" class="mb-3">
-          <!-- 用户消息：独立块 -->
-          <div
-            v-if="msg.role === 'user'"
-            class="rounded-lg bg-primary/8 px-3 py-2 text-xs leading-relaxed text-gray-800 whitespace-pre-wrap break-words">
-            {{ msg.content }}
-          </div>
-
-          <!-- 助手消息 -->
-          <div v-else class="space-y-1.5">
-            <!-- run:start -->
-            <div v-if="msg.status !== 'sending'" class="flex items-center gap-1.5 text-[10px] text-gray-400">
-              <span class="i-carbon-play-filled inline-block h-2.5 w-2.5 text-emerald-400"></span>
-              <span class="font-mono">run:start</span>
-              <span class="h-px flex-1 bg-gray-200"></span>
-            </div>
-
-            <!-- 按时序渲染内容块 -->
-            <template v-for="(block, bidx) in msg.blocks" :key="'b-' + bidx">
-              <!-- thinking block -->
-              <div
-                v-if="block.type === 'thinking'"
-                class="rounded-md border-l-2 border-l-violet-300 bg-violet-50/50 px-2 py-1.5">
-                <div class="mb-0.5 flex items-center gap-1">
-                  <span class="rounded bg-violet-100 px-1 py-px font-mono text-[9px] font-semibold text-violet-500">
-                    thinking
-                  </span>
-                </div>
-                <details>
-                  <summary class="cursor-pointer text-[10px] text-violet-400 select-none hover:text-violet-500">
-                    思考过程
-                  </summary>
-                  <div
-                    class="mt-1 max-h-32 overflow-y-auto font-mono text-[10px] leading-relaxed text-gray-500 whitespace-pre-wrap">
-                    {{ block.text }}
-                  </div>
-                </details>
-              </div>
-
-              <!-- text block -->
-              <div
-                v-else-if="block.type === 'text'"
-                class="rounded-md border-l-2 border-l-blue-300 bg-white px-2 py-1.5">
-                <div class="mb-0.5">
-                  <span class="rounded bg-blue-100 px-1 py-px font-mono text-[9px] font-semibold text-blue-500">
-                    text
-                  </span>
-                </div>
-                <div class="text-xs leading-relaxed text-gray-800 whitespace-pre-wrap break-words">
-                  {{ block.text }}
-                  <span
-                    v-if="msg.status === 'streaming' && bidx === msg.blocks.length - 1"
-                    class="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-gray-400 align-text-bottom"></span>
-                </div>
-              </div>
-
-              <!-- tool block -->
-              <div
-                v-else-if="block.type === 'tool'"
-                class="overflow-hidden rounded-md border text-[11px] shadow-sm"
-                :class="{
-                  'border-amber-200': block.tool.status === 'calling',
-                  'border-emerald-200': block.tool.status === 'done',
-                  'border-red-200': block.tool.status === 'error',
-                  'border-blue-300': block.tool.status === 'approval-pending'
-                }">
-                <div
-                  class="flex items-center gap-1.5 px-2 py-1"
-                  :class="{
-                    'bg-amber-50': block.tool.status === 'calling',
-                    'bg-emerald-50': block.tool.status === 'done',
-                    'bg-red-50': block.tool.status === 'error',
-                    'bg-blue-50': block.tool.status === 'approval-pending'
-                  }">
-                  <span
-                    class="inline-block h-3 w-3"
-                    :class="
-                      block.tool.status === 'approval-pending'
-                        ? 'i-carbon-locked text-blue-600'
-                        : 'i-carbon-tool-box text-gray-500'
-                    " />
-                  <span class="font-mono text-[10px] font-semibold text-gray-700">{{ block.tool.name }}</span>
-                  <span class="flex-1"></span>
-                  <span
-                    class="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                    :class="{
-                      'bg-amber-100 text-amber-700': block.tool.status === 'calling',
-                      'bg-emerald-100 text-emerald-700': block.tool.status === 'done',
-                      'bg-red-100 text-red-600': block.tool.status === 'error',
-                      'bg-blue-100 text-blue-700': block.tool.status === 'approval-pending'
-                    }">
-                    {{
-                      block.tool.status === 'calling'
-                        ? '执行中'
-                        : block.tool.status === 'approval-pending'
-                          ? '等待审批'
-                          : block.tool.status === 'done'
-                            ? '完成'
-                            : '失败'
-                    }}
-                  </span>
-                </div>
-                <div v-if="block.tool.arguments" class="border-t border-gray-100 bg-white px-2 py-1">
-                  <div
-                    class="max-h-16 overflow-y-auto rounded bg-gray-50 px-1.5 py-1 font-mono text-[10px] text-gray-500">
-                    {{ block.tool.arguments }}
-                  </div>
-                </div>
-                <div v-if="block.tool.result" class="border-t border-gray-100 px-2 py-1">
-                  <div
-                    class="max-h-20 overflow-y-auto rounded bg-white px-1.5 py-1 font-mono text-[10px] text-gray-500">
-                    {{ block.tool.result }}
-                  </div>
-                </div>
-              </div>
-
-              <!-- delegate block -->
-              <div
-                v-else-if="block.type === 'delegate'"
-                class="overflow-hidden rounded-md border text-[11px] shadow-sm"
-                :class="{
-                  'border-violet-200': block.delegate.status === 'running',
-                  'border-violet-300': block.delegate.status === 'done'
-                }">
-                <div
-                  class="flex items-center gap-1.5 px-2 py-1"
-                  :class="{
-                    'bg-violet-50': block.delegate.status === 'running',
-                    'bg-violet-50/50': block.delegate.status === 'done'
-                  }">
-                  <span class="i-carbon-bot inline-block h-3 w-3 text-violet-500"></span>
-                  <span class="text-[10px] font-semibold text-violet-700">
-                    {{ block.delegate.agentName || block.delegate.agentId }}
-                  </span>
-                  <span class="flex-1"></span>
-                  <span
-                    class="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                    :class="{
-                      'bg-violet-100 text-violet-600': block.delegate.status === 'running',
-                      'bg-violet-100 text-violet-700': block.delegate.status === 'done'
-                    }">
-                    {{
-                      block.delegate.status === 'running'
-                        ? '委托中...'
-                        : `完成${block.delegate.duration ? ` (${Math.round(block.delegate.duration / 1000)}s)` : ''}`
-                    }}
-                  </span>
-                </div>
-                <div v-if="block.delegate.task" class="border-t border-violet-100 bg-white px-2 py-1">
-                  <p class="text-[10px] text-gray-500">
-                    {{ block.delegate.task }}
-                  </p>
-                </div>
-                <div
-                  v-if="block.delegate.output && block.delegate.status === 'done'"
-                  class="border-t border-violet-100 px-2 py-1">
-                  <div
-                    class="max-h-20 overflow-y-auto rounded bg-white px-1.5 py-1 font-mono text-[10px] text-gray-500">
-                    {{ block.delegate.output }}
-                  </div>
-                </div>
-              </div>
-            </template>
-
-            <!-- 等待中（streaming 且无内容块） -->
-            <div
-              v-if="msg.status === 'streaming' && msg.blocks.length === 0"
-              class="rounded-md border-l-2 border-l-blue-300 bg-white px-2 py-1.5">
-              <div class="mb-0.5">
-                <span class="rounded bg-blue-100 px-1 py-px font-mono text-[9px] font-semibold text-blue-500">
-                  text
-                </span>
-              </div>
-              <span class="inline-flex gap-1">
-                <span class="h-1 w-1 animate-bounce rounded-full bg-gray-400"></span>
-                <span class="h-1 w-1 animate-bounce rounded-full bg-gray-400" style="animation-delay: 0.15s"></span>
-                <span class="h-1 w-1 animate-bounce rounded-full bg-gray-400" style="animation-delay: 0.3s"></span>
-              </span>
-            </div>
-
-            <!-- HITL 审批卡片（必须等到 run:done 后才显示） -->
-            <template v-if="msg.pendingApprovals?.length">
-              <HitlApprovalCard
-                v-for="approval in msg.pendingApprovals.filter((a) => a.canShow)"
-                :key="'hitl-' + approval.index"
-                :approval="approval"
-                @decide="(d) => handleApproval(approval, d)" />
-            </template>
-
-            <!-- error -->
-            <div
-              v-if="msg.status === 'error' && msg.error"
-              class="rounded-md border-l-2 border-l-red-400 bg-red-50/60 px-2 py-1.5">
-              <span class="rounded bg-red-100 px-1 py-px font-mono text-[9px] font-semibold text-red-500">
-                run:error
-              </span>
-              <div class="mt-1 flex items-start gap-1 text-[11px] text-red-600">
-                <span class="i-carbon-warning-alt mt-0.5 inline-block h-3 w-3 shrink-0"></span>
-                <span>{{ msg.error }}</span>
-              </div>
-            </div>
-
-            <!-- interrupted -->
-            <div v-if="msg.status === 'interrupted'" class="flex items-center gap-1.5 text-[10px] text-amber-500">
-              <span class="i-carbon-pause-filled inline-block h-2.5 w-2.5"></span>
-              <span class="font-mono">run:interrupted</span>
-              <span class="h-px flex-1 bg-amber-200"></span>
-            </div>
-
-            <!-- done -->
-            <div v-if="msg.status === 'done'" class="flex items-center gap-1.5 text-[10px] text-gray-400">
-              <span class="i-carbon-checkmark-filled inline-block h-2.5 w-2.5 text-emerald-400"></span>
-              <span class="font-mono">run:done</span>
-              <span class="h-px flex-1 bg-gray-200"></span>
-            </div>
-
-            <!-- streaming (after blocks) -->
-            <div
-              v-if="msg.status === 'streaming' && msg.blocks.length > 0"
-              class="flex items-center gap-1.5 text-[10px] text-blue-400">
-              <span class="i-carbon-in-progress inline-block h-2.5 w-2.5 animate-spin"></span>
-              <span class="font-mono">streaming...</span>
-              <span class="h-px flex-1 bg-blue-100"></span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      </template>
+    </ChatMessages>
 
     <!-- 队列状态提示 -->
     <div
