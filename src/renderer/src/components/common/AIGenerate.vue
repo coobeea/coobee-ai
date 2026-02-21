@@ -392,35 +392,26 @@ defineExpose({
     :close-on-esc="false"
     transition="zoom"
     @update:visible="dialogVisible = $event">
-    <div
-      class="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700">
+    <div class="dialog-container">
       <!-- 头部 -->
-      <div
-        class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0">
+      <div class="dialog-header">
         <div class="flex items-center space-x-3">
           <!-- 状态图标 -->
-          <div
-            class="w-10 h-10 rounded-full flex items-center justify-center"
-            :class="{
-              'bg-blue-50 dark:bg-blue-900/20': generateStatus === 'generating',
-              'bg-green-50 dark:bg-green-900/20': generateStatus === 'success',
-              'bg-red-50 dark:bg-red-900/20': generateStatus === 'error',
-              'bg-yellow-50 dark:bg-yellow-900/20': generateStatus === 'cancelled'
-            }">
+          <div class="status-icon-wrapper" :class="`status-${generateStatus}`">
             <i
               class="w-5 h-5"
               :class="{
-                'i-mdi-loading animate-spin text-blue-500': generateStatus === 'generating',
-                'i-mdi-check-circle text-green-500': generateStatus === 'success',
-                'i-mdi-alert-circle text-red-500': generateStatus === 'error',
-                'i-mdi-cancel text-yellow-500': generateStatus === 'cancelled'
+                'i-mdi-loading animate-spin': generateStatus === 'generating',
+                'i-mdi-check-circle': generateStatus === 'success',
+                'i-mdi-alert-circle': generateStatus === 'error',
+                'i-mdi-cancel': generateStatus === 'cancelled'
               }" />
           </div>
 
           <!-- 标题 -->
           <div>
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ dialogTitle }}</h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400">
+            <h3 class="dialog-title">{{ dialogTitle }}</h3>
+            <p class="dialog-subtitle">
               {{
                 generateStatus === 'generating'
                   ? 'AI 正在处理中...'
@@ -435,21 +426,19 @@ defineExpose({
         </div>
 
         <!-- 关闭按钮 -->
-        <button
-          class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-          @click="closeDialog">
+        <button class="dialog-close-btn" @click="closeDialog">
           <i class="i-mdi-close w-5 h-5" />
         </button>
       </div>
 
       <!-- 内容区域 -->
-      <div class="p-6 max-h-[60vh] overflow-y-auto">
+      <div class="dialog-content">
         <!-- 生成中 -->
-        <div v-if="generateStatus === 'generating'" class="flex flex-col items-center justify-center py-12 space-y-4">
-          <i class="i-mdi-loading animate-spin w-12 h-12 text-blue-500" />
+        <div v-if="generateStatus === 'generating'" class="generating-state">
+          <i class="i-mdi-loading animate-spin w-12 h-12 status-generating-icon" />
           <div class="text-center space-y-2">
-            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">AI 正在生成中...</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">正在解析数据，请稍候</p>
+            <p class="generating-text">AI 正在生成中...</p>
+            <p class="generating-hint">正在解析数据，请稍候</p>
           </div>
         </div>
 
@@ -457,20 +446,17 @@ defineExpose({
         <div v-else-if="generateStatus === 'success' && result" class="space-y-4">
           <!-- JSON 数组展示 -->
           <div v-if="getValueType(result) === 'array'" class="space-y-3">
-            <div
-              v-for="(item, index) in result as unknown[]"
-              :key="index"
-              class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-              <div class="flex items-center space-x-2 mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
-                <span class="text-xs font-semibold text-blue-500">第 {{ index + 1 }} 项</span>
+            <div v-for="(item, index) in result as unknown[]" :key="index" class="result-item">
+              <div class="result-item-header">
+                <span class="result-item-index">第 {{ index + 1 }} 项</span>
               </div>
               <div class="space-y-2">
                 <div
                   v-for="(value, key) in item as Record<string, unknown>"
                   :key="String(key)"
                   class="flex flex-col space-y-1">
-                  <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ key }}</span>
-                  <span class="text-sm text-gray-900 dark:text-gray-100 break-words">{{ formatCellValue(value) }}</span>
+                  <span class="result-key">{{ key }}</span>
+                  <span class="result-value">{{ formatCellValue(value) }}</span>
                 </div>
               </div>
             </div>
@@ -478,31 +464,24 @@ defineExpose({
 
           <!-- JSON 对象展示 -->
           <div v-else-if="getValueType(result) === 'object'" class="space-y-2">
-            <div
-              v-for="(value, key) in result as Record<string, unknown>"
-              :key="String(key)"
-              class="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <div v-for="(value, key) in result as Record<string, unknown>" :key="String(key)" class="result-item">
               <div class="flex flex-col space-y-1">
-                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ key }}</span>
-                <span class="text-sm text-gray-900 dark:text-gray-100 break-words">{{ formatCellValue(value) }}</span>
+                <span class="result-key">{{ key }}</span>
+                <span class="result-value">{{ formatCellValue(value) }}</span>
               </div>
             </div>
           </div>
 
           <!-- 纯文本/HTML 展示 -->
           <div v-else>
-            <div class="flex items-center justify-between mb-3">
+            <div class="result-header">
               <div class="flex items-center space-x-2">
                 <i
                   :class="isHtmlContent(String(result)) ? 'i-mdi-language-html5' : 'i-mdi-text'"
-                  class="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{
-                  isHtmlContent(String(result)) ? 'HTML 内容' : '生成结果'
-                }}</span>
+                  class="w-4 h-4 result-header-icon" />
+                <span class="result-header-title">{{ isHtmlContent(String(result)) ? 'HTML 内容' : '生成结果' }}</span>
               </div>
-              <button
-                class="px-3 py-1.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors flex items-center space-x-1.5"
-                @click="copyResult">
+              <button class="copy-btn" @click="copyResult">
                 <i class="i-mdi-content-copy w-3.5 h-3.5" />
                 <span>复制</span>
               </button>
@@ -510,8 +489,8 @@ defineExpose({
 
             <!-- HTML 内容渲染 -->
             <div v-if="isHtmlContent(String(result))" class="space-y-3">
-              <div class="p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div class="prose prose-sm max-w-none dark:prose-invert">
+              <div class="html-preview">
+                <div class="prose-content">
                   <!-- eslint-disable-next-line vue/no-v-html -->
                   <div v-html="String(result)"></div>
                 </div>
@@ -519,26 +498,21 @@ defineExpose({
 
               <!-- HTML 源代码 -->
               <details class="group">
-                <summary
-                  class="cursor-pointer select-none px-3 py-2 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors flex items-center justify-between">
+                <summary class="html-source-summary">
                   <div class="flex items-center space-x-2">
-                    <i class="i-mdi-code-tags w-4 h-4 text-gray-500 dark:text-gray-400" />
-                    <span class="text-xs font-medium text-gray-900 dark:text-gray-100">查看源代码</span>
+                    <i class="i-mdi-code-tags w-4 h-4" />
+                    <span class="html-source-label">查看源代码</span>
                   </div>
-                  <i
-                    class="i-mdi-chevron-down w-4 h-4 text-gray-500 dark:text-gray-400 group-open:rotate-180 transition-transform" />
+                  <i class="i-mdi-chevron-down w-4 h-4 group-open:rotate-180 transition-transform" />
                 </summary>
-                <div
-                  class="mt-2 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-xs whitespace-pre-wrap text-gray-900 dark:text-gray-100 leading-relaxed overflow-x-auto">
+                <div class="html-source-code">
                   {{ result }}
                 </div>
               </details>
             </div>
 
             <!-- 纯文本内容 -->
-            <div
-              v-else
-              class="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-sm whitespace-pre-wrap text-gray-900 dark:text-gray-100 leading-relaxed">
+            <div v-else class="text-content">
               {{ result }}
             </div>
           </div>
@@ -546,20 +520,18 @@ defineExpose({
 
         <!-- 生成失败 -->
         <div v-else-if="generateStatus === 'error'" class="space-y-4">
-          <div
-            class="flex items-start space-x-3 p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-lg">
-            <i class="i-mdi-alert-circle w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div class="error-banner">
+            <i class="i-mdi-alert-circle w-5 h-5 flex-shrink-0 mt-0.5" />
             <div class="flex-1">
-              <h4 class="text-sm font-medium text-red-600 dark:text-red-400 mb-1">生成失败</h4>
-              <p class="text-sm text-red-500 dark:text-red-400/80">{{ error }}</p>
+              <h4 class="error-title">生成失败</h4>
+              <p class="error-message">{{ error }}</p>
             </div>
           </div>
 
           <!-- 部分内容 -->
           <div v-if="accumulatedContent" class="space-y-2">
-            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">部分生成内容：</span>
-            <div
-              class="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-sm whitespace-pre-wrap text-gray-900 dark:text-gray-100 max-h-60 overflow-y-auto">
+            <span class="partial-label">部分生成内容：</span>
+            <div class="partial-content">
               {{ accumulatedContent }}
             </div>
           </div>
@@ -567,20 +539,18 @@ defineExpose({
 
         <!-- 已取消 -->
         <div v-else-if="generateStatus === 'cancelled'" class="space-y-4">
-          <div
-            class="flex items-start space-x-3 p-4 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-lg">
-            <i class="i-mdi-information w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+          <div class="cancelled-banner">
+            <i class="i-mdi-information w-5 h-5 flex-shrink-0 mt-0.5" />
             <div class="flex-1">
-              <h4 class="text-sm font-medium text-yellow-600 dark:text-yellow-400 mb-1">生成已取消</h4>
-              <p class="text-sm text-yellow-500 dark:text-yellow-400/80">AI 生成任务已被手动取消</p>
+              <h4 class="cancelled-title">生成已取消</h4>
+              <p class="cancelled-message">AI 生成任务已被手动取消</p>
             </div>
           </div>
 
           <!-- 已生成内容 -->
           <div v-if="accumulatedContent" class="space-y-2">
-            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">已生成内容：</span>
-            <div
-              class="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-sm whitespace-pre-wrap text-gray-900 dark:text-gray-100 max-h-60 overflow-y-auto">
+            <span class="partial-label">已生成内容：</span>
+            <div class="partial-content">
               {{ accumulatedContent }}
             </div>
           </div>
@@ -588,139 +558,498 @@ defineExpose({
       </div>
 
       <!-- 底部操作栏 -->
-      <div
-        class="flex items-center justify-end space-x-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0">
+      <div class="dialog-footer">
         <!-- 生成中 - 取消按钮 -->
-        <button
-          v-if="generateStatus === 'generating'"
-          class="px-4 py-2 text-sm font-medium text-red-500 border border-red-200 dark:border-red-900/30 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
-          @click="cancel">
+        <button v-if="generateStatus === 'generating'" class="action-btn action-cancel" @click="cancel">
           <i class="i-mdi-cancel w-4 h-4 mr-1.5 inline-block" />
           取消生成
         </button>
 
         <!-- 生成成功 - 需要确认模式 -->
         <template v-else-if="generateStatus === 'success' && requireConfirm">
-          <button
-            class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            @click="closeDialog">
-            取消
-          </button>
-          <button
-            class="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors flex items-center space-x-1.5"
-            :disabled="isConfirmed"
-            @click="confirmResult">
+          <button class="action-btn action-secondary" @click="closeDialog">取消</button>
+          <button class="action-btn action-primary" :disabled="isConfirmed" @click="confirmResult">
             <i class="i-mdi-check w-4 h-4" />
             <span>{{ isConfirmed ? '已应用' : confirmText }}</span>
           </button>
         </template>
 
         <!-- 生成完成 - 普通模式 -->
-        <button
-          v-else
-          class="px-4 py-2 text-sm font-medium text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          @click="closeDialog">
-          关闭
-        </button>
+        <button v-else class="action-btn action-default" @click="closeDialog">关闭</button>
       </div>
     </div>
   </Popup>
 </template>
 
 <style scoped>
-/* Prose 样式（用于渲染 HTML 内容） */
-.prose {
-  @apply text-gray-900 dark:text-gray-100;
+.dialog-container {
+  width: 100%;
+  max-width: 48rem;
+  background: hsl(var(--background));
+  border-radius: 12px;
+  box-shadow:
+    0 20px 50px hsl(var(--shadow) / 0.15),
+    0 8px 20px hsl(var(--shadow) / 0.1);
+  border: 1px solid hsl(var(--border) / 0.4);
 }
 
-.prose :deep(h1),
-.prose :deep(h2),
-.prose :deep(h3),
-.prose :deep(h4),
-.prose :deep(h5),
-.prose :deep(h6) {
-  @apply font-semibold text-gray-900 dark:text-gray-100 mt-4 mb-2;
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid hsl(var(--border) / 0.3);
+  background: hsl(var(--surface) / 0.4);
+  flex-shrink: 0;
 }
 
-.prose :deep(h1) {
-  @apply text-2xl;
+.status-icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.prose :deep(h2) {
-  @apply text-xl;
+.status-generating {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
 }
 
-.prose :deep(h3) {
-  @apply text-lg;
+.status-success {
+  background: hsl(142 71% 45% / 0.1);
+  color: hsl(142 71% 45%);
 }
 
-.prose :deep(p) {
-  @apply my-2 leading-relaxed;
+.status-error {
+  background: hsl(var(--error) / 0.1);
+  color: hsl(var(--error));
 }
 
-.prose :deep(ul),
-.prose :deep(ol) {
-  @apply my-2 pl-6;
+.status-cancelled {
+  background: hsl(45 93% 47% / 0.1);
+  color: hsl(45 93% 47%);
 }
 
-.prose :deep(ul) {
-  @apply list-disc;
+.dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
 }
 
-.prose :deep(ol) {
-  @apply list-decimal;
+.dialog-subtitle {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground) / 0.7);
 }
 
-.prose :deep(li) {
-  @apply my-1;
+.dialog-close-btn {
+  padding: 8px;
+  border-radius: 8px;
+  color: hsl(var(--muted-foreground) / 0.6);
+  transition: all 0.15s ease;
 }
 
-.prose :deep(code) {
-  @apply px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono;
+.dialog-close-btn:hover {
+  background: hsl(var(--muted) / 0.3);
+  color: hsl(var(--foreground));
 }
 
-.prose :deep(pre) {
-  @apply p-4 rounded-lg bg-gray-100 dark:bg-gray-800 overflow-x-auto my-3;
+.dialog-content {
+  padding: 24px;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
-.prose :deep(pre code) {
-  @apply p-0 bg-transparent;
+.generating-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 0;
+  gap: 16px;
 }
 
-.prose :deep(blockquote) {
-  @apply border-l-4 border-blue-500 pl-4 italic my-3;
+.status-generating-icon {
+  color: hsl(var(--primary));
 }
 
-.prose :deep(table) {
-  @apply w-full border-collapse my-3;
+.generating-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
 }
 
-.prose :deep(th),
-.prose :deep(td) {
-  @apply border border-gray-200 dark:border-gray-700 px-3 py-2 text-left;
+.generating-hint {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground) / 0.7);
 }
 
-.prose :deep(th) {
-  @apply bg-gray-100 dark:bg-gray-800 font-semibold;
+.result-item {
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border) / 0.3);
+  background: hsl(var(--surface) / 0.5);
+  transition: all 0.15s ease;
 }
 
-.prose :deep(strong) {
-  @apply font-semibold;
+.result-item:hover {
+  background: hsl(var(--surface));
+  border-color: hsl(var(--border) / 0.5);
 }
 
-.prose :deep(em) {
-  @apply italic;
+.result-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid hsl(var(--border) / 0.2);
 }
 
-.prose :deep(s) {
-  @apply line-through;
+.result-item-index {
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--primary));
 }
 
-.prose :deep(a) {
-  @apply text-blue-500 hover:underline;
+.result-key {
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
 }
 
-.prose :deep(img) {
-  @apply max-w-full h-auto rounded-lg my-3;
+.result-value {
+  font-size: 13px;
+  color: hsl(var(--foreground));
+  word-break: break-word;
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.result-header-icon {
+  color: hsl(var(--muted-foreground) / 0.6);
+}
+
+.result-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.copy-btn:hover {
+  background: hsl(var(--primary) / 0.15);
+}
+
+.html-preview {
+  padding: 16px;
+  background: hsl(var(--background));
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border) / 0.3);
+}
+
+.prose-content {
+  max-width: none;
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.prose-content :deep(h1),
+.prose-content :deep(h2),
+.prose-content :deep(h3) {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.prose-content :deep(h1) {
+  font-size: 24px;
+}
+
+.prose-content :deep(h2) {
+  font-size: 20px;
+}
+
+.prose-content :deep(h3) {
+  font-size: 16px;
+}
+
+.prose-content :deep(p) {
+  margin: 8px 0;
+  line-height: 1.6;
+}
+
+.prose-content :deep(ul),
+.prose-content :deep(ol) {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.prose-content :deep(ul) {
+  list-style-type: disc;
+}
+
+.prose-content :deep(ol) {
+  list-style-type: decimal;
+}
+
+.prose-content :deep(li) {
+  margin: 4px 0;
+}
+
+.prose-content :deep(code) {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: hsl(var(--muted) / 0.3);
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+}
+
+.prose-content :deep(pre) {
+  padding: 16px;
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.3);
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.prose-content :deep(pre code) {
+  padding: 0;
+  background: transparent;
+}
+
+.prose-content :deep(blockquote) {
+  border-left: 4px solid hsl(var(--primary));
+  padding-left: 16px;
+  font-style: italic;
+  margin: 12px 0;
+}
+
+.prose-content :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+
+.prose-content :deep(th),
+.prose-content :deep(td) {
+  border: 1px solid hsl(var(--border) / 0.3);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.prose-content :deep(th) {
+  background: hsl(var(--muted) / 0.3);
+  font-weight: 600;
+}
+
+.prose-content :deep(a) {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+}
+
+.prose-content :deep(a):hover {
+  opacity: 0.8;
+}
+
+.html-source-summary {
+  cursor: pointer;
+  user-select: none;
+  padding: 8px 12px;
+  background: hsl(var(--surface) / 0.4);
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border) / 0.3);
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: hsl(var(--muted-foreground));
+}
+
+.html-source-summary:hover {
+  background: hsl(var(--surface) / 0.6);
+}
+
+.html-source-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.html-source-code {
+  margin-top: 8px;
+  padding: 16px;
+  background: hsl(var(--muted) / 0.2);
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border) / 0.3);
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: hsl(var(--foreground));
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.text-content {
+  padding: 16px;
+  background: hsl(var(--muted) / 0.2);
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border) / 0.3);
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+  color: hsl(var(--foreground));
+  line-height: 1.5;
+}
+
+.error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: hsl(var(--error) / 0.08);
+  border: 1px solid hsl(var(--error) / 0.2);
+  border-radius: 8px;
+  color: hsl(var(--error));
+}
+
+.error-title {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.error-message {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.cancelled-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: hsl(45 93% 47% / 0.08);
+  border: 1px solid hsl(45 93% 47% / 0.2);
+  border-radius: 8px;
+  color: hsl(45 93% 47%);
+}
+
+.cancelled-title {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.cancelled-message {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.partial-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+
+.partial-content {
+  padding: 16px;
+  background: hsl(var(--muted) / 0.15);
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border) / 0.25);
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+  color: hsl(var(--foreground));
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid hsl(var(--border) / 0.3);
+  background: hsl(var(--surface) / 0.4);
+  flex-shrink: 0;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.action-cancel {
+  color: hsl(var(--error));
+  border: 1px solid hsl(var(--error) / 0.3);
+  background: transparent;
+}
+
+.action-cancel:hover {
+  background: hsl(var(--error) / 0.08);
+}
+
+.action-secondary {
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border) / 0.4);
+  background: hsl(var(--surface));
+}
+
+.action-secondary:hover {
+  background: hsl(var(--muted) / 0.3);
+  border-color: hsl(var(--border) / 0.6);
+}
+
+.action-primary {
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary));
+  border: none;
+}
+
+.action-primary:hover:not(:disabled) {
+  background: hsl(var(--primary-hover));
+  box-shadow: 0 2px 8px hsl(var(--primary) / 0.25);
+}
+
+.action-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-default {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 0.3);
+  border: none;
+}
+
+.action-default:hover {
+  background: hsl(var(--muted) / 0.5);
 }
 </style>
