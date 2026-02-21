@@ -1,5 +1,10 @@
 @import 'tailwindcss';
+@plugin "@tailwindcss/typography";
 @plugin "@egoist/tailwindcss-icons";
+
+@layer base {
+  @import 'markstream-vue/index.tailwind.css';
+}
 
 /*
  * 使用 @theme inline 注册设计令牌（Design Tokens）。
