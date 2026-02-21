@@ -39,6 +39,7 @@ import { MessagePipeline } from './pipeline/MessagePipeline';
 import type { QueueSettings, SubmitResult } from './pipeline/types';
 import { SkillManager } from './skills/SkillManager';
 import { CheckpointManager } from './threads/CheckpointManager';
+import { WorkspaceManager } from './storage/WorkspaceManager';
 
 // ==================== 类型定义 ====================
 
@@ -421,11 +422,20 @@ class AgentExecutor {
 
     let eventWriter: AgentEventWriter | null = null;
 
+    let workspaceDir: string | undefined;
+    const { Env } = await import('@main/common/env');
+    if (builder) {
+      workspaceDir = (builder as unknown as { getWorkspaceRoot?: () => string | undefined }).getWorkspaceRoot?.();
+    }
+    if (!workspaceDir) {
+      workspaceDir = await Env.getAgentWorkspaceDir(sessionId);
+    }
+
     // 加载任务级 Extension（如果存在）
     const { ExtensionManager } = await import('@main/common/extension');
     const loader = ExtensionManager.getLoader?.();
     if (loader) {
-      await loader.loadWorkspaceExtensions(sessionId).catch((err) => {
+      await loader.loadWorkspaceExtensions(sessionId, workspaceDir).catch((err) => {
         log.warn(`[AgentExecutor] Failed to load workspace extensions for ${sessionId}:`, err);
       });
     }
@@ -516,16 +526,15 @@ class AgentExecutor {
     eventWriter: AgentEventWriter,
     sessionId: string,
     onChunk?: (chunk: StreamChunk) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    workspaceDir?: string
   ): Promise<ExecutionResult> {
     // Turn 状态跟踪（用于 turn_end 事件数据）
     let turnStartTime = 0;
     let turnToolCallCount = 0;
 
-    const checkpoint = CheckpointManager.getInstance();
-
     // 标记开始执行
-    checkpoint.updateStatus(sessionId, 'running').catch(() => {});
+    this.updateSessionStatus(sessionId, 'running', workspaceDir);
 
     let r = await gen.next();
     while (!r.done) {
@@ -533,7 +542,7 @@ class AgentExecutor {
       if (signal?.aborted) {
         log.info(`[AgentExecutor] Aborted: sessionId=${sessionId}`);
         await gen.return({ output: '', error: 'Aborted by user' } as ExecutionResult);
-        checkpoint.updateStatus(sessionId, 'idle').catch(() => {});
+        this.updateSessionStatus(sessionId, 'idle', workspaceDir);
         return { output: '', error: 'Aborted by user' };
       }
 
@@ -543,7 +552,7 @@ class AgentExecutor {
       eventWriter.dispatch(chunk);
 
       // === 检查点更新（fire-and-forget） ===
-      this.updateCheckpoint(checkpoint, sessionId, chunk);
+      this.updateCheckpoint(sessionId, chunk, workspaceDir);
 
       if (chunk.type === 'run:error') {
         log.error(`[AgentExecutor] API error in execute: error=${chunk.content}`);
@@ -593,7 +602,7 @@ class AgentExecutor {
         if (signal.aborted && !r.done) {
           log.info(`[AgentExecutor] Aborted during gen.next(): sessionId=${sessionId}`);
           await gen.return({ output: '', error: 'Aborted by user' } as ExecutionResult);
-          checkpoint.updateStatus(sessionId, 'idle').catch(() => {});
+          this.updateSessionStatus(sessionId, 'idle', workspaceDir);
           return { output: '', error: 'Aborted by user' };
         }
       } else {
@@ -603,7 +612,7 @@ class AgentExecutor {
 
     // 执行完成 - 但如果在等待审批，不覆盖 approval-pending 状态
     if (!this.pendingApprovalSessions.has(sessionId)) {
-      checkpoint.updateStatus(sessionId, 'completed').catch(() => {});
+      this.updateSessionStatus(sessionId, 'completed', workspaceDir);
     } else {
       log.info(`[AgentExecutor] Execute loop done but approval-pending, keeping checkpoint for ${sessionId}`);
     }
@@ -622,12 +631,64 @@ class AgentExecutor {
    * 因为异步审批模式下 Agent run 正常结束，但 checkpoint 必须保持 approval-pending
    * 等待用户审批后由 ThreadWaker 唤醒恢复。
    */
-  private updateCheckpoint(checkpoint: CheckpointManager, sessionId: string, chunk: StreamChunk): void {
+  private updateSessionStatus(
+    sessionId: string,
+    status: string,
+    workspaceDir?: string,
+    pendingOperation?: unknown
+  ): void {
+    const isSubAgent = sessionId.includes(':');
+
+    if (isSubAgent && workspaceDir) {
+      WorkspaceManager.updateCheckpoint(workspaceDir, {
+        status,
+        updatedAt: new Date().toISOString(),
+        ...(status === 'completed' || status === 'error' ? { completedAt: new Date().toISOString() } : {})
+      });
+      return;
+    }
+
+    if (!isSubAgent) {
+      const checkpoint = CheckpointManager.getInstance();
+      if (pendingOperation) {
+        checkpoint
+          .save({
+            threadId: sessionId,
+            updatedAt: new Date().toISOString(),
+            runStatus: status as 'approval-pending' | 'running' | 'tool-pending' | 'error' | 'idle' | 'completed',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            pendingOperation: pendingOperation as any
+          })
+          .catch(() => {});
+      } else {
+        checkpoint
+          .updateStatus(
+            sessionId,
+            status as 'approval-pending' | 'running' | 'tool-pending' | 'error' | 'idle' | 'completed'
+          )
+          .catch(() => {});
+      }
+
+      if (
+        status === 'tool-pending' ||
+        status === 'approval-pending' ||
+        status === 'running' ||
+        status === 'error' ||
+        status === 'completed'
+      ) {
+        this.syncThreadRunStatus(
+          sessionId,
+          status as 'approval-pending' | 'running' | 'tool-pending' | 'error' | 'idle' | 'completed'
+        );
+      }
+    }
+  }
+
+  private updateCheckpoint(sessionId: string, chunk: StreamChunk, workspaceDir?: string): void {
     switch (chunk.type) {
       case 'tool:start':
         if (!this.pendingApprovalSessions.has(sessionId)) {
-          checkpoint.updateStatus(sessionId, 'tool-pending').catch(() => {});
-          this.syncThreadRunStatus(sessionId, 'tool-pending');
+          this.updateSessionStatus(sessionId, 'tool-pending', workspaceDir);
         }
         break;
       case 'tool:done':
@@ -638,46 +699,28 @@ class AgentExecutor {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const suspendReason = (chunk.data as any)?.suspendReason;
           const pendingOp = this.parseSuspendReason(suspendReason, sessionId);
-          checkpoint
-            .save({
-              threadId: sessionId,
-              updatedAt: new Date().toISOString(),
-              runStatus: 'approval-pending',
-              pendingOperation: pendingOp
-            })
-            .catch(() => {});
-          this.syncThreadRunStatus(sessionId, 'approval-pending');
+          this.updateSessionStatus(sessionId, 'approval-pending', workspaceDir, pendingOp);
           log.info(`[AgentExecutor] Tool suspended (approval-pending): ${sessionId}, tool=${pendingOp?.toolName}`);
         } else if (!this.pendingApprovalSessions.has(sessionId)) {
-          checkpoint.updateStatus(sessionId, 'running').catch(() => {});
-          this.syncThreadRunStatus(sessionId, 'running');
+          this.updateSessionStatus(sessionId, 'running', workspaceDir);
         }
         break;
       case 'hitl:required':
         // 通过 Extension 的 api.services.events.emit 发出的 hitl:required
         // 不经过 consumeAndForward，所以这个 case 是备用路径
         this.pendingApprovalSessions.set(sessionId, { addedAt: Date.now() });
-        checkpoint
-          .save({
-            threadId: sessionId,
-            updatedAt: new Date().toISOString(),
-            runStatus: 'approval-pending',
-            pendingOperation: {
-              type: 'approval',
-              approvalId: (chunk.data as Record<string, unknown>)?.approvalId as string,
-              toolName: ((chunk.data as Record<string, unknown>)?.toolName as string) || chunk.content,
-              toolCallId: ((chunk.data as Record<string, unknown>)?.toolCallId as string) || '',
-              agentSessionId: sessionId,
-              arguments: ((chunk.data as Record<string, unknown>)?.arguments as string) || '{}'
-            }
-          })
-          .catch(() => {});
-        this.syncThreadRunStatus(sessionId, 'approval-pending');
+        this.updateSessionStatus(sessionId, 'approval-pending', workspaceDir, {
+          type: 'approval',
+          approvalId: (chunk.data as Record<string, unknown>)?.approvalId as string,
+          toolName: ((chunk.data as Record<string, unknown>)?.toolName as string) || chunk.content,
+          toolCallId: ((chunk.data as Record<string, unknown>)?.toolCallId as string) || '',
+          agentSessionId: sessionId,
+          arguments: ((chunk.data as Record<string, unknown>)?.arguments as string) || '{}'
+        });
         break;
       case 'run:error':
         this.pendingApprovalSessions.delete(sessionId);
-        checkpoint.updateStatus(sessionId, 'error').catch(() => {});
-        this.syncThreadRunStatus(sessionId, 'error');
+        this.updateSessionStatus(sessionId, 'error', workspaceDir);
         break;
       case 'run:done':
         if (this.pendingApprovalSessions.has(sessionId)) {
@@ -687,8 +730,7 @@ class AgentExecutor {
         } else {
           // 正常完成，设置为 completed（不是 idle）
           // 这样系统重启后不会尝试恢复已完成的对话
-          checkpoint.updateStatus(sessionId, 'completed').catch(() => {});
-          this.syncThreadRunStatus(sessionId, 'completed');
+          this.updateSessionStatus(sessionId, 'completed', workspaceDir);
         }
         break;
     }
@@ -852,11 +894,20 @@ class AgentExecutor {
 
     let eventWriter: AgentEventWriter | null = null;
 
+    let workspaceDir: string | undefined;
+    const { Env } = await import('@main/common/env');
+    if (builder) {
+      workspaceDir = (builder as unknown as { getWorkspaceRoot?: () => string | undefined }).getWorkspaceRoot?.();
+    }
+    if (!workspaceDir) {
+      workspaceDir = await Env.getAgentWorkspaceDir(sessionId);
+    }
+
     // 加载任务级 Extension（如果存在）
     const { ExtensionManager } = await import('@main/common/extension');
     const loader = ExtensionManager.getLoader?.();
     if (loader) {
-      await loader.loadWorkspaceExtensions(sessionId).catch((err) => {
+      await loader.loadWorkspaceExtensions(sessionId, workspaceDir).catch((err) => {
         log.warn(`[AgentExecutor] Failed to load workspace extensions for ${sessionId}:`, err);
       });
     }
@@ -864,16 +915,14 @@ class AgentExecutor {
     try {
       if (request.runtime) {
         // === 预构建 Runtime 路径（Orchestrator / Swarm） ===
-        const { Env } = await import('@main/common/env');
-        const workspace = await Env.getAgentWorkspaceDir(sessionId);
-        eventWriter = new AgentEventWriter(workspace);
+        eventWriter = new AgentEventWriter(workspaceDir);
         eventWriter.register(sessionId);
 
         runtime = request.runtime;
         eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
 
         const gen = runtime.stream(message, { signal });
-        const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal);
+        const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal, workspaceDir);
 
         const duration = Date.now() - startTime;
         this.logCompletion(sessionId, result, duration);
@@ -903,7 +952,7 @@ class AgentExecutor {
 
       // 2. 流式执行（HITL 在 before_tool_call Hook 中自动处理），传入 signal
       const gen = runtime.stream(message, { signal });
-      const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal);
+      const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal, workspaceDir);
 
       const duration = Date.now() - startTime;
 

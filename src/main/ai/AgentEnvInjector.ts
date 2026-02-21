@@ -38,7 +38,11 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
     const mode = builder.getMode();
 
     // 1. 获取/创建工作空间
-    const workspace = await Env.getAgentWorkspaceDir(sessionId);
+    // 🆕 检查是否已手动设置 workspace（如子 Agent 手动设置了 workspaceRoot）
+    const existingWorkspace = (
+      builder as unknown as { getWorkspaceRoot?: () => string | undefined }
+    ).getWorkspaceRoot?.();
+    const workspace = existingWorkspace || (await Env.getAgentWorkspaceDir(sessionId));
 
     // 2. 构建 AgentEnv
     const agentEnv = await buildAgentEnv(sessionId, workspace);

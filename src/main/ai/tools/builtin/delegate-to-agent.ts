@@ -33,6 +33,7 @@ import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext
 import { ToolCategory } from '../types';
 import { AgentStore } from '../../agents/AgentStore';
 import type { AgentDefinition } from '../../agents/types';
+import { WorkspaceManager } from '../../storage/WorkspaceManager';
 
 // ==================== 常量 ====================
 
@@ -137,22 +138,25 @@ export const delegateToAgentTool: ToolDefinition = {
       content: `Delegating to "${agentDef.name}" (${agentId}), taskId=${taskId}...`
     };
 
-    // 2. 创建任务目录结构
+    // 2. 创建任务和 Agent 目录结构 (实体与协作解耦)
     const taskDir = path.join(parentWorkspace, 'tasks', taskId);
-    const subAgentWorkspace = path.join(taskDir, 'agents', agentId);
     const resultsDir = path.join(taskDir, 'results');
     const experiencesDir = path.join(taskDir, 'experiences');
 
-    ensureDirs([
-      taskDir,
-      subAgentWorkspace,
-      path.join(subAgentWorkspace, 'sessions'),
-      path.join(subAgentWorkspace, 'contexts'),
-      path.join(subAgentWorkspace, 'events'),
-      path.join(subAgentWorkspace, 'output'),
-      resultsDir,
-      experiencesDir
-    ]);
+    ensureDirs([taskDir, resultsDir, experiencesDir]);
+
+    // 使用统一的 WorkspaceManager 获取/创建子 Agent 独立工作空间
+    const parentSessionId = execContext?.sessionId || 'unknown';
+    const subSessionId = `${parentSessionId}:delegate:${agentDef.id}`;
+
+    const subAgentWorkspace = WorkspaceManager.getOrCreateSubAgentWorkspace({
+      agentName: `delegate-${agentId}`,
+      sessionId: subSessionId,
+      type: 'delegate',
+      threadWorkspace: parentWorkspace,
+      enableSkills: true,
+      enableExtensions: true
+    });
 
     // 3. 收集已有执行经验
     const priorExperiences = collectExperiences(experiencesDir);
@@ -170,7 +174,6 @@ export const delegateToAgentTool: ToolDefinition = {
     const message = messageParts.join('\n');
 
     // 5. 创建临时运行时并执行
-    const parentSessionId = execContext?.sessionId || 'unknown';
     const startTime = Date.now();
     try {
       const result = await runSubAgent(

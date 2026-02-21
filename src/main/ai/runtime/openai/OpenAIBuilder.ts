@@ -139,6 +139,11 @@ export class OpenAIBuilder {
     return this;
   }
 
+  /** 获取当前设置的工作区根目录 */
+  getWorkspaceRoot(): string | undefined {
+    return this._workspaceRoot;
+  }
+
   /** 工具执行上下文（由 EnvInjector 自动设置） */
   sandboxContext(ctx: import('../../tools/types').ToolExecutionContext): this {
     this._sandboxContext = ctx;

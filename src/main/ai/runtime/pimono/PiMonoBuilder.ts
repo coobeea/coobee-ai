@@ -141,6 +141,11 @@ export class PiMonoBuilder {
     return this;
   }
 
+  /** 获取当前设置的工作区根目录 */
+  getWorkspaceRoot(): string | undefined {
+    return this._cwd;
+  }
+
   /** 思考级别 */
   thinkingLevel(level: ThinkingLevel): this {
     this._thinkingLevel = level;

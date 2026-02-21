@@ -196,8 +196,8 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
 
       console.log(`[Test] Thread JSON:`, JSON.stringify(threadData, null, 2));
 
-      // 验证新增字段（🆕 新格式：sessionId = {id}:main）
-      expect(threadData.sessionId).toBe(`${threadData.id}:main`);
+      // 验证新增字段
+      expect(threadData.sessionId).toBe(threadData.id);
       expect(threadData.agentMode).toBeDefined();
       expect(threadData.agentType).toBeDefined();
       expect(threadData.runStatus).toBeDefined();
@@ -274,8 +274,7 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
       if (matched) {
         const data = JSON.parse(fs.readFileSync(path.join(THREADS_DIR, matched), 'utf-8'));
         console.log(`[Test] Thread (工具):`, JSON.stringify(data, null, 2));
-        // 🆕 新格式：sessionId = {id}:main
-        expect(data.sessionId).toBe(`${data.id}:main`);
+        expect(data.sessionId).toBe(data.id);
         expect(data.agentMode).toBe('agent');
         expect(data.agentType).toBe('agent');
       }
@@ -387,8 +386,7 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
       if (matched) {
         const data = JSON.parse(fs.readFileSync(path.join(THREADS_DIR, matched), 'utf-8'));
         console.log(`[Test] 委托 Thread:`, JSON.stringify(data, null, 2));
-        // 🆕 新格式：sessionId = {id}:main
-        expect(data.sessionId).toBe(`${sessionId}:main`);
+        expect(data.sessionId).toBe(sessionId);
       }
 
       // 验证 workspace — 子 Agent 的 tasks 目录
@@ -410,18 +408,21 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
       const workspaceDir = path.join(WORKSPACES_DIR, sessionId);
       if (!fs.existsSync(workspaceDir)) return;
 
-      const sessionsDir = path.join(workspaceDir, 'sessions');
-      if (fs.existsSync(sessionsDir)) {
-        const sessions = fs.readdirSync(sessionsDir);
-        console.log(`[Test] Sessions:`, sessions);
-
-        // 查找子 Agent session
-        const delegateSessions = sessions.filter((s) => s.includes(':delegate:'));
-        if (delegateSessions.length > 0) {
-          console.log(`[Test] 子 Agent sessions:`, delegateSessions);
-          for (const ds of delegateSessions) {
-            expect(ds.startsWith(sessionId)).toBe(true);
-            expect(ds).toContain(':delegate:');
+      const agentsDir = path.join(workspaceDir, 'agents');
+      if (fs.existsSync(agentsDir)) {
+        const agents = fs.readdirSync(agentsDir);
+        for (const agentName of agents) {
+          if (agentName.startsWith('delegate-')) {
+            const sessionsDir = path.join(agentsDir, agentName, 'sessions');
+            if (fs.existsSync(sessionsDir)) {
+              const sessions = fs.readdirSync(sessionsDir);
+              console.log(`[Test] 子 Agent ${agentName} sessions:`, sessions);
+              for (const ds of sessions) {
+                // sessionId 会将 : 替换为 __
+                expect(ds.startsWith(sessionId)).toBe(true);
+                expect(ds).toContain('__delegate__');
+              }
+            }
           }
         }
       }
@@ -755,8 +756,7 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
       if (matched) {
         const thread = JSON.parse(fs.readFileSync(path.join(THREADS_DIR, matched), 'utf-8'));
         console.log(`[Test6] Thread:`, JSON.stringify(thread, null, 2));
-        // 🆕 新格式：sessionId = {id}:main
-        expect(thread.sessionId).toBe(`${sessionId}:main`);
+        expect(thread.sessionId).toBe(sessionId);
       }
     });
 
@@ -851,8 +851,7 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
       if (matched) {
         const thread = JSON.parse(fs.readFileSync(path.join(THREADS_DIR, matched), 'utf-8'));
         console.log(`[Test7] Thread:`, JSON.stringify(thread, null, 2));
-        // 🆕 新格式：sessionId = {id}:main
-        expect(thread.sessionId).toBe(`${sessionId}:main`);
+        expect(thread.sessionId).toBe(sessionId);
         expect(thread.agentType).toBe('orchestrator');
       }
     });
@@ -937,8 +936,7 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
       if (matched) {
         const thread = JSON.parse(fs.readFileSync(path.join(THREADS_DIR, matched), 'utf-8'));
         console.log(`[Test8] Thread:`, JSON.stringify(thread, null, 2));
-        // 🆕 新格式：sessionId = {id}:main
-        expect(thread.sessionId).toBe(`${sessionId}:main`);
+        expect(thread.sessionId).toBe(sessionId);
         expect(thread.agentType).toBe('swarm');
       }
     });
