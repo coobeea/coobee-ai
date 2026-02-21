@@ -50,20 +50,28 @@ export class AppManager implements IAppManager {
    */
   private setupAppEventHandlers(): void {
     // 所有窗口关闭
-    app.on(ElectronAppEvents.WINDOW_ALL_CLOSED, () => {
+    app.on(ElectronAppEvents.WINDOW_ALL_CLOSED, async () => {
       log.info('[App] 所有窗口已关闭');
 
       // 注意：托盘模式下，窗口只是隐藏（不会触发此事件）
       // 所以能到这里，说明窗口是真的被关闭和销毁了
 
-      // 在非 macOS 平台上，所有窗口关闭后退出应用
-      if (process.platform !== 'darwin') {
-        log.info('[App] Windows/Linux 应用退出');
-        app.quit();
-      } else {
-        // macOS: 保持应用运行（标准行为）
-        log.info('[App] macOS 应用保持运行，可通过 Dock 图标重新打开窗口');
+      // 统一通过 closeToTray 配置项控制应用行为（不再依赖平台默认行为）
+      const { config } = await import('@main/common/config');
+      const closeToTray = config.getCloseToTray();
+      const showTrayIcon = config.getShowTrayIcon();
+
+      // 托盘模式：保持应用运行
+      if (showTrayIcon && closeToTray) {
+        log.info(
+          `[App] 托盘模式：应用保持运行${process.platform === 'darwin' ? '（可通过 Dock 或托盘图标重新打开）' : '（可通过托盘图标重新打开）'}`
+        );
+        return;
       }
+
+      // 非托盘模式：退出应用（统一所有平台行为）
+      log.info(`[App] 非托盘模式：应用退出（platform: ${process.platform}）`);
+      app.quit();
     });
 
     // macOS 激活应用

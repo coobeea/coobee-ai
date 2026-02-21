@@ -1147,12 +1147,13 @@ export class WindowManager implements IWindowManager {
       const showTrayIcon = config.getShowTrayIcon();
       const closeToTray = config.getCloseToTray();
 
-      // 托盘模式：阻止关闭，隐藏窗口
+      // 托盘模式：阻止窗口关闭，改为隐藏窗口
+      // 条件：1. 启用托盘图标 AND 2. 启用关闭到托盘
       if (showTrayIcon && closeToTray) {
-        e.preventDefault();
-        window.hide();
+        e.preventDefault(); // 阻止窗口关闭
+        window.hide(); // 隐藏窗口（不销毁）
 
-        // macOS: 隐藏 Dock 图标
+        // macOS: 隐藏 Dock 图标（完全隐藏到托盘）
         if (process.platform === 'darwin') {
           const { app } = await import('electron');
           app.dock?.hide();
@@ -1161,13 +1162,16 @@ export class WindowManager implements IWindowManager {
         log.info(
           `[WindowManager] 托盘模式：窗口已隐藏 windowId=${windowId}${process.platform === 'darwin' ? ', Dock 已隐藏' : ''}`
         );
-        // 不需要继续处理
-        return;
+        return; // 不触发 'closed' 事件，也不触发 'window-all-closed'
       }
 
-      // 非托盘模式或应用退出：什么都不做，让窗口正常关闭
-      //    → 触发 'closed' 事件 → cleanupWindow()
-      //    → 如果是最后一个窗口 → 'window-all-closed' → 决定是否退出
+      // 非托盘模式：允许窗口正常关闭
+      // 流程：
+      //   1. 窗口关闭 → 触发 'closed' 事件 → cleanupWindow()
+      //   2. 如果是最后一个窗口 → 触发 'window-all-closed'
+      //   3. 'window-all-closed' 处理器根据 closeToTray 配置决定是否退出应用
+      //      - closeToTray = true：保持应用运行（不会到这里，因为已在上面被拦截）
+      //      - closeToTray = false：退出应用（统一所有平台行为）
 
       // 发送 window:close 事件
       eventBus.emit(EventTypes.WINDOW_CLOSE, {
