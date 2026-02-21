@@ -97,105 +97,91 @@ defineExpose({
 
 <template>
   <div class="chat-input-wrapper">
-    <div class="chat-input-container">
-      <textarea
-        ref="textareaRef"
-        v-model="inputText"
-        class="chat-input"
-        :placeholder="placeholder"
-        rows="2"
-        :disabled="disabled"
-        @keydown="handleKeydown"
-        @input="autoResize" />
+    <textarea
+      ref="textareaRef"
+      v-model="inputText"
+      class="chat-input"
+      :placeholder="placeholder"
+      rows="2"
+      :disabled="disabled"
+      @keydown="handleKeydown"
+      @input="autoResize" />
 
-      <!-- 工具栏（右下角） -->
-      <div class="chat-input-toolbar">
-        <!-- 模型选择器 -->
-        <Popover v-if="showModelSelector" v-model:visible="modelSelectorOpen">
-          <template #trigger>
-            <button class="toolbar-btn" title="选择模型">
-              <span class="i-carbon-model inline-block h-3.5 w-3.5" />
-              <span class="toolbar-btn-text">{{ currentModel.name }}</span>
-              <span class="i-carbon-chevron-down inline-block h-3 w-3" />
-            </button>
-          </template>
-          <template #default>
-            <div class="model-selector-popup">
-              <div class="model-selector-header">选择模型</div>
-              <div class="model-list">
-                <div
-                  v-for="model in availableModels"
-                  :key="model.id"
-                  class="model-item"
-                  :class="{ 'model-item-active': currentModel.id === model.id }"
-                  @click="selectModel(model)">
-                  <div class="model-item-content">
-                    <span class="model-item-name">{{ model.name }}</span>
-                    <span class="model-item-provider">{{ model.provider }}</span>
-                  </div>
-                  <span
-                    v-if="currentModel.id === model.id"
-                    class="i-carbon-checkmark inline-block h-3.5 w-3.5 text-primary" />
+    <!-- 工具栏（右下角） -->
+    <div class="chat-input-toolbar">
+      <!-- 模型选择器 -->
+      <Popover v-if="showModelSelector" v-model:visible="modelSelectorOpen">
+        <template #trigger>
+          <button class="toolbar-btn" title="选择模型">
+            <span class="i-carbon-model inline-block h-3.5 w-3.5" />
+            <span class="toolbar-btn-text">{{ currentModel.name }}</span>
+            <span class="i-carbon-chevron-down inline-block h-3 w-3" />
+          </button>
+        </template>
+        <template #default>
+          <div class="model-selector-popup">
+            <div class="model-selector-header">选择模型</div>
+            <div class="model-list">
+              <div
+                v-for="model in availableModels"
+                :key="model.id"
+                class="model-item"
+                :class="{ 'model-item-active': currentModel.id === model.id }"
+                @click="selectModel(model)">
+                <div class="model-item-content">
+                  <span class="model-item-name">{{ model.name }}</span>
+                  <span class="model-item-provider">{{ model.provider }}</span>
                 </div>
+                <span
+                  v-if="currentModel.id === model.id"
+                  class="i-carbon-checkmark inline-block h-3.5 w-3.5 text-primary" />
               </div>
             </div>
-          </template>
-        </Popover>
+          </div>
+        </template>
+      </Popover>
 
-        <!-- 发送/停止按钮 -->
-        <button v-if="showStopButton" class="toolbar-btn-stop" title="中断" @click="emit('stop')">
-          <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5" />
-        </button>
-        <button
-          v-else
-          class="toolbar-btn-send"
-          :disabled="disabled || !inputText.trim()"
-          title="发送 (Enter)"
-          @click="handleSend">
-          <span class="i-carbon-send inline-block h-3.5 w-3.5" />
-        </button>
-      </div>
+      <!-- 停止按钮 -->
+      <button v-if="showStopButton" class="toolbar-btn-stop" title="中断" @click="emit('stop')">
+        <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5" />
+      </button>
     </div>
   </div>
 </template>
 
 <style scoped>
 .chat-input-wrapper {
+  position: relative;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid hsl(var(--border) / 0.3);
-  background: hsl(var(--surface) / 0.5);
+  padding: 16px;
+  border-top: 1px solid hsl(var(--border) / 0.25);
+  background: hsl(var(--muted) / 0.2);
+  transition: background-color 0.15s ease;
 }
 
-.chat-input-container {
-  position: relative;
-  padding: 12px 16px;
+.chat-input-wrapper:focus-within {
+  background: hsl(var(--muted) / 0.3);
 }
 
 .chat-input {
   width: 100%;
   min-height: 56px;
   max-height: 200px;
-  padding: 14px 16px;
-  padding-bottom: 44px; /* 为工具栏留出空间 */
-  border-radius: 10px;
-  border: 1px solid hsl(var(--border) / 0.4);
-  background: hsl(var(--background));
+  padding: 12px 14px;
+  padding-bottom: 40px; /* 为工具栏留出空间 */
+  border: none;
+  background: transparent;
   color: hsl(var(--foreground));
   font-size: 14px;
   line-height: 1.6;
   resize: none;
   outline: none;
-  transition: border-color 0.15s ease;
   overflow-y: auto;
 }
 
-.chat-input:focus {
-  border-color: hsl(var(--primary) / 0.4);
-}
-
 .chat-input::placeholder {
-  color: hsl(var(--muted-foreground) / 0.35);
+  color: hsl(var(--muted-foreground) / 0.4);
 }
 
 .chat-input:disabled {
@@ -205,8 +191,8 @@ defineExpose({
 
 .chat-input-toolbar {
   position: absolute;
-  bottom: 20px;
-  right: 24px;
+  bottom: 18px;
+  right: 20px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -216,19 +202,21 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
+  height: 28px;
   padding: 0 10px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--muted) / 0.5);
+  background: hsl(var(--background) / 0.8);
+  border: 1px solid hsl(var(--border) / 0.3);
   transition: all 0.15s ease;
   cursor: pointer;
 }
 
 .toolbar-btn:hover {
-  background: hsl(var(--muted) / 0.8);
+  background: hsl(var(--background));
+  border-color: hsl(var(--border) / 0.5);
   color: hsl(var(--foreground));
 }
 
@@ -239,36 +227,13 @@ defineExpose({
   white-space: nowrap;
 }
 
-.toolbar-btn-send {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  color: hsl(var(--primary-foreground));
-  background: hsl(var(--primary));
-  transition: all 0.15s ease;
-  cursor: pointer;
-}
-
-.toolbar-btn-send:hover:not(:disabled) {
-  opacity: 0.9;
-  transform: scale(1.05);
-}
-
-.toolbar-btn-send:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 .toolbar-btn-stop {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   color: hsl(var(--primary-foreground));
   background: hsl(var(--error));
   transition: all 0.15s ease;
