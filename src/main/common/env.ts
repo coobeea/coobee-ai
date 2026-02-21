@@ -76,14 +76,28 @@ export const Env = {
 
       // === Agent 定义目录（Agents）===
       /**
-       * Agent 定义存储目录
+       * 内置 Agent 目录（只读，随应用分发）
+       *
+       * 开发模式：项目根目录 agents/
+       * 生产模式：resources/agents
+       *
+       * @example 开发: <项目>/agents
+       */
+      builtinAgentsDir: is.dev ? path.join(app.getAppPath(), 'agents') : path.join(process.resourcesPath, 'agents'),
+
+      /**
+       * 用户 Agent 目录（可读写，用户自行创建/修改）
+       *
+       * Agent 多级合并优先级（后者覆盖前者同 ID）：
+       *   1. builtinAgentsDir  — 内置（最低）
+       *   2. userAgentsDir     — 用户级（最高）
        *
        * 每个 Agent 一个 JSON 文件：{agentsDir}/{agentId}.json
        * 由 AgentStore 管理，通过 manage_agent 工具暴露给 LLM。
        *
        * @example 开发: <项目>/.home/agents | 生产: ~/.coobee-ai/agents
        */
-      agentsDir: path.join(_userHome, 'agents'),
+      userAgentsDir: path.join(_userHome, 'agents'),
 
       // === 会话线程目录（Threads）===
       /**

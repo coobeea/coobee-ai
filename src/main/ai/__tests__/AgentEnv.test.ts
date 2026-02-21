@@ -34,7 +34,8 @@ const mockEnv = {
     agentMemoryDir: '/mock/.home/memory/agent',
     workspacesDir: '/mock/.home/workspaces',
     configDir: '/mock/.home/config',
-    agentsDir: '/mock/.home/agents',
+    builtinAgentsDir: '/mock/agents',
+    userAgentsDir: '/mock/.home/agents',
     threadsDir: '/mock/.home/threads'
   },
   getSkillSearchPaths: vi.fn(),
@@ -104,8 +105,9 @@ describe('AgentEnv', () => {
         systemHome: '/Users/mock',
         temp: '/tmp/mock',
         configDir: '/mock/.home/config',
-        agentsDir: '/mock/.home/agents',
         threadsDir: '/mock/.home/threads',
+        builtinAgentsDir: '/mock/agents',
+        userAgentsDir: '/mock/.home/agents',
         skillPaths: mockSkillPaths,
         builtinSkillsDir: '/mock/skills',
         userSkillsDir: '/mock/.home/skills',
@@ -252,8 +254,9 @@ describe('AgentEnv', () => {
       systemHome: '/Users/test',
       temp: '/tmp',
       configDir: '/home/test/config',
-      agentsDir: '/home/test/agents',
       threadsDir: '/home/test/threads',
+      builtinAgentsDir: '/builtin/agents',
+      userAgentsDir: '/home/test/agents',
       skillPaths: ['/builtin/skills', '/home/test/skills', '/home/test/workspaces/session-1/skills'],
       builtinSkillsDir: '/builtin/skills',
       userSkillsDir: '/home/test/skills',
@@ -285,7 +288,8 @@ describe('AgentEnv', () => {
       // 路径
       expect(result).toContain(`<userHome>${sampleEnv.userHome}</userHome>`);
       expect(result).toContain(`<systemHome>/Users/test</systemHome>`);
-      expect(result).toContain(`<agentsDir>/home/test/agents</agentsDir>`);
+      expect(result).toContain(`<builtinAgentsDir>/builtin/agents</builtinAgentsDir>`);
+      expect(result).toContain(`<userAgentsDir>/home/test/agents</userAgentsDir>`);
       expect(result).toContain(`<threadsDir>/home/test/threads</threadsDir>`);
       expect(result).toContain(`<temp>/tmp</temp>`);
       expect(result).toContain(`<memoryDir>${sampleEnv.memoryDir}</memoryDir>`);

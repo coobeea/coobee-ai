@@ -1,12 +1,13 @@
 /**
  * Agent 定义持久化存储
  *
- * 将 AgentDefinition 存储到 .home/agents/{agentId}.json，
+ * 多级合并：builtin agents/ (只读) + .home/agents/ (可读写)
  * 提供 CRUD 操作，启动时扫描目录加载索引。
  *
  * 设计：
  *   - 每个 Agent 独立 JSON 文件（便于 LLM 直接读写、用户查看）
  *   - 内存索引（id → AgentIndexEntry）加速 list 操作
+ *   - 多级目录扫描（builtin < user，同 ID 时 user 覆盖 builtin）
  *   - 全量读取按需（get 时才读文件）
  *   - 单例模式（通过 getInstance）
  */
@@ -23,7 +24,8 @@ const log = createLogger('agent-store');
 export class AgentStore {
   private static instance: AgentStore | null = null;
 
-  private readonly agentsDir: string;
+  private readonly builtinDir: string;
+  private readonly userDir: string;
 
   /** 内存索引（启动时加载，运行时同步更新） */
   private index = new Map<string, AgentIndexEntry>();
@@ -31,8 +33,9 @@ export class AgentStore {
   /** 是否已初始化 */
   private initialized = false;
 
-  constructor(agentsDir: string) {
-    this.agentsDir = agentsDir;
+  constructor(builtinDir: string, userDir: string) {
+    this.builtinDir = builtinDir;
+    this.userDir = userDir;
   }
 
   // ==================== 单例 ====================
@@ -41,7 +44,7 @@ export class AgentStore {
     if (!AgentStore.instance) {
       // 延迟加载 Env，避免循环依赖
       const { Env } = await import('@main/common/env');
-      AgentStore.instance = new AgentStore(Env.paths.agentsDir);
+      AgentStore.instance = new AgentStore(Env.paths.builtinAgentsDir, Env.paths.userAgentsDir);
     }
     return AgentStore.instance;
   }
@@ -57,59 +60,57 @@ export class AgentStore {
   async init(): Promise<void> {
     if (this.initialized) return;
 
-    // 确保目录存在
-    if (!fs.existsSync(this.agentsDir)) {
-      fs.mkdirSync(this.agentsDir, { recursive: true });
+    // 确保 user 目录存在（builtin 目录应该随代码存在）
+    if (!fs.existsSync(this.userDir)) {
+      fs.mkdirSync(this.userDir, { recursive: true });
     }
 
-    // 扫描目录加载索引
+    // 扫描目录加载索引（多级合并）
     await this.rebuildIndex();
 
-    // 确保内置 Agent 存在
-    this.ensureBuiltinAgents();
-
     this.initialized = true;
-    log.info(`[AgentStore] Initialized: ${this.index.size} agents loaded from ${this.agentsDir}`);
+    log.info(
+      `[AgentStore] Initialized: ${this.index.size} agents loaded (builtin: ${this.builtinDir}, user: ${this.userDir})`
+    );
   }
 
-  /** 扫描目录重建索引 */
+  /** 扫描目录重建索引（多级合并：builtin < user） */
   private async rebuildIndex(): Promise<void> {
     this.index.clear();
-    const files = fs.readdirSync(this.agentsDir).filter((f) => f.endsWith('.json'));
 
-    for (const file of files) {
-      try {
-        const filePath = path.join(this.agentsDir, file);
-        const raw = fs.readFileSync(filePath, 'utf-8');
-        const def = JSON.parse(raw) as AgentDefinition;
-        this.index.set(def.id, toIndexEntry(def));
-      } catch (err) {
-        log.warn(`[AgentStore] Failed to load ${file}:`, err);
+    // 1. 先加载 builtin agents（优先级低）
+    if (fs.existsSync(this.builtinDir)) {
+      const builtinFiles = fs.readdirSync(this.builtinDir).filter((f) => f.endsWith('.json'));
+      for (const file of builtinFiles) {
+        try {
+          const filePath = path.join(this.builtinDir, file);
+          const raw = fs.readFileSync(filePath, 'utf-8');
+          const def = JSON.parse(raw) as AgentDefinition;
+
+          // 补充时间戳（builtin agents 文件中没有）
+          if (!def.createdAt) def.createdAt = new Date().toISOString();
+          if (!def.updatedAt) def.updatedAt = def.createdAt;
+          if (!def.version) def.version = 1;
+
+          this.index.set(def.id, toIndexEntry(def));
+        } catch (err) {
+          log.warn(`[AgentStore] Failed to load builtin ${file}:`, err);
+        }
       }
     }
-  }
 
-  // ==================== 内置 Agent ====================
-
-  /**
-   * 确保系统内置 Agent 存在
-   *
-   * 检查预定义的内置 Agent 列表，不存在的自动创建。
-   * 已存在的不会覆盖（用户可能修改过配置）。
-   */
-  private ensureBuiltinAgents(): void {
-    for (const builtinDef of BUILTIN_AGENTS) {
-      if (!this.index.has(builtinDef.id)) {
-        const now = new Date().toISOString();
-        const definition: AgentDefinition = {
-          ...builtinDef,
-          createdAt: now,
-          updatedAt: now,
-          version: 1
-        };
-        this.writeDefinition(definition);
-        this.index.set(definition.id, toIndexEntry(definition));
-        log.info(`[AgentStore] Created built-in agent: ${definition.id} (${definition.name})`);
+    // 2. 再加载 user agents（优先级高，覆盖同 ID）
+    if (fs.existsSync(this.userDir)) {
+      const userFiles = fs.readdirSync(this.userDir).filter((f) => f.endsWith('.json'));
+      for (const file of userFiles) {
+        try {
+          const filePath = path.join(this.userDir, file);
+          const raw = fs.readFileSync(filePath, 'utf-8');
+          const def = JSON.parse(raw) as AgentDefinition;
+          this.index.set(def.id, toIndexEntry(def));
+        } catch (err) {
+          log.warn(`[AgentStore] Failed to load user ${file}:`, err);
+        }
       }
     }
   }
@@ -163,15 +164,22 @@ export class AgentStore {
 
     if (!this.index.has(agentId)) return null;
 
-    const filePath = this.getFilePath(agentId);
-    if (!fs.existsSync(filePath)) {
+    const filePath = this.findAgentFile(agentId);
+    if (!filePath) {
       this.index.delete(agentId);
       return null;
     }
 
     try {
       const raw = fs.readFileSync(filePath, 'utf-8');
-      return JSON.parse(raw) as AgentDefinition;
+      const def = JSON.parse(raw) as AgentDefinition;
+
+      // 补充时间戳（builtin agents 文件中可能没有）
+      if (!def.createdAt) def.createdAt = new Date().toISOString();
+      if (!def.updatedAt) def.updatedAt = def.createdAt;
+      if (!def.version) def.version = 1;
+
+      return def;
     } catch (err) {
       log.warn(`[AgentStore] Failed to read agent ${agentId}:`, err);
       return null;
@@ -189,6 +197,14 @@ export class AgentStore {
     const existing = await this.get(agentId);
     if (!existing) return null;
 
+    // 检查是否是 builtin agent（通过检查文件位置）
+    const isBuiltin = this.isBuiltinAgent(agentId);
+    if (isBuiltin) {
+      throw new Error(
+        `Built-in agent "${agentId}" cannot be modified. Create a new agent or copy it to user directory first.`
+      );
+    }
+
     const updated: AgentDefinition = {
       ...existing,
       ...(params.name !== undefined && { name: params.name }),
@@ -203,7 +219,7 @@ export class AgentStore {
       version: existing.version + 1
     };
 
-    // 写文件
+    // 写文件（只写入 userDir）
     this.writeDefinition(updated);
 
     // 更新索引
@@ -213,19 +229,18 @@ export class AgentStore {
     return updated;
   }
 
-  /** 删除 Agent（系统内置 Agent 不可删除） */
+  /** 删除 Agent（内置 Agent 不可删除） */
   async delete(agentId: string): Promise<boolean> {
     await this.init();
 
     if (!this.index.has(agentId)) return false;
 
-    // 系统内置 Agent 不可删除
-    const entry = this.index.get(agentId);
-    if (entry?.createdBy === 'system') {
+    // 内置 Agent 不可删除
+    if (this.isBuiltinAgent(agentId)) {
       throw new Error(`Built-in agent "${agentId}" cannot be deleted`);
     }
 
-    const filePath = this.getFilePath(agentId);
+    const filePath = path.join(this.userDir, `${agentId}.json`);
     try {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -247,12 +262,39 @@ export class AgentStore {
 
   // ==================== 内部方法 ====================
 
-  private getFilePath(agentId: string): string {
-    return path.join(this.agentsDir, `${agentId}.json`);
+  /**
+   * 查找 Agent 文件的实际路径（优先 user，其次 builtin）
+   * @returns 文件路径，不存在返回 null
+   */
+  private findAgentFile(agentId: string): string | null {
+    const userPath = path.join(this.userDir, `${agentId}.json`);
+    if (fs.existsSync(userPath)) return userPath;
+
+    const builtinPath = path.join(this.builtinDir, `${agentId}.json`);
+    if (fs.existsSync(builtinPath)) return builtinPath;
+
+    return null;
   }
 
+  /**
+   * 检查 Agent 是否是 builtin
+   */
+  private isBuiltinAgent(agentId: string): boolean {
+    const userPath = path.join(this.userDir, `${agentId}.json`);
+    const builtinPath = path.join(this.builtinDir, `${agentId}.json`);
+
+    // 如果 user 目录存在，说明已经被覆盖/复制，不算 builtin
+    if (fs.existsSync(userPath)) return false;
+
+    // 否则检查是否存在于 builtin 目录
+    return fs.existsSync(builtinPath);
+  }
+
+  /**
+   * 写入 Agent 定义（只写入 userDir）
+   */
   private writeDefinition(def: AgentDefinition): void {
-    const filePath = this.getFilePath(def.id);
+    const filePath = path.join(this.userDir, `${def.id}.json`);
     fs.writeFileSync(filePath, JSON.stringify(def, null, 2), 'utf-8');
   }
 }
@@ -272,65 +314,3 @@ function toIndexEntry(def: AgentDefinition): AgentIndexEntry {
     skills: def.skills
   };
 }
-
-// ==================== 内置 Agent 定义 ====================
-
-/** 内置 Agent 定义（不含 createdAt/updatedAt/version，初始化时自动填充） */
-type BuiltinAgentDef = Omit<AgentDefinition, 'createdAt' | 'updatedAt' | 'version'>;
-
-const BUILTIN_AGENTS: BuiltinAgentDef[] = [
-  {
-    id: 'app-copilot',
-    name: '应用管家',
-    description: '管理技能、智能体和系统配置的全能助手，用对话代替手动操作',
-    instructions: `你是 Coobee AI 的应用管家，负责帮助用户通过自然语言对话管理整个应用。
-
-## 你的能力
-
-### 1. 技能管理
-- **创建技能**：根据用户描述，设计并创建专业的 SKILL.md 文件。先读取 skill-creator 技能了解标准格式，然后调用 manage_skill 工具写入。
-- **查看技能**：列出所有可用技能，或查看某个技能的详细内容。
-- **导入技能**：从用户指定的路径导入技能。
-- **删除技能**：删除用户创建的技能（内置技能不可删除）。
-
-### 2. 智能体管理
-- **创建智能体**：根据用户需求设计专业的 Agent。先读取 agent-creator 技能了解设计方法，然后调用 manage_agent 工具创建。
-- **修改智能体**：更新智能体的名称、描述、指令、工具、技能等配置。
-- **关联技能**：将技能关联到智能体，或移除关联。
-- **查看/删除智能体**：调用 manage_agent 工具的 list / get / delete 操作。
-
-### 3. 系统配置
-- **查看配置**：调用 config_get 查看应用配置（模型、沙箱、审批策略等）。
-- **修改配置**：调用 config_patch 调整配置项。
-
-## 工具使用指南（重要！）
-
-- **查看已创建的智能体** → 使用 manage_agent（action="list"），不是 config_get
-- **查看已有的技能** → 使用 manage_skill（action="list"）或 skill_list
-- **查看应用配置** → 使用 config_get
-- **查看系统概览/总览** → 同时调用 manage_agent(list) + manage_skill(list) + config_get，汇总展示
-- config_get 返回的是 coobee.json5 中的配置参数，不包含已创建的智能体和技能列表
-
-## 工作规范
-
-1. **主动确认**：执行写操作前，先简要说明你将要做什么，然后直接执行。不要反复询问"你确定吗"。
-2. **操作反馈**：每次操作完成后，清晰地告知用户结果和后续建议。
-3. **专业创建**：创建技能或智能体时，参考对应的 Skill（skill-creator / agent-creator）确保质量。
-4. **中文回复**：所有回复使用中文。
-5. **简洁高效**：直奔主题，不做冗余的客套。`,
-    tools: [
-      'manage_agent',
-      'manage_skill',
-      'skill_list',
-      'config_get',
-      'config_patch',
-      'read',
-      'write',
-      'edit',
-      'search',
-      'glob'
-    ],
-    skills: ['skill-creator', 'agent-creator', 'system-config'],
-    createdBy: 'system'
-  }
-];

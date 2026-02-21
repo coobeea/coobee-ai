@@ -49,10 +49,14 @@ export interface AgentEnv {
   temp: string;
   /** 配置目录（存放 coobee.json5、secrets.json5、skills.json5） */
   configDir: string;
-  /** 智能体定义目录（{userHome}/agents/） */
-  agentsDir: string;
   /** 会话线程目录（{userHome}/threads/，Snowflake ID 有序） */
   threadsDir: string;
+
+  // --- Agent 系统 ---
+  /** 内置 Agent 目录（只读） */
+  builtinAgentsDir: string;
+  /** 用户 Agent 目录（可读写） */
+  userAgentsDir: string;
 
   // --- Skill 系统 ---
   /** Skill 搜索路径（按优先级从低到高） */
@@ -179,8 +183,11 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
     systemHome: Env.paths.home,
     temp: Env.paths.temp,
     configDir: Env.paths.configDir,
-    agentsDir: Env.paths.agentsDir,
     threadsDir: Env.paths.threadsDir,
+
+    // Agent 系统
+    builtinAgentsDir: Env.paths.builtinAgentsDir,
+    userAgentsDir: Env.paths.userAgentsDir,
 
     // Skill 系统
     skillPaths,
@@ -233,11 +240,14 @@ export function formatRuntimePaths(env: AgentEnv): string {
   <userHome>${env.userHome}</userHome>
   <systemHome>${env.systemHome}</systemHome>
   <configDir>${env.configDir}</configDir>
-  <agentsDir>${env.agentsDir}</agentsDir>
   <threadsDir>${env.threadsDir}</threadsDir>
   <temp>${env.temp}</temp>
   <memoryDir>${env.memoryDir}</memoryDir>
 </paths>
+<agents>
+  <builtinAgentsDir>${env.builtinAgentsDir}</builtinAgentsDir>
+  <userAgentsDir>${env.userAgentsDir}</userAgentsDir>
+</agents>
 <skills>
   <builtinSkillsDir>${env.builtinSkillsDir}</builtinSkillsDir>
   <userSkillsDir>${env.userSkillsDir}</userSkillsDir>
