@@ -352,18 +352,16 @@ onMounted(() => {
         <button class="cancel-btn" @click="emit('cancel')">
           {{ readonly ? '关闭' : '取消' }}
         </button>
-        <div class="form-actions-right">
-          <button v-if="canCancel" class="cancel-task-btn" :disabled="cancelling" @click="handleCancelTask">
-            <span v-if="cancelling" class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
-            <span v-else class="i-carbon-close-filled inline-block h-4 w-4" />
-            <span>{{ cancelling ? '取消中...' : '取消任务' }}</span>
-          </button>
-          <button v-if="!readonly" class="submit-btn" :disabled="!canSubmit || saving" @click="handleSubmit">
-            <span v-if="saving" class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
-            <span v-else class="i-carbon-send-filled inline-block h-4 w-4" />
-            <span>{{ saving ? '发布中...' : '发布任务' }}</span>
-          </button>
-        </div>
+        <button v-if="canCancel" class="cancel-task-btn" :disabled="cancelling" @click="handleCancelTask">
+          <span v-if="cancelling" class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
+          <span v-else class="i-carbon-close-filled inline-block h-4 w-4" />
+          <span>{{ cancelling ? '取消中...' : '取消任务' }}</span>
+        </button>
+        <button v-if="!readonly" class="submit-btn" :disabled="!canSubmit || saving" @click="handleSubmit">
+          <span v-if="saving" class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
+          <span v-else class="i-carbon-send-filled inline-block h-4 w-4" />
+          <span>{{ saving ? '发布中...' : '发布任务' }}</span>
+        </button>
       </div>
     </div>
   </div>
@@ -688,15 +686,9 @@ onMounted(() => {
 .form-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
   padding-top: 8px;
-}
-
-.form-actions-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .cancel-btn,
