@@ -160,6 +160,15 @@ export class ConcurrencyManager {
         .then(() => {
           const idx = executing.indexOf(promise);
           if (idx !== -1) executing.splice(idx, 1);
+        })
+        .catch((error) => {
+          // 捕获 promise 链中的异常，防止 Promise.race/Promise.all 提前退出
+          log.error(`[ConcurrencyManager] Task ${task.id} execution or cleanup failed:`, error);
+          // 即使出错也要从 executing 中移除
+          const idx = executing.indexOf(promise);
+          if (idx !== -1) executing.splice(idx, 1);
+          // 重新抛出错误，让 Promise.all 能够捕获
+          throw error;
         });
 
       executing.push(promise);

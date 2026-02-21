@@ -30,24 +30,15 @@ export class StreamMonitor {
   private sessionStats = new Map<string, SessionStats>();
   private initialized = false;
 
-  /**
-   * 初始化（注册事件监听）
-   */
-  initialize(): void {
-    if (this.initialized) return;
+  // EventBus 监听器引用（用于清理）
+  private readonly handleStart: (event: StreamEvent) => void;
+  private readonly handleMessage: (event: StreamEvent) => void;
+  private readonly handleEnd: (event: StreamEvent) => void;
+  private readonly handleError: (event: StreamEvent) => void;
 
-    this.registerEventListeners();
-
-    this.initialized = true;
-    log.info('[StreamMonitor] Initialized');
-  }
-
-  /**
-   * 注册事件监听器（消费者核心）
-   */
-  private registerEventListeners(): void {
-    // 监听流开始
-    eventBus.on(StreamEventType.START, (event: StreamEvent) => {
+  constructor() {
+    // 在构造函数中绑定所有 handler，确保 off() 时引用一致
+    this.handleStart = (event: StreamEvent) => {
       const stats: SessionStats = {
         sessionId: event.sessionId,
         messageCount: 0,
@@ -60,10 +51,9 @@ export class StreamMonitor {
       };
       this.sessionStats.set(event.sessionId, stats);
       log.info(`[StreamMonitor] Stream started: ${event.sessionId}`);
-    });
+    };
 
-    // 监听消息
-    eventBus.on(StreamEventType.MESSAGE, (event: StreamEvent) => {
+    this.handleMessage = (event: StreamEvent) => {
       if (!event.message) return;
 
       const stats = this.getOrCreateStats(event.sessionId);
@@ -88,10 +78,9 @@ export class StreamMonitor {
           stats.errorCount++;
           break;
       }
-    });
+    };
 
-    // 监听流结束 — 记录统计后延迟清理，防止 Map 无限增长
-    eventBus.on(StreamEventType.END, (event: StreamEvent) => {
+    this.handleEnd = (event: StreamEvent) => {
       const stats = this.sessionStats.get(event.sessionId);
       if (stats && stats.startTime) {
         stats.endTime = Date.now();
@@ -103,14 +92,55 @@ export class StreamMonitor {
       setTimeout(() => {
         this.sessionStats.delete(event.sessionId);
       }, 60_000);
-    });
+    };
 
-    // 监听错误
-    eventBus.on(StreamEventType.ERROR, (event: StreamEvent) => {
+    this.handleError = (event: StreamEvent) => {
       const stats = this.getOrCreateStats(event.sessionId);
       stats.errorCount++;
       log.error(`[StreamMonitor] Stream error: ${event.sessionId}`, event.error);
-    });
+    };
+  }
+
+  /**
+   * 初始化（注册事件监听）
+   */
+  initialize(): void {
+    if (this.initialized) return;
+
+    this.registerEventListeners();
+
+    this.initialized = true;
+    log.info('[StreamMonitor] Initialized');
+  }
+
+  /**
+   * 清理资源（移除 EventBus 监听器）
+   */
+  destroy(): void {
+    if (!this.initialized) return;
+
+    // 移除所有 EventBus 监听器
+    eventBus.off(StreamEventType.START, this.handleStart);
+    eventBus.off(StreamEventType.MESSAGE, this.handleMessage);
+    eventBus.off(StreamEventType.END, this.handleEnd);
+    eventBus.off(StreamEventType.ERROR, this.handleError);
+
+    // 清空统计数据
+    this.sessionStats.clear();
+
+    this.initialized = false;
+    log.info('[StreamMonitor] Destroyed');
+  }
+
+  /**
+   * 注册事件监听器（消费者核心）
+   */
+  private registerEventListeners(): void {
+    // 使用预先绑定的 handler
+    eventBus.on(StreamEventType.START, this.handleStart);
+    eventBus.on(StreamEventType.MESSAGE, this.handleMessage);
+    eventBus.on(StreamEventType.END, this.handleEnd);
+    eventBus.on(StreamEventType.ERROR, this.handleError);
 
     log.info('[StreamMonitor] Event listeners registered');
   }

@@ -40,6 +40,8 @@ import type {
 export class Gateway implements GatewayApi {
   private server: GatewayServer | null = null;
   private methods = new Map<string, MethodHandler>();
+  /** EventBridge 清理函数（用于移除 EventBus 监听器） */
+  private eventBridgeCleanups: Array<() => void> = [];
 
   // ==================== 启动 ====================
 
@@ -138,7 +140,10 @@ export class Gateway implements GatewayApi {
       for (const [exportName, exportValue] of Object.entries(module)) {
         if (typeof exportValue === 'function') {
           try {
-            (exportValue as EventBridgeInit)(this);
+            const cleanup = (exportValue as EventBridgeInit)(this);
+            if (cleanup) {
+              this.eventBridgeCleanups.push(cleanup);
+            }
             log.debug(`[Gateway] 初始化事件桥接: ${exportName} (来自 ${filePath})`);
           } catch (error) {
             log.error(`[Gateway] 事件桥接初始化失败: ${exportName}`, error);
@@ -335,8 +340,23 @@ export class Gateway implements GatewayApi {
   // ==================== 生命周期 ====================
 
   /** 关闭 Gateway */
-  close(): void {
-    this.server?.close();
+  async close(): Promise<void> {
+    // 清理所有 EventBridge 监听器
+    for (const cleanup of this.eventBridgeCleanups) {
+      try {
+        cleanup();
+      } catch (error) {
+        log.error('[Gateway] EventBridge cleanup failed:', error);
+      }
+    }
+    this.eventBridgeCleanups = [];
+
+    // 清理 IPC EventBroadcaster
+    const { ipcEventBroadcaster } = await import('@main/common/ipc/eventBroadcaster');
+    ipcEventBroadcaster.destroy();
+
+    // 关闭 GatewayServer
+    await this.server?.close();
     this.methods.clear();
     log.info('[Gateway] Closed');
   }

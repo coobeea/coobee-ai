@@ -278,14 +278,21 @@ export class HitlApprovalManager {
     this.cleanup(sessionId);
 
     // 清理 single 模式（前缀匹配 sessionId:*）
+    // 先收集要删除的 key，避免遍历时变异 Map
     const prefix = `${sessionId}:`;
+    const toDelete: string[] = [];
     for (const [approvalId, entry] of this.singlePending) {
       if (approvalId.startsWith(prefix)) {
         clearTimeout(entry.timer);
-        this.singlePending.delete(approvalId);
         entry.resolve(null);
-        log.info(`[HitlApprovalManager] Cleaned up single: approvalId=${approvalId}`);
+        toDelete.push(approvalId);
       }
+    }
+
+    // 批量删除
+    for (const approvalId of toDelete) {
+      this.singlePending.delete(approvalId);
+      log.info(`[HitlApprovalManager] Cleaned up single: approvalId=${approvalId}`);
     }
   }
 

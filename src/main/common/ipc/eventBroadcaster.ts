@@ -54,6 +54,8 @@ export const IPC_EVENT_CHANNEL = 'ipc:event' as const;
 
 class IpcEventBroadcaster {
   private initialized = false;
+  /** 保存所有 handler 引用，用于清理 */
+  private readonly handlers = new Map<string, (data: unknown) => void>();
 
   /**
    * 初始化事件广播器
@@ -71,132 +73,73 @@ class IpcEventBroadcaster {
   }
 
   /**
+   * 清理所有 EventBus 监听器
+   */
+  destroy(): void {
+    if (!this.initialized) {
+      return;
+    }
+
+    for (const [eventType, handler] of this.handlers) {
+      eventBus.off(eventType, handler);
+    }
+
+    this.handlers.clear();
+    this.initialized = false;
+    log.info('[IpcEventBroadcaster] Destroyed, all listeners removed');
+  }
+
+  /**
+   * 注册事件监听器并保存引用（用于后续清理）
+   */
+  private registerListener<T extends keyof EventPayloads>(eventType: T): void {
+    const handler = (data: unknown): void => {
+      this.broadcast(eventType, data as EventPayloads[T]);
+    };
+    this.handlers.set(eventType, handler);
+    eventBus.on(eventType, handler);
+  }
+
+  /**
    * 设置事件监听器
    * 监听主进程 EventBus 的事件
    */
   private setupEventListeners(): void {
     // ==================== Window 事件 ====================
-    eventBus.on(EventTypes.WINDOW_CREATED, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_CREATED, data as EventPayloads['window:created']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_READY, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_READY, data as EventPayloads['window:ready']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_SHOW, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_SHOW, data as EventPayloads['window:show']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_HIDE, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_HIDE, data as EventPayloads['window:hide']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_CLOSE, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_CLOSE, data as EventPayloads['window:close']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_CLOSED, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_CLOSED, data as EventPayloads['window:closed']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_FOCUSED, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_FOCUSED, data as EventPayloads['window:focused']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_BLURRED, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_BLURRED, data as EventPayloads['window:blurred']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_MINIMIZED, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_MINIMIZED, data as EventPayloads['window:minimized']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_MAXIMIZED, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_MAXIMIZED, data as EventPayloads['window:maximized']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_UNMAXIMIZED, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_UNMAXIMIZED, data as EventPayloads['window:unmaximized']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_RESTORED, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_RESTORED, data as EventPayloads['window:restored']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_ENTER_FULL_SCREEN, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_ENTER_FULL_SCREEN, data as EventPayloads['window:enter-full-screen']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_LEAVE_FULL_SCREEN, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_LEAVE_FULL_SCREEN, data as EventPayloads['window:leave-full-screen']);
-    });
-
-    eventBus.on(EventTypes.WINDOW_RESIZED, (data: unknown) => {
-      this.broadcast(EventTypes.WINDOW_RESIZED, data as EventPayloads['window:resized']);
-    });
+    this.registerListener(EventTypes.WINDOW_CREATED);
+    this.registerListener(EventTypes.WINDOW_READY);
+    this.registerListener(EventTypes.WINDOW_SHOW);
+    this.registerListener(EventTypes.WINDOW_HIDE);
+    this.registerListener(EventTypes.WINDOW_CLOSE);
+    this.registerListener(EventTypes.WINDOW_CLOSED);
+    this.registerListener(EventTypes.WINDOW_FOCUSED);
+    this.registerListener(EventTypes.WINDOW_BLURRED);
+    this.registerListener(EventTypes.WINDOW_MINIMIZED);
+    this.registerListener(EventTypes.WINDOW_MAXIMIZED);
+    this.registerListener(EventTypes.WINDOW_UNMAXIMIZED);
+    this.registerListener(EventTypes.WINDOW_RESTORED);
+    this.registerListener(EventTypes.WINDOW_ENTER_FULL_SCREEN);
+    this.registerListener(EventTypes.WINDOW_LEAVE_FULL_SCREEN);
+    this.registerListener(EventTypes.WINDOW_RESIZED);
 
     // ==================== Tab 事件 ====================
-    eventBus.on(EventTypes.TAB_CREATED, (data: unknown) => {
-      this.broadcast(EventTypes.TAB_CREATED, data as EventPayloads['tab:created']);
-    });
-
-    eventBus.on(EventTypes.TAB_CLOSED, (data: unknown) => {
-      this.broadcast(EventTypes.TAB_CLOSED, data as EventPayloads['tab:closed']);
-    });
-
-    eventBus.on(EventTypes.TAB_ACTIVATED, (data: unknown) => {
-      this.broadcast(EventTypes.TAB_ACTIVATED, data as EventPayloads['tab:activated']);
-    });
-
-    eventBus.on(EventTypes.TAB_UPDATED, (data: unknown) => {
-      this.broadcast(EventTypes.TAB_UPDATED, data as EventPayloads['tab:updated']);
-    });
-
-    eventBus.on(EventTypes.TAB_MOVED, (data: unknown) => {
-      this.broadcast(EventTypes.TAB_MOVED, data as EventPayloads['tab:moved']);
-    });
-
-    eventBus.on(EventTypes.TABS_REORDERED, (data: unknown) => {
-      this.broadcast(EventTypes.TABS_REORDERED, data as EventPayloads['tabs:reordered']);
-    });
-
-    eventBus.on(EventTypes.TAB_MOVED_TO_WINDOW, (data: unknown) => {
-      this.broadcast(EventTypes.TAB_MOVED_TO_WINDOW, data as EventPayloads['tab:moved-to-window']);
-    });
-
-    eventBus.on(EventTypes.TAB_DUPLICATED, (data: unknown) => {
-      this.broadcast(EventTypes.TAB_DUPLICATED, data as EventPayloads['tab:duplicated']);
-    });
-
-    eventBus.on(EventTypes.TAB_RELOADED, (data: unknown) => {
-      this.broadcast(EventTypes.TAB_RELOADED, data as EventPayloads['tab:reloaded']);
-    });
+    this.registerListener(EventTypes.TAB_CREATED);
+    this.registerListener(EventTypes.TAB_CLOSED);
+    this.registerListener(EventTypes.TAB_ACTIVATED);
+    this.registerListener(EventTypes.TAB_UPDATED);
+    this.registerListener(EventTypes.TAB_MOVED);
+    this.registerListener(EventTypes.TABS_REORDERED);
+    this.registerListener(EventTypes.TAB_MOVED_TO_WINDOW);
+    this.registerListener(EventTypes.TAB_DUPLICATED);
+    this.registerListener(EventTypes.TAB_RELOADED);
 
     // ==================== App 事件 ====================
-    eventBus.on(EventTypes.APP_ACTIVATED, (data: unknown) => {
-      this.broadcast(EventTypes.APP_ACTIVATED, data as EventPayloads['app:activated']);
-    });
-
-    eventBus.on(EventTypes.APP_FOCUS, (data: unknown) => {
-      this.broadcast(EventTypes.APP_FOCUS, data as EventPayloads['app:focus']);
-    });
-
-    eventBus.on(EventTypes.APP_BEFORE_QUIT, (data: unknown) => {
-      this.broadcast(EventTypes.APP_BEFORE_QUIT, data as EventPayloads['app:before-quit']);
-    });
-
-    eventBus.on(EventTypes.APP_SECOND_INSTANCE, (data: unknown) => {
-      this.broadcast(EventTypes.APP_SECOND_INSTANCE, data as EventPayloads['app:second-instance']);
-    });
-
-    eventBus.on(EventTypes.APP_CHILD_PROCESS_GONE, (data: unknown) => {
-      this.broadcast(EventTypes.APP_CHILD_PROCESS_GONE, data as EventPayloads['app:child-process-gone']);
-    });
-
-    eventBus.on(EventTypes.BACKEND_READY, (data: unknown) => {
-      this.broadcast(EventTypes.BACKEND_READY, data as EventPayloads['backend:ready']);
-    });
+    this.registerListener(EventTypes.APP_ACTIVATED);
+    this.registerListener(EventTypes.APP_FOCUS);
+    this.registerListener(EventTypes.APP_BEFORE_QUIT);
+    this.registerListener(EventTypes.APP_SECOND_INSTANCE);
+    this.registerListener(EventTypes.APP_CHILD_PROCESS_GONE);
+    this.registerListener(EventTypes.BACKEND_READY);
 
     log.info('[IpcEventBroadcaster] Event listeners setup completed');
   }

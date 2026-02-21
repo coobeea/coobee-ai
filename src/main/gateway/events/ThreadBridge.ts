@@ -22,21 +22,35 @@ import {
 import type { EventBridgeInit } from '../protocol';
 
 export const initThreadBridge: EventBridgeInit = (gateway) => {
-  eventBus.on(ThreadEventType.CREATED, (event: ThreadCreatedEvent) => {
+  const handleCreated = (event: ThreadCreatedEvent): void => {
     gateway.broadcastEvent('thread.created', event);
-  });
+  };
 
-  eventBus.on(ThreadEventType.UPDATED, (event: ThreadUpdatedEvent) => {
+  const handleUpdated = (event: ThreadUpdatedEvent): void => {
     gateway.broadcastEvent('thread.updated', event);
-  });
+  };
 
-  eventBus.on(ThreadEventType.DELETED, (event: ThreadDeletedEvent) => {
+  const handleDeleted = (event: ThreadDeletedEvent): void => {
     gateway.broadcastEvent('thread.deleted', event);
-  });
+  };
 
-  eventBus.on(ThreadEventType.STATUS, (event: ThreadStatusEvent) => {
+  const handleStatus = (event: ThreadStatusEvent): void => {
     gateway.broadcastEvent('thread.status', event);
-  });
+  };
+
+  eventBus.on(ThreadEventType.CREATED, handleCreated);
+  eventBus.on(ThreadEventType.UPDATED, handleUpdated);
+  eventBus.on(ThreadEventType.DELETED, handleDeleted);
+  eventBus.on(ThreadEventType.STATUS, handleStatus);
 
   log.info('[ThreadBridge] Thread 事件桥接初始化完成');
+
+  // 返回清理函数
+  return () => {
+    eventBus.off(ThreadEventType.CREATED, handleCreated);
+    eventBus.off(ThreadEventType.UPDATED, handleUpdated);
+    eventBus.off(ThreadEventType.DELETED, handleDeleted);
+    eventBus.off(ThreadEventType.STATUS, handleStatus);
+    log.info('[ThreadBridge] Thread 事件桥接已清理');
+  };
 };

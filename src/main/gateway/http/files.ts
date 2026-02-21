@@ -40,7 +40,10 @@ function isPathSafe(targetPath: string, rootDir?: string): boolean {
   if (rootDir) {
     const resolved = path.resolve(targetPath);
     const resolvedRoot = path.resolve(rootDir);
-    if (!resolved.startsWith(resolvedRoot)) {
+    // 使用 path.relative 避免路径前缀绕过（如 C:\workspace vs C:\workspaces-evil）
+    const rel = path.relative(resolvedRoot, resolved);
+    // 如果相对路径以 '..' 开头或是绝对路径，说明不在 rootDir 内
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
       return false;
     }
   }

@@ -47,6 +47,12 @@ export interface ThreadWakeEvent {
 export class ThreadWaker {
   private static instance: ThreadWaker | null = null;
   private listening = false;
+  /** 保存 bound 函数引用，确保 removeListener 能正确移除 */
+  private readonly boundHandleWake: (event: ThreadWakeEvent) => Promise<void>;
+
+  private constructor() {
+    this.boundHandleWake = this.handleWake.bind(this);
+  }
 
   static getInstance(): ThreadWaker {
     if (!ThreadWaker.instance) {
@@ -67,7 +73,7 @@ export class ThreadWaker {
    */
   start(): void {
     if (this.listening) return;
-    eventBus.on('thread:wake', this.handleWake.bind(this));
+    eventBus.on('thread:wake', this.boundHandleWake);
     this.listening = true;
     log.info('[ThreadWaker] Started listening for thread:wake events');
   }
@@ -77,7 +83,7 @@ export class ThreadWaker {
    */
   stop(): void {
     if (!this.listening) return;
-    eventBus.removeListener('thread:wake', this.handleWake.bind(this));
+    eventBus.removeListener('thread:wake', this.boundHandleWake);
     this.listening = false;
     log.info('[ThreadWaker] Stopped');
   }

@@ -26,6 +26,18 @@ export class StreamStore {
   private flushRetryCount = 0; // 连续失败计数
   private readonly maxFlushRetries = 5; // 最大连续失败次数
 
+  // EventBus 监听器引用（用于清理）
+  private readonly handleMessage: (event: StreamEvent) => void;
+
+  constructor() {
+    // 在构造函数中绑定 handler，确保 off() 时引用一致
+    this.handleMessage = (event: StreamEvent) => {
+      if (event.message) {
+        this.enqueueMessage(event.message);
+      }
+    };
+  }
+
   /**
    * 初始化（创建表结构 + 注册事件监听）
    */
@@ -101,11 +113,7 @@ export class StreamStore {
    */
   private registerEventListeners(): void {
     // 监听消息事件 - 改为入队而不是立即写入
-    eventBus.on(StreamEventType.MESSAGE, (event: StreamEvent) => {
-      if (event.message) {
-        this.enqueueMessage(event.message);
-      }
-    });
+    eventBus.on(StreamEventType.MESSAGE, this.handleMessage);
 
     log.info('[StreamStore] Event listeners registered');
   }
@@ -312,9 +320,14 @@ export class StreamStore {
   }
 
   /**
-   * 清理资源
+   * 清理资源（移除 EventBus 监听器、停止定时器）
    */
   async destroy(): Promise<void> {
+    if (!this.initialized) return;
+
+    // 移除 EventBus 监听器
+    eventBus.off(StreamEventType.MESSAGE, this.handleMessage);
+
     // 停止定时器
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
@@ -324,6 +337,7 @@ export class StreamStore {
     // 刷新剩余消息
     await this.flushQueue();
 
+    this.initialized = false;
     log.info('[StreamStore] Destroyed');
   }
 }

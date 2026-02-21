@@ -167,4 +167,44 @@ describe('ConcurrencyManager', () => {
       expect(manager.getRunningCount()).toBe(0);
     });
   });
+
+  describe('异常处理', () => {
+    it('executePhase 中任务失败不影响 runningCount 清理', async () => {
+      const runtimes = new Map<string, AgentRuntime>();
+      runtimes.set('r1', createMockRuntime('success'));
+      runtimes.set('r2', createFailingRuntime('error'));
+
+      const tasks: SwarmSubTask[] = [
+        { id: 't1', input: 'a', roleId: 'r1' },
+        { id: 't2', input: 'b', roleId: 'r2' } // 这个会失败
+      ];
+
+      await manager.executeParallel(tasks, runtimes);
+
+      // 验证 runningCount 恢复为 0（即使有任务失败）
+      expect(manager.getRunningCount()).toBe(0);
+    });
+
+    it('并发执行中多个任务失败不导致 runningCount 泄漏', async () => {
+      const runtimes = new Map<string, AgentRuntime>();
+      for (let i = 0; i < 5; i++) {
+        if (i % 2 === 0) {
+          runtimes.set(`r${i}`, createFailingRuntime(`error-${i}`));
+        } else {
+          runtimes.set(`r${i}`, createMockRuntime(`success-${i}`));
+        }
+      }
+
+      const tasks: SwarmSubTask[] = Array.from({ length: 5 }, (_, i) => ({
+        id: `t${i}`,
+        input: `input-${i}`,
+        roleId: `r${i}`
+      }));
+
+      await manager.executeParallel(tasks, runtimes);
+
+      // 验证 runningCount 恢复为 0
+      expect(manager.getRunningCount()).toBe(0);
+    });
+  });
 });

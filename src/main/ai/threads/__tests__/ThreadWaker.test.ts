@@ -549,4 +549,44 @@ describe('ThreadWaker', () => {
       expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('No pending'));
     });
   });
+
+  describe('监听器清理', () => {
+    it('stop() 移除 EventBus 监听器（验证 bound handler）', () => {
+      const waker = ThreadWaker.getInstance();
+
+      // 记录 start() 时注册的 handler
+      waker.start();
+      expect(mockEventBus.on).toHaveBeenCalledWith('thread:wake', expect.any(Function));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const registeredHandler = (mockEventBus.on as any).mock.calls[0][1];
+
+      // 清空 mock 调用记录
+      vi.clearAllMocks();
+
+      // stop() 应该使用相同的 handler 引用调用 removeListener
+      waker.stop();
+      expect(mockEventBus.removeListener).toHaveBeenCalledWith('thread:wake', registeredHandler);
+    });
+
+    it('重复 start/stop 不累积监听器', () => {
+      const waker = ThreadWaker.getInstance();
+
+      // 第一轮
+      waker.start();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handler1 = (mockEventBus.on as any).mock.calls[0][1];
+      waker.stop();
+
+      vi.clearAllMocks();
+
+      // 第二轮
+      waker.start();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handler2 = (mockEventBus.on as any).mock.calls[0][1];
+      waker.stop();
+
+      // 验证两次注册的 handler 是同一个引用（boundHandleWake）
+      expect(handler1).toBe(handler2);
+    });
+  });
 });
