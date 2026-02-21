@@ -85,7 +85,6 @@ vi.mock('@main/common/scan', () => ({
 // ===== Mock HTTP route registrations =====
 vi.mock('../http/agents', () => ({ registerAgentRoutes: vi.fn() }));
 vi.mock('../http/threads', () => ({ registerThreadRoutes: vi.fn() }));
-vi.mock('../http/ai-assist', () => ({ registerAiAssistRoutes: vi.fn() }));
 vi.mock('../http/skills', () => ({ registerSkillRoutes: vi.fn() }));
 vi.mock('../http/files', () => ({ registerFileRoutes: vi.fn() }));
 

@@ -11,7 +11,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import configManager from '@/config';
-import { generateThreadTitle } from '@/composables/useAiAssist';
+import { generateThreadTitle } from '@/composables/useQuickChat';
 
 /** Thread 运行时状态 */
 export type ThreadRunStatus = 'idle' | 'running' | 'tool-pending' | 'approval-pending' | 'completed' | 'error';

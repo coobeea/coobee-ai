@@ -18,7 +18,6 @@ import { scanGatewayMethods, scanGatewayEventBridges } from '@main/common/scan';
 import { GatewayServer } from './GatewayServer';
 import { registerAgentRoutes } from './http/agents';
 import { registerThreadRoutes } from './http/threads';
-import { registerAiAssistRoutes } from './http/ai-assist';
 import { registerSkillRoutes } from './http/skills';
 import { registerFileRoutes } from './http/files';
 import { registerTavernRoutes } from './http/tavern';
@@ -185,7 +184,6 @@ export class Gateway implements GatewayApi {
     const router = this.server.getRouter();
     registerAgentRoutes(router);
     registerThreadRoutes(router);
-    registerAiAssistRoutes(router);
     registerSkillRoutes(router);
     registerFileRoutes(router);
     registerTavernRoutes(router);
