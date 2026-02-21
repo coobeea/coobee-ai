@@ -5,7 +5,10 @@
  * 递归渲染目录/文件节点。通过 provide/inject
  * 与 ProjectPanel 共享展开状态和操作函数。
  */
-import { inject, type Ref } from 'vue';
+import { inject, ref, type Ref } from 'vue';
+import ContextMenu from '../common/ContextMenu.vue';
+import ContextMenuItem from '../common/ContextMenuItem.vue';
+
 interface FileNode {
   name: string;
   path: string;
@@ -21,6 +24,45 @@ defineProps<{
 const expandedDirs = inject<Ref<Set<string>>>('expandedDirs')!;
 const onToggleDir = inject<(node: FileNode) => void>('toggleDir')!;
 const onOpenFile = inject<(filePath: string) => void>('openFile')!;
+const onAddToChat = inject<(node: FileNode) => void>('addToChat');
+
+// 右键菜单状态
+const menuVisible = ref(false);
+const menuX = ref(0);
+const menuY = ref(0);
+const contextNode = ref<FileNode | null>(null);
+
+// 处理右键点击
+function handleContextMenu(event: MouseEvent, node: FileNode): void {
+  event.preventDefault();
+  event.stopPropagation();
+
+  contextNode.value = node;
+  menuX.value = event.clientX;
+  menuY.value = event.clientY;
+  menuVisible.value = true;
+}
+
+// 添加到对话
+function addToChat(): void {
+  if (contextNode.value && onAddToChat) {
+    onAddToChat(contextNode.value);
+  }
+  menuVisible.value = false;
+}
+
+// 复制文件路径
+async function copyPath(): Promise<void> {
+  if (contextNode.value) {
+    try {
+      await navigator.clipboard.writeText(contextNode.value.path);
+      console.log('[FileTreeNode] 已复制路径:', contextNode.value.path);
+    } catch (err) {
+      console.error('[FileTreeNode] 复制失败:', err);
+    }
+  }
+  menuVisible.value = false;
+}
 
 function isExpanded(nodePath: string): boolean {
   return expandedDirs.value.has(nodePath);
@@ -70,7 +112,8 @@ function getFileIcon(name: string): string {
       class="flex cursor-default items-center gap-1 py-[3px] pr-2 text-[11px] text-gray-600 transition-colors hover:bg-gray-100/80"
       :class="{ 'font-medium': node.type === 'directory' }"
       :style="{ paddingLeft: `${depth * 12 + 8}px` }"
-      @click="node.type === 'directory' ? onToggleDir(node) : onOpenFile(node.path)">
+      @click="node.type === 'directory' ? onToggleDir(node) : onOpenFile(node.path)"
+      @contextmenu="handleContextMenu($event, node)">
       <!-- 箭头 -->
       <span
         v-if="node.type === 'directory'"
@@ -97,5 +140,17 @@ function getFileIcon(name: string): string {
     <template v-if="node.type === 'directory' && isExpanded(node.path) && node.children">
       <FileTreeNode v-for="child in node.children" :key="child.path" :node="child" :depth="depth + 1" />
     </template>
+
+    <!-- 右键菜单 -->
+    <ContextMenu v-model:visible="menuVisible" :x="menuX" :y="menuY">
+      <ContextMenuItem v-if="onAddToChat" @click="addToChat">
+        <span class="i-carbon-add inline-block h-3.5 w-3.5" />
+        <span>添加到对话</span>
+      </ContextMenuItem>
+      <ContextMenuItem @click="copyPath">
+        <span class="i-carbon-copy inline-block h-3.5 w-3.5" />
+        <span>复制文件路径</span>
+      </ContextMenuItem>
+    </ContextMenu>
   </div>
 </template>

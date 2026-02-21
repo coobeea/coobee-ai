@@ -23,6 +23,8 @@ declare module 'vue' {
     CheckboxInput: typeof import('./../components/Form/CheckboxInput.vue')['default']
     ConfirmContainer: typeof import('./../components/Confirm/ConfirmContainer.vue')['default']
     Container: typeof import('./../components/Container.vue')['default']
+    ContextMenu: typeof import('./../components/common/ContextMenu.vue')['default']
+    ContextMenuItem: typeof import('./../components/common/ContextMenuItem.vue')['default']
     CopilotBubble: typeof import('./../components/copilot/CopilotBubble.vue')['default']
     DangerButton: typeof import('./../components/Form/DangerButton.vue')['default']
     FileTreeNode: typeof import('./../components/agent/FileTreeNode.vue')['default']

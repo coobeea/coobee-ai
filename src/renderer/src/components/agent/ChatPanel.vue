@@ -15,12 +15,17 @@ import ChatMessages from '@/components/chat/ChatMessages.vue';
 import ChatInput from '@/components/chat/ChatInput.vue';
 
 const chatStore = useChatStore();
-const inputText = ref('');
 const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null);
+const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 const isCollapsed = defineModel<boolean>('collapsed', { default: false });
 
 function scrollToBottom(force = false): void {
   chatMessagesRef.value?.scrollToBottom(force);
+}
+
+// 插入文件引用
+function insertFileReference(file: { path: string; name: string }): void {
+  chatInputRef.value?.insertFileReference(file);
 }
 
 // 新消息到达 → 自动滚动（除非用户在看上面的内容）
@@ -43,12 +48,15 @@ watch(
   () => scrollToBottom()
 );
 
-async function handleSend(text: string): Promise<void> {
-  if (!text) return;
+async function handleSend(data: { text: string; files: { path: string; name: string }[] }): Promise<void> {
+  if (!data.text) return;
 
   // 用户发送消息 → 强制滚到底部（要看回复）
   scrollToBottom(true);
-  await chatStore.sendMessage(text);
+
+  // TODO: 将 files 数据传递给后端
+  // 目前先只发送文本，后续需要扩展 sendMessage 接口支持文件引用
+  await chatStore.sendMessage(data.text);
 }
 
 async function handleStop(): Promise<void> {
@@ -76,6 +84,11 @@ function handleApproval(approval: PendingApproval, decision: HitlApprovalDecisio
 
 onMounted(() => {
   scrollToBottom();
+});
+
+// 暴露给父组件
+defineExpose({
+  insertFileReference
 });
 </script>
 
@@ -118,10 +131,10 @@ onMounted(() => {
     <!-- 输入区域 -->
     <ChatInput
       ref="chatInputRef"
-      v-model="inputText"
-      :placeholder="chatStore.isStreaming ? '可继续输入（消息将排队处理）' : '输入消息... (Enter 发送)'"
+      :placeholder="
+        chatStore.isStreaming ? '可继续输入（消息将排队处理）' : '输入消息... (Enter 发送，Shift+Enter 换行)'
+      "
       :disabled="false"
-      :show-model-selector="true"
       :show-stop-button="chatStore.isStreaming"
       @send="handleSend"
       @stop="handleStop" />

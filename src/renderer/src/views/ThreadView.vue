@@ -6,7 +6,7 @@
  * 与 AgentView（智能体管理列表）完全解耦。
  */
 
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useChatStore } from '@/stores/chat';
 import { useAgentsStore } from '@/stores/agents';
@@ -31,12 +31,23 @@ const { closeAllFiles } = useOpenFiles();
 const leftCollapsed = ref(false);
 const rightCollapsed = ref(false);
 const agentsPanelCollapsed = ref(true);
+const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null);
 
 const projectPath = ref<string | null>(null);
 // workspaceReady: 非 null 即为 ready（包括空字符串）
 const workspaceReady = computed(() => projectPath.value !== null);
 
 const threadId = computed(() => route.params.id as string);
+
+// 提供 addToChat 方法给 ProjectPanel/FileTreeNode
+function addToChat(node: { path: string; name: string; type: 'file' | 'directory' }): void {
+  chatPanelRef.value?.insertFileReference({
+    path: node.path,
+    name: node.name
+  });
+}
+
+provide('addToChat', addToChat);
 
 function enterWorkspaceForThread(id: string): void {
   const thread = threadsStore.threads.find((t) => t.id === id);
@@ -122,7 +133,7 @@ onUnmounted(() => {
       <div class="flex min-h-0 flex-1">
         <ProjectPanel v-model:collapsed="leftCollapsed" v-model:project-path="projectPath" />
         <WorkbenchPanel />
-        <ChatPanel v-model:collapsed="rightCollapsed" />
+        <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" />
         <AgentsPanel v-model:collapsed="agentsPanelCollapsed" />
       </div>
 

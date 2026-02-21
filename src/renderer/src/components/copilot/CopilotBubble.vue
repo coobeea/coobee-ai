@@ -17,7 +17,6 @@ import ChatInput from '@/components/chat/ChatInput.vue';
 import { layerManager } from '@/utils/LayerManager';
 
 const copilot = useCopilotStore();
-const inputText = ref('');
 const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null);
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 
@@ -70,10 +69,11 @@ watch(
   }
 );
 
-async function handleSend(text: string): Promise<void> {
-  if (!text) return;
+async function handleSend(data: { text: string; files: { path: string; name: string }[] }): Promise<void> {
+  if (!data.text) return;
   scrollToBottom();
-  await copilot.sendMessage(text);
+  // TODO: 将 files 数据传递给后端
+  await copilot.sendMessage(data.text);
 }
 
 async function handleStop(): Promise<void> {
@@ -163,10 +163,8 @@ function handleApproval(approval: PendingApproval, decision: HitlApprovalDecisio
       <!-- 输入区域 -->
       <ChatInput
         ref="chatInputRef"
-        v-model="inputText"
-        :placeholder="copilot.isStreaming ? '处理中...' : '输入消息，Enter 发送'"
+        :placeholder="copilot.isStreaming ? '处理中...' : '输入消息，Enter 发送，Shift+Enter 换行'"
         :disabled="copilot.isStreaming"
-        :show-model-selector="true"
         :show-stop-button="copilot.isStreaming"
         @send="handleSend"
         @stop="handleStop" />
