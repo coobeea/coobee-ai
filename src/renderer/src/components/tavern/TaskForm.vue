@@ -48,13 +48,16 @@ const title = ref('');
 const description = ref('');
 const amount = ref(100);
 const filePaths = ref<string[]>([]);
+const taskStatus = ref<Task['status']>('pending');
 const taskResult = ref<TaskResult | undefined>(undefined);
 
 const loading = ref(false);
 const saving = ref(false);
+const cancelling = ref(false);
 const error = ref<string | null>(null);
 
 const canSubmit = computed(() => title.value.trim() && description.value.trim() && amount.value > 0);
+const canCancel = computed(() => props.readonly && taskStatus.value === 'pending');
 
 // 加载任务详情
 async function loadTask(): Promise<void> {
@@ -73,6 +76,7 @@ async function loadTask(): Promise<void> {
     description.value = task.description;
     amount.value = task.amount;
     filePaths.value = task.files || [];
+    taskStatus.value = task.status;
     taskResult.value = task.result;
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
@@ -110,6 +114,43 @@ function removeFile(index: number): void {
 // 获取文件名（从完整路径）
 function getFileName(filePath: string): string {
   return filePath.split('/').pop() || filePath;
+}
+
+// 取消任务
+async function handleCancelTask(): Promise<void> {
+  if (!props.taskId || cancelling.value) return;
+
+  if (!confirm('确定要取消这个任务吗？')) {
+    return;
+  }
+
+  cancelling.value = true;
+  error.value = null;
+
+  try {
+    const res = await fetch(`${BASE_URL}/tasks/${props.taskId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        status: 'cancelled'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+    }
+
+    // 更新本地状态
+    taskStatus.value = 'cancelled';
+    emit('success');
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    cancelling.value = false;
+  }
 }
 
 // 提交表单
@@ -281,11 +322,18 @@ onMounted(() => {
         <button class="cancel-btn" @click="emit('cancel')">
           {{ readonly ? '关闭' : '取消' }}
         </button>
-        <button v-if="!readonly" class="submit-btn" :disabled="!canSubmit || saving" @click="handleSubmit">
-          <span v-if="saving" class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
-          <span v-else class="i-carbon-send-filled inline-block h-4 w-4" />
-          <span>{{ saving ? '发布中...' : '发布任务' }}</span>
-        </button>
+        <div class="form-actions-right">
+          <button v-if="canCancel" class="cancel-task-btn" :disabled="cancelling" @click="handleCancelTask">
+            <span v-if="cancelling" class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
+            <span v-else class="i-carbon-close-filled inline-block h-4 w-4" />
+            <span>{{ cancelling ? '取消中...' : '取消任务' }}</span>
+          </button>
+          <button v-if="!readonly" class="submit-btn" :disabled="!canSubmit || saving" @click="handleSubmit">
+            <span v-if="saving" class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
+            <span v-else class="i-carbon-send-filled inline-block h-4 w-4" />
+            <span>{{ saving ? '发布中...' : '发布任务' }}</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -547,12 +595,19 @@ onMounted(() => {
 .form-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 12px;
   padding-top: 8px;
 }
 
+.form-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .cancel-btn,
+.cancel-task-btn,
 .submit-btn {
   display: inline-flex;
   align-items: center;
@@ -574,6 +629,21 @@ onMounted(() => {
 .cancel-btn:hover {
   background: hsl(var(--muted) / 0.3);
   border-color: hsl(var(--border) / 0.6);
+}
+
+.cancel-task-btn {
+  color: hsl(var(--error-foreground));
+  background: hsl(var(--error));
+}
+
+.cancel-task-btn:hover:not(:disabled) {
+  background: hsl(var(--error) / 0.9);
+  box-shadow: 0 2px 8px hsl(var(--error) / 0.25);
+}
+
+.cancel-task-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .submit-btn {
