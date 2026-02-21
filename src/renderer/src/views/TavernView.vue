@@ -10,13 +10,14 @@
  * 存储：文件系统（每个任务一个文件夹）
  */
 
-import { ref, provide, computed } from 'vue';
-import { useThreadsStore } from '@/stores/threads';
-import ProjectPanel from '@/components/agent/ProjectPanel.vue';
+import { ref } from 'vue';
 import TaskList from '@/components/tavern/TaskList.vue';
 import TaskForm from '@/components/tavern/TaskForm.vue';
 
-const threadsStore = useThreadsStore();
+export interface TaskResult {
+  textResult: string;
+  fileResults: string[];
+}
 
 export interface Task {
   id: string;
@@ -25,44 +26,18 @@ export interface Task {
   amount: number;
   files: string[];
   status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
+  result?: TaskResult;
   createdAt: string;
   updatedAt: string;
 }
 
 const view = ref<'list' | 'create' | 'detail'>('list');
 const selectedTaskId = ref<string | null>(null);
-const taskFormRef = ref<InstanceType<typeof TaskForm> | null>(null);
-const leftCollapsed = ref(false);
-
-// 从当前活跃 thread 获取项目路径，如果没有则为空
-const projectPath = ref<string | null>(null);
-
-// 尝试从当前 thread 获取工作目录
-const activeThread = computed(() => {
-  if (threadsStore.activeThreadId) {
-    return threadsStore.threads.find((t) => t.id === threadsStore.activeThreadId);
-  }
-  return null;
-});
-
-// 如果有活跃的 thread，使用其工作目录
-if (activeThread.value?.workspacePath) {
-  projectPath.value = activeThread.value.workspacePath;
-}
 
 function handleCreateTask(): void {
   view.value = 'create';
   selectedTaskId.value = null;
 }
-
-// 提供给文件树的"添加到任务"功能
-function addFileToTask(node: { path: string; name: string }): void {
-  if (view.value === 'create' || view.value === 'detail') {
-    taskFormRef.value?.addFilePath(node.path);
-  }
-}
-
-provide('addFileToTask', addFileToTask);
 
 function handleViewTask(taskId: string): void {
   view.value = 'detail';
@@ -81,65 +56,41 @@ function handleTaskCreated(): void {
 
 <template>
   <div class="tavern-view">
-    <!-- 双栏布局 -->
-    <div class="tavern-layout">
-      <!-- 左侧：任务工作目录（发布任务时显示） -->
-      <ProjectPanel
-        v-if="view === 'create' || view === 'detail'"
-        v-model:collapsed="leftCollapsed"
-        v-model:project-path="projectPath" />
-
-      <!-- 右侧：主内容区 -->
-      <div class="main-content">
-        <!-- 顶栏 -->
-        <header class="header">
-          <div class="header-left">
-            <button
-              v-if="(view === 'create' || view === 'detail') && leftCollapsed"
-              class="toggle-btn"
-              title="显示目录"
-              @click="leftCollapsed = false">
-              <span class="i-carbon-chevron-right inline-block h-4 w-4" />
-            </button>
-            <button v-if="view !== 'list'" class="back-btn" @click="handleBackToList">
-              <span class="i-carbon-chevron-left inline-block h-4 w-4" />
-            </button>
-            <div class="header-icon">
-              <span class="i-carbon-task-star inline-block h-4 w-4" />
-            </div>
-            <h1 class="header-title">
-              {{ view === 'list' ? '酒馆任务' : view === 'create' ? '发布任务' : '任务详情' }}
-            </h1>
-          </div>
-          <div class="header-right">
-            <button v-if="view === 'list'" class="create-btn" @click="handleCreateTask">
-              <span class="i-carbon-add inline-block h-3.5 w-3.5" />
-              <span>发布任务</span>
-            </button>
-          </div>
-        </header>
-
-        <!-- 内容区域 -->
-        <div class="content">
-          <!-- 任务列表 -->
-          <TaskList v-if="view === 'list'" @view-task="handleViewTask" />
-
-          <!-- 任务发布表单 -->
-          <TaskForm
-            v-else-if="view === 'create'"
-            ref="taskFormRef"
-            @cancel="handleBackToList"
-            @success="handleTaskCreated" />
-
-          <!-- 任务详情 -->
-          <TaskForm
-            v-else-if="view === 'detail' && selectedTaskId"
-            ref="taskFormRef"
-            :task-id="selectedTaskId"
-            readonly
-            @cancel="handleBackToList" />
+    <!-- 顶栏 -->
+    <header class="header">
+      <div class="header-left">
+        <button v-if="view !== 'list'" class="back-btn" @click="handleBackToList">
+          <span class="i-carbon-chevron-left inline-block h-4 w-4" />
+        </button>
+        <div class="header-icon">
+          <span class="i-carbon-task-star inline-block h-4 w-4" />
         </div>
+        <h1 class="header-title">
+          {{ view === 'list' ? '酒馆任务' : view === 'create' ? '发布任务' : '任务详情' }}
+        </h1>
       </div>
+      <div class="header-right">
+        <button v-if="view === 'list'" class="create-btn" @click="handleCreateTask">
+          <span class="i-carbon-add inline-block h-3.5 w-3.5" />
+          <span>发布任务</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 内容区域 -->
+    <div class="content">
+      <!-- 任务列表 -->
+      <TaskList v-if="view === 'list'" @view-task="handleViewTask" />
+
+      <!-- 任务发布表单 -->
+      <TaskForm v-else-if="view === 'create'" @cancel="handleBackToList" @success="handleTaskCreated" />
+
+      <!-- 任务详情 -->
+      <TaskForm
+        v-else-if="view === 'detail' && selectedTaskId"
+        :task-id="selectedTaskId"
+        readonly
+        @cancel="handleBackToList" />
     </div>
   </div>
 </template>
@@ -151,19 +102,6 @@ function handleTaskCreated(): void {
   height: 100%;
   width: 100%;
   background: hsl(var(--background));
-}
-
-.tavern-layout {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-.main-content {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
 }
 
 .header {
@@ -184,7 +122,6 @@ function handleTaskCreated(): void {
   gap: 10px;
 }
 
-.toggle-btn,
 .back-btn {
   display: flex;
   align-items: center;
@@ -196,7 +133,6 @@ function handleTaskCreated(): void {
   transition: all 0.15s ease;
 }
 
-.toggle-btn:hover,
 .back-btn:hover {
   background: hsl(var(--foreground) / 0.06);
   color: hsl(var(--foreground) / 0.7);

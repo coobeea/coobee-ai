@@ -10,6 +10,11 @@
 import { ref, computed, onMounted } from 'vue';
 import configManager from '@/config';
 
+interface TaskResult {
+  textResult: string;
+  fileResults: string[];
+}
+
 interface Task {
   id: string;
   title: string;
@@ -17,6 +22,7 @@ interface Task {
   amount: number;
   files: string[];
   status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
+  result?: TaskResult;
   createdAt: string;
   updatedAt: string;
 }
@@ -41,7 +47,7 @@ const BASE_URL = `${configManager.getBaseUrl()}/gateway/tavern`;
 const title = ref('');
 const description = ref('');
 const amount = ref(100);
-const filePaths = ref<string[]>([]);
+const taskResult = ref<TaskResult | undefined>(undefined);
 
 const loading = ref(false);
 const saving = ref(false);
@@ -65,23 +71,11 @@ async function loadTask(): Promise<void> {
     title.value = task.title;
     description.value = task.description;
     amount.value = task.amount;
-    filePaths.value = task.files || [];
+    taskResult.value = task.result;
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
     loading.value = false;
-  }
-}
-
-// 移除文件路径
-function removeFilePath(index: number): void {
-  filePaths.value.splice(index, 1);
-}
-
-// 添加文件路径（通过 provide/inject 从文件树调用）
-function addFilePath(path: string): void {
-  if (!filePaths.value.includes(path)) {
-    filePaths.value.push(path);
   }
 }
 
@@ -107,7 +101,7 @@ async function handleSubmit(): Promise<void> {
         title: title.value.trim(),
         description: description.value.trim(),
         amount: amount.value,
-        filePaths: filePaths.value
+        filePaths: []
       })
     });
 
@@ -128,11 +122,6 @@ onMounted(() => {
   if (props.taskId) {
     loadTask();
   }
-});
-
-// 暴露给父组件（用于从文件树添加文件）
-defineExpose({
-  addFilePath
 });
 </script>
 
@@ -191,28 +180,34 @@ defineExpose({
         </div>
       </div>
 
-      <!-- 相关资料（文件路径引用） -->
-      <div class="form-field">
-        <label class="form-label">相关资料</label>
+      <!-- 任务结果（只在只读模式且有结果时显示） -->
+      <div v-if="readonly && taskResult" class="form-field">
+        <label class="form-label">任务结果</label>
 
-        <!-- 文件路径列表 -->
-        <div v-if="filePaths.length > 0" class="file-list">
-          <div v-for="(filePath, index) in filePaths" :key="index" class="file-item">
-            <span class="i-carbon-document inline-block h-4 w-4 file-icon" />
-            <div class="file-info">
-              <span class="file-name">{{ getFileName(filePath) }}</span>
-              <span class="file-path">{{ filePath }}</span>
-            </div>
-            <button v-if="!readonly" class="file-remove-btn" @click="removeFilePath(index)">
-              <span class="i-carbon-close inline-block h-3.5 w-3.5" />
-            </button>
+        <!-- 文字结果 -->
+        <div v-if="taskResult.textResult" class="result-section">
+          <div class="result-label">
+            <span class="i-carbon-document-tasks inline-block h-3.5 w-3.5" />
+            <span>文字结果</span>
           </div>
+          <div class="result-content">{{ taskResult.textResult }}</div>
         </div>
 
-        <!-- 提示信息 -->
-        <div v-if="!readonly" class="file-hint">
-          <span class="i-carbon-information inline-block h-3.5 w-3.5" />
-          <span>在任务工作目录中右键文件，选择"添加到任务"即可添加</span>
+        <!-- 文件结果 -->
+        <div v-if="taskResult.fileResults && taskResult.fileResults.length > 0" class="result-section">
+          <div class="result-label">
+            <span class="i-carbon-document inline-block h-3.5 w-3.5" />
+            <span>文件结果</span>
+          </div>
+          <div class="file-list">
+            <div v-for="(filePath, index) in taskResult.fileResults" :key="index" class="file-item">
+              <span class="i-carbon-document inline-block h-4 w-4 file-icon" />
+              <div class="file-info">
+                <span class="file-name">{{ getFileName(filePath) }}</span>
+                <span class="file-path">{{ filePath }}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -399,32 +394,33 @@ defineExpose({
   white-space: nowrap;
 }
 
-.file-remove-btn {
+/* 结果展示 */
+.result-section {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  color: hsl(var(--muted-foreground) / 0.5);
-  transition: all 0.15s ease;
-  flex-shrink: 0;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
-.file-remove-btn:hover {
-  background: hsl(var(--error) / 0.1);
-  color: hsl(var(--error));
-}
-
-.file-hint {
+.result-label {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: hsl(var(--muted) / 0.2);
   font-size: 12px;
-  color: hsl(var(--muted-foreground) / 0.6);
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.result-content {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.15);
+  border: 1px solid hsl(var(--border) / 0.25);
+  font-size: 13px;
+  line-height: 1.6;
+  color: hsl(var(--foreground));
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .error-message {

@@ -28,6 +28,11 @@ import { Env } from '@main/common/env';
 
 const log = createLogger('gateway-http-tavern');
 
+export interface TaskResult {
+  textResult: string;
+  fileResults: string[];
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -35,6 +40,7 @@ export interface Task {
   amount: number;
   files: string[];
   status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
+  result?: TaskResult;
   createdAt: string;
   updatedAt: string;
 }
@@ -203,7 +209,7 @@ export function registerTavernRoutes(router: Router): void {
     }
   });
 
-  // 更新任务状态
+  // 更新任务状态和结果
   router.patch('/tavern/tasks/:id', async (ctx) => {
     const taskId = ctx.params.id;
     if (!taskId) {
@@ -215,12 +221,7 @@ export function registerTavernRoutes(router: Router): void {
     try {
       const body = ctx.request.body as Record<string, unknown>;
       const status = body.status as Task['status'] | undefined;
-
-      if (!status) {
-        ctx.status = 400;
-        ctx.body = { error: 'status is required' };
-        return;
-      }
+      const result = body.result as TaskResult | undefined;
 
       const task = await readTaskMeta(taskId);
       if (!task) {
@@ -229,7 +230,16 @@ export function registerTavernRoutes(router: Router): void {
         return;
       }
 
-      task.status = status;
+      // 更新状态
+      if (status) {
+        task.status = status;
+      }
+
+      // 更新结果
+      if (result) {
+        task.result = result;
+      }
+
       task.updatedAt = new Date().toISOString();
 
       await writeTaskMeta(taskId, task);
@@ -242,7 +252,7 @@ export function registerTavernRoutes(router: Router): void {
         await writeTasksIndex(tasks);
       }
 
-      log.info(`Task updated: ${taskId}, status: ${status}`);
+      log.info(`Task updated: ${taskId}${status ? `, status: ${status}` : ''}${result ? ', result updated' : ''}`);
       ctx.body = { task };
     } catch (err) {
       log.error(`Failed to update task ${taskId}:`, err);
