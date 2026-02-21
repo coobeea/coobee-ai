@@ -25,6 +25,7 @@ const expandedDirs = inject<Ref<Set<string>>>('expandedDirs')!;
 const onToggleDir = inject<(node: FileNode) => void>('toggleDir')!;
 const onOpenFile = inject<(filePath: string) => void>('openFile')!;
 const onAddToChat = inject<(node: FileNode) => void>('addToChat');
+const selectedPath = inject<Ref<string | null>>('selectedPath');
 
 // 右键菜单状态
 const menuVisible = ref(false);
@@ -68,6 +69,10 @@ function isExpanded(nodePath: string): boolean {
   return expandedDirs.value.has(nodePath);
 }
 
+function isSelected(nodePath: string): boolean {
+  return selectedPath?.value === nodePath;
+}
+
 function getFileIcon(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase();
   switch (ext) {
@@ -109,8 +114,13 @@ function getFileIcon(name: string): string {
   <div>
     <!-- 行 -->
     <div
-      class="flex cursor-default items-center gap-1 py-[3px] pr-2 text-[11px] text-gray-600 transition-colors hover:bg-gray-100/80"
-      :class="{ 'font-medium': node.type === 'directory' }"
+      class="file-tree-node flex cursor-pointer items-center gap-1 py-[3px] pr-2 text-[11px] transition-all"
+      :class="{
+        'font-medium': node.type === 'directory',
+        'file-tree-node-selected': isSelected(node.path),
+        'text-gray-600': !isSelected(node.path),
+        'text-gray-800': isSelected(node.path)
+      }"
       :style="{ paddingLeft: `${depth * 12 + 8}px` }"
       @click="node.type === 'directory' ? onToggleDir(node) : onOpenFile(node.path)"
       @contextmenu="handleContextMenu($event, node)">
@@ -154,3 +164,39 @@ function getFileIcon(name: string): string {
     </ContextMenu>
   </div>
 </template>
+
+<style scoped>
+.file-tree-node {
+  position: relative;
+}
+
+.file-tree-node::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: transparent;
+  transition: background-color 0.15s ease;
+  border-radius: 4px;
+  margin: 0 4px;
+}
+
+.file-tree-node:hover::before {
+  background: hsl(var(--muted) / 0.5);
+}
+
+.file-tree-node-selected::before {
+  background: hsl(var(--primary) / 0.12);
+}
+
+.file-tree-node-selected:hover::before {
+  background: hsl(var(--primary) / 0.16);
+}
+
+.file-tree-node > * {
+  position: relative;
+  z-index: 1;
+}
+</style>

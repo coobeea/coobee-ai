@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * ProjectPanel — 项目空间（左栏）
+ * ProjectPanel — 任务工作目录（左栏）
  *
  * 显示项目目录的文件树，通过 HTTP API 获取目录结构。
- * 支持目录展开/折叠、文件类型图标、手动刷新。
+ * 支持目录展开/折叠、文件类型图标、手动刷新、文件选中。
  */
 import { ref, watch, provide } from 'vue';
 import configManager from '@/config';
@@ -24,6 +24,7 @@ const tree = ref<FileNode[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const expandedDirs = ref<Set<string>>(new Set());
+const selectedPath = ref<string | null>(null);
 
 const BASE_URL = `${configManager.getBaseUrl()}/gateway/files`;
 
@@ -71,9 +72,16 @@ async function toggleDir(node: FileNode): Promise<void> {
 
 const { openFile: openFileInWorkbench } = useOpenFiles();
 
+// 打开文件时设置选中状态
+function handleOpenFile(filePath: string): void {
+  selectedPath.value = filePath;
+  openFileInWorkbench(filePath);
+}
+
 provide('expandedDirs', expandedDirs);
 provide('toggleDir', toggleDir);
-provide('openFile', openFileInWorkbench);
+provide('openFile', handleOpenFile);
+provide('selectedPath', selectedPath);
 
 async function selectDirectory(): Promise<void> {
   try {
@@ -104,7 +112,7 @@ defineExpose({ selectDirectory });
     <div class="flex h-10 shrink-0 items-center justify-between border-b border-gray-200/60 px-3">
       <div class="flex items-center gap-1.5">
         <span class="i-carbon-folder-shared inline-block h-3.5 w-3.5 text-gray-500"></span>
-        <span class="text-xs font-semibold text-gray-600">项目空间</span>
+        <span class="text-xs font-semibold text-gray-600">任务工作目录</span>
       </div>
       <div class="flex items-center gap-0.5">
         <button
