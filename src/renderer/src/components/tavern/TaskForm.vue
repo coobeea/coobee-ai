@@ -47,6 +47,7 @@ const BASE_URL = `${configManager.getBaseUrl()}/gateway/tavern`;
 const title = ref('');
 const description = ref('');
 const amount = ref(100);
+const filePaths = ref<string[]>([]);
 const taskResult = ref<TaskResult | undefined>(undefined);
 
 const loading = ref(false);
@@ -71,12 +72,39 @@ async function loadTask(): Promise<void> {
     title.value = task.title;
     description.value = task.description;
     amount.value = task.amount;
+    filePaths.value = task.files || [];
     taskResult.value = task.result;
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
     loading.value = false;
   }
+}
+
+// 选择文件
+async function handleSelectFiles(): Promise<void> {
+  try {
+    // 使用 Electron 的文件选择对话框
+    const result = (await window.electron.ipcRenderer.invoke('shell:open-file', {
+      properties: ['openFile', 'multiSelections']
+    })) as { canceled: boolean; filePaths: string[] };
+
+    if (result && !result.canceled && result.filePaths) {
+      // 添加新选择的文件，避免重复
+      result.filePaths.forEach((path: string) => {
+        if (!filePaths.value.includes(path)) {
+          filePaths.value.push(path);
+        }
+      });
+    }
+  } catch (err) {
+    console.error('Failed to select files:', err);
+  }
+}
+
+// 移除文件
+function removeFile(index: number): void {
+  filePaths.value.splice(index, 1);
 }
 
 // 获取文件名（从完整路径）
@@ -101,7 +129,7 @@ async function handleSubmit(): Promise<void> {
         title: title.value.trim(),
         description: description.value.trim(),
         amount: amount.value,
-        filePaths: []
+        filePaths: filePaths.value
       })
     });
 
@@ -177,6 +205,37 @@ onMounted(() => {
             :readonly="readonly"
             min="1" />
           <span class="amount-suffix">金币</span>
+        </div>
+      </div>
+
+      <!-- 相关资料文件 -->
+      <div class="form-field">
+        <label class="form-label">相关资料</label>
+
+        <!-- 已选择的文件列表 -->
+        <div v-if="filePaths.length > 0" class="file-list">
+          <div v-for="(filePath, index) in filePaths" :key="index" class="file-item">
+            <span class="i-carbon-document inline-block h-4 w-4 file-icon" />
+            <div class="file-info">
+              <span class="file-name">{{ getFileName(filePath) }}</span>
+              <span class="file-path">{{ filePath }}</span>
+            </div>
+            <button v-if="!readonly" class="file-remove-btn" @click="removeFile(index)">
+              <span class="i-carbon-close inline-block h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <!-- 选择文件按钮 -->
+        <button v-if="!readonly" class="select-file-btn" @click="handleSelectFiles">
+          <span class="i-carbon-add-alt inline-block h-4 w-4" />
+          <span>选择文件</span>
+        </button>
+
+        <!-- 提示信息 -->
+        <div v-if="!readonly && filePaths.length === 0" class="file-hint">
+          <span class="i-carbon-information inline-block h-3.5 w-3.5" />
+          <span>支持选择多个文件，仅保存文件路径</span>
         </div>
       </div>
 
@@ -392,6 +451,57 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.file-remove-btn:hover {
+  background: hsl(var(--error) / 0.1);
+  color: hsl(var(--error));
+}
+
+.select-file-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px dashed hsl(var(--border) / 0.5);
+  background: hsl(var(--surface) / 0.3);
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+.select-file-btn:hover {
+  border-color: hsl(var(--primary) / 0.4);
+  background: hsl(var(--primary) / 0.05);
+  color: hsl(var(--primary));
+}
+
+.file-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: hsl(var(--muted) / 0.2);
+  font-size: 12px;
+  color: hsl(var(--muted-foreground) / 0.6);
+  margin-top: 8px;
 }
 
 /* 结果展示 */

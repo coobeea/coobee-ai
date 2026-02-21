@@ -19,7 +19,9 @@ export const ShellChannels = {
   /** 拉取当前窗口完整信息（windowId、tabs、currentTabId 等） */
   GET_WINDOW_INFO: 'shell:get-window-info',
   /** 打开目录选择对话框，返回选中的路径或 null */
-  OPEN_DIRECTORY: 'shell:open-directory'
+  OPEN_DIRECTORY: 'shell:open-directory',
+  /** 打开文件选择对话框，返回选中的文件路径列表 */
+  OPEN_FILE: 'shell:open-file'
 } as const;
 
 /** 窗口控制通道（invoke） */

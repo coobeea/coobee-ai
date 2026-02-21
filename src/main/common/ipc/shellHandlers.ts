@@ -87,5 +87,29 @@ export function registerShellHandlers(): void {
     return result.filePaths[0];
   });
 
+  // 打开文件选择对话框
+  ipcMain.handle(
+    ShellChannels.OPEN_FILE,
+    async (
+      event,
+      options?: {
+        properties?: Array<'openFile' | 'multiSelections'>;
+        filters?: Array<{ name: string; extensions: string[] }>;
+      }
+    ): Promise<{ canceled: boolean; filePaths: string[] }> => {
+      if (event.sender.isDestroyed()) {
+        return { canceled: true, filePaths: [] };
+      }
+
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const result = await dialog.showOpenDialog(win ?? BrowserWindow.getFocusedWindow()!, {
+        properties: options?.properties || ['openFile'],
+        filters: options?.filters
+      });
+
+      return result;
+    }
+  );
+
   log.info('[IPC] Shell handlers registered');
 }
