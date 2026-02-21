@@ -199,7 +199,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   padding: 6px 10px;
-  border-top: 1px solid hsl(var(--border) / 0.25);
+  border-top: 1px solid hsl(var(--border) / 0.5);
   background: hsl(var(--muted) / 0.2);
   transition: background-color 0.15s ease;
 }
