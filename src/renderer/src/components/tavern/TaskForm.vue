@@ -427,26 +427,57 @@ onMounted(() => {
 .optimize-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid hsl(var(--primary) / 0.3);
-  background: hsl(var(--primary) / 0.05);
-  color: hsl(var(--primary));
-  font-size: 12px;
-  font-weight: 500;
-  transition: all 0.15s ease;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
+  color: hsl(var(--primary-foreground));
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow:
+    0 2px 8px hsl(var(--primary) / 0.25),
+    0 4px 12px hsl(var(--primary) / 0.15);
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.optimize-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: hsl(var(--primary-foreground) / 0.15);
+  transform: translate(-50%, -50%);
+  transition:
+    width 0.3s ease,
+    height 0.3s ease;
 }
 
 .optimize-btn:hover:not(:disabled) {
-  border-color: hsl(var(--primary) / 0.5);
-  background: hsl(var(--primary) / 0.1);
-  box-shadow: 0 1px 4px hsl(var(--primary) / 0.15);
+  transform: translateY(-1px);
+  box-shadow:
+    0 4px 12px hsl(var(--primary) / 0.35),
+    0 6px 20px hsl(var(--primary) / 0.25);
+}
+
+.optimize-btn:hover:not(:disabled)::before {
+  width: 300px;
+  height: 300px;
+}
+
+.optimize-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .optimize-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .form-input,
