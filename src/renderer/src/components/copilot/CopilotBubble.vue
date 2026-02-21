@@ -13,12 +13,13 @@ import { useCopilotStore } from '@/stores/copilot';
 import type { PendingApproval } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
 import ChatMessages from '@/components/chat/ChatMessages.vue';
+import ChatInput from '@/components/chat/ChatInput.vue';
 import { layerManager } from '@/utils/LayerManager';
 
 const copilot = useCopilotStore();
 const inputText = ref('');
 const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null);
-const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 
 const drawerVisible = computed({
   get: () => copilot.visible,
@@ -62,26 +63,21 @@ watch(
   (v) => {
     if (v) {
       nextTick(() => {
-        textareaRef.value?.focus();
+        chatInputRef.value?.focus();
         scrollToBottom();
       });
     }
   }
 );
 
-async function handleSend(): Promise<void> {
-  const text = inputText.value.trim();
+async function handleSend(text: string): Promise<void> {
   if (!text) return;
-  inputText.value = '';
   scrollToBottom();
   await copilot.sendMessage(text);
 }
 
-function handleKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-    e.preventDefault();
-    handleSend();
-  }
+async function handleStop(): Promise<void> {
+  await copilot.abort();
 }
 
 function handleApproval(approval: PendingApproval, decision: HitlApprovalDecision): void {
@@ -165,19 +161,15 @@ function handleApproval(approval: PendingApproval, decision: HitlApprovalDecisio
       </ChatMessages>
 
       <!-- 输入区域 -->
-      <div class="panel-input-area">
-        <textarea
-          ref="textareaRef"
-          v-model="inputText"
-          class="panel-input"
-          :placeholder="copilot.isStreaming ? '处理中...' : '输入消息，Enter 发送'"
-          rows="1"
-          :disabled="copilot.isStreaming"
-          @keydown="handleKeydown" />
-        <button v-if="copilot.isStreaming" class="panel-stop-btn" title="中断" @click="copilot.abort()">
-          <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5" />
-        </button>
-      </div>
+      <ChatInput
+        ref="chatInputRef"
+        v-model="inputText"
+        :placeholder="copilot.isStreaming ? '处理中...' : '输入消息，Enter 发送'"
+        :disabled="copilot.isStreaming"
+        :show-model-selector="true"
+        :show-stop-button="copilot.isStreaming"
+        @send="handleSend"
+        @stop="handleStop" />
     </div>
   </Popup>
 </template>
@@ -441,60 +433,5 @@ function handleApproval(approval: PendingApproval, decision: HitlApprovalDecisio
   font-size: 11px;
   color: hsl(var(--muted-foreground) / 0.6);
   background: hsl(var(--foreground) / 0.03);
-}
-
-/* ====== 输入区域 ====== */
-.panel-input-area {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid hsl(var(--border) / 0.3);
-  background: hsl(var(--surface) / 0.5);
-}
-
-.panel-input {
-  flex: 1;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid hsl(var(--border) / 0.4);
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-size: 13px;
-  line-height: 1.5;
-  resize: none;
-  outline: none;
-  transition: border-color 0.15s ease;
-  max-height: 120px;
-  overflow-y: auto;
-}
-
-.panel-input:focus {
-  border-color: hsl(var(--primary) / 0.4);
-}
-
-.panel-input::placeholder {
-  color: hsl(var(--muted-foreground) / 0.35);
-}
-
-.panel-input:disabled {
-  opacity: 0.5;
-}
-
-.panel-stop-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  flex-shrink: 0;
-  color: hsl(var(--primary-foreground));
-  background: hsl(var(--error));
-  transition: all 0.15s ease;
-}
-
-.panel-stop-btn:hover {
-  opacity: 0.85;
 }
 </style>

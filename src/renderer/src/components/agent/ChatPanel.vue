@@ -12,11 +12,11 @@ import type { PendingApproval } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
 import { gateway } from '@/plugins/gatewaySetup';
 import ChatMessages from '@/components/chat/ChatMessages.vue';
+import ChatInput from '@/components/chat/ChatInput.vue';
 
 const chatStore = useChatStore();
 const inputText = ref('');
 const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null);
-const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const isCollapsed = defineModel<boolean>('collapsed', { default: false });
 
 function scrollToBottom(force = false): void {
@@ -43,39 +43,16 @@ watch(
   () => scrollToBottom()
 );
 
-async function handleSend(): Promise<void> {
-  const text = inputText.value.trim();
+async function handleSend(text: string): Promise<void> {
   if (!text) return;
 
   // 用户发送消息 → 强制滚到底部（要看回复）
-  inputText.value = '';
-  resetTextareaHeight();
   scrollToBottom(true);
   await chatStore.sendMessage(text);
 }
 
-async function handleAbort(): Promise<void> {
+async function handleStop(): Promise<void> {
   await chatStore.abortSession();
-}
-
-function handleKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
-    event.preventDefault();
-    handleSend();
-  }
-}
-
-function autoResize(): void {
-  const el = textareaRef.value;
-  if (!el) return;
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
-}
-
-function resetTextareaHeight(): void {
-  const el = textareaRef.value;
-  if (!el) return;
-  el.style.height = 'auto';
 }
 
 function handleApproval(approval: PendingApproval, decision: HitlApprovalDecision): void {
@@ -139,31 +116,33 @@ onMounted(() => {
     </div>
 
     <!-- 输入区域 -->
-    <div class="shrink-0 border-t border-gray-200/80 bg-white px-3 pb-3 pt-2">
-      <div
-        class="flex items-end gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 shadow-sm transition-colors focus-within:border-primary/40">
-        <textarea
-          ref="textareaRef"
-          v-model="inputText"
-          class="max-h-[160px] min-h-[20px] flex-1 resize-none bg-transparent text-xs leading-relaxed text-gray-800 outline-none placeholder:text-gray-400"
-          rows="1"
-          :placeholder="chatStore.isStreaming ? '可继续输入（消息将排队处理）' : '输入消息... (Enter 发送)'"
-          @keydown="handleKeydown"
-          @input="autoResize"></textarea>
+    <ChatInput
+      ref="chatInputRef"
+      v-model="inputText"
+      :placeholder="chatStore.isStreaming ? '可继续输入（消息将排队处理）' : '输入消息... (Enter 发送)'"
+      :disabled="false"
+      :show-model-selector="true"
+      :show-stop-button="chatStore.isStreaming"
+      @send="handleSend"
+      @stop="handleStop" />
 
-        <!-- 中断按钮（流式执行中显示） -->
-        <button
-          v-if="chatStore.isStreaming"
-          class="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-red-500 text-white transition hover:bg-red-600"
-          title="中断当前执行"
-          @click="handleAbort">
-          <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5"></span>
-        </button>
-      </div>
-      <p v-if="gateway.lastError.value" class="mt-1 flex items-center gap-1 text-[10px] text-red-500">
-        <span class="i-carbon-warning inline-block h-2.5 w-2.5"></span>
-        {{ gateway.lastError.value }}
-      </p>
+    <!-- 错误提示 -->
+    <div v-if="gateway.lastError.value" class="error-banner">
+      <span class="i-carbon-warning inline-block h-3 w-3"></span>
+      <span>{{ gateway.lastError.value }}</span>
     </div>
   </aside>
 </template>
+
+<style scoped>
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: hsl(var(--error) / 0.1);
+  color: hsl(var(--error));
+  font-size: 11px;
+  border-top: 1px solid hsl(var(--error) / 0.2);
+}
+</style>
