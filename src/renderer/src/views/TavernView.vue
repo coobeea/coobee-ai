@@ -69,18 +69,12 @@ function handleTaskCreated(): void {
           {{ view === 'list' ? '酒馆任务' : view === 'create' ? '发布任务' : '任务详情' }}
         </h1>
       </div>
-      <div class="header-right">
-        <button v-if="view === 'list'" class="create-btn" @click="handleCreateTask">
-          <span class="i-carbon-add inline-block h-3.5 w-3.5" />
-          <span>发布任务</span>
-        </button>
-      </div>
     </header>
 
     <!-- 内容区域 -->
     <div class="content">
       <!-- 任务列表 -->
-      <TaskList v-if="view === 'list'" @view-task="handleViewTask" />
+      <TaskList v-if="view === 'list'" @view-task="handleViewTask" @create-task="handleCreateTask" />
 
       <!-- 任务发布表单 -->
       <TaskForm v-else-if="view === 'create'" @cancel="handleBackToList" @success="handleTaskCreated" />
@@ -154,30 +148,6 @@ function handleTaskCreated(): void {
   font-weight: 600;
   color: hsl(var(--foreground));
   letter-spacing: -0.01em;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.create-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 30px;
-  padding: 0 12px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 500;
-  color: hsl(var(--primary));
-  background: hsl(var(--primary) / 0.08);
-  transition: all 0.15s ease;
-}
-
-.create-btn:hover {
-  background: hsl(var(--primary) / 0.14);
 }
 
 .content {

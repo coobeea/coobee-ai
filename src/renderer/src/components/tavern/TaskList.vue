@@ -21,6 +21,7 @@ interface Task {
 
 const emit = defineEmits<{
   viewTask: [taskId: string];
+  createTask: [];
 }>();
 
 const tasks = ref<Task[]>([]);
@@ -124,6 +125,11 @@ onMounted(() => {
         </button>
         <button class="refresh-btn" title="刷新" @click="fetchTasks">
           <span class="i-carbon-renew inline-block h-3.5 w-3.5" :class="{ 'animate-spin': loading }" />
+        </button>
+        <div class="toolbar-divider"></div>
+        <button class="create-task-btn" title="发布任务" @click="emit('createTask')">
+          <span class="i-carbon-add inline-block h-3.5 w-3.5" />
+          <span>发布任务</span>
         </button>
       </div>
     </div>
@@ -238,6 +244,13 @@ onMounted(() => {
   gap: 4px;
 }
 
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: hsl(var(--border) / 0.3);
+  margin: 0 8px;
+}
+
 .view-toggle-btn,
 .refresh-btn {
   display: flex;
@@ -259,6 +272,24 @@ onMounted(() => {
 .view-toggle-btn.active {
   background: hsl(var(--primary) / 0.1);
   color: hsl(var(--primary));
+}
+
+.create-task-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.08);
+  transition: all 0.15s ease;
+}
+
+.create-task-btn:hover {
+  background: hsl(var(--primary) / 0.14);
 }
 
 /* 块状视图 */
