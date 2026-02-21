@@ -11,6 +11,11 @@ import { SwarmCoordinator, type SwarmEvent } from './SwarmCoordinator';
 import type { SwarmSubTask } from './ConcurrencyManager';
 import type { AgentRole, SwarmConfig } from './types';
 import { DEFAULT_SWARM_CONFIG } from './types';
+import { FileSwarmContext } from './FileSwarmContext';
+import { FileMessageBus } from './FileMessageBus';
+import { KnowledgeBase } from './KnowledgeBase';
+import env from '@main/common/env';
+import { join } from 'path';
 import type { AgentRuntimeOptions, ExecutionConfig, ExecutionResult, StreamChunk, SessionInfo } from '../runtime/types';
 
 const log = createLogger('swarm:runtime');
@@ -18,6 +23,10 @@ const log = createLogger('swarm:runtime');
 export interface SwarmRuntimeOptions {
   config?: Partial<SwarmConfig>;
   customRoles?: AgentRole[];
+  /** 🆕 Workspace 目录（用于持久化） */
+  workspaceDir?: string;
+  /** 🆕 是否启用持久化（默认 true） */
+  enablePersistence?: boolean;
 }
 
 export class SwarmRuntime extends AbstractAgentRuntime {
@@ -38,15 +47,37 @@ export class SwarmRuntime extends AbstractAgentRuntime {
     this.id = swarmId || generateRuntimeId('swarm');
     this.sessionId = sessionId || `swarm-session-${Date.now()}`;
 
+    // 🆕 构建持久化配置
+    const enablePersistence = options?.enablePersistence !== false; // 默认启用
+    const workspaceDir = options?.workspaceDir || this.getDefaultWorkspaceDir(this.sessionId);
+
+    // 🆕 创建持久化实例
+    const context = enablePersistence ? new FileSwarmContext(workspaceDir) : undefined;
+    const messageBus = enablePersistence ? new FileMessageBus(workspaceDir) : undefined;
+    const knowledgeBase = enablePersistence ? new KnowledgeBase(workspaceDir) : undefined;
+
     this.swarmConfig = {
       ...DEFAULT_SWARM_CONFIG,
       id: swarmId,
       name: options?.config?.name || `Swarm-${swarmId}`,
-      ...options?.config
+      parentSessionId: this.sessionId,
+      ...options?.config,
+      // 🆕 注入持久化实例
+      context,
+      messageBus,
+      knowledgeBase
     } as SwarmConfig;
 
     this._name = this.swarmConfig.name;
     this.coordinator = new SwarmCoordinator(this.swarmConfig);
+  }
+
+  /**
+   * 获取默认 workspace 目录
+   */
+  private getDefaultWorkspaceDir(sessionId: string): string {
+    const homeDir = env.paths.userHome;
+    return join(homeDir, 'workspaces', sessionId);
   }
 
   get name(): string {

@@ -22,6 +22,7 @@ import { HandoffRouter } from './HandoffRouter';
 import { SwarmContext } from './SwarmContext';
 import { SwarmMonitor } from './SwarmMonitor';
 import { MessageBus } from './MessageBus';
+import { KnowledgeBase } from './KnowledgeBase';
 import { ConcurrencyManager, type SwarmSubTask } from './ConcurrencyManager';
 import { createSwarmTools } from './tools';
 import { RoleRegistry } from './roles';
@@ -92,6 +93,7 @@ export class SwarmCoordinator {
   readonly messageBus: MessageBus;
   readonly concurrency: ConcurrencyManager;
   readonly roleRegistry: RoleRegistry;
+  readonly knowledgeBase?: KnowledgeBase; // 🆕 共享知识库
 
   private state: SwarmState = createInitialSwarmState();
   private onEvent: SwarmEventCallback | null = null;
@@ -100,13 +102,15 @@ export class SwarmCoordinator {
   constructor(private readonly config: SwarmConfig) {
     this.pool = new AgentPool(config);
     this.router = new HandoffRouter(config);
-    this.context = new SwarmContext();
+    this.context = config.context || new SwarmContext(); // 🆕 支持注入
     this.monitor = new SwarmMonitor();
-    this.messageBus = new MessageBus();
+    this.messageBus = config.messageBus || new MessageBus(); // 🆕 支持注入
+    this.knowledgeBase = config.knowledgeBase; // 🆕 可选的知识库
     this.concurrency = new ConcurrencyManager(config);
     this.roleRegistry = new RoleRegistry();
 
     this.setupMonitoringBridge();
+    this.setupKnowledgeBaseRecording(); // 🆕 设置知识库自动记录
   }
 
   // ========== 事件 ==========
@@ -486,12 +490,17 @@ export class SwarmCoordinator {
   }
 
   private buildSpecialistInstructions(role: AgentRole): string {
+    // 🆕 构建共享上下文摘要（如果有知识库）
+    const contextSection = this.knowledgeBase
+      ? `\n## Swarm 协作上下文\n\n以下是其他 Agent 的最近活动和决策：\n\n${this.knowledgeBase.buildSummary(10)}\n\n请基于以上信息工作。如有疑问，可以使用通信工具查询详细信息。\n`
+      : '';
+
     return `${role.instructions}
 
 ## 协作说明
 
 你是 Swarm 协作系统中的专家成员（角色: ${role.id}）。
-
+${contextSection}
 ### 通信工具
 你拥有以下通信工具来与其他专家协作：
 - **read_shared_context**: 读取共享上下文中其他专家留下的信息
@@ -644,6 +653,55 @@ export class SwarmCoordinator {
       this.monitor.detectLoop(this.router.getCurrentChain(), toRoleId);
       this.monitor.detectDepthLimit(depth, this.config.maxHandoffDepth);
     });
+  }
+
+  /**
+   * 🆕 设置知识库自动记录
+   *
+   * 监听 SwarmContext 的变更事件，自动记录重要信息到 KnowledgeBase
+   */
+  private setupKnowledgeBaseRecording(): void {
+    if (!this.knowledgeBase) return;
+
+    this.context.addChangeListener((event) => {
+      try {
+        // 产物创建 → 记录到知识库
+        if (event.type === 'artifact_added') {
+          const artifact = this.context.getArtifact(event.key);
+          this.knowledgeBase!.append({
+            type: 'artifact_created',
+            name: event.key,
+            createdBy: event.roleId,
+            artifactType: artifact?.type,
+            description: `产物大小: ${artifact?.content?.length || 0} 字符`,
+            ts: event.timestamp
+          });
+        }
+
+        // 重要状态变更 → 记录到知识库
+        // 识别关键词：decision, result, conclusion, final
+        if (event.type === 'state_set' && this.isImportantState(event.key)) {
+          this.knowledgeBase!.append({
+            type: 'decision',
+            decision: `${event.key} 已设置`,
+            madeBy: event.roleId,
+            reason: '通过 write_shared_context 设置',
+            ts: event.timestamp
+          });
+        }
+      } catch (error) {
+        console.error('[SwarmCoordinator] Failed to record to knowledge base:', error);
+      }
+    });
+  }
+
+  /**
+   * 判断是否为重要状态（应该记录到知识库）
+   */
+  private isImportantState(key: string): boolean {
+    const importantKeywords = ['decision', 'result', 'conclusion', 'final', 'status', 'outcome'];
+    const lowerKey = key.toLowerCase();
+    return importantKeywords.some((keyword) => lowerKey.includes(keyword));
   }
 
   // ========== 生命周期 ==========

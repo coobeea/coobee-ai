@@ -78,6 +78,15 @@ export interface SwarmConfig {
   enableMonitoring: boolean;
   /** 扩展元数据 */
   metadata?: Record<string, unknown>;
+  /** 🆕 自定义 SwarmContext（用于注入持久化版本） */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  context?: any;
+  /** 🆕 自定义 MessageBus（用于注入持久化版本） */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  messageBus?: any;
+  /** 🆕 共享知识库（用于 Agent 上下文共享） */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  knowledgeBase?: any;
 }
 
 /**
