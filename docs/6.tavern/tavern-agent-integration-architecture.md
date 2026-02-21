@@ -25,66 +25,112 @@
 ### 2.1 整体架构图
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                       Coobee-AI 主系统                           │
-│                                                                   │
-│  ┌─────────────┐      ┌──────────────┐      ┌──────────────┐   │
-│  │   Agent     │◄────►│ AgentExecutor│◄────►│  ToolRegistry│   │
-│  │  (执行层)    │      │              │      │              │   │
-│  └─────────────┘      └──────────────┘      └──────┬───────┘   │
-│         ▲                                            │           │
-│         │                                            │           │
-│         │                                            ▼           │
-│         │                                   ┌──────────────┐    │
-│         │                                   │ tavern_*     │    │
-│         │                                   │ (酒馆工具)    │    │
-│         │                                   └──────┬───────┘    │
-│         │                                            │           │
-│  ┌──────┴────────┐                                  │           │
-│  │  EventBus     │                                  │           │
-│  │  (事件总线)    │                                  │           │
-│  └──────┬────────┘                                  │           │
-│         │                                            │           │
-│         │          ┌──────────────┐                 │           │
-│         └─────────►│   Gateway    │◄────────────────┘           │
-│                    │              │                              │
-│                    └──────┬───────┘                              │
-│                           │                                      │
-└───────────────────────────┼──────────────────────────────────────┘
-                            │ HTTP/WebSocket
-                            │
-                 ┌──────────▼─────────────┐
-                 │  Tavern Extension      │
-                 │  (酒馆扩展插件)         │
-                 │                        │
-                 │  • TaskBridge (事件)   │
-                 │  • TavernTools (工具)  │
-                 │  • Gateway Methods     │
-                 └──────────┬─────────────┘
-                            │ HTTP API
-                            │
-              ┌─────────────▼───────────────┐
-              │   酒馆任务系统 (外部)         │
-              │                             │
-              │  • HTTP API Server          │
-              │  • Task Storage (JSONL)     │
-              │  • File Management          │
-              └─────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      Coobee-AI 主系统 (端口 8765)                  │
+│                                                                    │
+│  ┌─────────────┐      ┌──────────────┐      ┌──────────────┐    │
+│  │   Agent     │◄────►│ AgentExecutor│◄────►│  ToolRegistry│    │
+│  │  (执行层)    │      │              │      │              │    │
+│  └─────────────┘      └──────────────┘      └──────┬───────┘    │
+│         ▲                                            │            │
+│         │                                            │            │
+│         │                                            ▼            │
+│         │                                   ┌──────────────┐     │
+│         │                                   │ external_*   │     │
+│         │                                   │ (外部工具)    │     │
+│         │                                   └──────┬───────┘     │
+│         │                                            │            │
+│  ┌──────┴────────┐                                  │            │
+│  │  EventBus     │◄────────────┐                    │            │
+│  │  (事件总线)    │             │                    │            │
+│  └───────────────┘             │                    │            │
+│                                 │                    │            │
+│                         ┌───────┴────────┐          │            │
+│                         │ Gateway Client │          │            │
+│                         │  (WS客户端)     │          │            │
+│                         └───────┬────────┘          │            │
+│                                 │                    │            │
+│                         ┌───────┴────────┐          │            │
+│                         │    Gateway     │◄─────────┘            │
+│                         │  (RPC服务器)    │                       │
+│                         └───────┬────────┘                       │
+│                                 │                                 │
+└─────────────────────────────────┼─────────────────────────────────┘
+                                  │
+                                  │ HTTP/WebSocket (前端)
+                                  │
+                    ┌─────────────┴─────────────┐
+                    │                           │
+         WebSocket 连接                    HTTP API 调用
+              (事件推送)                    (工具调用)
+                    │                           │
+        ┌───────────▼───────────────────────────▼────────────┐
+        │          酒馆任务系统 (独立服务 localhost:9900)       │
+        │                                                     │
+        │  ┌─────────────┐      ┌──────────────┐            │
+        │  │  WS Server  │      │  HTTP Server │            │
+        │  │  (事件推送)  │      │  (API 接口)   │            │
+        │  └─────────────┘      └──────────────┘            │
+        │                                                     │
+        │  • Task Storage (JSONL)                            │
+        │  • Event Broadcasting (任务发布/状态变更)           │
+        │  • File Management                                 │
+        └─────────────────────────────────────────────────────┘
 ```
 
 ### 2.2 核心组件
 
-#### 2.2.1 Tavern Extension（酒馆扩展）
+#### 2.2.1 Gateway Client（通用外部服务客户端）
 
-**职责**：作为独立扩展插件，桥接酒馆系统与 Coobee-AI 主系统
+**职责**：通用的 WebSocket 客户端，连接任意外部服务并接收事件推送
 
-**实现路径**：`extensions/tavern-integration/`
+**实现路径**：`src/main/gateway/client/GatewayClient.ts`
 
 **核心功能**：
 
-1. **事件桥接（TaskBridge）**：监听酒馆事件，转发到主系统
-2. **工具注册（TavernTools）**：封装酒馆 API 为 Agent 工具
-3. **Gateway 方法（TavernGateway）**：提供前端调用的 RPC 方法
+1. **WebSocket 连接管理**：连接、重连、心跳保活
+2. **事件接收与转发**：接收外部服务推送的事件，转发到 EventBus
+3. **通用化设计**：支持连接多个外部服务（通过配置）
+
+**配置示例**：
+
+```json5
+{
+  externalServices: [
+    {
+      id: 'tavern',
+      name: '酒馆任务系统',
+      wsUrl: 'ws://localhost:9900/events', // WebSocket 事件推送地址
+      apiUrl: 'http://localhost:9900/api', // HTTP API 地址（工具调用）
+      enabled: true,
+      reconnect: true,
+      heartbeat: 30000
+    }
+  ]
+}
+```
+
+#### 2.2.2 External Tools（外部服务工具集）
+
+**职责**：将外部服务的 API 封装为 Agent 可调用的通用工具
+
+**实现路径**：`src/main/ai/tools/external/`
+
+**核心设计**：
+
+- **动态注册**：根据配置动态生成工具定义
+- **HTTP 调用**：通过 HTTP API 与外部服务通信
+- **通用化**：不同的外部服务使用相同的工具模式
+
+**工具命名规范**：`external_{serviceId}_{action}`
+
+**酒馆系统工具示例**：
+
+- `external_tavern_list_tasks`
+- `external_tavern_get_task`
+- `external_tavern_accept_task`
+- `external_tavern_update_status`
+- `external_tavern_submit_result`
 
 #### 2.2.2 Agent 自动接取服务（TaskAcceptanceService）
 
@@ -115,48 +161,54 @@
 
 ## 3. 数据流与交互时序
 
-### 3.1 任务发布流程
+### 3.1 任务发布流程（WebSocket 推送模式）
 
 ```
-┌───────┐       ┌────────┐       ┌─────────┐       ┌────────┐       ┌────────┐
-│ 用户  │       │ 酒馆   │       │ Tavern  │       │Gateway │       │ Agent  │
-│       │       │ 系统   │       │Extension│       │EventBus│       │执行层  │
-└───┬───┘       └───┬────┘       └────┬────┘       └───┬────┘       └───┬────┘
-    │               │                  │                │                │
-    │ 1. 发布任务   │                  │                │                │
-    ├──────────────►│                  │                │                │
-    │               │                  │                │                │
-    │               │ 2. 存储任务      │                │                │
-    │               ├─────────┐        │                │                │
-    │               │         │        │                │                │
-    │               │◄────────┘        │                │                │
-    │               │                  │                │                │
-    │               │ 3. Webhook通知   │                │                │
-    │               ├─────────────────►│                │                │
-    │               │                  │                │                │
-    │               │                  │ 4. emit event  │                │
-    │               │                  ├───────────────►│                │
-    │               │                  │                │                │
-    │               │                  │                │ 5. 任务通知    │
-    │               │                  │                ├───────────────►│
-    │               │                  │                │                │
-    │               │                  │                │ 6. 分析决策    │
-    │               │                  │                │◄───────────────┤
-    │               │                  │                │                │
+┌───────┐     ┌────────┐     ┌──────────┐     ┌────────┐     ┌────────┐
+│ 用户  │     │ 酒馆   │     │ Gateway  │     │EventBus│     │ Agent  │
+│       │     │ 系统   │     │ Client   │     │        │     │执行层  │
+└───┬───┘     └───┬────┘     └────┬─────┘     └───┬────┘     └───┬────┘
+    │             │                │               │              │
+    │ 0. 启动时建立 WS 连接         │               │              │
+    │             │◄───────────────┤               │              │
+    │             │   (ws://localhost:9900/events) │              │
+    │             │                │               │              │
+    │ 1. 发布任务 │                │               │              │
+    ├────────────►│                │               │              │
+    │             │                │               │              │
+    │             │ 2. 存储任务    │               │              │
+    │             ├───────┐        │               │              │
+    │             │       │        │               │              │
+    │             │◄──────┘        │               │              │
+    │             │                │               │              │
+    │             │ 3. WS 推送事件 │               │              │
+    │             ├───────────────►│               │              │
+    │             │  task.created  │               │              │
+    │             │                │               │              │
+    │             │                │ 4. 转发事件  │              │
+    │             │                ├──────────────►│              │
+    │             │                │               │              │
+    │             │                │               │ 5. 任务通知  │
+    │             │                │               ├─────────────►│
+    │             │                │               │              │
+    │             │                │               │ 6. 分析决策  │
+    │             │                │               │◄─────────────┤
+    │             │                │               │              │
 ```
 
-### 3.2 任务接取与执行流程
+### 3.2 任务接取与执行流程（HTTP API 工具调用）
 
 ```
 ┌────────┐       ┌─────────┐       ┌────────┐       ┌─────────┐
-│ Agent  │       │ Tavern  │       │ Thread │       │ 酒馆    │
+│ Agent  │       │External │       │ Thread │       │ 酒馆    │
 │执行层  │       │ Tools   │       │ Store  │       │ 系统    │
 └───┬────┘       └────┬────┘       └───┬────┘       └────┬────┘
     │                 │                 │                 │
     │ 1. 决策接取     │                 │                 │
     ├────────────────►│                 │                 │
     │                 │                 │                 │
-    │                 │ 2. accept_task  │                 │
+    │                 │ 2. HTTP POST    │                 │
+    │                 │  /api/tasks/:id/accept            │
     │                 ├────────────────────────────────────►
     │                 │                 │                 │
     │                 │◄───── 200 OK ───────────────────┤
@@ -177,7 +229,8 @@
     │ 6. 更新状态     │                 │                 │
     ├────────────────►│                 │                 │
     │                 │                 │                 │
-    │                 │ 7. update_status│                 │
+    │                 │ 7. HTTP PATCH   │                 │
+    │                 │  /api/tasks/:id/status            │
     │                 ├────────────────────────────────────►
     │                 │                 │                 │
 ```
@@ -186,622 +239,470 @@
 
 ## 4. 详细设计
 
-### 4.1 Tavern Extension 实现
+### 4.1 Gateway Client（通用 WebSocket 客户端）实现
 
 #### 4.1.1 目录结构
 
 ```
-extensions/tavern-integration/
-├── extension.json          # 扩展元数据
-├── index.ts               # 入口文件
-├── src/
-│   ├── TaskBridge.ts      # 事件桥接
-│   ├── TavernTools.ts     # 工具定义
-│   ├── TavernClient.ts    # 酒馆 API 客户端
-│   └── types.ts           # 类型定义
-└── package.json
+src/main/gateway/client/
+├── GatewayClient.ts       # Gateway Client 核心类
+├── Connection.ts          # WebSocket 连接管理
+├── EventRouter.ts         # 事件路由器
+├── types.ts               # 类型定义
+└── __tests__/
+    └── GatewayClient.test.ts
 ```
 
-#### 4.1.2 extension.json
-
-```json
-{
-  "id": "tavern-integration",
-  "name": "Tavern Integration",
-  "version": "1.0.0",
-  "description": "Integrate external Tavern task system with Coobee-AI agents",
-  "main": "index.ts",
-  "contributes": {
-    "tools": [
-      "tavern_list_tasks",
-      "tavern_get_task",
-      "tavern_accept_task",
-      "tavern_update_status",
-      "tavern_submit_result"
-    ],
-    "gatewayMethods": [
-      "tavern.getTasks",
-      "tavern.getTask",
-      "tavern.createTask",
-      "tavern.updateTask",
-      "tavern.deleteTask"
-    ],
-    "settings": {
-      "tavern.baseUrl": {
-        "type": "string",
-        "default": "http://localhost:8765",
-        "description": "Tavern system base URL"
-      },
-      "tavern.autoAccept": {
-        "type": "boolean",
-        "default": true,
-        "description": "Enable automatic task acceptance"
-      },
-      "tavern.maxConcurrent": {
-        "type": "number",
-        "default": 3,
-        "description": "Maximum concurrent tasks"
-      }
-    }
-  }
-}
-```
-
-#### 4.1.3 index.ts（扩展入口）
+#### 4.1.2 types.ts（类型定义）
 
 ```typescript
-import type { ExtensionApi } from '@main/common/extension/types';
-import { TaskBridge } from './src/TaskBridge';
-import { TavernTools } from './src/TavernTools';
-
-export function activate(api: ExtensionApi): void {
-  const logger = api.logger;
-
-  logger.info('Activating Tavern Integration Extension...');
-
-  // 1. 注册酒馆工具
-  const tools = new TavernTools(api);
-  tools.registerAll();
-
-  // 2. 启动事件桥接
-  const bridge = new TaskBridge(api);
-  bridge.start();
-
-  // 3. 注册 Gateway 方法（前端调用）
-  registerGatewayMethods(api);
-
-  logger.info('Tavern Integration Extension activated');
+/** 外部服务配置 */
+export interface ExternalServiceConfig {
+  /** 服务 ID（唯一标识） */
+  id: string;
+  /** 服务名称 */
+  name: string;
+  /** WebSocket 事件推送地址 */
+  wsUrl: string;
+  /** HTTP API 地址 */
+  apiUrl: string;
+  /** 是否启用 */
+  enabled: boolean;
+  /** 是否自动重连 */
+  reconnect?: boolean;
+  /** 心跳间隔（ms） */
+  heartbeat?: number;
+  /** 认证 Token（可选） */
+  authToken?: string;
 }
 
-export function deactivate(): void {
-  // 清理资源
+/** WebSocket 事件 */
+export interface ExternalEvent {
+  /** 事件类型 */
+  type: string;
+  /** 事件数据 */
+  data: unknown;
+  /** 时间戳 */
+  timestamp: number;
+  /** 来源服务 ID */
+  serviceId: string;
 }
 
-function registerGatewayMethods(api: ExtensionApi): void {
-  // 让前端能直接通过 Gateway RPC 调用酒馆 API
-  api.registerGatewayMethod('tavern.getTasks', async (params) => {
-    // 转发到酒馆系统
-    const response = await fetch(`${getTavernBaseUrl()}/gateway/tavern/tasks`);
-    return await response.json();
-  });
-
-  api.registerGatewayMethod('tavern.createTask', async (params) => {
-    const response = await fetch(`${getTavernBaseUrl()}/gateway/tavern/tasks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params)
-    });
-    return await response.json();
-  });
-
-  // ... 其他方法
-}
-
-function getTavernBaseUrl(): string {
-  // 从配置读取酒馆系统地址
-  return process.env.TAVERN_BASE_URL || 'http://localhost:8765';
-}
+/** 连接状态 */
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 ```
 
-#### 4.1.4 TavernTools.ts（工具定义）
+#### 4.1.3 GatewayClient.ts（核心实现）
 
 ```typescript
-import type { ExtensionApi } from '@main/common/extension/types';
-import type { ToolDefinition } from '@main/ai/tools/types';
-import { z } from 'zod';
-import { TavernClient } from './TavernClient';
+import WebSocket from 'ws';
+import { createLogger } from '@main/common/logger';
+import { eventBus } from '@main/common/eventbus';
+import type { ExternalServiceConfig, ExternalEvent, ConnectionStatus } from './types';
 
-export class TavernTools {
-  private client: TavernClient;
-
-  constructor(private api: ExtensionApi) {
-    this.client = new TavernClient(getTavernBaseUrl());
-  }
-
-  registerAll(): void {
-    this.api.registerTool(this.listTasksTool());
-    this.api.registerTool(this.getTaskTool());
-    this.api.registerTool(this.acceptTaskTool());
-    this.api.registerTool(this.updateStatusTool());
-    this.api.registerTool(this.submitResultTool());
-  }
-
-  private listTasksTool(): ToolDefinition {
-    return {
-      name: 'tavern_list_tasks',
-      description:
-        'List available tasks from Tavern system. Filter by status (pending/accepted/in-progress/completed/cancelled).',
-      parameters: z.object({
-        status: z
-          .enum(['pending', 'accepted', 'in-progress', 'completed', 'cancelled'])
-          .optional()
-          .describe('Filter tasks by status'),
-        limit: z.number().optional().describe('Maximum number of tasks to return (default: 20)')
-      }),
-      execute: async (params) => {
-        const tasks = await this.client.listTasks(params);
-        return {
-          success: true,
-          tasks,
-          count: tasks.length
-        };
-      }
-    };
-  }
-
-  private acceptTaskTool(): ToolDefinition {
-    return {
-      name: 'tavern_accept_task',
-      description:
-        'Accept a task from Tavern. This will mark the task as "accepted" and assign it to the current agent.',
-      parameters: z.object({
-        taskId: z.string().describe('Task ID to accept'),
-        agentId: z.string().describe('Agent ID that accepts this task')
-      }),
-      execute: async (params) => {
-        const result = await this.client.acceptTask(params.taskId, params.agentId);
-        return {
-          success: true,
-          taskId: params.taskId,
-          status: 'accepted',
-          message: `Task ${params.taskId} has been accepted by agent ${params.agentId}`
-        };
-      }
-    };
-  }
-
-  private submitResultTool(): ToolDefinition {
-    return {
-      name: 'tavern_submit_result',
-      description: 'Submit task result to Tavern system. Include text summary and optional file paths.',
-      parameters: z.object({
-        taskId: z.string().describe('Task ID'),
-        textResult: z.string().describe('Text summary of the result'),
-        fileResults: z.array(z.string()).optional().describe('Paths to result files')
-      }),
-      execute: async (params) => {
-        await this.client.submitResult(params.taskId, {
-          textResult: params.textResult,
-          fileResults: params.fileResults || []
-        });
-        return {
-          success: true,
-          taskId: params.taskId,
-          message: 'Task result submitted successfully'
-        };
-      }
-    };
-  }
-
-  // ... 其他工具定义
-}
-```
-
-#### 4.1.5 TaskBridge.ts（事件桥接）
-
-```typescript
-import type { ExtensionApi } from '@main/common/extension/types';
-import { TavernClient } from './TavernClient';
+const log = createLogger('gateway-client');
 
 /**
- * TaskBridge 负责监听酒馆系统的任务事件，并转发到主系统 EventBus
+ * Gateway Client - 通用的外部服务 WebSocket 客户端
+ *
+ * 职责：
+ * 1. 管理与外部服务的 WebSocket 连接
+ * 2. 接收外部服务推送的事件
+ * 3. 将事件转发到系统 EventBus
+ * 4. 支持自动重连和心跳保活
  */
-export class TaskBridge {
-  private client: TavernClient;
-  private pollInterval: NodeJS.Timeout | null = null;
+export class GatewayClient {
+  private ws: WebSocket | null = null;
+  private status: ConnectionStatus = 'disconnected';
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
 
-  constructor(private api: ExtensionApi) {
-    this.client = new TavernClient(getTavernBaseUrl());
-  }
+  constructor(private config: ExternalServiceConfig) {}
 
-  start(): void {
-    this.api.logger.info('[TaskBridge] Starting event polling...');
+  /**
+   * 连接到外部服务
+   */
+  async connect(): Promise<void> {
+    if (this.status === 'connected' || this.status === 'connecting') {
+      log.warn(`[${this.config.id}] Already connected or connecting`);
+      return;
+    }
 
-    // 方案 A：轮询模式（简单可靠）
-    this.startPolling();
+    this.status = 'connecting';
+    log.info(`[${this.config.id}] Connecting to ${this.config.wsUrl}...`);
 
-    // 方案 B（可选）：Webhook 模式（实时性更好）
-    // this.startWebhook();
-  }
+    try {
+      this.ws = new WebSocket(this.config.wsUrl, {
+        headers: this.config.authToken ? { Authorization: `Bearer ${this.config.authToken}` } : {}
+      });
 
-  stop(): void {
-    if (this.pollInterval) {
-      clearInterval(this.pollInterval);
-      this.pollInterval = null;
+      this.setupEventHandlers();
+
+      // 等待连接成功
+      await new Promise<void>((resolve, reject) => {
+        this.ws!.once('open', () => resolve());
+        this.ws!.once('error', (err) => reject(err));
+      });
+
+      this.status = 'connected';
+      log.info(`[${this.config.id}] Connected successfully`);
+
+      // 启动心跳
+      if (this.config.heartbeat) {
+        this.startHeartbeat();
+      }
+    } catch (err) {
+      this.status = 'error';
+      log.error(`[${this.config.id}] Connection failed:`, err);
+
+      // 自动重连
+      if (this.config.reconnect) {
+        this.scheduleReconnect();
+      }
+
+      throw err;
     }
   }
 
   /**
-   * 轮询酒馆系统，检查新任务
+   * 断开连接
    */
-  private startPolling(): void {
-    const pollIntervalMs = 5000; // 每 5 秒轮询一次
+  disconnect(): void {
+    this.stopHeartbeat();
+    this.stopReconnect();
 
-    this.pollInterval = setInterval(async () => {
-      try {
-        // 获取 pending 状态的任务
-        const tasks = await this.client.listTasks({ status: 'pending' });
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
 
-        for (const task of tasks) {
-          // 检查是否是新任务（通过本地缓存判断）
-          if (this.isNewTask(task.id)) {
-            // 发布事件到主系统
-            this.api.eventBus.emit('tavern.task.created', task);
-            this.markTaskAsSeen(task.id);
-          }
-        }
-      } catch (err) {
-        this.api.logger.error('[TaskBridge] Polling error:', err);
-      }
-    }, pollIntervalMs);
+    this.status = 'disconnected';
+    log.info(`[${this.config.id}] Disconnected`);
   }
 
   /**
-   * Webhook 接收模式（可选，需要酒馆系统支持）
+   * 设置事件处理器
    */
-  private startWebhook(): void {
-    // 注册 Gateway 方法接收 Webhook
-    this.api.registerGatewayMethod('tavern.webhook.taskCreated', async (params) => {
-      const task = params.task;
-      this.api.eventBus.emit('tavern.task.created', task);
-      return { success: true };
+  private setupEventHandlers(): void {
+    if (!this.ws) return;
+
+    // 接收消息
+    this.ws.on('message', (data) => {
+      try {
+        const event = JSON.parse(data.toString()) as ExternalEvent;
+
+        // 添加服务 ID
+        event.serviceId = this.config.id;
+
+        // 转发到 EventBus
+        this.forwardEvent(event);
+      } catch (err) {
+        log.error(`[${this.config.id}] Failed to parse message:`, err);
+      }
+    });
+
+    // 连接关闭
+    this.ws.on('close', () => {
+      log.warn(`[${this.config.id}] Connection closed`);
+      this.status = 'disconnected';
+      this.stopHeartbeat();
+
+      // 自动重连
+      if (this.config.reconnect) {
+        this.scheduleReconnect();
+      }
+    });
+
+    // 错误处理
+    this.ws.on('error', (err) => {
+      log.error(`[${this.config.id}] WebSocket error:`, err);
+      this.status = 'error';
+    });
+
+    // Pong（心跳响应）
+    this.ws.on('pong', () => {
+      log.debug(`[${this.config.id}] Received pong`);
     });
   }
 
-  private isNewTask(taskId: string): boolean {
-    // 简单实现：使用内存缓存（可改为持久化存储）
-    // TODO: 实现缓存逻辑
-    return true;
+  /**
+   * 转发事件到 EventBus
+   */
+  private forwardEvent(event: ExternalEvent): void {
+    // 统一事件格式：`external.{serviceId}.{eventType}`
+    const eventName = `external.${event.serviceId}.${event.type}`;
+
+    log.info(`[${this.config.id}] Forwarding event: ${eventName}`);
+
+    // 发布到 EventBus
+    eventBus.emit(eventName, event.data);
   }
 
-  private markTaskAsSeen(taskId: string): void {
-    // TODO: 记录已见过的任务
+  /**
+   * 启动心跳
+   */
+  private startHeartbeat(): void {
+    if (!this.config.heartbeat || this.heartbeatTimer) return;
+
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws && this.status === 'connected') {
+        this.ws.ping();
+        log.debug(`[${this.config.id}] Sent ping`);
+      }
+    }, this.config.heartbeat);
+  }
+
+  /**
+   * 停止心跳
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  /**
+   * 调度重连
+   */
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer) return;
+
+    const delay = 5000; // 5 秒后重连
+    log.info(`[${this.config.id}] Scheduling reconnect in ${delay}ms`);
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect().catch((err) => {
+        log.error(`[${this.config.id}] Reconnect failed:`, err);
+      });
+    }, delay);
+  }
+
+  /**
+   * 停止重连
+   */
+  private stopReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  /**
+   * 获取连接状态
+   */
+  getStatus(): ConnectionStatus {
+    return this.status;
   }
 }
 ```
 
-### 4.2 TaskAcceptanceService（自动接取服务）
-
-**实现路径**：`src/main/ai/services/TaskAcceptanceService.ts`
+#### 4.1.4 GatewayClientManager.ts（客户端管理器）
 
 ```typescript
 import { createLogger } from '@main/common/logger';
-import { eventBus } from '@main/common/eventbus';
-import { AgentStore } from '@main/ai/agents/AgentStore';
-import { ThreadStore } from '@main/ai/threads/ThreadStore';
-import { agentExecutor } from '@main/ai/AgentExecutor';
-import type { Task } from '@main/gateway/http/tavern';
+import { GatewayClient } from './GatewayClient';
+import type { ExternalServiceConfig } from './types';
 
-const log = createLogger('task-acceptance');
+const log = createLogger('gateway-client-manager');
 
-export interface TaskAnalysis {
-  type: 'data-analysis' | 'coding' | 'writing' | 'research' | 'general';
-  complexity: 'low' | 'medium' | 'high';
-  estimatedTime: number; // 分钟
-  requiredSkills: string[];
-}
+/**
+ * Gateway Client Manager - 管理多个外部服务的连接
+ */
+export class GatewayClientManager {
+  private static instance: GatewayClientManager | null = null;
+  private clients: Map<string, GatewayClient> = new Map();
 
-export class TaskAcceptanceService {
-  private static instance: TaskAcceptanceService | null = null;
-  private enabled = false;
-
-  static getInstance(): TaskAcceptanceService {
+  static getInstance(): GatewayClientManager {
     if (!this.instance) {
-      this.instance = new TaskAcceptanceService();
+      this.instance = new GatewayClientManager();
     }
     return this.instance;
   }
 
   /**
-   * 启动自动接取服务
+   * 初始化外部服务连接
    */
+  async initialize(configs: ExternalServiceConfig[]): Promise<void> {
+    log.info(`Initializing ${configs.length} external service(s)...`);
+
+    for (const config of configs) {
+      if (!config.enabled) {
+        log.info(`[${config.id}] Skipped (disabled)`);
+        continue;
+      }
+
+      try {
+        const client = new GatewayClient(config);
+        await client.connect();
+        this.clients.set(config.id, client);
+        log.info(`[${config.id}] Initialized successfully`);
+      } catch (err) {
+        log.error(`[${config.id}] Failed to initialize:`, err);
+      }
+    }
+  }
+
+  /**
+   * 停止所有连接
+   */
+  shutdown(): void {
+    log.info('Shutting down all external service connections...');
+
+    for (const [id, client] of this.clients.entries()) {
+      try {
+        client.disconnect();
+        log.info(`[${id}] Disconnected`);
+      } catch (err) {
+        log.error(`[${id}] Error during disconnect:`, err);
+      }
+    }
+
+    this.clients.clear();
+  }
+
+  /**
+   * 获取指定客户端
+   */
+  getClient(serviceId: string): GatewayClient | undefined {
+    return this.clients.get(serviceId);
+  }
+
+  /**
+   * 获取所有客户端状态
+   */
+  getStatus(): Record<string, string> {
+    const status: Record<string, string> = {};
+    for (const [id, client] of this.clients.entries()) {
+      status[id] = client.getStatus();
+    }
+    return status;
+  }
+}
+```
+
+### 4.2 External Tools（外部服务工具）实现
+
+#### 4.2.1 工具生成器
+
+```typescript
+import type { ToolDefinition } from '@main/ai/tools/types';
+import { z } from 'zod';
+import type { ExternalServiceConfig } from '../gateway/client/types';
+
+/**
+ * External Tools Generator - 根据外部服务配置动态生成工具
+ */
+export class ExternalToolsGenerator {
+  /**
+   * 为酒馆系统生成工具集
+   */
+  static generateTavernTools(config: ExternalServiceConfig): ToolDefinition[] {
+    const baseUrl = config.apiUrl;
+
+    return [
+      // 1. 查询任务列表
+      {
+        name: `external_${config.id}_list_tasks`,
+        description: `List tasks from ${config.name}. Filter by status.`,
+        parameters: z.object({
+          status: z.enum(['pending', 'accepted', 'in-progress', 'completed', 'cancelled']).optional()
+        }),
+        execute: async (params) => {
+          const url = new URL(`${baseUrl}/tasks`);
+          if (params.status) url.searchParams.set('status', params.status);
+
+          const response = await fetch(url.toString());
+          const data = await response.json();
+          return data;
+        }
+      },
+
+      // 2. 接受任务
+      {
+        name: `external_${config.id}_accept_task`,
+        description: `Accept a task from ${config.name}.`,
+        parameters: z.object({
+          taskId: z.string(),
+          agentId: z.string()
+        }),
+        execute: async (params) => {
+          const response = await fetch(`${baseUrl}/tasks/${params.taskId}/accept`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agentId: params.agentId })
+          });
+          return await response.json();
+        }
+      },
+
+      // 3. 提交结果
+      {
+        name: `external_${config.id}_submit_result`,
+        description: `Submit task result to ${config.name}.`,
+        parameters: z.object({
+          taskId: z.string(),
+          textResult: z.string(),
+          fileResults: z.array(z.string()).optional()
+        }),
+        execute: async (params) => {
+          const response = await fetch(`${baseUrl}/tasks/${params.taskId}/result`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params)
+          });
+          return await response.json();
+        }
+      }
+
+      // 可扩展：根据外部服务的 API 定义动态生成更多工具
+    ];
+  }
+}
+```
+
+### 4.3 TaskAcceptanceService（自动接取服务）
+
+**实现路径**：`src/main/ai/services/TaskAcceptanceService.ts`
+
+**核心流程**：订阅 EventBus 上的 `external.tavern.task.created` 事件，分析任务并自动接取执行。
+
+```typescript
+// 核心实现（精简版，完整代码见项目源文件）
+
+export class TaskAcceptanceService {
   async start(): Promise<void> {
-    if (this.enabled) {
-      log.warn('[TaskAcceptance] Service already started');
+    // 订阅外部事件（统一格式：external.{serviceId}.{eventType}）
+    eventBus.on('external.tavern.task.created', this.handleNewTask.bind(this));
+  }
+
+  private async handleNewTask(task: Task): Promise<void> {
+    // 1. 分析任务类型和复杂度
+    const analysis = this.analyzeTask(task);
+
+    // 2. 决策是否接取（检查并发数、金额等）
+    if (!this.shouldAcceptTask(task, analysis)) {
       return;
     }
 
-    this.enabled = true;
-    log.info('[TaskAcceptance] Starting automatic task acceptance service...');
+    // 3. 根据能力模型选择 Agent
+    const agentId = await this.selectAgent(task, analysis);
 
-    // 订阅任务创建事件
-    eventBus.on('tavern.task.created', this.handleNewTask.bind(this));
+    // 4. 调用外部工具接受任务
+    await this.callTool('external_tavern_accept_task', {
+      taskId: task.id,
+      agentId
+    });
 
-    log.info('[TaskAcceptance] Service started, listening for new tasks');
+    // 5. 创建 Thread 并启动执行
+    await this.createExecutionThread(task, agentId, analysis);
   }
 
-  /**
-   * 停止自动接取服务
-   */
-  stop(): void {
-    this.enabled = false;
-    eventBus.off('tavern.task.created', this.handleNewTask.bind(this));
-    log.info('[TaskAcceptance] Service stopped');
-  }
-
-  /**
-   * 处理新任务事件
-   */
-  private async handleNewTask(task: Task): Promise<void> {
-    if (!this.enabled) return;
-
-    log.info(`[TaskAcceptance] New task received: ${task.id} - ${task.title}`);
-
-    try {
-      // 1. 分析任务
-      const analysis = await this.analyzeTask(task);
-      log.info(`[TaskAcceptance] Task analysis:`, analysis);
-
-      // 2. 决策是否接取
-      const shouldAccept = await this.shouldAcceptTask(task, analysis);
-      if (!shouldAccept) {
-        log.info(`[TaskAcceptance] Task ${task.id} rejected by decision logic`);
-        return;
-      }
-
-      // 3. 选择合适的 Agent
-      const agentId = await this.selectAgent(task, analysis);
-      if (!agentId) {
-        log.warn(`[TaskAcceptance] No suitable agent found for task ${task.id}`);
-        return;
-      }
-
-      // 4. 接受任务
-      await this.acceptTask(task.id, agentId);
-
-      // 5. 创建执行线程
-      await this.createExecutionThread(task, agentId, analysis);
-
-      log.info(`[TaskAcceptance] Task ${task.id} accepted and execution started`);
-    } catch (err) {
-      log.error(`[TaskAcceptance] Failed to handle task ${task.id}:`, err);
-    }
-  }
-
-  /**
-   * 分析任务需求
-   */
-  private async analyzeTask(task: Task): Promise<TaskAnalysis> {
-    // 方案 A：规则匹配（简单快速）
-    const type = this.inferTaskType(task.description);
-    const complexity = this.inferComplexity(task.description, task.amount);
-
-    return {
-      type,
-      complexity,
-      estimatedTime: this.estimateTime(complexity),
-      requiredSkills: this.extractSkills(task.description, type)
-    };
-
-    // 方案 B：LLM 分析（更准确，但需要额外调用）
-    // return await this.analyzeTaskWithLLM(task);
-  }
-
-  /**
-   * 推断任务类型
-   */
-  private inferTaskType(description: string): TaskAnalysis['type'] {
-    const keywords = {
-      'data-analysis': ['分析', '数据', '统计', '报表', 'csv', 'excel'],
-      coding: ['代码', '开发', '实现', '编程', 'bug', '功能'],
-      writing: ['文档', '写作', '报告', '总结', '撰写'],
-      research: ['调研', '研究', '收集', '整理']
-    };
-
-    const lowerDesc = description.toLowerCase();
-
-    for (const [type, words] of Object.entries(keywords)) {
-      if (words.some((w) => lowerDesc.includes(w))) {
-        return type as TaskAnalysis['type'];
-      }
-    }
-
-    return 'general';
-  }
-
-  /**
-   * 推断任务复杂度
-   */
-  private inferComplexity(description: string, amount: number): TaskAnalysis['complexity'] {
-    // 基于金额和描述长度判断
-    if (amount > 1000 || description.length > 500) {
-      return 'high';
-    }
-    if (amount > 500 || description.length > 200) {
-      return 'medium';
-    }
-    return 'low';
-  }
-
-  /**
-   * 决策是否接取任务
-   */
-  private async shouldAcceptTask(task: Task, analysis: TaskAnalysis): Promise<boolean> {
-    // 检查当前正在执行的任务数量
-    const threadStore = await ThreadStore.getInstance();
-    const activeThreads = await threadStore.list({ status: 'active' });
-    const tavernThreads = activeThreads.filter((t) => t.metadata?.type === 'tavern-task');
-
-    const maxConcurrent = 3; // 从配置读取
-    if (tavernThreads.length >= maxConcurrent) {
-      log.info(`[TaskAcceptance] Max concurrent tasks reached (${maxConcurrent})`);
-      return false;
-    }
-
-    // 检查任务金额是否满足最低要求
-    const minAmount = 100; // 从配置读取
-    if (task.amount < minAmount) {
-      log.info(`[TaskAcceptance] Task amount ${task.amount} below minimum ${minAmount}`);
-      return false;
-    }
-
-    // 可扩展：添加更多决策逻辑
-    // - 检查 Agent 资源占用
-    // - 检查任务优先级
-    // - 检查历史完成率
-
-    return true;
-  }
-
-  /**
-   * 选择合适的 Agent
-   */
   private async selectAgent(task: Task, analysis: TaskAnalysis): Promise<string | null> {
-    const agentStore = await AgentStore.getInstance();
-    const allAgents = await agentStore.list();
-
-    // 筛选条件：具备相应能力的 Agent
-    const candidates = allAgents.filter((agent) => {
-      const capabilities = agent.metadata?.capabilities as Array<{ type: string; level: number }> | undefined;
-      if (!capabilities) return false;
-
-      // 检查是否有匹配的能力
-      return capabilities.some((cap) => cap.type === analysis.type && cap.level >= 3);
-    });
-
-    if (candidates.length === 0) {
-      // 降级：使用通用 Agent
-      const generalAgent = allAgents.find((a) => a.id === 'app-copilot');
-      return generalAgent?.id || null;
-    }
-
+    // 根据 Agent 的 metadata.capabilities 匹配
     // 选择能力等级最高的 Agent
-    const best = candidates.reduce((prev, curr) => {
-      const prevCap = (prev.metadata?.capabilities as any[])?.find((c) => c.type === analysis.type);
-      const currCap = (curr.metadata?.capabilities as any[])?.find((c) => c.type === analysis.type);
-      return (currCap?.level || 0) > (prevCap?.level || 0) ? curr : prev;
-    });
-
-    return best.id;
-  }
-
-  /**
-   * 接受任务（调用酒馆工具）
-   */
-  private async acceptTask(taskId: string, agentId: string): Promise<void> {
-    // 通过工具调用酒馆 API
-    const baseUrl = process.env.TAVERN_BASE_URL || 'http://localhost:8765';
-    await fetch(`${baseUrl}/gateway/tavern/tasks/${taskId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        status: 'accepted',
-        assignee: agentId
-      })
-    });
-  }
-
-  /**
-   * 创建执行线程
-   */
-  private async createExecutionThread(task: Task, agentId: string, analysis: TaskAnalysis): Promise<void> {
-    const threadStore = await ThreadStore.getInstance();
-
-    // 1. 创建 Thread
-    const thread = await threadStore.create({
-      title: `[酒馆] ${task.title}`,
-      agentId,
-      metadata: {
-        type: 'tavern-task',
-        taskId: task.id,
-        taskType: analysis.type,
-        complexity: analysis.complexity
-      }
-    });
-
-    // 2. 构建初始提示词
-    const initialPrompt = this.buildTaskPrompt(task, analysis);
-
-    // 3. 提交给 AgentExecutor
-    const agentStore = await AgentStore.getInstance();
-    const agentDef = await agentStore.get(agentId);
-
-    if (!agentDef) {
-      throw new Error(`Agent ${agentId} not found`);
-    }
-
-    // 创建 Builder 并提交任务
-    // TODO: 实现 Builder 创建逻辑
-    // const builder = createBuilderFromDefinition(agentDef, 'agent');
-    // agentExecutor.submit({ sessionId: thread.id, message: initialPrompt, builder });
-
-    log.info(`[TaskAcceptance] Created thread ${thread.id} for task ${task.id}`);
-  }
-
-  /**
-   * 构建任务提示词
-   */
-  private buildTaskPrompt(task: Task, analysis: TaskAnalysis): string {
-    let prompt = `# 酒馆任务\n\n`;
-    prompt += `**任务 ID**: ${task.id}\n`;
-    prompt += `**任务标题**: ${task.title}\n`;
-    prompt += `**赏金**: ${task.amount} 金币\n`;
-    prompt += `**任务类型**: ${analysis.type}\n`;
-    prompt += `**复杂度**: ${analysis.complexity}\n\n`;
-    prompt += `## 任务描述\n\n${task.description}\n\n`;
-
-    if (task.files && task.files.length > 0) {
-      prompt += `## 相关资料\n\n`;
-      task.files.forEach((filePath) => {
-        prompt += `- \`${filePath}\`\n`;
-      });
-      prompt += `\n`;
-    }
-
-    prompt += `## 要求\n\n`;
-    prompt += `1. 仔细分析任务需求\n`;
-    prompt += `2. 制定详细的执行计划\n`;
-    prompt += `3. 使用必要的工具完成任务\n`;
-    prompt += `4. 完成后使用 \`tavern_submit_result\` 工具提交结果\n`;
-    prompt += `5. 结果应包含：\n`;
-    prompt += `   - 完整的文字总结\n`;
-    prompt += `   - 相关的输出文件（如果有）\n\n`;
-    prompt += `请开始执行任务。`;
-
-    return prompt;
-  }
-
-  private estimateTime(complexity: TaskAnalysis['complexity']): number {
-    switch (complexity) {
-      case 'low':
-        return 15;
-      case 'medium':
-        return 30;
-      case 'high':
-        return 60;
-    }
-  }
-
-  private extractSkills(description: string, type: TaskAnalysis['type']): string[] {
-    // 根据任务类型返回需要的技能
-    const skillMap: Record<string, string[]> = {
-      'data-analysis': ['read', 'write', 'search'],
-      coding: ['read', 'write', 'edit', 'exec'],
-      writing: ['read', 'write'],
-      research: ['search', 'read', 'write'],
-      general: ['read', 'write']
-    };
-    return skillMap[type] || ['read', 'write'];
+    // 降级：使用通用 Agent
   }
 }
 ```
@@ -810,21 +711,33 @@ export class TaskAcceptanceService {
 
 ## 5. 配置与部署
 
-### 5.1 Extension 配置
+### 5.1 外部服务配置
 
 在 `~/.coobee-ai/config/coobee.json5` 中添加：
 
 ```json5
 {
-  extensions: {
-    'tavern-integration': {
+  // 外部服务配置
+  externalServices: [
+    {
+      id: 'tavern',
+      name: '酒馆任务系统',
+      wsUrl: 'ws://localhost:9900/events', // WebSocket 事件推送地址
+      apiUrl: 'http://localhost:9900/api', // HTTP API 地址
       enabled: true,
-      baseUrl: 'http://localhost:8765',
-      autoAccept: true,
-      maxConcurrent: 3,
-      minAmount: 100,
-      pollInterval: 5000
+      reconnect: true, // 自动重连
+      heartbeat: 30000, // 心跳间隔（30 秒）
+      authToken: 'optional-auth-token' // 可选：认证令牌
     }
+    // 可添加更多外部服务
+  ],
+
+  // 任务自动接取配置
+  taskAcceptance: {
+    enabled: true,
+    maxConcurrent: 3, // 最大并发任务数
+    minAmount: 100, // 最低金额要求
+    defaultAgent: 'app-copilot' // 降级 Agent
   }
 }
 ```
@@ -858,12 +771,21 @@ export class TaskAcceptanceService {
 
 ### 5.3 启动流程
 
-1. **主系统启动**：加载 Extension 系统
-2. **Extension 加载**：自动加载 `tavern-integration` 扩展
-3. **工具注册**：酒馆工具注册到 ToolRegistry
-4. **事件监听**：TaskBridge 开始轮询或监听 Webhook
-5. **服务启动**：TaskAcceptanceService 订阅事件
-6. **就绪状态**：系统进入监听模式，等待新任务
+1. **主系统启动**：Coobee-AI 主进程启动（端口 8765）
+2. **加载配置**：读取 `externalServices` 配置
+3. **创建 Gateway Client**：为每个外部服务创建 WebSocket 客户端
+4. **建立连接**：连接到外部服务（如 `ws://localhost:9900/events`）
+5. **生成工具**：根据服务配置动态生成 `external_*` 工具
+6. **注册工具**：将外部工具注册到 ToolRegistry
+7. **启动接取服务**：TaskAcceptanceService 订阅 `external.tavern.*` 事件
+8. **就绪状态**：系统进入监听模式，等待外部事件推送
+
+**酒馆系统端**：
+
+1. 酒馆系统独立启动（端口 9900）
+2. 提供 WebSocket Server（`/events`）
+3. 提供 HTTP API（`/api/*`）
+4. 当任务发布时，通过 WebSocket 推送事件给所有连接的客户端
 
 ---
 
@@ -923,49 +845,82 @@ export class TaskAcceptanceService {
 
 ## 8. 实施计划
 
-### Phase 1：Extension 基础框架（1 周）
+### Phase 1：Gateway Client 基础框架（1 周）
 
-- [ ] 创建 `tavern-integration` Extension 骨架
-- [ ] 实现 TavernClient（API 客户端）
-- [ ] 实现 TavernTools（基础工具：list, get, accept）
-- [ ] 测试工具调用
+- [ ] 实现 `GatewayClient` 核心类（WebSocket 连接管理）
+- [ ] 实现 `GatewayClientManager`（多服务管理）
+- [ ] 实现事件转发到 EventBus
+- [ ] 测试 WebSocket 连接和事件接收
 
-### Phase 2：事件桥接（1 周）
+### Phase 2：External Tools 动态生成（1 周）
 
-- [ ] 实现 TaskBridge（轮询模式）
-- [ ] 集成 EventBus
-- [ ] 测试事件流转
+- [ ] 实现 `ExternalToolsGenerator`（工具生成器）
+- [ ] 为酒馆系统生成工具集
+- [ ] 注册到 ToolRegistry
+- [ ] 测试工具调用（HTTP API）
 
 ### Phase 3：自动接取服务（1 周）
 
-- [ ] 实现 TaskAcceptanceService
-- [ ] 实现任务分析逻辑
-- [ ] 实现 Agent 选择策略
+- [ ] 实现 `TaskAcceptanceService`
+- [ ] 订阅 `external.tavern.*` 事件
+- [ ] 实现任务分析和 Agent 匹配
 - [ ] 测试自动接取流程
 
-### Phase 4：完整闭环（1 周）
+### Phase 4：酒馆系统 WebSocket Server（1 周）
 
-- [ ] 实现任务执行监控
-- [ ] 实现结果提交
+- [ ] 酒馆系统添加 WebSocket Server
+- [ ] 实现事件广播机制（任务发布/状态变更）
 - [ ] 端到端测试
 - [ ] 文档编写
 
-### Phase 5：优化与扩展（持续）
+### Phase 5：通用化与扩展（持续）
 
+- [ ] 支持其他外部服务接入
 - [ ] LLM 任务分析
 - [ ] 能力模型优化
-- [ ] 性能优化
 - [ ] 监控告警
 
 ---
 
 ## 9. 总结
 
-本设计方案通过 **Extension 机制**将酒馆任务系统与 Coobee-AI 主系统解耦，实现了：
+本设计方案通过 **Gateway Client（通用外部服务客户端）** 将酒馆任务系统与 Coobee-AI 主系统解耦，实现了：
 
-1. **灵活性**：酒馆系统独立部署，可随时热插拔
-2. **可扩展性**：基于工具和事件的设计，易于扩展新功能
-3. **自主性**：Agent 能够自动发现、决策、执行和反馈
-4. **安全性**：通过沙箱、审批和审计保证系统安全
+### 核心优势
 
-这套架构为构建真正的**自主 Agent 生态**奠定了基础。
+1. **通用性**：Gateway Client 是通用的 WebSocket 客户端，不仅限于酒馆系统
+2. **解耦性**：酒馆作为独立服务（localhost:9900），通过 WebSocket 实时推送事件
+3. **实时性**：WebSocket 推送模式，无需轮询，实时响应
+4. **可扩展性**：基于配置动态生成工具，支持接入多个外部服务
+5. **自主性**：Agent 自动监听、分析、决策、执行
+
+### 架构特点
+
+```
+酒馆系统 (localhost:9900)
+    ├── WebSocket Server (/events)     → 事件推送
+    └── HTTP API (/api/*)               → 工具调用
+            │
+            ▼
+Coobee-AI Gateway Client
+    ├── 接收事件 → 转发到 EventBus
+    └── 生成工具 → 注册到 ToolRegistry
+            │
+            ▼
+Agent 执行层
+    ├── 监听 external.tavern.* 事件
+    ├── 分析任务并选择 Agent
+    ├── 调用 external_tavern_* 工具
+    └── 创建 Thread 并执行
+```
+
+### 通用化设计
+
+这套架构不仅适用于酒馆系统，还可以接入：
+
+- 第三方任务平台
+- 监控告警系统
+- 外部数据源
+- 其他 Agent 系统
+
+通过统一的 **外部服务配置 + WebSocket 事件 + HTTP 工具** 模式，构建真正的**开放 Agent 生态**。
