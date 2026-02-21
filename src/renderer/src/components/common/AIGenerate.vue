@@ -1,21 +1,22 @@
 <!--
   AIGenerate - AI 生成组件
 
-  用途：为任意 UI 元素提供 AI 生成能力，内置弹出框显示生成过程和结果
+  用途：为任意 UI 元素提供 AI 生成能力
 
   设计理念：
-  - 通过 slot 接收用户自定义的触发 UI（如按钮、链接等）
+  - 通过 slot 接收用户自定义的 UI（如按钮、链接等）
   - 通过 slot props 暴露状态和方法
+  - 完全不影响用户的布局和样式
   - 内置弹出框显示生成过程和结果
-  - 基于统一的 Agent 架构（quick-chat）
 
   使用示例：
   ```vue
   <AIGenerate
-    v-slot="{ isGenerating, trigger }"
+    v-slot="{ isGenerating, trigger, result, error }"
     agent="task-analyzer"
     :prompt="buildPrompt"
-    @success="handleSuccess">
+    @success="handleSuccess"
+    @error="handleError">
     <button
       :disabled="isGenerating"
       @click="trigger">
@@ -28,7 +29,7 @@
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue';
 import { quickChat } from '@/composables/useQuickChat';
-import Modal from './Modal.vue';
+import Popup from '@/components/Popup/index.vue';
 
 /**
  * 提示词构建函数类型
@@ -52,7 +53,7 @@ export interface AIGenerateProps {
 
   /**
    * 是否在触发后自动解析 JSON 结果
-   * @default false
+   * @default true
    */
   autoParseJson?: boolean;
 
@@ -103,7 +104,7 @@ export interface AIGenerateEmits {
 }
 
 const props = withDefaults(defineProps<AIGenerateProps>(), {
-  autoParseJson: false,
+  autoParseJson: true,
   disabled: false,
   showDialog: true,
   dialogTitle: 'AI 生成结果',
@@ -164,8 +165,10 @@ const parseJsonResult = (text: string): unknown => {
       return JSON.parse(trimmedText);
     }
 
+    console.warn('[AIGenerate] 未找到有效的 JSON 内容，返回原始文本');
     return text;
   } catch {
+    console.warn('[AIGenerate] JSON 解析失败，返回原始文本');
     return text;
   }
 };
@@ -290,32 +293,34 @@ const reset = (): void => {
 };
 
 /**
- * 判断是否为 HTML 内容
- */
-const isHtmlContent = (text: string): boolean => {
-  if (typeof text !== 'string') return false;
-  const trimmed = text.trim();
-  return /<[^>]+>/g.test(trimmed) && /^<[^>]+>/i.test(trimmed);
-};
-
-/**
- * 格式化值
- */
-const formatValue = (value: unknown): string => {
-  if (value === null) return 'null';
-  if (value === undefined) return '-';
-  if (typeof value === 'object') return JSON.stringify(value);
-  if (typeof value === 'boolean') return value ? '是' : '否';
-  return String(value);
-};
-
-/**
- * 获取值类型
+ * 判断值类型
  */
 const getValueType = (value: unknown): string => {
   if (value === null) return 'null';
   if (Array.isArray(value)) return 'array';
   return typeof value;
+};
+
+/**
+ * 判断是否为 HTML 内容
+ */
+const isHtmlContent = (text: string): boolean => {
+  if (typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  const hasHtmlTags = /<[^>]+>/g.test(trimmed);
+  const startsWithTag = /^<[^>]+>/i.test(trimmed);
+  return hasHtmlTags && startsWithTag;
+};
+
+/**
+ * 格式化单元格值
+ */
+const formatCellValue = (value: unknown): string => {
+  if (value === null) return 'null';
+  if (value === undefined) return '-';
+  if (typeof value === 'object') return JSON.stringify(value);
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  return String(value);
 };
 
 // ==================== 生命周期 ====================
@@ -340,7 +345,6 @@ defineExpose({
   result,
   error,
   accumulatedContent,
-  generateStatus,
   trigger,
   cancel,
   reset,
@@ -352,346 +356,371 @@ defineExpose({
 </script>
 
 <template>
-  <!-- Slot: 触发器 -->
+  <!--
+    Slot Props:
+    - isGenerating: boolean - 是否正在生成
+    - result: unknown - 生成结果
+    - error: string | null - 错误信息
+    - accumulatedContent: string - 累积的文本内容
+    - trigger: (context?: unknown) => Promise<void> - 触发生成的方法
+    - cancel: () => void - 取消生成的方法
+    - reset: () => void - 重置状态的方法
+    - dialogVisible: Ref<boolean> - 弹窗可见性
+    - closeDialog: () => void - 关闭弹窗的方法
+    - confirmResult: () => void - 确认并应用结果的方法
+    - isConfirmed: Ref<boolean> - 是否已确认
+  -->
   <slot
     :is-generating="isGenerating"
     :result="result"
     :error="error"
     :accumulated-content="accumulatedContent"
-    :generate-status="generateStatus"
     :trigger="trigger"
     :cancel="cancel"
-    :reset="reset" />
+    :reset="reset"
+    :dialog-visible="dialogVisible"
+    :close-dialog="closeDialog"
+    :confirm-result="confirmResult"
+    :is-confirmed="isConfirmed" />
 
   <!-- 内置弹出框 -->
-  <Modal
-    v-model:visible="dialogVisible"
-    :title="dialogTitle"
-    width="800px"
-    :closable="!isGenerating"
-    :mask-closable="false">
-    <!-- 内容区域 -->
-    <div class="ai-generate-content">
-      <!-- 生成中 -->
-      <div v-if="generateStatus === 'generating'" class="status-section">
-        <div class="status-icon">
-          <span class="i-mdi-loading w-12 h-12 text-blue-500 animate-spin" />
+  <Popup
+    :visible="dialogVisible && showDialog"
+    position="center"
+    :show-mask="true"
+    :close-on-click-overlay="false"
+    :close-on-esc="false"
+    transition="zoom"
+    @update:visible="dialogVisible = $event">
+    <div
+      class="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700">
+      <!-- 头部 -->
+      <div
+        class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0">
+        <div class="flex items-center space-x-3">
+          <!-- 状态图标 -->
+          <div
+            class="w-10 h-10 rounded-full flex items-center justify-center"
+            :class="{
+              'bg-blue-50 dark:bg-blue-900/20': generateStatus === 'generating',
+              'bg-green-50 dark:bg-green-900/20': generateStatus === 'success',
+              'bg-red-50 dark:bg-red-900/20': generateStatus === 'error',
+              'bg-yellow-50 dark:bg-yellow-900/20': generateStatus === 'cancelled'
+            }">
+            <i
+              class="w-5 h-5"
+              :class="{
+                'i-mdi-loading animate-spin text-blue-500': generateStatus === 'generating',
+                'i-mdi-check-circle text-green-500': generateStatus === 'success',
+                'i-mdi-alert-circle text-red-500': generateStatus === 'error',
+                'i-mdi-cancel text-yellow-500': generateStatus === 'cancelled'
+              }" />
+          </div>
+
+          <!-- 标题 -->
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ dialogTitle }}</h3>
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{
+                generateStatus === 'generating'
+                  ? 'AI 正在处理中...'
+                  : generateStatus === 'success'
+                    ? '生成完成'
+                    : generateStatus === 'error'
+                      ? '生成失败'
+                      : '已取消'
+              }}
+            </p>
+          </div>
         </div>
-        <p class="status-text">AI 正在生成中...</p>
-        <p class="status-hint">请稍候，这可能需要几秒钟</p>
+
+        <!-- 关闭按钮 -->
+        <button
+          class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+          @click="closeDialog">
+          <i class="i-mdi-close w-5 h-5" />
+        </button>
       </div>
 
-      <!-- 生成成功 -->
-      <div v-else-if="generateStatus === 'success' && result" class="result-section">
-        <!-- JSON 数据展示（数组） -->
-        <div v-if="getValueType(result) === 'array'" class="space-y-3">
-          <div v-for="(item, index) in result as any[]" :key="index" class="result-card">
-            <div class="result-card-header">
-              <span class="result-card-index">第 {{ index + 1 }} 项</span>
-            </div>
-            <div class="space-y-2">
-              <div v-for="(value, key) in item" :key="String(key)" class="result-field">
-                <span class="result-field-label">{{ key }}</span>
-                <span class="result-field-value">{{ formatValue(value) }}</span>
+      <!-- 内容区域 -->
+      <div class="p-6 max-h-[60vh] overflow-y-auto">
+        <!-- 生成中 -->
+        <div v-if="generateStatus === 'generating'" class="flex flex-col items-center justify-center py-12 space-y-4">
+          <i class="i-mdi-loading animate-spin w-12 h-12 text-blue-500" />
+          <div class="text-center space-y-2">
+            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">AI 正在生成中...</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">正在解析数据，请稍候</p>
+          </div>
+        </div>
+
+        <!-- 生成成功 -->
+        <div v-else-if="generateStatus === 'success' && result" class="space-y-4">
+          <!-- JSON 数组展示 -->
+          <div v-if="getValueType(result) === 'array'" class="space-y-3">
+            <div
+              v-for="(item, index) in result as unknown[]"
+              :key="index"
+              class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+              <div class="flex items-center space-x-2 mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
+                <span class="text-xs font-semibold text-blue-500">第 {{ index + 1 }} 项</span>
+              </div>
+              <div class="space-y-2">
+                <div
+                  v-for="(value, key) in item as Record<string, unknown>"
+                  :key="String(key)"
+                  class="flex flex-col space-y-1">
+                  <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ key }}</span>
+                  <span class="text-sm text-gray-900 dark:text-gray-100 break-words">{{ formatCellValue(value) }}</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- JSON 数据展示（对象） -->
-        <div v-else-if="getValueType(result) === 'object'" class="space-y-2">
-          <div v-for="(value, key) in result as Record<string, any>" :key="String(key)" class="result-card">
-            <div class="result-field">
-              <span class="result-field-label">{{ key }}</span>
-              <span class="result-field-value">{{ formatValue(value) }}</span>
+          <!-- JSON 对象展示 -->
+          <div v-else-if="getValueType(result) === 'object'" class="space-y-2">
+            <div
+              v-for="(value, key) in result as Record<string, unknown>"
+              :key="String(key)"
+              class="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+              <div class="flex flex-col space-y-1">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ key }}</span>
+                <span class="text-sm text-gray-900 dark:text-gray-100 break-words">{{ formatCellValue(value) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 纯文本/HTML 展示 -->
+          <div v-else>
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center space-x-2">
+                <i
+                  :class="isHtmlContent(String(result)) ? 'i-mdi-language-html5' : 'i-mdi-text'"
+                  class="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{
+                  isHtmlContent(String(result)) ? 'HTML 内容' : '生成结果'
+                }}</span>
+              </div>
+              <button
+                class="px-3 py-1.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors flex items-center space-x-1.5"
+                @click="copyResult">
+                <i class="i-mdi-content-copy w-3.5 h-3.5" />
+                <span>复制</span>
+              </button>
+            </div>
+
+            <!-- HTML 内容渲染 -->
+            <div v-if="isHtmlContent(String(result))" class="space-y-3">
+              <div class="p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+                <div class="prose prose-sm max-w-none dark:prose-invert">
+                  <!-- eslint-disable-next-line vue/no-v-html -->
+                  <div v-html="String(result)"></div>
+                </div>
+              </div>
+
+              <!-- HTML 源代码 -->
+              <details class="group">
+                <summary
+                  class="cursor-pointer select-none px-3 py-2 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors flex items-center justify-between">
+                  <div class="flex items-center space-x-2">
+                    <i class="i-mdi-code-tags w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <span class="text-xs font-medium text-gray-900 dark:text-gray-100">查看源代码</span>
+                  </div>
+                  <i
+                    class="i-mdi-chevron-down w-4 h-4 text-gray-500 dark:text-gray-400 group-open:rotate-180 transition-transform" />
+                </summary>
+                <div
+                  class="mt-2 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-xs whitespace-pre-wrap text-gray-900 dark:text-gray-100 leading-relaxed overflow-x-auto">
+                  {{ result }}
+                </div>
+              </details>
+            </div>
+
+            <!-- 纯文本内容 -->
+            <div
+              v-else
+              class="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-sm whitespace-pre-wrap text-gray-900 dark:text-gray-100 leading-relaxed">
+              {{ result }}
             </div>
           </div>
         </div>
 
-        <!-- 纯文本/HTML 展示 -->
-        <div v-else>
-          <!-- HTML 内容渲染 -->
-          <div v-if="isHtmlContent(String(result))" class="space-y-3">
-            <div class="html-preview">
-              <!-- eslint-disable-next-line vue/no-v-html -->
-              <div v-html="String(result)"></div>
+        <!-- 生成失败 -->
+        <div v-else-if="generateStatus === 'error'" class="space-y-4">
+          <div
+            class="flex items-start space-x-3 p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-lg">
+            <i class="i-mdi-alert-circle w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+            <div class="flex-1">
+              <h4 class="text-sm font-medium text-red-600 dark:text-red-400 mb-1">生成失败</h4>
+              <p class="text-sm text-red-500 dark:text-red-400/80">{{ error }}</p>
             </div>
-            <details class="html-source">
-              <summary class="html-source-toggle">
-                <span class="i-mdi-code-tags w-4 h-4" />
-                <span>查看源代码</span>
-                <span class="i-mdi-chevron-down w-4 h-4 transition-transform" />
-              </summary>
-              <pre class="html-source-code">{{ result }}</pre>
-            </details>
           </div>
 
-          <!-- 纯文本 -->
-          <div v-else class="text-result">
-            {{ result }}
+          <!-- 部分内容 -->
+          <div v-if="accumulatedContent" class="space-y-2">
+            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">部分生成内容：</span>
+            <div
+              class="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-sm whitespace-pre-wrap text-gray-900 dark:text-gray-100 max-h-60 overflow-y-auto">
+              {{ accumulatedContent }}
+            </div>
+          </div>
+        </div>
+
+        <!-- 已取消 -->
+        <div v-else-if="generateStatus === 'cancelled'" class="space-y-4">
+          <div
+            class="flex items-start space-x-3 p-4 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-lg">
+            <i class="i-mdi-information w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+            <div class="flex-1">
+              <h4 class="text-sm font-medium text-yellow-600 dark:text-yellow-400 mb-1">生成已取消</h4>
+              <p class="text-sm text-yellow-500 dark:text-yellow-400/80">AI 生成任务已被手动取消</p>
+            </div>
           </div>
 
-          <!-- 复制按钮 -->
-          <div class="result-actions">
-            <button class="copy-button" @click="copyResult">
-              <span class="i-mdi-content-copy w-4 h-4" />
-              <span>复制</span>
-            </button>
+          <!-- 已生成内容 -->
+          <div v-if="accumulatedContent" class="space-y-2">
+            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">已生成内容：</span>
+            <div
+              class="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-sm whitespace-pre-wrap text-gray-900 dark:text-gray-100 max-h-60 overflow-y-auto">
+              {{ accumulatedContent }}
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- 生成失败 -->
-      <div v-else-if="generateStatus === 'error'" class="status-section">
-        <div class="status-icon">
-          <span class="i-mdi-alert-circle w-12 h-12 text-red-500" />
-        </div>
-        <p class="status-text text-red-600">生成失败</p>
-        <p class="status-hint text-red-500">{{ error }}</p>
-      </div>
+      <!-- 底部操作栏 -->
+      <div
+        class="flex items-center justify-end space-x-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0">
+        <!-- 生成中 - 取消按钮 -->
+        <button
+          v-if="generateStatus === 'generating'"
+          class="px-4 py-2 text-sm font-medium text-red-500 border border-red-200 dark:border-red-900/30 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+          @click="cancel">
+          <i class="i-mdi-cancel w-4 h-4 mr-1.5 inline-block" />
+          取消生成
+        </button>
 
-      <!-- 已取消 -->
-      <div v-else-if="generateStatus === 'cancelled'" class="status-section">
-        <div class="status-icon">
-          <span class="i-mdi-cancel w-12 h-12 text-yellow-500" />
-        </div>
-        <p class="status-text text-yellow-600">生成已取消</p>
-        <p class="status-hint">AI 生成任务已被手动取消</p>
+        <!-- 生成成功 - 需要确认模式 -->
+        <template v-else-if="generateStatus === 'success' && requireConfirm">
+          <button
+            class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            @click="closeDialog">
+            取消
+          </button>
+          <button
+            class="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors flex items-center space-x-1.5"
+            :disabled="isConfirmed"
+            @click="confirmResult">
+            <i class="i-mdi-check w-4 h-4" />
+            <span>{{ isConfirmed ? '已应用' : confirmText }}</span>
+          </button>
+        </template>
+
+        <!-- 生成完成 - 普通模式 -->
+        <button
+          v-else
+          class="px-4 py-2 text-sm font-medium text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          @click="closeDialog">
+          关闭
+        </button>
       </div>
     </div>
-
-    <!-- 底部操作栏 -->
-    <template #footer>
-      <!-- 生成中 - 显示取消按钮 -->
-      <button v-if="generateStatus === 'generating'" class="btn btn-danger" @click="cancel">
-        <span class="i-mdi-cancel w-4 h-4" />
-        取消生成
-      </button>
-
-      <!-- 生成成功 - 需要确认模式 -->
-      <template v-else-if="generateStatus === 'success' && requireConfirm">
-        <button class="btn btn-secondary" @click="closeDialog"> 取消 </button>
-        <button class="btn btn-primary" :disabled="isConfirmed" @click="confirmResult">
-          <span class="i-mdi-check w-4 h-4" />
-          {{ isConfirmed ? '已应用' : confirmText }}
-        </button>
-      </template>
-
-      <!-- 生成完成 - 普通模式 -->
-      <button v-else class="btn btn-secondary" @click="closeDialog"> 关闭 </button>
-    </template>
-  </Modal>
+  </Popup>
 </template>
 
 <style scoped>
-.ai-generate-content {
-  min-height: 200px;
+/* Prose 样式（用于渲染 HTML 内容） */
+.prose {
+  @apply text-gray-900 dark:text-gray-100;
 }
 
-/* 状态区域 */
-.status-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
-  text-align: center;
+.prose :deep(h1),
+.prose :deep(h2),
+.prose :deep(h3),
+.prose :deep(h4),
+.prose :deep(h5),
+.prose :deep(h6) {
+  @apply font-semibold text-gray-900 dark:text-gray-100 mt-4 mb-2;
 }
 
-.status-icon {
-  margin-bottom: 16px;
+.prose :deep(h1) {
+  @apply text-2xl;
 }
 
-.status-text {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--color-text);
-  margin-bottom: 8px;
+.prose :deep(h2) {
+  @apply text-xl;
 }
 
-.status-hint {
-  font-size: 14px;
-  color: var(--color-text-secondary);
+.prose :deep(h3) {
+  @apply text-lg;
 }
 
-/* 结果区域 */
-.result-section {
-  max-height: 60vh;
-  overflow-y: auto;
+.prose :deep(p) {
+  @apply my-2 leading-relaxed;
 }
 
-.result-card {
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  background: var(--color-background-muted);
-  transition: background 0.2s;
+.prose :deep(ul),
+.prose :deep(ol) {
+  @apply my-2 pl-6;
 }
 
-.result-card:hover {
-  background: var(--color-background-soft);
+.prose :deep(ul) {
+  @apply list-disc;
 }
 
-.result-card-header {
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--color-border);
+.prose :deep(ol) {
+  @apply list-decimal;
 }
 
-.result-card-index {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-primary);
+.prose :deep(li) {
+  @apply my-1;
 }
 
-.result-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.prose :deep(code) {
+  @apply px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono;
 }
 
-.result-field-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text-secondary);
+.prose :deep(pre) {
+  @apply p-4 rounded-lg bg-gray-100 dark:bg-gray-800 overflow-x-auto my-3;
 }
 
-.result-field-value {
-  font-size: 14px;
-  color: var(--color-text);
-  word-break: break-word;
+.prose :deep(pre code) {
+  @apply p-0 bg-transparent;
 }
 
-/* HTML 展示 */
-.html-preview {
-  padding: 16px;
-  background: var(--color-background);
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
+.prose :deep(blockquote) {
+  @apply border-l-4 border-blue-500 pl-4 italic my-3;
 }
 
-.html-source {
-  margin-top: 12px;
+.prose :deep(table) {
+  @apply w-full border-collapse my-3;
 }
 
-.html-source-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  background: var(--color-background-muted);
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--color-text);
-  transition: background 0.2s;
+.prose :deep(th),
+.prose :deep(td) {
+  @apply border border-gray-200 dark:border-gray-700 px-3 py-2 text-left;
 }
 
-.html-source-toggle:hover {
-  background: var(--color-background-soft);
+.prose :deep(th) {
+  @apply bg-gray-100 dark:bg-gray-800 font-semibold;
 }
 
-.html-source[open] .html-source-toggle span:last-child {
-  transform: rotate(180deg);
+.prose :deep(strong) {
+  @apply font-semibold;
 }
 
-.html-source-code {
-  margin-top: 8px;
-  padding: 12px;
-  background: var(--color-background-muted);
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--color-text);
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
+.prose :deep(em) {
+  @apply italic;
 }
 
-/* 文本结果 */
-.text-result {
-  padding: 16px;
-  background: var(--color-background-muted);
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  font-size: 14px;
-  line-height: 1.8;
-  color: var(--color-text);
-  white-space: pre-wrap;
-  word-break: break-word;
+.prose :deep(s) {
+  @apply line-through;
 }
 
-.result-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12px;
+.prose :deep(a) {
+  @apply text-blue-500 hover:underline;
 }
 
-.copy-button {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  font-size: 14px;
-  color: var(--color-primary);
-  background: var(--color-primary-soft);
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.copy-button:hover {
-  background: var(--color-primary-light);
-}
-
-/* 按钮样式 */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  color: white;
-  background: var(--color-primary);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--color-primary-dark);
-}
-
-.btn-secondary {
-  color: var(--color-text);
-  background: var(--color-background-soft);
-  border: 1px solid var(--color-border);
-}
-
-.btn-secondary:hover {
-  background: var(--color-background-muted);
-}
-
-.btn-danger {
-  color: white;
-  background: var(--color-error);
-}
-
-.btn-danger:hover {
-  background: var(--color-error-dark);
+.prose :deep(img) {
+  @apply max-w-full h-auto rounded-lg my-3;
 }
 </style>
