@@ -21,8 +21,20 @@ import { createLogger } from '@main/common/logger';
 import { AgentStore } from '@main/ai/agents/AgentStore';
 import { aiCreateAgent } from '@main/ai/services/AgentCreatorService';
 import type { AiCreateProgress } from '@main/ai/services/AgentCreatorService';
+import { agentExecutor } from '@main/ai/AgentExecutor';
+import { builtinTools } from '@main/ai/tools';
+import { ToolRegistry } from '@main/ai/tools/registry';
+import { SkillManager } from '@main/ai/skills';
+import { Env } from '@main/common/env';
+import { generateSnowflakeId } from '@main/utils/SnowflakeIdGenerator';
+import type { AgentDefinition } from '@main/ai/agents/types';
+import type { AgentMode, SkillDefinition } from '@main/ai/runtime/types';
+import type { StreamChunk } from '@main/ai/runtime/types';
 
 const log = createLogger('gateway-http-agents');
+
+/** Chat 模式禁用的工具名称列表 */
+const CHAT_MODE_BLOCKED_TOOLS = new Set(['exec']);
 
 export function registerAgentRoutes(router: Router): void {
   // ==================== LIST ====================
@@ -220,5 +232,177 @@ export function registerAgentRoutes(router: Router): void {
     }
   });
 
+  // ==================== QUICK CHAT (SSE) ====================
+
+  router.post('/agents/:id/quick-chat', async (ctx) => {
+    const agentId = ctx.params.id;
+    if (!agentId) {
+      ctx.status = 400;
+      ctx.body = { error: 'agentId is required' };
+      return;
+    }
+
+    const body = ctx.request.body as Record<string, unknown> | undefined;
+    const message = body?.message as string | undefined;
+
+    if (!message || !message.trim()) {
+      ctx.status = 400;
+      ctx.body = { error: 'message is required' };
+      return;
+    }
+
+    // 加载 Agent 定义
+    let agentDef: AgentDefinition | null = null;
+    try {
+      const store = await AgentStore.getInstance();
+      agentDef = await store.get(agentId);
+      if (!agentDef) {
+        ctx.status = 404;
+        ctx.body = { error: `Agent "${agentId}" not found` };
+        return;
+      }
+    } catch (err) {
+      log.error(`[agents.quickChat] Failed to load agent ${agentId}:`, err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    // 设置 SSE 响应头
+    ctx.set('Content-Type', 'text/event-stream');
+    ctx.set('Cache-Control', 'no-cache');
+    ctx.set('Connection', 'keep-alive');
+    ctx.set('X-Accel-Buffering', 'no');
+
+    const { PassThrough } = await import('stream');
+    const stream = new PassThrough();
+    ctx.body = stream;
+    ctx.status = 200;
+
+    /** 发送 SSE 事件 */
+    const sendEvent = (event: string, data: unknown): void => {
+      stream.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    // 临时 sessionId（不持久化）
+    const sessionId = `quick-${generateSnowflakeId()}`;
+
+    try {
+      // 创建 Builder
+      const builder = createBuilderFromAgentDef(agentDef, 'chat');
+
+      // 发送开始事件
+      sendEvent('start', { agentId, sessionId });
+
+      // 执行流式对话
+      const gen = agentExecutor.stream({ sessionId, message: message.trim(), builder });
+
+      let output = '';
+      let r = await gen.next();
+      while (!r.done) {
+        const chunk: StreamChunk = r.value;
+
+        // 流式推送文本增量
+        if (chunk.type === 'text:delta' && chunk.content) {
+          output += chunk.content;
+          sendEvent('delta', { content: chunk.content });
+        }
+
+        r = await gen.next();
+      }
+
+      // 发送完成事件
+      sendEvent('done', { output: output.trim() });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error(`[agents.quickChat] Error (${agentId}):`, err);
+      sendEvent('error', { error: msg });
+    } finally {
+      stream.end();
+    }
+  });
+
   log.info('[agents] HTTP routes registered');
+}
+
+/**
+ * 从 AgentDefinition 创建 Builder（quick-chat 专用）
+ */
+function createBuilderFromAgentDef(
+  def: AgentDefinition,
+  agentMode: AgentMode
+): ReturnType<typeof agentExecutor.piMono> {
+  const builder = agentExecutor
+    .piMono()
+    .name(def.name || def.id)
+    .mode(agentMode)
+    .sessionMode('memory')
+    .instructions(def.instructions);
+
+  // 合并 builtin + Extension 工具
+  const extensionTools = ToolRegistry.getInstance().getAll();
+  const toolMap = new Map(builtinTools.map((t) => [t.name, t]));
+  for (const ext of extensionTools) {
+    toolMap.set(ext.name, ext);
+  }
+  const allTools = Array.from(toolMap.values());
+
+  // 根据模式过滤工具
+  if (agentMode === 'chat') {
+    builder.tools(allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name)));
+  } else {
+    builder.tools(allTools);
+  }
+
+  // 加载 Skills
+  if (def.skills && def.skills.length > 0) {
+    try {
+      const skillDefs = loadSkillDefinitions(def.skills);
+      if (skillDefs.length > 0) {
+        builder.skills(skillDefs);
+      }
+    } catch (err) {
+      log.error(`[createBuilderFromAgentDef] Failed to load skills:`, err);
+    }
+  }
+
+  // 覆盖模型和思维链级别
+  if (def.model) {
+    builder.model(def.model);
+  }
+  if (def.thinkingLevel) {
+    builder.thinkingLevel(def.thinkingLevel);
+  }
+
+  return builder;
+}
+
+/**
+ * 加载 Skills 定义（简化版，只扫描 builtin + user）
+ */
+function loadSkillDefinitions(skillNames: string[]): SkillDefinition[] {
+  try {
+    const searchPaths = [Env.paths.builtinSkillsDir, Env.paths.userSkillsDir];
+    const configDir = Env.paths.configDir;
+
+    const manager = new SkillManager();
+    const allSkills = manager.scanSkills(searchPaths, configDir);
+
+    const skillMap = new Map(allSkills.map((s) => [s.name, s]));
+    const result: SkillDefinition[] = [];
+
+    for (const name of skillNames) {
+      const skill = skillMap.get(name);
+      if (skill) {
+        result.push(skill);
+      } else {
+        log.warn(`[loadSkillDefinitions] Skill "${name}" not found`);
+      }
+    }
+
+    return result;
+  } catch (err) {
+    log.error('[loadSkillDefinitions] Error:', err);
+    return [];
+  }
 }
