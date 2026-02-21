@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AgentsPanel: typeof import('./../components/agent/AgentsPanel.vue')['default']
     BaseButton: typeof import('./../components/Form/BaseButton.vue')['default']
+    ChatMessages: typeof import('./../components/chat/ChatMessages.vue')['default']
     ChatPanel: typeof import('./../components/agent/ChatPanel.vue')['default']
     CheckboxInput: typeof import('./../components/Form/CheckboxInput.vue')['default']
     ConfirmContainer: typeof import('./../components/Confirm/ConfirmContainer.vue')['default']
