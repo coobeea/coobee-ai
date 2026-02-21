@@ -9,6 +9,7 @@
 
 import { ref, computed, onMounted } from 'vue';
 import configManager from '@/config';
+import AIGenerate from '@/components/common/AIGenerate.vue';
 
 interface TaskResult {
   textResult: string;
@@ -58,6 +59,16 @@ const error = ref<string | null>(null);
 
 const canSubmit = computed(() => title.value.trim() && description.value.trim() && amount.value > 0);
 const canCancel = computed(() => props.readonly && taskStatus.value === 'pending');
+
+// AI 优化描述
+const canOptimize = computed(() => description.value.trim().length > 0 && !props.readonly);
+
+const handleOptimizeSuccess = (result: unknown): void => {
+  // task-analyzer 返回的是 Markdown 格式的详细描述
+  if (typeof result === 'string') {
+    description.value = result;
+  }
+};
 
 // 加载任务详情
 async function loadTask(): Promise<void> {
@@ -224,7 +235,26 @@ onMounted(() => {
 
       <!-- 描述 -->
       <div class="form-field">
-        <label class="form-label">任务描述</label>
+        <div class="form-label-row">
+          <label class="form-label">任务描述</label>
+          <!-- AI 优化按钮 -->
+          <AIGenerate
+            v-if="!readonly"
+            v-slot="{ isGenerating, trigger }"
+            agent="task-analyzer"
+            :prompt="`请将以下任务描述优化为更详细、结构化的 Markdown 格式：\n\n${description}`"
+            :auto-parse-json="false"
+            :require-confirm="true"
+            dialog-title="AI 优化任务描述"
+            confirm-text="应用优化"
+            @success="handleOptimizeSuccess">
+            <button class="optimize-btn" :disabled="!canOptimize || isGenerating" @click="trigger">
+              <span v-if="isGenerating" class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin" />
+              <span v-else class="i-carbon-ai-status inline-block h-3.5 w-3.5" />
+              <span>{{ isGenerating ? 'AI 优化中...' : 'AI 优化' }}</span>
+            </button>
+          </AIGenerate>
+        </div>
         <textarea
           v-model="description"
           class="form-textarea"
@@ -381,10 +411,42 @@ onMounted(() => {
   gap: 8px;
 }
 
+.form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .form-label {
   font-size: 13px;
   font-weight: 600;
   color: hsl(var(--foreground) / 0.85);
+}
+
+.optimize-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--primary) / 0.3);
+  background: hsl(var(--primary) / 0.05);
+  color: hsl(var(--primary));
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.optimize-btn:hover:not(:disabled) {
+  border-color: hsl(var(--primary) / 0.5);
+  background: hsl(var(--primary) / 0.1);
+  box-shadow: 0 1px 4px hsl(var(--primary) / 0.15);
+}
+
+.optimize-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .form-input,
