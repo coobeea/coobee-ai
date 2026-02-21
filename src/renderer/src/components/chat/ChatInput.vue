@@ -154,7 +154,7 @@ defineExpose({
   position: relative;
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 8px 12px;
   border-top: 1px solid hsl(var(--border) / 0.25);
   background: hsl(var(--muted) / 0.2);
   transition: background-color 0.15s ease;
@@ -168,8 +168,8 @@ defineExpose({
   width: 100%;
   min-height: 56px;
   max-height: 200px;
-  padding: 12px 14px;
-  padding-bottom: 40px; /* 为工具栏留出空间 */
+  padding: 10px 12px;
+  padding-bottom: 38px; /* 为工具栏留出空间 */
   border: none;
   background: transparent;
   color: hsl(var(--foreground));
@@ -191,8 +191,8 @@ defineExpose({
 
 .chat-input-toolbar {
   position: absolute;
-  bottom: 18px;
-  right: 20px;
+  bottom: 10px;
+  right: 14px;
   display: flex;
   align-items: center;
   gap: 8px;
