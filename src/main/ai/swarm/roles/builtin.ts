@@ -5,7 +5,7 @@
  * Triage Agent 会根据任务需求自动激活对应角色
  */
 
-import type { AgentRole } from '../types'
+import type { AgentRole } from '../types';
 
 /**
  * 代码开发专家
@@ -29,20 +29,11 @@ export const coderRole: AgentRole = {
 - 提供详细的代码注释
 - 考虑边界情况和错误处理
 - 如果需要其他专家的帮助（如研究资料、代码审查），请交接给对应的专家`,
-  model: 'gpt-4o',
+  model: undefined,
   handoffDescription: '交接给代码开发专家 — 当需要编写、修改或调试代码时使用',
-  capabilities: [
-    'code',
-    'typescript',
-    'javascript',
-    'vue',
-    'electron',
-    'nodejs',
-    'debugging',
-    'implementation'
-  ],
+  capabilities: ['code', 'typescript', 'javascript', 'vue', 'electron', 'nodejs', 'debugging', 'implementation'],
   priority: 10
-}
+};
 
 /**
  * 信息研究专家
@@ -65,11 +56,11 @@ export const researcherRole: AgentRole = {
 - 区分事实和推测
 - 给出清晰的建议
 - 如果研究结果需要实现为代码，请交接给代码专家`,
-  model: 'gpt-4o',
+  model: undefined,
   handoffDescription: '交接给信息研究专家 — 当需要搜索资料、调研技术方案或分析信息时使用',
   capabilities: ['research', 'analysis', 'documentation', 'comparison', 'investigation'],
   priority: 8
-}
+};
 
 /**
  * 代码/文档审查专家
@@ -93,11 +84,11 @@ export const reviewerRole: AgentRole = {
 - 按严重程度分类问题（Critical / Major / Minor）
 - 审查通过时给出确认
 - 如果发现需要修复的代码问题，请交接给代码专家处理`,
-  model: 'gpt-4o',
+  model: undefined,
   handoffDescription: '交接给审查专家 — 当需要代码审查、质量检查或安全评估时使用',
   capabilities: ['review', 'code-review', 'security', 'performance', 'quality', 'audit'],
   priority: 7
-}
+};
 
 /**
  * 文档写作专家
@@ -121,18 +112,11 @@ export const writerRole: AgentRole = {
 - 提供代码示例
 - 考虑不同读者的技术水平
 - 如果需要了解代码实现细节，请交接给代码专家`,
-  model: 'gpt-4o',
+  model: undefined,
   handoffDescription: '交接给文档写作专家 — 当需要编写文档、教程或说明时使用',
-  capabilities: [
-    'writing',
-    'documentation',
-    'tutorial',
-    'readme',
-    'changelog',
-    'technical-writing'
-  ],
+  capabilities: ['writing', 'documentation', 'tutorial', 'readme', 'changelog', 'technical-writing'],
   priority: 6
-}
+};
 
 /**
  * 数据分析专家
@@ -156,33 +140,18 @@ export const analystRole: AgentRole = {
 - 解释分析方法和假设
 - 给出可操作的建议
 - 如果分析结果需要实现为代码，请交接给代码专家`,
-  model: 'gpt-4o',
+  model: undefined,
   handoffDescription: '交接给数据分析专家 — 当需要数据分析、统计或可视化时使用',
-  capabilities: [
-    'analysis',
-    'data',
-    'statistics',
-    'visualization',
-    'performance-analysis',
-    'log-analysis'
-  ],
+  capabilities: ['analysis', 'data', 'statistics', 'visualization', 'performance-analysis', 'log-analysis'],
   priority: 5
-}
+};
 
 /**
  * 所有内置角色
  */
-export const builtinRoles: AgentRole[] = [
-  coderRole,
-  researcherRole,
-  reviewerRole,
-  writerRole,
-  analystRole
-]
+export const builtinRoles: AgentRole[] = [coderRole, researcherRole, reviewerRole, writerRole, analystRole];
 
 /**
  * 内置角色映射（ID -> 角色）
  */
-export const builtinRoleMap = new Map<string, AgentRole>(
-  builtinRoles.map((role) => [role.id, role])
-)
+export const builtinRoleMap = new Map<string, AgentRole>(builtinRoles.map((role) => [role.id, role]));

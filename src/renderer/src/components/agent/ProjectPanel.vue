@@ -56,15 +56,15 @@ async function toggleDir(node: FileNode): Promise<void> {
   if (node.type !== 'directory') return;
 
   if (expandedDirs.value.has(node.path)) {
+    // 折叠目录
     expandedDirs.value.delete(node.path);
   } else {
+    // 展开目录 - 每次都重新拉取最新数据
     expandedDirs.value.add(node.path);
-    if (!node.children || node.children.length === 0) {
-      try {
-        node.children = await fetchTree(node.path, 1);
-      } catch {
-        node.children = [];
-      }
+    try {
+      node.children = await fetchTree(node.path, 1);
+    } catch {
+      node.children = [];
     }
   }
 }

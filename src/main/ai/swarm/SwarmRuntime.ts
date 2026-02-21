@@ -176,9 +176,11 @@ export class SwarmRuntime extends AbstractAgentRuntime {
         .coordinate(task)
         .then((r) => {
           outcome.result = r;
+          log.info(`[SwarmRuntime] Coordination completed: status=${r.state.status}, output length=${r.output.length}`);
         })
         .catch((e) => {
           outcome.error = e instanceof Error ? e : new Error(String(e));
+          log.error(`[SwarmRuntime] Coordination failed:`, e);
         })
         .finally(() => {
           resolveWait?.();
@@ -196,6 +198,7 @@ export class SwarmRuntime extends AbstractAgentRuntime {
 
         while (eventQueue.length > 0) {
           const event = eventQueue.shift()!;
+          log.info(`[SwarmRuntime] Processing event from queue: ${event.type}`);
           const chunks = this.mapEventToChunks(event);
           for (const chunk of chunks) {
             yield chunk;
@@ -206,6 +209,7 @@ export class SwarmRuntime extends AbstractAgentRuntime {
       await taskPromise;
 
       if (outcome.error) {
+        log.error(`[SwarmRuntime] Task failed with error:`, outcome.error);
         yield {
           type: 'run:error',
           content: outcome.error.message,
@@ -215,6 +219,22 @@ export class SwarmRuntime extends AbstractAgentRuntime {
       }
 
       const result = outcome.result!;
+      log.info(
+        `[SwarmRuntime] Task result: status=${result.state.status}, output="${result.output.substring(0, 100)}..."`
+      );
+
+      // 如果 SwarmCoordinator 返回 failed 状态，也应该抛出错误
+      if (result.state.status === 'failed') {
+        const errorMsg = result.state.error || result.output || 'Unknown error';
+        log.error(`[SwarmRuntime] Swarm execution failed: ${errorMsg}`);
+        yield {
+          type: 'run:error',
+          content: errorMsg,
+          data: { message: errorMsg }
+        };
+        throw new Error(errorMsg);
+      }
+
       const finalOutput = result.output;
 
       if (result.rolesUsed.length > 0) {

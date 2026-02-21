@@ -116,6 +116,10 @@ export class SwarmCoordinator {
   }
 
   private emit(event: SwarmEvent): void {
+    log.info(
+      `[SwarmCoordinator] Emitting event: ${event.type}`,
+      event.data ? `data keys: ${Object.keys(event.data).join(', ')}` : '(no data)'
+    );
     this.onEvent?.(event);
   }
 
@@ -163,15 +167,32 @@ export class SwarmCoordinator {
       let finalOutput = '';
 
       for (let depth = 0; depth <= this.config.maxHandoffDepth; depth++) {
+        log.info(`[SwarmCoordinator] Loop depth=${depth}, roleId=${currentRoleId}, inputLength=${currentInput.length}`);
+
         this.emit({
           type: 'agent:start',
           data: { roleId: currentRoleId, input: currentInput.substring(0, 200) }
         });
+        log.info(`[SwarmCoordinator] Emitted agent:start for ${currentRoleId}`);
 
+        log.info(`[SwarmCoordinator] Calling runtime.run() for ${currentRoleId}...`);
+        const runStartTime = Date.now();
         const result = await currentRuntime.run(currentInput);
+        const runDuration = Date.now() - runStartTime;
         const output = result.output || '';
 
+        log.info(
+          `[SwarmCoordinator] Runtime.run() completed for ${currentRoleId}: outputLength=${output.length}, duration=${runDuration}ms, hasToolCalls=${result.toolCalls?.length || 0}`
+        );
+        if (output.length === 0) {
+          log.warn(
+            `[SwarmCoordinator] ⚠️  ${currentRoleId} returned EMPTY output! Result:`,
+            JSON.stringify(result).substring(0, 500)
+          );
+        }
+
         this.emit({ type: 'agent:done', data: { roleId: currentRoleId, output: output.substring(0, 200) } });
+        log.info(`[SwarmCoordinator] Emitted agent:done for ${currentRoleId}`);
 
         const handoffTarget = this.detectHandoff(result);
 

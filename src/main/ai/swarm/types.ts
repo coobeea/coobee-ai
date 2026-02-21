@@ -87,7 +87,7 @@ export const DEFAULT_SWARM_CONFIG: Omit<SwarmConfig, 'id' | 'name'> = {
   maxConcurrentAgents: 10,
   agentIdleTimeout: 15 * 60 * 1000,
   maxHandoffDepth: 10,
-  triageModel: 'gpt-4o',
+  triageModel: undefined, // 使用系统默认模型（从 ConfigStore 自动解析）
   enableSharedContext: true,
   enableMonitoring: true
 };
