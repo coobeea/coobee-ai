@@ -346,14 +346,19 @@ function createBuilderFromAgentDef(
   for (const ext of extensionTools) {
     toolMap.set(ext.name, ext);
   }
-  const allTools = Array.from(toolMap.values());
 
-  // 根据模式过滤工具
-  if (agentMode === 'chat') {
-    builder.tools(allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name)));
+  // 工具过滤逻辑
+  let finalTools;
+  if (def.tools && def.tools.length > 0) {
+    // 1. Agent 定义中明确指定了工具列表 → 严格按配置加载
+    finalTools = def.tools.map((name) => toolMap.get(name)).filter((t): t is NonNullable<typeof t> => t !== undefined);
   } else {
-    builder.tools(allTools);
+    // 2. 未配置工具 → 加载所有可用工具（向后兼容）
+    const allTools = Array.from(toolMap.values());
+    finalTools = agentMode === 'chat' ? allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name)) : allTools;
   }
+
+  builder.tools(finalTools);
 
   // 加载 Skills
   if (def.skills && def.skills.length > 0) {
