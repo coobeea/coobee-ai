@@ -6,12 +6,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { GatewayApi } from '../../protocol/types';
 
-// Mock EventBus
-const mockEventBus = {
-  on: vi.fn(),
-  off: vi.fn(),
-  emit: vi.fn()
-};
+// 使用 vi.hoisted 确保 mock 在模块加载前初始化
+const { mockEventBus } = vi.hoisted(() => {
+  const mockEventBus = {
+    on: vi.fn(),
+    off: vi.fn(),
+    emit: vi.fn()
+  };
+  return { mockEventBus };
+});
 
 vi.mock('@main/common/eventbus', () => ({
   eventBus: mockEventBus

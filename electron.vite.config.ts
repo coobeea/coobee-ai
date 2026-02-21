@@ -99,7 +99,18 @@ export default defineConfig({
       },
       rollupOptions: {
         // 原生模块标记为外部依赖
-        external: ['better-sqlite3-multiple-ciphers', 'fs-ext', 'electron', 'bufferutil', 'utf-8-validate'],
+        external: [
+          'better-sqlite3-multiple-ciphers',
+          'fs-ext',
+          'electron',
+          'bufferutil',
+          'utf-8-validate',
+          // 排除所有测试文件
+          /\/__tests__\//,
+          /\.test\.ts$/,
+          /\.spec\.ts$/,
+          'vitest'
+        ],
         output: {
           inlineDynamicImports: true,
           manualChunks: undefined // 禁用自动代码分割
