@@ -164,7 +164,7 @@ onMounted(() => updateActiveState());
               </span>
             </div>
             <span class="session-meta">
-              {{ thread.messageCount }} 条 · {{ formatRelativeTime(thread.updatedAt) }}
+              {{ formatRelativeTime(thread.updatedAt) }}
             </span>
           </div>
         </div>
