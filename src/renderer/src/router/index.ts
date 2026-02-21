@@ -24,6 +24,11 @@ const router = createRouter({
           component: () => import('@/views/SkillsView.vue')
         },
         {
+          path: 'tavern',
+          name: 'tavern',
+          component: () => import('@/views/TavernView.vue')
+        },
+        {
           path: 'logs',
           name: 'logs',
           component: () => import('@/views/LogViewer.vue')

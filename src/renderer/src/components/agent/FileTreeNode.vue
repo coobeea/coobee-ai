@@ -25,6 +25,7 @@ const expandedDirs = inject<Ref<Set<string>>>('expandedDirs')!;
 const onToggleDir = inject<(node: FileNode) => void>('toggleDir')!;
 const onOpenFile = inject<(filePath: string) => void>('openFile')!;
 const onAddToChat = inject<(node: FileNode) => void>('addToChat');
+const onAddFileToTask = inject<(node: FileNode) => void>('addFileToTask');
 const selectedPath = inject<Ref<string | null>>('selectedPath');
 
 // 右键菜单状态
@@ -48,6 +49,14 @@ function handleContextMenu(event: MouseEvent, node: FileNode): void {
 function addToChat(): void {
   if (contextNode.value && onAddToChat) {
     onAddToChat(contextNode.value);
+  }
+  menuVisible.value = false;
+}
+
+// 添加到任务
+function addToTask(): void {
+  if (contextNode.value && onAddFileToTask) {
+    onAddFileToTask(contextNode.value);
   }
   menuVisible.value = false;
 }
@@ -156,6 +165,10 @@ function getFileIcon(name: string): string {
       <ContextMenuItem v-if="onAddToChat" @click="addToChat">
         <span class="i-carbon-add inline-block h-3.5 w-3.5" />
         <span>添加到对话</span>
+      </ContextMenuItem>
+      <ContextMenuItem v-if="onAddFileToTask && node.type === 'file'" @click="addToTask">
+        <span class="i-carbon-task-add inline-block h-3.5 w-3.5" />
+        <span>添加到任务</span>
       </ContextMenuItem>
       <ContextMenuItem @click="copyPath">
         <span class="i-carbon-copy inline-block h-3.5 w-3.5" />

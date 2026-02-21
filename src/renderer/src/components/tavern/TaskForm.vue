@@ -1,0 +1,487 @@
+<script setup lang="ts">
+/**
+ * TaskForm — 任务发布/详情表单
+ *
+ * 支持：
+ * - 创建模式：发布新任务
+ * - 详情模式：查看任务详情（只读）
+ */
+
+import { ref, computed, onMounted } from 'vue';
+import configManager from '@/config';
+
+interface Task {
+  id: string;
+  title: string;
+  description: string;
+  amount: number;
+  files: string[];
+  status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
+  createdAt: string;
+  updatedAt: string;
+}
+
+const props = withDefaults(
+  defineProps<{
+    taskId?: string;
+    readonly?: boolean;
+  }>(),
+  {
+    readonly: false
+  }
+);
+
+const emit = defineEmits<{
+  cancel: [];
+  success: [];
+}>();
+
+const BASE_URL = `${configManager.getBaseUrl()}/gateway/tavern`;
+
+const title = ref('');
+const description = ref('');
+const amount = ref(100);
+const filePaths = ref<string[]>([]);
+
+const loading = ref(false);
+const saving = ref(false);
+const error = ref<string | null>(null);
+
+const canSubmit = computed(() => title.value.trim() && description.value.trim() && amount.value > 0);
+
+// 加载任务详情
+async function loadTask(): Promise<void> {
+  if (!props.taskId) return;
+
+  loading.value = true;
+  error.value = null;
+  try {
+    const res = await fetch(`${BASE_URL}/tasks/${props.taskId}`);
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+    }
+    const task = (data as { task: Task }).task;
+    title.value = task.title;
+    description.value = task.description;
+    amount.value = task.amount;
+    filePaths.value = task.files || [];
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    loading.value = false;
+  }
+}
+
+// 移除文件路径
+function removeFilePath(index: number): void {
+  filePaths.value.splice(index, 1);
+}
+
+// 添加文件路径（通过 provide/inject 从文件树调用）
+function addFilePath(path: string): void {
+  if (!filePaths.value.includes(path)) {
+    filePaths.value.push(path);
+  }
+}
+
+// 获取文件名（从完整路径）
+function getFileName(filePath: string): string {
+  return filePath.split('/').pop() || filePath;
+}
+
+// 提交表单
+async function handleSubmit(): Promise<void> {
+  if (!canSubmit.value || saving.value) return;
+
+  saving.value = true;
+  error.value = null;
+
+  try {
+    const res = await fetch(`${BASE_URL}/tasks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        title: title.value.trim(),
+        description: description.value.trim(),
+        amount: amount.value,
+        filePaths: filePaths.value
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+    }
+
+    emit('success');
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    saving.value = false;
+  }
+}
+
+onMounted(() => {
+  if (props.taskId) {
+    loadTask();
+  }
+});
+
+// 暴露给父组件（用于从文件树添加文件）
+defineExpose({
+  addFilePath
+});
+</script>
+
+<template>
+  <div class="task-form">
+    <!-- 加载中 -->
+    <div v-if="loading" class="loading-state">
+      <span class="i-carbon-renew inline-block h-5 w-5 animate-spin opacity-25" />
+      <p>加载中...</p>
+    </div>
+
+    <!-- 错误 -->
+    <div v-else-if="error && taskId" class="error-banner">
+      <span class="i-carbon-warning-alt inline-block h-4 w-4" />
+      <span>{{ error }}</span>
+    </div>
+
+    <!-- 表单 -->
+    <div v-else class="form-container">
+      <!-- 标题 -->
+      <div class="form-field">
+        <label class="form-label">任务标题</label>
+        <input
+          v-model="title"
+          type="text"
+          class="form-input"
+          placeholder="简要描述任务..."
+          :readonly="readonly"
+          maxlength="100" />
+      </div>
+
+      <!-- 描述 -->
+      <div class="form-field">
+        <label class="form-label">任务描述</label>
+        <textarea
+          v-model="description"
+          class="form-textarea"
+          placeholder="详细描述任务需求、目标、交付物等..."
+          :readonly="readonly"
+          rows="8" />
+      </div>
+
+      <!-- 金额 -->
+      <div class="form-field">
+        <label class="form-label">任务赏金（虚拟金币）</label>
+        <div class="amount-input-wrapper">
+          <span class="i-carbon-currency inline-block h-4 w-4 amount-icon" />
+          <input
+            v-model.number="amount"
+            type="number"
+            class="amount-input"
+            placeholder="100"
+            :readonly="readonly"
+            min="1" />
+          <span class="amount-suffix">金币</span>
+        </div>
+      </div>
+
+      <!-- 相关资料（文件路径引用） -->
+      <div class="form-field">
+        <label class="form-label">相关资料</label>
+
+        <!-- 文件路径列表 -->
+        <div v-if="filePaths.length > 0" class="file-list">
+          <div v-for="(filePath, index) in filePaths" :key="index" class="file-item">
+            <span class="i-carbon-document inline-block h-4 w-4 file-icon" />
+            <div class="file-info">
+              <span class="file-name">{{ getFileName(filePath) }}</span>
+              <span class="file-path">{{ filePath }}</span>
+            </div>
+            <button v-if="!readonly" class="file-remove-btn" @click="removeFilePath(index)">
+              <span class="i-carbon-close inline-block h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <!-- 提示信息 -->
+        <div v-if="!readonly" class="file-hint">
+          <span class="i-carbon-information inline-block h-3.5 w-3.5" />
+          <span>在任务工作目录中右键文件，选择"添加到任务"即可添加</span>
+        </div>
+      </div>
+
+      <!-- 错误提示 -->
+      <div v-if="error && !taskId" class="error-message">
+        <span class="i-carbon-warning-alt inline-block h-4 w-4" />
+        <span>{{ error }}</span>
+      </div>
+
+      <!-- 按钮组 -->
+      <div class="form-actions">
+        <button class="cancel-btn" @click="emit('cancel')">
+          {{ readonly ? '关闭' : '取消' }}
+        </button>
+        <button v-if="!readonly" class="submit-btn" :disabled="!canSubmit || saving" @click="handleSubmit">
+          <span v-if="saving" class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
+          <span v-else class="i-carbon-send-filled inline-block h-4 w-4" />
+          <span>{{ saving ? '发布中...' : '发布任务' }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.task-form {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 64px 32px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  font-size: 13px;
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: hsl(var(--error) / 0.1);
+  border: 1px solid hsl(var(--error) / 0.2);
+  color: hsl(var(--error));
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.form-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 8px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.85);
+}
+
+.form-input,
+.form-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border) / 0.4);
+  background: hsl(var(--surface) / 0.6);
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  line-height: 1.5;
+  transition: all 0.15s ease;
+}
+
+.form-input:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: hsl(var(--primary) / 0.5);
+  background: hsl(var(--surface));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08);
+}
+
+.form-input:read-only,
+.form-textarea:read-only {
+  background: hsl(var(--muted) / 0.3);
+  cursor: default;
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.amount-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border) / 0.4);
+  background: hsl(var(--surface) / 0.6);
+  transition: all 0.15s ease;
+}
+
+.amount-input-wrapper:focus-within {
+  border-color: hsl(var(--primary) / 0.5);
+  background: hsl(var(--surface));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08);
+}
+
+.amount-icon {
+  color: hsl(var(--primary));
+}
+
+.amount-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-size: 15px;
+  font-weight: 600;
+  outline: none;
+}
+
+.amount-suffix {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground) / 0.6);
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border) / 0.3);
+}
+
+.file-icon {
+  color: hsl(var(--primary) / 0.6);
+  flex-shrink: 0;
+}
+
+.file-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.file-name {
+  font-size: 13px;
+  color: hsl(var(--foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-path {
+  font-size: 11px;
+  font-family: var(--font-family-mono);
+  color: hsl(var(--muted-foreground) / 0.4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.file-remove-btn:hover {
+  background: hsl(var(--error) / 0.1);
+  color: hsl(var(--error));
+}
+
+.file-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: hsl(var(--muted) / 0.2);
+  font-size: 12px;
+  color: hsl(var(--muted-foreground) / 0.6);
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: hsl(var(--error) / 0.08);
+  color: hsl(var(--error));
+  font-size: 12px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.cancel-btn,
+.submit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.cancel-btn {
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border) / 0.4);
+}
+
+.cancel-btn:hover {
+  background: hsl(var(--muted) / 0.3);
+  border-color: hsl(var(--border) / 0.6);
+}
+
+.submit-btn {
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary));
+}
+
+.submit-btn:hover:not(:disabled) {
+  background: hsl(var(--primary-hover));
+  box-shadow: 0 2px 8px hsl(var(--primary) / 0.25);
+}
+
+.submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+</style>
