@@ -124,309 +124,301 @@ function toolSummary(block: ContentBlock): string {
 
     <!-- 消息列表 -->
     <template v-for="msg in messages" :key="msg.id">
-      <!-- 【Thread 模式】用户消息独立气泡样式，助手消息保留流式轨迹 -->
-      <template v-if="mode === 'thread'">
-        <!-- 用户消息：独立块 -->
-        <div v-if="msg.role === 'user'" class="mb-3">
-          <div
-            class="rounded-lg bg-primary/8 px-3 py-2 text-xs leading-relaxed text-gray-800 whitespace-pre-wrap break-words">
-            {{ msg.content }}
-          </div>
+      <div class="msg-block">
+        <div class="msg-role-row">
+          <span class="msg-role-icon" :class="msg.role === 'user' ? 'msg-role-user' : 'msg-role-assistant'">
+            <span
+              class="inline-block h-3 w-3"
+              :class="msg.role === 'user' ? 'i-carbon-user' : 'i-mdi-star-four-points'" />
+          </span>
+          <span class="msg-role-name">{{ msg.role === 'user' ? '你' : '管家' }}</span>
+          <span class="msg-time">{{
+            new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+          }}</span>
         </div>
 
-        <!-- 助手消息 -->
-        <div v-else class="mb-3 space-y-1.5 px-3">
-          <!-- run:start -->
-          <div v-if="msg.status !== 'sending'" class="flex items-center gap-1.5 text-[10px] text-gray-400">
-            <span class="i-carbon-play-filled inline-block h-2.5 w-2.5 text-emerald-400"></span>
-            <span class="font-mono">run:start</span>
-            <span class="h-px flex-1 bg-gray-200"></span>
-          </div>
-
-          <!-- 按时序渲染内容块 -->
-          <template v-for="(block, bidx) in msg.blocks" :key="'b-' + bidx">
-            <!-- thinking block -->
-            <div
-              v-if="block.type === 'thinking'"
-              class="rounded-md border-l-2 border-l-violet-300 bg-violet-50/50 px-2 py-1.5">
-              <div class="mb-0.5 flex items-center gap-1">
-                <span class="rounded bg-violet-100 px-1 py-px font-mono text-[9px] font-semibold text-violet-500">
-                  thinking
-                </span>
-              </div>
-              <details>
-                <summary class="cursor-pointer text-[10px] text-violet-400 select-none hover:text-violet-500">
-                  思考过程
-                </summary>
-                <div
-                  class="mt-1 max-h-32 overflow-y-auto font-mono text-[10px] leading-relaxed text-gray-500 whitespace-pre-wrap">
-                  {{ block.text }}
-                </div>
-              </details>
-            </div>
-
-            <!-- text block -->
-            <div v-else-if="block.type === 'text'" class="rounded-md border-l-2 border-l-blue-300 bg-white px-2 py-1.5">
-              <div class="mb-0.5">
-                <span class="rounded bg-blue-100 px-1 py-px font-mono text-[9px] font-semibold text-blue-500">
-                  text
-                </span>
-              </div>
-              <div class="text-xs leading-relaxed text-gray-800 whitespace-pre-wrap break-words">
-                {{ block.text }}
-                <span
-                  v-if="msg.status === 'streaming' && msg.blocks && bidx === msg.blocks.length - 1"
-                  class="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-gray-400 align-text-bottom"></span>
-              </div>
-            </div>
-
-            <!-- tool block -->
-            <div
-              v-else-if="block.type === 'tool'"
-              class="overflow-hidden rounded-md border text-[11px] shadow-sm"
-              :class="{
-                'border-amber-200': block.tool.status === 'calling',
-                'border-emerald-200': block.tool.status === 'done',
-                'border-red-200': block.tool.status === 'error',
-                'border-blue-300': block.tool.status === 'approval-pending'
-              }">
-              <div
-                class="flex items-center gap-1.5 px-2 py-1"
-                :class="{
-                  'bg-amber-50': block.tool.status === 'calling',
-                  'bg-emerald-50': block.tool.status === 'done',
-                  'bg-red-50': block.tool.status === 'error',
-                  'bg-blue-50': block.tool.status === 'approval-pending'
-                }">
-                <span
-                  class="inline-block h-3 w-3"
-                  :class="
-                    block.tool.status === 'approval-pending'
-                      ? 'i-carbon-locked text-blue-600'
-                      : 'i-carbon-tool-box text-gray-500'
-                  " />
-                <span class="font-mono text-[10px] font-semibold text-gray-700">{{ block.tool.name }}</span>
-                <span class="flex-1"></span>
-                <span
-                  class="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                  :class="{
-                    'bg-amber-100 text-amber-700': block.tool.status === 'calling',
-                    'bg-emerald-100 text-emerald-700': block.tool.status === 'done',
-                    'bg-red-100 text-red-600': block.tool.status === 'error',
-                    'bg-blue-100 text-blue-700': block.tool.status === 'approval-pending'
-                  }">
-                  {{
-                    block.tool.status === 'calling'
-                      ? '执行中'
-                      : block.tool.status === 'approval-pending'
-                        ? '等待审批'
-                        : block.tool.status === 'done'
-                          ? '完成'
-                          : '失败'
-                  }}
-                </span>
-              </div>
-              <div v-if="block.tool.arguments" class="border-t border-gray-100 bg-white px-2 py-1">
-                <div
-                  class="max-h-16 overflow-y-auto rounded bg-gray-50 px-1.5 py-1 font-mono text-[10px] text-gray-500">
-                  {{ block.tool.arguments }}
-                </div>
-              </div>
-              <div v-if="block.tool.result" class="border-t border-gray-100 px-2 py-1">
-                <div class="max-h-20 overflow-y-auto rounded bg-white px-1.5 py-1 font-mono text-[10px] text-gray-500">
-                  {{ block.tool.result }}
-                </div>
-              </div>
-            </div>
-
-            <!-- delegate block -->
-            <div
-              v-else-if="block.type === 'delegate'"
-              class="overflow-hidden rounded-md border text-[11px] shadow-sm"
-              :class="{
-                'border-violet-200': block.delegate.status === 'running',
-                'border-violet-300': block.delegate.status === 'done'
-              }">
-              <div
-                class="flex items-center gap-1.5 px-2 py-1"
-                :class="{
-                  'bg-violet-50': block.delegate.status === 'running',
-                  'bg-violet-50/50': block.delegate.status === 'done'
-                }">
-                <span class="i-carbon-bot inline-block h-3 w-3 text-violet-500"></span>
-                <span class="text-[10px] font-semibold text-violet-700">
-                  {{ block.delegate.agentName || block.delegate.agentId }}
-                </span>
-                <span class="flex-1"></span>
-                <span
-                  class="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                  :class="{
-                    'bg-violet-100 text-violet-600': block.delegate.status === 'running',
-                    'bg-violet-100 text-violet-700': block.delegate.status === 'done'
-                  }">
-                  {{
-                    block.delegate.status === 'running'
-                      ? '委托中...'
-                      : `完成${block.delegate.duration ? ` (${Math.round(block.delegate.duration / 1000)}s)` : ''}`
-                  }}
-                </span>
-              </div>
-              <div v-if="block.delegate.task" class="border-t border-violet-100 bg-white px-2 py-1">
-                <div
-                  class="max-h-16 overflow-y-auto rounded bg-violet-50/30 px-1.5 py-1 font-mono text-[10px] text-violet-600/80">
-                  {{ block.delegate.task }}
-                </div>
-              </div>
-              <div
-                v-if="block.delegate.output && block.delegate.status === 'done'"
-                class="border-t border-violet-100 px-2 py-1">
-                <div class="max-h-20 overflow-y-auto rounded bg-white px-1.5 py-1 font-mono text-[10px] text-gray-600">
-                  {{ block.delegate.output }}
-                </div>
-              </div>
-            </div>
-          </template>
-
-          <div v-if="msg.status === 'streaming' && msg.blocks?.length === 0" class="flex items-center gap-1">
-            <span class="inline-block h-1 w-1 animate-bounce rounded-full bg-gray-400"></span>
-            <span
-              class="inline-block h-1 w-1 animate-bounce rounded-full bg-gray-400"
-              style="animation-delay: 0.2s"></span>
-            <span
-              class="inline-block h-1 w-1 animate-bounce rounded-full bg-gray-400"
-              style="animation-delay: 0.4s"></span>
-          </div>
-
-          <!-- HITL 审批卡片（必须等到 run:done 后才显示） -->
-          <template v-if="msg.pendingApprovals?.length">
-            <HitlApprovalCard
-              v-for="approval in msg.pendingApprovals.filter((a) => a.canShow)"
-              :key="'hitl-' + approval.index"
-              :approval="approval"
-              @decide="(d) => emit('decide', approval, d)" />
-          </template>
-
-          <!-- error -->
-          <div
-            v-if="msg.status === 'error' && msg.error"
-            class="rounded-md border-l-2 border-l-red-400 bg-red-50/60 px-2 py-1.5">
-            <span class="rounded bg-red-100 px-1 py-px font-mono text-[9px] font-semibold text-red-500">
-              run:error
-            </span>
-            <div class="mt-1 flex items-start gap-1 text-[11px] text-red-600">
-              <span class="i-carbon-warning-alt mt-0.5 inline-block h-3 w-3 shrink-0"></span>
-              <span>{{ msg.error }}</span>
-            </div>
-          </div>
-
-          <!-- interrupted -->
-          <div v-if="msg.status === 'interrupted'" class="flex items-center gap-1.5 text-[10px] text-amber-500">
-            <span class="i-carbon-pause-filled inline-block h-2.5 w-2.5"></span>
-            <span class="font-mono">run:interrupted</span>
-            <span class="h-px flex-1 bg-amber-200"></span>
-          </div>
-
-          <!-- done -->
-          <div v-if="msg.status === 'done'" class="flex items-center gap-1.5 text-[10px] text-gray-400">
-            <span class="i-carbon-checkmark-filled inline-block h-2.5 w-2.5 text-emerald-400"></span>
-            <span class="font-mono">run:done</span>
-            <span class="h-px flex-1 bg-gray-200"></span>
-          </div>
-
-          <!-- streaming (after blocks) -->
-          <div
-            v-if="msg.status === 'streaming' && msg.blocks && msg.blocks.length > 0"
-            class="flex items-center gap-1.5 text-[10px] text-blue-400">
-            <span class="i-carbon-in-progress inline-block h-2.5 w-2.5 animate-spin"></span>
-            <span class="font-mono">streaming...</span>
-            <span class="h-px flex-1 bg-blue-100"></span>
-          </div>
-        </div>
-      </template>
-
-      <!-- 【Copilot 模式】紧凑版式，左对齐，不显示复杂的 run 记录框 -->
-      <template v-else>
-        <div class="msg-block">
-          <div class="msg-role-row">
-            <span class="msg-role-icon" :class="msg.role === 'user' ? 'msg-role-user' : 'msg-role-assistant'">
-              <span
-                class="inline-block h-3 w-3"
-                :class="msg.role === 'user' ? 'i-carbon-user' : 'i-mdi-star-four-points'" />
-            </span>
-            <span class="msg-role-name">{{ msg.role === 'user' ? '你' : '管家' }}</span>
-            <span class="msg-time">{{
-              new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-            }}</span>
-          </div>
-
-          <div v-if="msg.role === 'user'" class="msg-content">
+        <div class="msg-content">
+          <!-- 用户消息 -->
+          <template v-if="msg.role === 'user'">
             <div class="msg-text">{{ msg.content }}</div>
-          </div>
+          </template>
 
-          <div v-else class="msg-content">
-            <template v-if="msg.blocks && msg.blocks.length > 0">
-              <template v-for="(block, idx) in msg.blocks" :key="idx">
-                <div v-if="block.type === 'text'" class="msg-text" v-text="block.text" />
+          <!-- 助手消息 -->
+          <template v-else>
+            <!-- 【Thread 模式】完整的执行历史轨迹 -->
+            <template v-if="mode === 'thread'">
+              <!-- run:start -->
+              <div v-if="msg.status !== 'sending'" class="flex items-center gap-1.5 text-[10px] text-gray-400">
+                <span class="i-carbon-play-filled inline-block h-2.5 w-2.5 text-emerald-400"></span>
+                <span class="font-mono">run:start</span>
+                <span class="h-px flex-1 bg-gray-200"></span>
+              </div>
 
-                <div v-else-if="block.type === 'thinking'" class="msg-thinking">
-                  <span class="i-carbon-idea inline-block h-3 w-3 shrink-0" />
-                  <span class="msg-thinking-text">{{ block.text }}</span>
+              <!-- 按时序渲染内容块 -->
+              <template v-for="(block, bidx) in msg.blocks" :key="'b-' + bidx">
+                <!-- thinking block -->
+                <div
+                  v-if="block.type === 'thinking'"
+                  class="rounded-md border-l-2 border-l-violet-300 bg-violet-50/50 px-2 py-1.5">
+                  <div class="mb-0.5 flex items-center gap-1">
+                    <span class="rounded bg-violet-100 px-1 py-px font-mono text-[9px] font-semibold text-violet-500">
+                      thinking
+                    </span>
+                  </div>
+                  <details>
+                    <summary class="cursor-pointer text-[10px] text-violet-400 select-none hover:text-violet-500">
+                      思考过程
+                    </summary>
+                    <div
+                      class="mt-1 max-h-32 overflow-y-auto font-mono text-[10px] leading-relaxed text-gray-500 whitespace-pre-wrap">
+                      {{ block.text }}
+                    </div>
+                  </details>
                 </div>
 
-                <div v-else-if="block.type === 'tool'" class="msg-tool">
-                  <span
-                    class="inline-block h-3 w-3 shrink-0"
-                    :class="
-                      block.tool.status === 'calling'
-                        ? 'i-carbon-renew animate-spin'
-                        : block.tool.status === 'approval-pending'
+                <!-- text block -->
+                <div
+                  v-else-if="block.type === 'text'"
+                  class="rounded-md border-l-2 border-l-blue-300 bg-white px-2 py-1.5">
+                  <div class="mb-0.5">
+                    <span class="rounded bg-blue-100 px-1 py-px font-mono text-[9px] font-semibold text-blue-500">
+                      text
+                    </span>
+                  </div>
+                  <div class="text-xs leading-relaxed text-gray-800 whitespace-pre-wrap break-words">
+                    {{ block.text }}
+                    <span
+                      v-if="msg.status === 'streaming' && msg.blocks && bidx === msg.blocks.length - 1"
+                      class="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-gray-400 align-text-bottom"></span>
+                  </div>
+                </div>
+
+                <!-- tool block -->
+                <div
+                  v-else-if="block.type === 'tool'"
+                  class="overflow-hidden rounded-md border text-[11px] shadow-sm"
+                  :class="{
+                    'border-amber-200': block.tool.status === 'calling',
+                    'border-emerald-200': block.tool.status === 'done',
+                    'border-red-200': block.tool.status === 'error',
+                    'border-blue-300': block.tool.status === 'approval-pending'
+                  }">
+                  <div
+                    class="flex items-center gap-1.5 px-2 py-1"
+                    :class="{
+                      'bg-amber-50': block.tool.status === 'calling',
+                      'bg-emerald-50': block.tool.status === 'done',
+                      'bg-red-50': block.tool.status === 'error',
+                      'bg-blue-50': block.tool.status === 'approval-pending'
+                    }">
+                    <span
+                      class="inline-block h-3 w-3"
+                      :class="
+                        block.tool.status === 'approval-pending'
                           ? 'i-carbon-locked text-blue-600'
-                          : block.tool.status === 'done'
-                            ? 'i-carbon-checkmark'
-                            : 'i-carbon-warning-alt'
-                    " />
-                  <span>{{ toolSummary(block) }}</span>
+                          : 'i-carbon-tool-box text-gray-500'
+                      " />
+                    <span class="font-mono text-[10px] font-semibold text-gray-700">{{ block.tool.name }}</span>
+                    <span class="flex-1"></span>
+                    <span
+                      class="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                      :class="{
+                        'bg-amber-100 text-amber-700': block.tool.status === 'calling',
+                        'bg-emerald-100 text-emerald-700': block.tool.status === 'done',
+                        'bg-red-100 text-red-600': block.tool.status === 'error',
+                        'bg-blue-100 text-blue-700': block.tool.status === 'approval-pending'
+                      }">
+                      {{
+                        block.tool.status === 'calling'
+                          ? '执行中'
+                          : block.tool.status === 'approval-pending'
+                            ? '等待审批'
+                            : block.tool.status === 'done'
+                              ? '完成'
+                              : '失败'
+                      }}
+                    </span>
+                  </div>
+                  <div v-if="block.tool.arguments" class="border-t border-gray-100 bg-white px-2 py-1">
+                    <div
+                      class="max-h-16 overflow-y-auto rounded bg-gray-50 px-1.5 py-1 font-mono text-[10px] text-gray-500">
+                      {{ block.tool.arguments }}
+                    </div>
+                  </div>
+                  <div v-if="block.tool.result" class="border-t border-gray-100 px-2 py-1">
+                    <div
+                      class="max-h-20 overflow-y-auto rounded bg-white px-1.5 py-1 font-mono text-[10px] text-gray-500">
+                      {{ block.tool.result }}
+                    </div>
+                  </div>
                 </div>
 
-                <div v-else-if="block.type === 'delegate'" class="msg-delegate">
-                  <span class="i-carbon-bot inline-block h-3 w-3 shrink-0" />
-                  <span>{{ block.delegate.agentName || block.delegate.agentId }}</span>
-                  <span class="msg-delegate-status">
-                    {{ block.delegate.status === 'running' ? '委托中...' : '完成' }}
-                  </span>
+                <!-- delegate block -->
+                <div
+                  v-else-if="block.type === 'delegate'"
+                  class="overflow-hidden rounded-md border text-[11px] shadow-sm"
+                  :class="{
+                    'border-violet-200': block.delegate.status === 'running',
+                    'border-violet-300': block.delegate.status === 'done'
+                  }">
+                  <div
+                    class="flex items-center gap-1.5 px-2 py-1"
+                    :class="{
+                      'bg-violet-50': block.delegate.status === 'running',
+                      'bg-violet-50/50': block.delegate.status === 'done'
+                    }">
+                    <span class="i-carbon-bot inline-block h-3 w-3 text-violet-500"></span>
+                    <span class="text-[10px] font-semibold text-violet-700">
+                      {{ block.delegate.agentName || block.delegate.agentId }}
+                    </span>
+                    <span class="flex-1"></span>
+                    <span
+                      class="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                      :class="{
+                        'bg-violet-100 text-violet-600': block.delegate.status === 'running',
+                        'bg-violet-100 text-violet-700': block.delegate.status === 'done'
+                      }">
+                      {{
+                        block.delegate.status === 'running'
+                          ? '委托中...'
+                          : `完成${block.delegate.duration ? ` (${Math.round(block.delegate.duration / 1000)}s)` : ''}`
+                      }}
+                    </span>
+                  </div>
+                  <div v-if="block.delegate.task" class="border-t border-violet-100 bg-white px-2 py-1">
+                    <div
+                      class="max-h-16 overflow-y-auto rounded bg-violet-50/30 px-1.5 py-1 font-mono text-[10px] text-violet-600/80">
+                      {{ block.delegate.task }}
+                    </div>
+                  </div>
+                  <div
+                    v-if="block.delegate.output && block.delegate.status === 'done'"
+                    class="border-t border-violet-100 px-2 py-1">
+                    <div
+                      class="max-h-20 overflow-y-auto rounded bg-white px-1.5 py-1 font-mono text-[10px] text-gray-600">
+                      {{ block.delegate.output }}
+                    </div>
+                  </div>
                 </div>
               </template>
+
+              <div v-if="msg.status === 'streaming' && msg.blocks?.length === 0" class="msg-typing">
+                <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
+              </div>
+
+              <!-- HITL 审批卡片（必须等到 run:done 后才显示） -->
+              <template v-if="msg.pendingApprovals?.length">
+                <HitlApprovalCard
+                  v-for="approval in msg.pendingApprovals.filter((a) => a.canShow)"
+                  :key="'hitl-' + approval.index"
+                  :approval="approval"
+                  @decide="(d) => emit('decide', approval, d)" />
+              </template>
+
+              <!-- error -->
+              <div
+                v-if="msg.status === 'error' && msg.error"
+                class="rounded-md border-l-2 border-l-red-400 bg-red-50/60 px-2 py-1.5">
+                <span class="rounded bg-red-100 px-1 py-px font-mono text-[9px] font-semibold text-red-500">
+                  run:error
+                </span>
+                <div class="mt-1 flex items-start gap-1 text-[11px] text-red-600">
+                  <span class="i-carbon-warning-alt mt-0.5 inline-block h-3 w-3 shrink-0"></span>
+                  <span>{{ msg.error }}</span>
+                </div>
+              </div>
+
+              <!-- interrupted -->
+              <div v-if="msg.status === 'interrupted'" class="flex items-center gap-1.5 text-[10px] text-amber-500">
+                <span class="i-carbon-pause-filled inline-block h-2.5 w-2.5"></span>
+                <span class="font-mono">run:interrupted</span>
+                <span class="h-px flex-1 bg-amber-200"></span>
+              </div>
+
+              <!-- done -->
+              <div v-if="msg.status === 'done'" class="flex items-center gap-1.5 text-[10px] text-gray-400">
+                <span class="i-carbon-checkmark-filled inline-block h-2.5 w-2.5 text-emerald-400"></span>
+                <span class="font-mono">run:done</span>
+                <span class="h-px flex-1 bg-gray-200"></span>
+              </div>
+
+              <!-- streaming (after blocks) -->
+              <div
+                v-if="msg.status === 'streaming' && msg.blocks && msg.blocks.length > 0"
+                class="flex items-center gap-1.5 text-[10px] text-blue-400">
+                <span class="i-carbon-in-progress inline-block h-2.5 w-2.5 animate-spin"></span>
+                <span class="font-mono">streaming...</span>
+                <span class="h-px flex-1 bg-blue-100"></span>
+              </div>
             </template>
 
-            <div v-else-if="msg.status === 'streaming'" class="msg-typing">
-              <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
-            </div>
+            <!-- 【Copilot 模式】紧凑版式，不显示复杂的 run 记录框 -->
+            <template v-else>
+              <template v-if="msg.blocks && msg.blocks.length > 0">
+                <template v-for="(block, idx) in msg.blocks" :key="idx">
+                  <div v-if="block.type === 'text'" class="msg-text" v-text="block.text" />
 
-            <!-- HITL 审批卡片（必须等到 run:done 后才显示） -->
-            <template v-if="msg.pendingApprovals?.length">
-              <HitlApprovalCard
-                v-for="approval in msg.pendingApprovals.filter((a) => a.canShow)"
-                :key="'hitl-' + approval.index"
-                :approval="approval"
-                @decide="(d) => emit('decide', approval, d)" />
+                  <div v-else-if="block.type === 'thinking'" class="msg-thinking">
+                    <span class="i-carbon-idea inline-block h-3 w-3 shrink-0" />
+                    <span class="msg-thinking-text">{{ block.text }}</span>
+                  </div>
+
+                  <div v-else-if="block.type === 'tool'" class="msg-tool">
+                    <span
+                      class="inline-block h-3 w-3 shrink-0"
+                      :class="
+                        block.tool.status === 'calling'
+                          ? 'i-carbon-renew animate-spin'
+                          : block.tool.status === 'approval-pending'
+                            ? 'i-carbon-locked text-blue-600'
+                            : block.tool.status === 'done'
+                              ? 'i-carbon-checkmark'
+                              : 'i-carbon-warning-alt'
+                      " />
+                    <span>{{ toolSummary(block) }}</span>
+                  </div>
+
+                  <div v-else-if="block.type === 'delegate'" class="msg-delegate">
+                    <span class="i-carbon-bot inline-block h-3 w-3 shrink-0" />
+                    <span>{{ block.delegate.agentName || block.delegate.agentId }}</span>
+                    <span class="msg-delegate-status">
+                      {{ block.delegate.status === 'running' ? '委托中...' : '完成' }}
+                    </span>
+                  </div>
+                </template>
+              </template>
+
+              <div v-else-if="msg.status === 'streaming'" class="msg-typing">
+                <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
+              </div>
+
+              <!-- HITL 审批卡片（必须等到 run:done 后才显示） -->
+              <template v-if="msg.pendingApprovals?.length">
+                <HitlApprovalCard
+                  v-for="approval in msg.pendingApprovals.filter((a) => a.canShow)"
+                  :key="'hitl-' + approval.index"
+                  :approval="approval"
+                  @decide="(d) => emit('decide', approval, d)" />
+              </template>
+
+              <div v-if="msg.status === 'error' && msg.error" class="msg-error">
+                <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
+                {{ msg.error }}
+              </div>
+
+              <div v-if="msg.status === 'interrupted'" class="msg-interrupted">
+                <span class="i-carbon-pause-filled inline-block h-2.5 w-2.5" />
+                <span>已中断</span>
+              </div>
             </template>
-
-            <div v-if="msg.status === 'error' && msg.error" class="msg-error">
-              <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
-              {{ msg.error }}
-            </div>
-
-            <div v-if="msg.status === 'interrupted'" class="msg-interrupted">
-              <span class="i-carbon-pause-filled inline-block h-2.5 w-2.5" />
-              <span>已中断</span>
-            </div>
-          </div>
+          </template>
         </div>
-      </template>
+      </div>
     </template>
 
     <div v-if="isStreaming && mode === 'copilot'" class="stream-indicator">
-      <span class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
+      <span class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin text-primary" />
+      <span class="text-xs font-medium text-muted-foreground ml-1">处理中...</span>
     </div>
   </div>
 </template>
@@ -481,7 +473,7 @@ function toolSummary(block: ContentBlock): string {
 
 /* 消息块 */
 .msg-block {
-  padding: 8px 16px 12px;
+  padding: 6px 16px;
   transition: background-color 0.2s;
 }
 
@@ -492,8 +484,8 @@ function toolSummary(block: ContentBlock): string {
 .msg-role-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 6px;
+  margin-bottom: 4px;
 }
 
 .msg-role-icon {
@@ -528,10 +520,9 @@ function toolSummary(block: ContentBlock): string {
 }
 
 .msg-content {
-  padding-left: 26px; /* 对齐到头像右侧 */
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .msg-text {
@@ -656,7 +647,9 @@ function toolSummary(block: ContentBlock): string {
 }
 
 .stream-indicator {
-  padding: 8px 16px 16px 42px;
+  padding: 6px 16px 12px;
+  display: flex;
+  align-items: center;
   color: hsl(var(--muted-foreground) / 0.5);
 }
 </style>

@@ -228,7 +228,8 @@ export class WorkspaceFileWatcher {
       return;
     }
 
-    const { Env } = await import('../../src/main/common/env');
+    const envModule = await import('../../src/main/common/env');
+    const Env = envModule.Env || envModule.default;
     const watchPath = path.join(Env.paths.workspacesDir, threadId);
 
     const watcher = watch(watchPath, {
