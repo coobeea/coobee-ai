@@ -10,6 +10,7 @@
 import { ref, computed, onMounted } from 'vue';
 import configManager from '@/config';
 import AIGenerate from '@/components/common/AIGenerate.vue';
+import { useConfirm } from '@/composables/useConfirm';
 
 interface TaskResult {
   textResult: string;
@@ -44,6 +45,7 @@ const emit = defineEmits<{
 }>();
 
 const BASE_URL = `${configManager.getBaseUrl()}/gateway/tavern`;
+const $confirm = useConfirm();
 
 const title = ref('');
 const description = ref('');
@@ -131,7 +133,13 @@ function getFileName(filePath: string): string {
 async function handleCancelTask(): Promise<void> {
   if (!props.taskId || cancelling.value) return;
 
-  if (!confirm('确定要取消这个任务吗？')) {
+  const confirmed = await $confirm.warning('确定要取消这个任务吗？', {
+    title: '取消任务',
+    confirmText: '确定取消',
+    cancelText: '暂不取消'
+  });
+
+  if (!confirmed) {
     return;
   }
 

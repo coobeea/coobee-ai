@@ -13,6 +13,8 @@
 
 import { ref, onMounted, onUnmounted } from 'vue';
 import Container from '@/components/Container.vue';
+import ConfirmContainer from '@/components/Confirm/ConfirmContainer.vue';
+import MessageContainer from '@/components/Message/MessageContainer.vue';
 import eventBus from '@/eventbus';
 import { EventTypes } from '@shared/ipc/events';
 import { streamCleanup } from '@/composables/useStreamWs';
@@ -89,6 +91,10 @@ onUnmounted(() => {
     <router-view />
     <Container />
   </div>
+
+  <!-- 全局容器 -->
+  <ConfirmContainer />
+  <MessageContainer />
 </template>
 
 <style scoped>

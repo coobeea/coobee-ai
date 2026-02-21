@@ -43,13 +43,12 @@ export const useConfirmStore = () => {
         cancelText: store.defaultOptions.cancelText,
         type: store.defaultOptions.type,
         showIcon: store.defaultOptions.showIcon,
-        persistent: false, // 默认非持久
-        showCancelButton: true, // 默认显示取消按钮
+        persistent: false,
+        showCancelButton: true,
         ...options,
         onConfirm: async () => {
           try {
             if (options.onConfirm) {
-              // 设置加载状态
               const confirmInstance = store.confirms.find((c) => c.id === id);
               if (confirmInstance) {
                 confirmInstance.loading = true;
@@ -60,7 +59,6 @@ export const useConfirmStore = () => {
             removeConfirm(id);
             resolve(true);
           } catch (error) {
-            // 如果确认回调出错，移除加载状态但不关闭对话框
             const confirmInstance = store.confirms.find((c) => c.id === id);
             if (confirmInstance) {
               confirmInstance.loading = false;
@@ -85,11 +83,8 @@ export const useConfirmStore = () => {
     const index = store.confirms.findIndex((confirm) => confirm.id === id);
     if (index > -1) {
       const confirm = store.confirms[index];
-
-      // 先设置为不可见，触发动画
       confirm.visible = false;
 
-      // 延迟移除，等待动画完成
       setTimeout(() => {
         const currentIndex = store.confirms.findIndex((c) => c.id === id);
         if (currentIndex > -1) {

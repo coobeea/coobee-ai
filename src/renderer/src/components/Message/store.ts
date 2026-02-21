@@ -14,7 +14,7 @@ interface MessageStore {
 const store = reactive<MessageStore>({
   messages: [],
   defaultOptions: {
-    duration: 3000, // 默认3秒
+    duration: 3000,
     position: 'topCenter',
     showClose: true
   }
@@ -40,7 +40,6 @@ export const useMessageStore = () => {
 
     store.messages.push(message);
 
-    // 设置自动关闭定时器
     if (message.duration && message.duration > 0) {
       message.timer = window.setTimeout(() => {
         removeMessage(id);
@@ -55,26 +54,22 @@ export const useMessageStore = () => {
     if (index > -1) {
       const message = store.messages[index];
 
-      // 清除定时器
       if (message.timer) {
         clearTimeout(message.timer);
       }
 
-      // 调用关闭回调
       if (message.onClose) {
         message.onClose();
       }
 
-      // 先设置为不可见，触发动画
       message.visible = false;
 
-      // 延迟移除，等待动画完成
       setTimeout(() => {
         const currentIndex = store.messages.findIndex((msg) => msg.id === id);
         if (currentIndex > -1) {
           store.messages.splice(currentIndex, 1);
         }
-      }, 300); // 与CSS动画时间一致
+      }, 300);
     }
   };
 

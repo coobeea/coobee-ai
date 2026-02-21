@@ -1,11 +1,11 @@
 <template>
   <div
     v-if="visible"
-    class="fixed inset-0 bg-black/50"
+    class="overlay-mask"
     :class="{
-      '!bg-transparent': transparent,
-      'backdrop-blur-sm': blur,
-      'cursor-pointer': clickable
+      'overlay-transparent': transparent,
+      'overlay-blur': blur,
+      'overlay-clickable': clickable
     }"
     :style="maskStyle"
     @click="handleClick" />
@@ -43,12 +43,10 @@ const emit = defineEmits<{
 }>();
 
 const maskStyle = computed(() => {
-  const style: Record<string, any> = {
-    // 使用传入的z-index值
+  const style: Record<string, string | number> = {
     zIndex: props.zIndex
   };
 
-  // 当不是透明模式且需要自定义背景色或透明度时，使用内联样式
   if (!props.transparent && (props.backgroundColor !== '#000000' || props.opacity !== 0.5)) {
     style.backgroundColor = `rgba(${hexToRgb(props.backgroundColor)}, ${props.opacity})`;
   }
@@ -60,14 +58,13 @@ const maskStyle = computed(() => {
   return style;
 });
 
-const handleClick = () => {
+const handleClick = (): void => {
   emit('click');
   if (props.closeOnClick) {
     emit('close');
   }
 };
 
-// 辅助函数：将十六进制颜色转换为 RGB
 function hexToRgb(hex: string): string {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (result) {
@@ -78,5 +75,21 @@ function hexToRgb(hex: string): string {
 </script>
 
 <style scoped>
-/* 使用 Tailwind CSS 类，无需额外样式 */
+.overlay-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.overlay-transparent {
+  background: transparent !important;
+}
+
+.overlay-blur {
+  backdrop-filter: blur(4px);
+}
+
+.overlay-clickable {
+  cursor: pointer;
+}
 </style>

@@ -5,11 +5,9 @@ import { useMessageStore } from './store';
 import type { MessageAPI } from './types';
 
 const MessagePlugin = {
-  install(app: App) {
-    // 注册组件
+  install(app: App): void {
     app.component('MessageContainer', MessageContainer);
 
-    // 创建message API
     const messageStore = useMessageStore();
     const messageAPI: MessageAPI = {
       show: messageStore.addMessage,
@@ -20,10 +18,7 @@ const MessagePlugin = {
       removeAll: messageStore.removeAllMessages
     };
 
-    // 添加到全局属性
     app.config.globalProperties.$message = messageAPI;
-
-    // 提供给组合式API使用
     app.provide('$message', messageAPI);
   }
 };

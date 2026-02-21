@@ -12,10 +12,10 @@ export type MessagePosition =
 export interface MessageOptions {
   content: string;
   type?: MessageType;
-  duration?: number; // 持续时间，单位毫秒，0表示不自动关闭
+  duration?: number;
   position?: MessagePosition;
-  showClose?: boolean; // 是否显示关闭按钮
-  onClose?: () => void; // 关闭回调
+  showClose?: boolean;
+  onClose?: () => void;
 }
 
 export interface MessageInstance extends MessageOptions {

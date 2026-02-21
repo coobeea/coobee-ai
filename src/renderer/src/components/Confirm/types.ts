@@ -5,8 +5,8 @@ export interface ConfirmOptions {
   cancelText?: string;
   type?: 'info' | 'warning' | 'error' | 'success';
   showIcon?: boolean;
-  persistent?: boolean; // 新增：是否为持久对话框，点击外部或按ESC键不会关闭
-  showCancelButton?: boolean; // 新增：是否显示取消按钮
+  persistent?: boolean;
+  showCancelButton?: boolean;
   onConfirm?: () => void | Promise<void>;
   onCancel?: () => void;
 }

@@ -1,32 +1,24 @@
 <template>
   <teleport to="body">
     <!-- 消息容器 -->
-    <div
-      v-for="position in positions"
-      :key="position"
-      :class="getContainerClass(position)"
-      class="fixed pointer-events-none"
-      :style="{ zIndex: messageZIndex }">
-      <transition-group name="message" tag="div" class="space-y-2">
+    <div v-for="position in positions" :key="position" :class="getContainerClass(position)" class="message-container">
+      <transition-group name="message" tag="div" class="message-list">
         <div
           v-for="message in getMessagesByPosition(position)"
           :key="message.id"
-          :class="getMessageClass(message.type)"
-          class="pointer-events-auto bg-background border border-border rounded-lg shadow-lg p-4 flex items-center gap-3 min-w-[300px] max-w-[500px]">
+          :class="`message-item message-${message.type}`">
           <!-- 图标 -->
-          <div :class="getIconClass(message.type)" class="flex-shrink-0 flex items-center justify-center">
+          <div :class="`message-icon message-icon-${message.type}`">
             <i :class="getIconName(message.type)" class="w-5 h-5" />
           </div>
 
           <!-- 消息内容 -->
-          <div class="flex-1 text-sm text-foreground">
+          <div class="message-content">
             {{ message.content }}
           </div>
 
           <!-- 关闭按钮 -->
-          <button
-            class="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-muted flex items-center justify-center"
-            @click="removeMessage(message.id)">
+          <button class="message-close" @click="removeMessage(message.id)">
             <i class="i-mdi-close w-4 h-4" />
           </button>
         </div>
@@ -37,12 +29,10 @@
 
 <script setup lang="ts">
 import { useMessageStore } from '@/components/Message/store';
-import { layerManager } from '@/utils/LayerManager';
 
 import type { MessagePosition } from './types';
 
 const messageStore = useMessageStore();
-const messageZIndex = layerManager.nextZIndex();
 
 const positions: MessagePosition[] = [
   'topLeft',
@@ -58,56 +48,28 @@ const getMessagesByPosition = (position: MessagePosition) => {
   return messageStore.messages.filter((message) => message.position === position);
 };
 
-const getContainerClass = (position: MessagePosition) => {
-  const baseClass = 'flex flex-col';
-
+const getContainerClass = (position: MessagePosition): string => {
   switch (position) {
     case 'topLeft':
-      return `${baseClass} top-4 left-4`;
+      return 'message-top-left';
     case 'topCenter':
-      return `${baseClass} top-4 left-1/2 transform -translate-x-1/2`;
+      return 'message-top-center';
     case 'topRight':
-      return `${baseClass} top-4 right-4`;
+      return 'message-top-right';
     case 'bottomLeft':
-      return `${baseClass} bottom-4 left-4`;
+      return 'message-bottom-left';
     case 'bottomCenter':
-      return `${baseClass} bottom-4 left-1/2 transform -translate-x-1/2`;
+      return 'message-bottom-center';
     case 'bottomRight':
-      return `${baseClass} bottom-4 right-4`;
+      return 'message-bottom-right';
     case 'center':
-      return `${baseClass} top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2`;
+      return 'message-center';
     default:
-      return `${baseClass} top-4 left-1/2 transform -translate-x-1/2`;
+      return 'message-top-center';
   }
 };
 
-const getMessageClass = (type?: string) => {
-  switch (type) {
-    case 'success':
-      return 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900';
-    case 'warning':
-      return 'border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900';
-    case 'error':
-      return 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900';
-    default:
-      return 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900';
-  }
-};
-
-const getIconClass = (type?: string) => {
-  switch (type) {
-    case 'success':
-      return 'text-green-600 dark:text-green-400';
-    case 'warning':
-      return 'text-yellow-600 dark:text-yellow-400';
-    case 'error':
-      return 'text-red-600 dark:text-red-400';
-    default:
-      return 'text-blue-600 dark:text-blue-400';
-  }
-};
-
-const getIconName = (type?: string) => {
+const getIconName = (type?: string): string => {
   switch (type) {
     case 'success':
       return 'i-mdi-check-circle';
@@ -120,13 +82,146 @@ const getIconName = (type?: string) => {
   }
 };
 
-const removeMessage = (id: string) => {
+const removeMessage = (id: string): void => {
   messageStore.removeMessage(id);
 };
 </script>
 
 <style scoped>
-/* 消息动画 */
+.message-container {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.message-top-left {
+  top: 16px;
+  left: 16px;
+}
+
+.message-top-center {
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.message-top-right {
+  top: 16px;
+  right: 16px;
+}
+
+.message-bottom-left {
+  bottom: 16px;
+  left: 16px;
+}
+
+.message-bottom-center {
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.message-bottom-right {
+  bottom: 16px;
+  right: 16px;
+}
+
+.message-center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message-item {
+  pointer-events: auto;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  box-shadow:
+    0 4px 12px hsl(var(--shadow) / 0.1),
+    0 2px 6px hsl(var(--shadow) / 0.08);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 300px;
+  max-width: 500px;
+}
+
+.message-info {
+  border-color: hsl(var(--primary) / 0.3);
+  background: hsl(var(--primary) / 0.05);
+}
+
+.message-success {
+  border-color: hsl(142 71% 45% / 0.3);
+  background: hsl(142 71% 45% / 0.05);
+}
+
+.message-warning {
+  border-color: hsl(45 93% 47% / 0.3);
+  background: hsl(45 93% 47% / 0.05);
+}
+
+.message-error {
+  border-color: hsl(var(--error) / 0.3);
+  background: hsl(var(--error) / 0.05);
+}
+
+.message-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-icon-info {
+  color: hsl(var(--primary));
+}
+
+.message-icon-success {
+  color: hsl(142 71% 45%);
+}
+
+.message-icon-warning {
+  color: hsl(45 93% 47%);
+}
+
+.message-icon-error {
+  color: hsl(var(--error));
+}
+
+.message-content {
+  flex: 1;
+  font-size: 14px;
+  color: hsl(var(--foreground));
+}
+
+.message-close {
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+  transition: all 0.15s ease;
+  border-radius: 4px;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-close:hover {
+  background: hsl(var(--muted) / 0.3);
+  color: hsl(var(--foreground));
+}
+
+/* 动画 */
 .message-enter-active,
 .message-leave-active {
   transition: all 0.3s ease;
