@@ -97,19 +97,23 @@ export class ThreadStore {
 
   // ==================== CRUD ====================
 
-  /** 创建新 Thread（自动生成 Snowflake ID，sessionId = id） */
+  /** 创建新 Thread（自动生成 Snowflake ID，sessionId = {id}:main） */
   async create(params: CreateThreadParams): Promise<ThreadDefinition> {
     await this.init();
 
     const id = generateSnowflakeId();
     const now = new Date().toISOString();
 
+    // 🆕 主 Agent sessionId 添加 :main 后缀（与子 Agent 命名格式保持一致）
+    // 避免 workspaces/{id}/sessions/{id}/ 的目录名重复问题
+    const sessionId = `${id}:main`;
+
     const definition: ThreadDefinition = {
       id,
       title: params.title,
       agentId: params.agentId,
       status: 'active',
-      sessionId: id,
+      sessionId,
       agentMode: params.agentMode ?? 'agent',
       agentType: params.agentType ?? 'agent',
       runStatus: 'idle',

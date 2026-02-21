@@ -196,8 +196,8 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
 
       console.log(`[Test] Thread JSON:`, JSON.stringify(threadData, null, 2));
 
-      // 验证新增字段
-      expect(threadData.sessionId).toBe(threadData.id);
+      // 验证新增字段（🆕 新格式：sessionId = {id}:main）
+      expect(threadData.sessionId).toBe(`${threadData.id}:main`);
       expect(threadData.agentMode).toBeDefined();
       expect(threadData.agentType).toBeDefined();
       expect(threadData.runStatus).toBeDefined();
@@ -274,7 +274,8 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
       if (matched) {
         const data = JSON.parse(fs.readFileSync(path.join(THREADS_DIR, matched), 'utf-8'));
         console.log(`[Test] Thread (工具):`, JSON.stringify(data, null, 2));
-        expect(data.sessionId).toBe(data.id);
+        // 🆕 新格式：sessionId = {id}:main
+        expect(data.sessionId).toBe(`${data.id}:main`);
         expect(data.agentMode).toBe('agent');
         expect(data.agentType).toBe('agent');
       }
@@ -386,7 +387,8 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
       if (matched) {
         const data = JSON.parse(fs.readFileSync(path.join(THREADS_DIR, matched), 'utf-8'));
         console.log(`[Test] 委托 Thread:`, JSON.stringify(data, null, 2));
-        expect(data.sessionId).toBe(sessionId);
+        // 🆕 新格式：sessionId = {id}:main
+        expect(data.sessionId).toBe(`${sessionId}:main`);
       }
 
       // 验证 workspace — 子 Agent 的 tasks 目录
@@ -753,7 +755,8 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
       if (matched) {
         const thread = JSON.parse(fs.readFileSync(path.join(THREADS_DIR, matched), 'utf-8'));
         console.log(`[Test6] Thread:`, JSON.stringify(thread, null, 2));
-        expect(thread.sessionId).toBe(sessionId);
+        // 🆕 新格式：sessionId = {id}:main
+        expect(thread.sessionId).toBe(`${sessionId}:main`);
       }
     });
 
@@ -848,7 +851,8 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
       if (matched) {
         const thread = JSON.parse(fs.readFileSync(path.join(THREADS_DIR, matched), 'utf-8'));
         console.log(`[Test7] Thread:`, JSON.stringify(thread, null, 2));
-        expect(thread.sessionId).toBe(sessionId);
+        // 🆕 新格式：sessionId = {id}:main
+        expect(thread.sessionId).toBe(`${sessionId}:main`);
         expect(thread.agentType).toBe('orchestrator');
       }
     });
@@ -933,7 +937,8 @@ describe.skipIf(!canConnect)('真实集成测试', () => {
       if (matched) {
         const thread = JSON.parse(fs.readFileSync(path.join(THREADS_DIR, matched), 'utf-8'));
         console.log(`[Test8] Thread:`, JSON.stringify(thread, null, 2));
-        expect(thread.sessionId).toBe(sessionId);
+        // 🆕 新格式：sessionId = {id}:main
+        expect(thread.sessionId).toBe(`${sessionId}:main`);
         expect(thread.agentType).toBe('swarm');
       }
     });

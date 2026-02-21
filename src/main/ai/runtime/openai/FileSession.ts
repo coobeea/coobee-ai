@@ -14,11 +14,11 @@
  *   - getLastSummary()：快速获取最后一个 summary 的元数据
  */
 
-import type { Session, AgentInputItem } from '@openai/agents'
-import { mkdir, writeFile, readFile, truncate } from 'fs/promises'
-import { join, dirname } from 'path'
-import { existsSync } from 'fs'
-import type { SessionItem, SummaryMeta } from './types'
+import type { Session, AgentInputItem } from '@openai/agents';
+import { mkdir, writeFile, readFile, truncate } from 'fs/promises';
+import { join, dirname } from 'path';
+import { existsSync } from 'fs';
+import type { SessionItem, SummaryMeta } from './types';
 
 /**
  * 基于文件的 Session 实现
@@ -27,8 +27,8 @@ import type { SessionItem, SummaryMeta } from './types'
  * 对 SDK 完全透明：getItems() 返回 AgentInputItem[]，addItems() 接受 AgentInputItem[]。
  */
 export class FileSession implements Session {
-  private readonly filePath: string
-  private initialized = false
+  private readonly filePath: string;
+  private initialized = false;
 
   /**
    * @param sessionId 会话 ID
@@ -39,8 +39,13 @@ export class FileSession implements Session {
     private readonly sessionId: string,
     sessionDir?: string
   ) {
-    const dir = sessionDir || FileSession.getDefaultSessionDir()
-    this.filePath = join(dir, sessionId, 'messages.jsonl')
+    const dir = sessionDir || FileSession.getDefaultSessionDir();
+
+    // 🆕 将 : 替换为 __（Windows 文件系统兼容）
+    // 例如：283469346464145408:main → 283469346464145408__main
+    const safeSessionId = sessionId.replace(/:/g, '__');
+
+    this.filePath = join(dir, safeSessionId, 'messages.jsonl');
   }
 
   /**
@@ -52,10 +57,10 @@ export class FileSession implements Session {
   private static getDefaultSessionDir(): string {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { app } = require('electron')
-      return join(app.getPath('userData'), 'sessions')
+      const { app } = require('electron');
+      return join(app.getPath('userData'), 'sessions');
     } catch {
-      return join(process.env.HOME || '/tmp', '.coobee-ai', 'sessions')
+      return join(process.env.HOME || '/tmp', '.coobee-ai', 'sessions');
     }
   }
 
@@ -63,22 +68,22 @@ export class FileSession implements Session {
    * 确保目录和文件存在
    */
   private async ensureFile(): Promise<void> {
-    if (this.initialized) return
+    if (this.initialized) return;
 
-    const dir = dirname(this.filePath)
+    const dir = dirname(this.filePath);
     if (!existsSync(dir)) {
-      await mkdir(dir, { recursive: true })
+      await mkdir(dir, { recursive: true });
     }
     if (!existsSync(this.filePath)) {
-      await writeFile(this.filePath, '', 'utf-8')
+      await writeFile(this.filePath, '', 'utf-8');
     }
-    this.initialized = true
+    this.initialized = true;
   }
 
   // ========== SDK Session 接口实现 ==========
 
   async getSessionId(): Promise<string> {
-    return this.sessionId
+    return this.sessionId;
   }
 
   /**
@@ -93,26 +98,26 @@ export class FileSession implements Session {
    *   4. 若无 summary → 返回所有 message items
    */
   async getItems(limit?: number): Promise<AgentInputItem[]> {
-    const allItems = await this.readAllSessionItems()
+    const allItems = await this.readAllSessionItems();
 
     // 找到最后一个 summary
-    const lastSummary = this.findLastSummary(allItems)
+    const lastSummary = this.findLastSummary(allItems);
 
-    let result: AgentInputItem[]
+    let result: AgentInputItem[];
 
     if (lastSummary && lastSummary.meta) {
       // 有 summary：构建 [总结上下文 + 后续消息]
-      const summaryContext = this.buildSummaryContext(lastSummary.meta)
+      const summaryContext = this.buildSummaryContext(lastSummary.meta);
       const afterItems = allItems
         .filter((si) => si.seq > lastSummary.meta!.endSeq && si.type === 'message')
-        .map((si) => si.item)
-      result = [...summaryContext, ...afterItems]
+        .map((si) => si.item);
+      result = [...summaryContext, ...afterItems];
     } else {
       // 无 summary：返回所有 message items
-      result = allItems.filter((si) => si.type === 'message').map((si) => si.item)
+      result = allItems.filter((si) => si.type === 'message').map((si) => si.item);
     }
 
-    return limit ? result.slice(-limit) : result
+    return limit ? result.slice(-limit) : result;
   }
 
   /**
@@ -122,21 +127,21 @@ export class FileSession implements Session {
    * 自动分配递增序号，包装为 SessionItem。
    */
   async addItems(items: AgentInputItem[]): Promise<void> {
-    if (items.length === 0) return
-    await this.ensureFile()
+    if (items.length === 0) return;
+    await this.ensureFile();
 
-    const nextSeq = await this.getNextSeq()
-    const now = Date.now()
+    const nextSeq = await this.getNextSeq();
+    const now = Date.now();
 
     const sessionItems: SessionItem[] = items.map((item, i) => ({
       seq: nextSeq + i,
       type: 'message' as const,
       item,
       ts: now
-    }))
+    }));
 
-    const lines = sessionItems.map((si) => JSON.stringify(si)).join('\n') + '\n'
-    await writeFile(this.filePath, lines, { flag: 'a' })
+    const lines = sessionItems.map((si) => JSON.stringify(si)).join('\n') + '\n';
+    await writeFile(this.filePath, lines, { flag: 'a' });
   }
 
   /**
@@ -144,27 +149,23 @@ export class FileSession implements Session {
    * SDK 在某些场景下需要此功能（如撤销最后一条）
    */
   async popItem(): Promise<AgentInputItem | undefined> {
-    await this.ensureFile()
+    await this.ensureFile();
 
     try {
-      const content = await readFile(this.filePath, 'utf-8')
-      const lines = content.split('\n').filter((line) => line.trim())
+      const content = await readFile(this.filePath, 'utf-8');
+      const lines = content.split('\n').filter((line) => line.trim());
 
-      if (lines.length === 0) return undefined
+      if (lines.length === 0) return undefined;
 
-      const lastSessionItem = JSON.parse(lines[lines.length - 1]) as SessionItem
-      const remaining = lines.slice(0, -1)
+      const lastSessionItem = JSON.parse(lines[lines.length - 1]) as SessionItem;
+      const remaining = lines.slice(0, -1);
 
       // 重写文件（去掉最后一行）
-      await writeFile(
-        this.filePath,
-        remaining.length > 0 ? remaining.join('\n') + '\n' : '',
-        'utf-8'
-      )
+      await writeFile(this.filePath, remaining.length > 0 ? remaining.join('\n') + '\n' : '', 'utf-8');
 
-      return lastSessionItem.item
+      return lastSessionItem.item;
     } catch {
-      return undefined
+      return undefined;
     }
   }
 
@@ -172,13 +173,13 @@ export class FileSession implements Session {
    * 清空会话
    */
   async clearSession(): Promise<void> {
-    await this.ensureFile()
+    await this.ensureFile();
 
     try {
-      await truncate(this.filePath, 0)
+      await truncate(this.filePath, 0);
     } catch {
       // 文件可能不存在，忽略
-      await writeFile(this.filePath, '', 'utf-8')
+      await writeFile(this.filePath, '', 'utf-8');
     }
   }
 
@@ -188,7 +189,7 @@ export class FileSession implements Session {
    * 获取全部 SessionItem（含 summary，供压缩器使用）
    */
   async getAllSessionItems(): Promise<SessionItem[]> {
-    return this.readAllSessionItems()
+    return this.readAllSessionItems();
   }
 
   /**
@@ -200,9 +201,9 @@ export class FileSession implements Session {
    * @param meta 总结元数据
    */
   async appendSummaryItem(meta: SummaryMeta): Promise<void> {
-    await this.ensureFile()
+    await this.ensureFile();
 
-    const nextSeq = await this.getNextSeq()
+    const nextSeq = await this.getNextSeq();
 
     const summaryItem: SessionItem = {
       seq: nextSeq,
@@ -213,10 +214,10 @@ export class FileSession implements Session {
       } as unknown as AgentInputItem,
       meta,
       ts: Date.now()
-    }
+    };
 
-    const line = JSON.stringify(summaryItem) + '\n'
-    await writeFile(this.filePath, line, { flag: 'a' })
+    const line = JSON.stringify(summaryItem) + '\n';
+    await writeFile(this.filePath, line, { flag: 'a' });
   }
 
   /**
@@ -225,9 +226,9 @@ export class FileSession implements Session {
    * @returns SummaryMeta 或 undefined（如果没有 summary）
    */
   async getLastSummary(): Promise<SummaryMeta | undefined> {
-    const allItems = await this.readAllSessionItems()
-    const lastSummary = this.findLastSummary(allItems)
-    return lastSummary?.meta
+    const allItems = await this.readAllSessionItems();
+    const lastSummary = this.findLastSummary(allItems);
+    return lastSummary?.meta;
   }
 
   // ========== 辅助方法 ==========
@@ -236,15 +237,15 @@ export class FileSession implements Session {
    * 获取消息数量（仅计 type=message）
    */
   async getItemCount(): Promise<number> {
-    const allItems = await this.readAllSessionItems()
-    return allItems.filter((si) => si.type === 'message').length
+    const allItems = await this.readAllSessionItems();
+    return allItems.filter((si) => si.type === 'message').length;
   }
 
   /**
    * 获取文件路径（用于调试）
    */
   getFilePath(): string {
-    return this.filePath
+    return this.filePath;
   }
 
   // ========== 内部实现 ==========
@@ -257,21 +258,21 @@ export class FileSession implements Session {
    *   - 旧格式：每行是裸 AgentInputItem（无 seq 字段），自动迁移
    */
   private async readAllSessionItems(): Promise<SessionItem[]> {
-    await this.ensureFile()
+    await this.ensureFile();
 
     try {
-      const content = await readFile(this.filePath, 'utf-8')
-      const lines = content.split('\n').filter((line) => line.trim())
+      const content = await readFile(this.filePath, 'utf-8');
+      const lines = content.split('\n').filter((line) => line.trim());
 
-      if (lines.length === 0) return []
+      if (lines.length === 0) return [];
 
-      const items: SessionItem[] = []
+      const items: SessionItem[] = [];
       for (let i = 0; i < lines.length; i++) {
-        const parsed = JSON.parse(lines[i]) as Record<string, unknown>
+        const parsed = JSON.parse(lines[i]) as Record<string, unknown>;
 
         if (typeof parsed.seq === 'number' && typeof parsed.type === 'string') {
           // 新格式：SessionItem
-          items.push(parsed as unknown as SessionItem)
+          items.push(parsed as unknown as SessionItem);
         } else {
           // 旧格式：裸 AgentInputItem → 自动包装
           items.push({
@@ -279,13 +280,13 @@ export class FileSession implements Session {
             type: 'message',
             item: parsed as unknown as AgentInputItem,
             ts: 0
-          })
+          });
         }
       }
 
-      return items
+      return items;
     } catch {
-      return []
+      return [];
     }
   }
 
@@ -293,9 +294,9 @@ export class FileSession implements Session {
    * 获取下一个可用的序号
    */
   private async getNextSeq(): Promise<number> {
-    const items = await this.readAllSessionItems()
-    if (items.length === 0) return 1
-    return Math.max(...items.map((si) => si.seq)) + 1
+    const items = await this.readAllSessionItems();
+    if (items.length === 0) return 1;
+    return Math.max(...items.map((si) => si.seq)) + 1;
   }
 
   /**
@@ -304,10 +305,10 @@ export class FileSession implements Session {
   private findLastSummary(items: SessionItem[]): SessionItem | undefined {
     for (let i = items.length - 1; i >= 0; i--) {
       if (items[i].type === 'summary' && items[i].meta) {
-        return items[i]
+        return items[i];
       }
     }
-    return undefined
+    return undefined;
   }
 
   /**
@@ -317,20 +318,20 @@ export class FileSession implements Session {
    */
   private buildSummaryContext(meta: SummaryMeta): AgentInputItem[] {
     // 清洗 summaryText 中可能残留的 <think> 标签
-    const cleanSummary = meta.summaryText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+    const cleanSummary = meta.summaryText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
     const userItem = {
       role: 'user',
       content:
         '以下是我们之前对话的总结，请记住其中的所有信息（包括我的个人信息、项目细节、技术决策等），并在后续对话中使用：\n\n' +
         cleanSummary
-    } as unknown as AgentInputItem
+    } as unknown as AgentInputItem;
 
     const assistantItem = {
       role: 'assistant',
       content: '好的，我已仔细阅读并记住了以上对话总结中的所有信息。请继续。'
-    } as unknown as AgentInputItem
+    } as unknown as AgentInputItem;
 
-    return [userItem, assistantItem]
+    return [userItem, assistantItem];
   }
 }
