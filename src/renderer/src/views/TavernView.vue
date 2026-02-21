@@ -10,7 +10,7 @@
  * 存储：文件系统（每个任务一个文件夹）
  */
 
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import TaskList from '@/components/tavern/TaskList.vue';
 import TaskForm from '@/components/tavern/TaskForm.vue';
 
@@ -33,6 +33,11 @@ export interface Task {
 
 const view = ref<'list' | 'create' | 'detail'>('list');
 const selectedTaskId = ref<string | null>(null);
+const viewMode = ref<'grid' | 'list'>('grid');
+const taskListRef = ref<InstanceType<typeof TaskList> | null>(null);
+
+const taskCount = computed(() => taskListRef.value?.taskCount ?? 0);
+const isLoading = computed(() => taskListRef.value?.loading ?? false);
 
 function handleCreateTask(): void {
   view.value = 'create';
@@ -52,6 +57,12 @@ function handleBackToList(): void {
 function handleTaskCreated(): void {
   view.value = 'list';
 }
+
+function handleRefresh(): void {
+  if (taskListRef.value) {
+    taskListRef.value.refresh();
+  }
+}
 </script>
 
 <template>
@@ -68,13 +79,38 @@ function handleTaskCreated(): void {
         <h1 class="header-title">
           {{ view === 'list' ? '酒馆任务' : view === 'create' ? '发布任务' : '任务详情' }}
         </h1>
+        <span v-if="view === 'list'" class="task-count">共 {{ taskCount }} 个任务</span>
+      </div>
+      <div v-if="view === 'list'" class="header-right">
+        <button
+          class="view-toggle-btn"
+          :class="{ active: viewMode === 'grid' }"
+          title="块状视图"
+          @click="viewMode = 'grid'">
+          <span class="i-carbon-grid inline-block h-3.5 w-3.5" />
+        </button>
+        <button
+          class="view-toggle-btn"
+          :class="{ active: viewMode === 'list' }"
+          title="列表视图"
+          @click="viewMode = 'list'">
+          <span class="i-carbon-list inline-block h-3.5 w-3.5" />
+        </button>
+        <button class="refresh-btn" title="刷新" @click="handleRefresh">
+          <span class="i-carbon-renew inline-block h-3.5 w-3.5" :class="{ 'animate-spin': isLoading }" />
+        </button>
+        <div class="toolbar-divider"></div>
+        <button class="create-btn" @click="handleCreateTask">
+          <span class="i-carbon-add inline-block h-3.5 w-3.5" />
+          <span>发布任务</span>
+        </button>
       </div>
     </header>
 
     <!-- 内容区域 -->
     <div class="content">
       <!-- 任务列表 -->
-      <TaskList v-if="view === 'list'" @view-task="handleViewTask" @create-task="handleCreateTask" />
+      <TaskList v-if="view === 'list'" ref="taskListRef" :view-mode="viewMode" @view-task="handleViewTask" />
 
       <!-- 任务发布表单 -->
       <TaskForm v-else-if="view === 'create'" @cancel="handleBackToList" @success="handleTaskCreated" />
@@ -148,6 +184,66 @@ function handleTaskCreated(): void {
   font-weight: 600;
   color: hsl(var(--foreground));
   letter-spacing: -0.01em;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-count {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground) / 0.7);
+  margin-left: 12px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: hsl(var(--border) / 0.3);
+  margin: 0 8px;
+}
+
+.view-toggle-btn,
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  transition: all 0.15s ease;
+}
+
+.view-toggle-btn:hover,
+.refresh-btn:hover {
+  background: hsl(var(--foreground) / 0.05);
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.view-toggle-btn.active {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+}
+
+.create-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.08);
+  transition: all 0.15s ease;
+}
+
+.create-btn:hover {
+  background: hsl(var(--primary) / 0.14);
 }
 
 .content {

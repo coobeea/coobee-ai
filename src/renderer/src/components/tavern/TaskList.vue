@@ -19,17 +19,27 @@ interface Task {
   updatedAt: string;
 }
 
+const props = withDefaults(
+  defineProps<{
+    viewMode?: 'grid' | 'list';
+  }>(),
+  {
+    viewMode: 'grid'
+  }
+);
+
 const emit = defineEmits<{
   viewTask: [taskId: string];
-  createTask: [];
 }>();
 
 const tasks = ref<Task[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
-const viewMode = ref<'grid' | 'list'>('grid');
+
 const currentPage = ref(1);
 const pageSize = 12;
+
+const taskCount = computed(() => tasks.value.length);
 
 const BASE_URL = `${configManager.getBaseUrl()}/gateway/tavern`;
 
@@ -96,6 +106,16 @@ function formatTime(iso: string): string {
   }
 }
 
+function refresh(): void {
+  fetchTasks();
+}
+
+defineExpose({
+  taskCount,
+  loading,
+  refresh
+});
+
 onMounted(() => {
   fetchTasks();
 });
@@ -103,37 +123,6 @@ onMounted(() => {
 
 <template>
   <div class="task-list">
-    <!-- 工具栏 -->
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <span class="task-count">共 {{ tasks.length }} 个任务</span>
-      </div>
-      <div class="toolbar-right">
-        <button
-          class="view-toggle-btn"
-          :class="{ active: viewMode === 'grid' }"
-          title="块状视图"
-          @click="viewMode = 'grid'">
-          <span class="i-carbon-grid inline-block h-3.5 w-3.5" />
-        </button>
-        <button
-          class="view-toggle-btn"
-          :class="{ active: viewMode === 'list' }"
-          title="列表视图"
-          @click="viewMode = 'list'">
-          <span class="i-carbon-list inline-block h-3.5 w-3.5" />
-        </button>
-        <button class="refresh-btn" title="刷新" @click="fetchTasks">
-          <span class="i-carbon-renew inline-block h-3.5 w-3.5" :class="{ 'animate-spin': loading }" />
-        </button>
-        <div class="toolbar-divider"></div>
-        <button class="create-task-btn" title="发布任务" @click="emit('createTask')">
-          <span class="i-carbon-add inline-block h-3.5 w-3.5" />
-          <span>发布任务</span>
-        </button>
-      </div>
-    </div>
-
     <!-- 加载中 -->
     <div v-if="loading && tasks.length === 0" class="empty-state">
       <span class="i-carbon-renew inline-block h-5 w-5 animate-spin opacity-25" />
@@ -157,7 +146,7 @@ onMounted(() => {
     <!-- 任务列表 -->
     <template v-else>
       <!-- 块状视图 -->
-      <div v-if="viewMode === 'grid'" class="task-grid">
+      <div v-if="props.viewMode === 'grid'" class="task-grid">
         <div v-for="task in paginatedTasks" :key="task.id" class="task-card" @click="emit('viewTask', task.id)">
           <div class="task-header">
             <h3 class="task-title">{{ task.title }}</h3>
@@ -177,7 +166,7 @@ onMounted(() => {
       </div>
 
       <!-- 列表视图 -->
-      <div v-else class="task-list-view">
+      <div v-else-if="props.viewMode === 'list'" class="task-list-view">
         <div v-for="task in paginatedTasks" :key="task.id" class="task-row" @click="emit('viewTask', task.id)">
           <div class="task-row-main">
             <h3 class="task-row-title">{{ task.title }}</h3>
@@ -214,82 +203,7 @@ onMounted(() => {
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: hsl(var(--surface) / 0.6);
-  border: 1px solid hsl(var(--border) / 0.3);
-}
-
-.toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.task-count {
-  font-size: 12px;
-  color: hsl(var(--muted-foreground) / 0.7);
-}
-
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.toolbar-divider {
-  width: 1px;
-  height: 20px;
-  background: hsl(var(--border) / 0.3);
-  margin: 0 8px;
-}
-
-.view-toggle-btn,
-.refresh-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  color: hsl(var(--muted-foreground) / 0.5);
-  transition: all 0.15s ease;
-}
-
-.view-toggle-btn:hover,
-.refresh-btn:hover {
-  background: hsl(var(--foreground) / 0.05);
-  color: hsl(var(--foreground) / 0.7);
-}
-
-.view-toggle-btn.active {
-  background: hsl(var(--primary) / 0.1);
-  color: hsl(var(--primary));
-}
-
-.create-task-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: hsl(var(--primary));
-  background: hsl(var(--primary) / 0.08);
-  transition: all 0.15s ease;
-}
-
-.create-task-btn:hover {
-  background: hsl(var(--primary) / 0.14);
+  gap: 0;
 }
 
 /* 块状视图 */
