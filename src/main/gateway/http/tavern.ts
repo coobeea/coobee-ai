@@ -13,10 +13,9 @@
  * 数据存储：
  *   - 使用文件系统存储
  *   - 目录结构：~/.coobee-ai/tavern/
- *     - tasks.json（任务列表索引）
+ *     - tasks.jsonl（任务列表索引，JSONL 格式，每行一个任务）
  *     - tasks/[taskId]/（每个任务一个文件夹）
  *       - meta.json（任务元数据）
- *       - files/（附件文件）
  */
 
 import * as fs from 'fs';
@@ -50,9 +49,9 @@ function getTavernDir(): string {
   return path.join(Env.paths.userHome, 'tavern');
 }
 
-// 获取任务列表文件路径
+// 获取任务列表文件路径（JSONL 格式）
 function getTasksIndexPath(): string {
-  return path.join(getTavernDir(), 'tasks.json');
+  return path.join(getTavernDir(), 'tasks.jsonl');
 }
 
 // 获取任务文件夹路径
@@ -70,12 +69,16 @@ async function ensureDir(dirPath: string): Promise<void> {
   }
 }
 
-// 读取任务列表索引
+// 读取任务列表索引（JSONL 格式：每行一个 JSON 对象）
 async function readTasksIndex(): Promise<Task[]> {
   const indexPath = getTasksIndexPath();
   try {
     const content = await fs.promises.readFile(indexPath, 'utf-8');
-    return JSON.parse(content) as Task[];
+    const lines = content
+      .trim()
+      .split('\n')
+      .filter((line) => line.trim());
+    return lines.map((line) => JSON.parse(line) as Task);
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       return [];
@@ -84,11 +87,20 @@ async function readTasksIndex(): Promise<Task[]> {
   }
 }
 
-// 写入任务列表索引
+// 写入任务列表索引（JSONL 格式：每行一个 JSON 对象）
 async function writeTasksIndex(tasks: Task[]): Promise<void> {
   await ensureDir(getTavernDir());
   const indexPath = getTasksIndexPath();
-  await fs.promises.writeFile(indexPath, JSON.stringify(tasks, null, 2), 'utf-8');
+  const lines = tasks.map((task) => JSON.stringify(task)).join('\n');
+  await fs.promises.writeFile(indexPath, lines + (tasks.length > 0 ? '\n' : ''), 'utf-8');
+}
+
+// 追加任务到索引（避免读取整个文件）
+async function appendTaskToIndex(task: Task): Promise<void> {
+  await ensureDir(getTavernDir());
+  const indexPath = getTasksIndexPath();
+  const line = JSON.stringify(task) + '\n';
+  await fs.promises.appendFile(indexPath, line, 'utf-8');
 }
 
 // 读取任务元数据
@@ -195,10 +207,8 @@ export function registerTavernRoutes(router: Router): void {
       // 写入任务元数据
       await writeTaskMeta(taskId, task);
 
-      // 更新任务列表索引
-      const tasks = await readTasksIndex();
-      tasks.push(task);
-      await writeTasksIndex(tasks);
+      // 追加到任务列表索引（JSONL 格式，追加新行）
+      await appendTaskToIndex(task);
 
       log.info(`Task created: ${taskId}`);
       ctx.body = { task };
