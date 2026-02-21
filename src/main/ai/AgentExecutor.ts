@@ -418,37 +418,51 @@ class AgentExecutor {
     this.busySessions.set(sessionId, { startedAt: Date.now() });
     let runtime: AgentRuntime | null = null;
 
-    log.info(`[AgentExecutor] Stream: sessionId=${sessionId}, messageLen=${message.length}`);
+    // 检查是否轻量模式
+    const isLightweight = (builder as unknown as { getLightweight?: () => boolean }).getLightweight?.() ?? false;
+
+    log.info(
+      `[AgentExecutor] Stream: sessionId=${sessionId}, messageLen=${message.length}, lightweight=${isLightweight}`
+    );
 
     let eventWriter: AgentEventWriter | null = null;
-
     let workspaceDir: string | undefined;
-    const { Env } = await import('@main/common/env');
-    if (builder) {
-      workspaceDir = (builder as unknown as { getWorkspaceRoot?: () => string | undefined }).getWorkspaceRoot?.();
-    }
-    if (!workspaceDir) {
-      workspaceDir = await Env.getAgentWorkspaceDir(sessionId);
-    }
 
-    // 加载任务级 Extension（如果存在）
-    const { ExtensionManager } = await import('@main/common/extension');
-    const loader = ExtensionManager.getLoader?.();
-    if (loader) {
-      await loader.loadWorkspaceExtensions(sessionId, workspaceDir).catch((err) => {
-        log.warn(`[AgentExecutor] Failed to load workspace extensions for ${sessionId}:`, err);
-      });
+    // ========== 非轻量模式：完整流程（工作空间 + EventBus） ==========
+    if (!isLightweight) {
+      const { Env } = await import('@main/common/env');
+      if (builder) {
+        workspaceDir = (builder as unknown as { getWorkspaceRoot?: () => string | undefined }).getWorkspaceRoot?.();
+      }
+      if (!workspaceDir) {
+        workspaceDir = await Env.getAgentWorkspaceDir(sessionId);
+      }
+
+      // 加载任务级 Extension（如果存在）
+      const { ExtensionManager } = await import('@main/common/extension');
+      const loader = ExtensionManager.getLoader?.();
+      if (loader) {
+        await loader.loadWorkspaceExtensions(sessionId, workspaceDir).catch((err) => {
+          log.warn(`[AgentExecutor] Failed to load workspace extensions for ${sessionId}:`, err);
+        });
+      }
     }
 
     try {
-      // 0. 注入运行时环境
-      const workspace = await injectEnv(sessionId, builder);
-      eventWriter = new AgentEventWriter(workspace);
-      eventWriter.register(sessionId);
+      // 0. 注入运行时环境（轻量模式下简化）
+      if (!isLightweight) {
+        const workspace = await injectEnv(sessionId, builder);
+        eventWriter = new AgentEventWriter(workspace);
+        eventWriter.register(sessionId);
+      }
 
-      // 1. 创建 Runtime + 注册统一分发器
+      // 1. 创建 Runtime
       runtime = await builder.sessionId(sessionId).build();
-      eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
+
+      // 1.5 注册统一分发器（非轻量模式）
+      if (eventWriter && !isLightweight) {
+        eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
+      }
 
       // 2. 透传 stream()（同步触发 Extension Hook），传入 signal
       const gen = runtime.stream(message, { signal });
@@ -459,18 +473,22 @@ class AgentExecutor {
       while (!r.done) {
         const chunk = r.value;
 
-        // 统一分发：写文件 + 推前端（唯一入口）
-        eventWriter.dispatch(chunk);
+        // 统一分发：写文件 + 推前端（轻量模式下跳过）
+        if (eventWriter && !isLightweight) {
+          eventWriter.dispatch(chunk);
+        }
 
         if (chunk.type === 'run:error') {
           log.error(`[AgentExecutor] API error: sessionId=${sessionId}, error=${chunk.content}`);
         }
 
-        // Extension Hook 触发（与 consumeAndForward 一致）
-        this.fireChunkHooks(chunk, sessionId, {
-          getTurnStartTime: () => turnStartTime,
-          getTurnToolCallCount: () => turnToolCallCount
-        });
+        // Extension Hook 触发（轻量模式下跳过）
+        if (!isLightweight) {
+          this.fireChunkHooks(chunk, sessionId, {
+            getTurnStartTime: () => turnStartTime,
+            getTurnToolCallCount: () => turnToolCallCount
+          });
+        }
 
         if (chunk.type === 'turn:start') {
           turnStartTime = Date.now();
@@ -489,19 +507,23 @@ class AgentExecutor {
       log.error(`[AgentExecutor] Stream error: sessionId=${sessionId}`, error);
       throw error;
     } finally {
-      eventWriter?.unregister(sessionId);
+      // 清理（轻量模式下跳过）
+      if (!isLightweight) {
+        eventWriter?.unregister(sessionId);
+
+        // 卸载任务级 Extension
+        const { ExtensionManager } = await import('@main/common/extension');
+        const loader = ExtensionManager.getLoader?.();
+        if (loader) {
+          await loader.unloadWorkspaceExtensions(sessionId).catch((err) => {
+            log.warn(`[AgentExecutor] Failed to unload workspace extensions for ${sessionId}:`, err);
+          });
+        }
+      }
+
       await this.destroyRuntime(runtime);
       runtime = null;
       this.busySessions.delete(sessionId);
-
-      // 卸载任务级 Extension
-      const { ExtensionManager } = await import('@main/common/extension');
-      const loader = ExtensionManager.getLoader?.();
-      if (loader) {
-        await loader.unloadWorkspaceExtensions(sessionId).catch((err) => {
-          log.warn(`[AgentExecutor] Failed to unload workspace extensions for ${sessionId}:`, err);
-        });
-      }
     }
   }
 

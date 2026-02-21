@@ -337,6 +337,7 @@ function createBuilderFromAgentDef(
     .name(def.name || def.id)
     .mode(agentMode)
     .sessionMode('memory')
+    .lightweight(true)
     .instructions(def.instructions);
 
   // 合并 builtin + Extension 工具

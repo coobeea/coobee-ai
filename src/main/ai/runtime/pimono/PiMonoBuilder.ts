@@ -36,6 +36,7 @@ export class PiMonoBuilder {
   private _sandboxContext?: import('../../tools/types').ToolExecutionContext;
   private _providerConfig?: ProviderConfig;
   private _providerModelId?: string;
+  private _lightweight = false;
 
   /** Agent 名称 */
   name(name: string): this {
@@ -61,6 +62,27 @@ export class PiMonoBuilder {
   /** 获取 Agent 名称（供 AgentEnvInjector 读取） */
   getName(): string {
     return this._name;
+  }
+
+  /**
+   * 轻量模式（默认 false）
+   *
+   * 启用后，AgentExecutor.stream() 将跳过：
+   * - 工作空间创建
+   * - EventBus 事件广播
+   * - Workspace Extensions 加载
+   * - 完整 AgentEnv 注入
+   *
+   * 适用于临时、一次性的 LLM 调用（如标题生成、任务分析）
+   */
+  lightweight(enabled: boolean): this {
+    this._lightweight = enabled;
+    return this;
+  }
+
+  /** 获取轻量模式标志（供 AgentExecutor 读取） */
+  getLightweight(): boolean {
+    return this._lightweight;
   }
 
   /** 系统指令 */

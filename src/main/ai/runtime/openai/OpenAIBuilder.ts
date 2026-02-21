@@ -28,6 +28,7 @@ export class OpenAIBuilder {
   private _contextDir?: string;
   private _workspaceRoot?: string;
   private _sandboxContext?: import('../../tools/types').ToolExecutionContext;
+  private _lightweight = false;
 
   /** Agent 名称 */
   name(name: string): this {
@@ -53,6 +54,22 @@ export class OpenAIBuilder {
   /** 获取 Agent 名称（供 AgentEnvInjector 读取） */
   getName(): string {
     return this._name;
+  }
+
+  /**
+   * 轻量模式（默认 false）
+   *
+   * 启用后，AgentExecutor.stream() 将跳过工作空间创建和事件广播。
+   * 适用于临时、一次性的 LLM 调用。
+   */
+  lightweight(enabled: boolean): this {
+    this._lightweight = enabled;
+    return this;
+  }
+
+  /** 获取轻量模式标志（供 AgentExecutor 读取） */
+  getLightweight(): boolean {
+    return this._lightweight;
   }
 
   /** 系统指令 */
