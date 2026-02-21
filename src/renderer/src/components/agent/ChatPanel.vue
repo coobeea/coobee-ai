@@ -117,7 +117,6 @@ onMounted(() => {
       ref="chatMessagesRef"
       :messages="chatStore.messages"
       :is-streaming="chatStore.isStreaming"
-      mode="thread"
       @decide="handleApproval">
       <template #empty>
         <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">

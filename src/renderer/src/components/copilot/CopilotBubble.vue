@@ -149,7 +149,6 @@ function handleApproval(approval: PendingApproval, decision: HitlApprovalDecisio
         ref="chatMessagesRef"
         :messages="copilot.messages"
         :is-streaming="copilot.isStreaming"
-        mode="copilot"
         @decide="handleApproval">
         <template #empty>
           <div class="panel-empty-icon">
