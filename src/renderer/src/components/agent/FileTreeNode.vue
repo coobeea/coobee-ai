@@ -201,11 +201,11 @@ function getFileIcon(name: string): string {
 }
 
 .file-tree-node-selected::before {
-  background: hsl(var(--primary) / 0.12);
+  background: hsl(var(--primary) / 0.2);
 }
 
 .file-tree-node-selected:hover::before {
-  background: hsl(var(--primary) / 0.16);
+  background: hsl(var(--primary) / 0.26);
 }
 
 .file-tree-node > * {

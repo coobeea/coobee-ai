@@ -210,8 +210,8 @@ onUnmounted(() => {
 
 .chat-input {
   width: 100%;
-  min-height: 52px;
-  max-height: 200px;
+  min-height: 80px;
+  max-height: 240px;
   overflow-y: auto;
 }
 
@@ -243,9 +243,9 @@ onUnmounted(() => {
 
 /* Tiptap 编辑器样式 */
 .chat-input :deep(.tiptap-editor) {
-  padding: 8px 10px;
-  padding-bottom: 36px;
-  min-height: 52px;
+  padding: 12px 14px;
+  padding-bottom: 40px;
+  min-height: 80px;
   color: hsl(var(--foreground));
   font-size: 14px;
   line-height: 1.6;
