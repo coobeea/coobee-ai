@@ -33,7 +33,7 @@ function parseSSEEvent(text: string): SSEEvent | null {
 }
 
 /**
- * 调用 Agent 的 quick-chat 接口
+ * 调用 Agent 的 quick-chat 接口（非流式）
  *
  * @param agentId - Agent ID（如 'title-generator'）
  * @param message - 用户消息
@@ -95,6 +95,79 @@ export async function quickChat(agentId: string, message: string): Promise<strin
     return output.trim() || null;
   } catch (err) {
     console.warn(`[quickChat] Failed for agent "${agentId}":`, err);
+    return null;
+  }
+}
+
+/**
+ * 调用 Agent 的 quick-chat 接口（流式版本）
+ *
+ * @param agentId - Agent ID
+ * @param message - 用户消息
+ * @param onChunk - 每次接收到增量时的回调
+ * @returns 返回 Agent 的完整输出文本
+ */
+export async function quickChatStream(
+  agentId: string,
+  message: string,
+  onChunk?: (chunk: string) => void
+): Promise<string | null> {
+  try {
+    const url = `${configManager.getBaseUrl()}/gateway/agents/${agentId}/quick-chat`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message })
+    });
+
+    if (!response.ok) {
+      console.warn(`[quickChatStream] HTTP ${response.status} for agent "${agentId}"`);
+      return null;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) return null;
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let output = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
+
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+
+        const parsed = parseSSEEvent(trimmed);
+        if (!parsed) continue;
+
+        try {
+          const data = JSON.parse(parsed.data);
+
+          if (parsed.event === 'delta' && data.content) {
+            output += data.content;
+            // 实时回调增量
+            if (onChunk) {
+              onChunk(data.content);
+            }
+          }
+        } catch {
+          // 忽略解析错误
+        }
+      }
+    }
+
+    return output.trim() || null;
+  } catch (err) {
+    console.warn(`[quickChatStream] Failed for agent "${agentId}":`, err);
     return null;
   }
 }

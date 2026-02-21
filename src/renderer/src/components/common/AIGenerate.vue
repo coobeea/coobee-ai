@@ -28,7 +28,7 @@
 
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue';
-import { quickChat } from '@/composables/useQuickChat';
+import { quickChatStream } from '@/composables/useQuickChat';
 import Popup from '@/components/Popup/index.vue';
 
 /**
@@ -138,16 +138,31 @@ const buildPrompt = async (context?: unknown): Promise<string> => {
 };
 
 /**
+ * 去掉代码块包裹（如 ```markdown ... ``` 或 ```json ... ```）
+ */
+const unwrapCodeBlock = (text: string): string => {
+  // 匹配 ```语言名 ... ``` 或 ``` ... ```
+  const codeBlockMatch = text.match(/```(?:markdown|json|[a-z]*)\s*\n([\s\S]*?)\n```/);
+  if (codeBlockMatch) {
+    return codeBlockMatch[1].trim();
+  }
+  return text.trim();
+};
+
+/**
  * 解析 JSON 结果
  */
 const parseJsonResult = (text: string): unknown => {
   try {
-    const jsonBlockMatch = text.match(/```json\s*\n([\s\S]*?)\n```/);
+    // 先去掉代码块包裹
+    const unwrapped = unwrapCodeBlock(text);
+
+    const jsonBlockMatch = unwrapped.match(/```json\s*\n([\s\S]*?)\n```/);
     if (jsonBlockMatch) {
       return JSON.parse(jsonBlockMatch[1].trim());
     }
 
-    const codeBlockMatch = text.match(/```\s*\n([\s\S]*?)\n```/);
+    const codeBlockMatch = unwrapped.match(/```\s*\n([\s\S]*?)\n```/);
     if (codeBlockMatch) {
       const content = codeBlockMatch[1].trim();
       if (content.startsWith('{') || content.startsWith('[')) {
@@ -155,18 +170,18 @@ const parseJsonResult = (text: string): unknown => {
       }
     }
 
-    const jsonObjectMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    const jsonObjectMatch = unwrapped.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
     if (jsonObjectMatch) {
       return JSON.parse(jsonObjectMatch[1]);
     }
 
-    const trimmedText = text.trim();
+    const trimmedText = unwrapped.trim();
     if (trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
       return JSON.parse(trimmedText);
     }
 
     console.warn('[AIGenerate] 未找到有效的 JSON 内容，返回原始文本');
-    return text;
+    return unwrapped;
   } catch {
     console.warn('[AIGenerate] JSON 解析失败，返回原始文本');
     return text;
@@ -202,7 +217,10 @@ const trigger = async (context?: unknown): Promise<void> => {
       throw new Error('提示词不能为空');
     }
 
-    const output = await quickChat(props.agent, prompt);
+    // 使用流式版本，实时更新 accumulatedContent
+    const output = await quickChatStream(props.agent, prompt, (chunk: string) => {
+      accumulatedContent.value += chunk;
+    });
 
     if (props.cancelToken?.cancelled) {
       generateStatus.value = 'cancelled';
@@ -214,9 +232,11 @@ const trigger = async (context?: unknown): Promise<void> => {
       throw new Error('AI 返回内容为空');
     }
 
-    accumulatedContent.value = output;
+    // 去掉 Markdown 代码块包裹
+    const unwrapped = unwrapCodeBlock(output);
+    accumulatedContent.value = unwrapped;
 
-    const parsedResult = props.autoParseJson ? parseJsonResult(output) : output;
+    const parsedResult = props.autoParseJson ? parseJsonResult(unwrapped) : unwrapped;
     result.value = parsedResult;
     generateStatus.value = 'success';
 
@@ -434,11 +454,24 @@ defineExpose({
       <!-- 内容区域 -->
       <div class="dialog-content">
         <!-- 生成中 -->
-        <div v-if="generateStatus === 'generating'" class="generating-state">
-          <i class="i-mdi-loading animate-spin w-12 h-12 status-generating-icon" />
-          <div class="text-center space-y-2">
-            <p class="generating-text">AI 正在生成中...</p>
-            <p class="generating-hint">正在解析数据，请稍候</p>
+        <div v-if="generateStatus === 'generating'">
+          <!-- 流式内容展示 -->
+          <div v-if="accumulatedContent" class="streaming-content">
+            <div class="streaming-indicator">
+              <i class="i-mdi-loading animate-spin w-4 h-4 status-generating-icon" />
+              <span class="streaming-text">AI 正在生成中...</span>
+            </div>
+            <div class="streaming-text-content">
+              {{ accumulatedContent }}
+            </div>
+          </div>
+          <!-- 初始加载状态 -->
+          <div v-else class="generating-state">
+            <i class="i-mdi-loading animate-spin w-12 h-12 status-generating-icon" />
+            <div class="text-center space-y-2">
+              <p class="generating-text">AI 正在生成中...</p>
+              <p class="generating-hint">正在解析数据，请稍候</p>
+            </div>
           </div>
         </div>
 
@@ -668,6 +701,42 @@ defineExpose({
   justify-content: center;
   padding: 48px 0;
   gap: 16px;
+}
+
+.streaming-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.streaming-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: hsl(var(--primary) / 0.08);
+  border-radius: 8px;
+  border: 1px solid hsl(var(--primary) / 0.2);
+}
+
+.streaming-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--primary));
+}
+
+.streaming-text-content {
+  padding: 16px;
+  background: hsl(var(--muted) / 0.1);
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border) / 0.25);
+  font-size: 13px;
+  line-height: 1.6;
+  color: hsl(var(--foreground));
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 50vh;
+  overflow-y: auto;
 }
 
 .status-generating-icon {
