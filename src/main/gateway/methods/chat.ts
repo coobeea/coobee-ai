@@ -98,16 +98,21 @@ function createBuilderFromDefinition(
     toolMap.set(ext.name, ext);
   }
 
-  // 工具过滤逻辑
-  let finalTools;
+  // 工具过滤逻辑（两层过滤）
+  let candidateTools;
   if (def.tools && def.tools.length > 0) {
-    // 1. Agent 定义中明确指定了工具列表 → 严格按配置加载
-    finalTools = def.tools.map((name) => toolMap.get(name)).filter((t): t is NonNullable<typeof t> => t !== undefined);
+    // 1. Agent 定义中明确指定了工具列表 → 按配置加载
+    candidateTools = def.tools
+      .map((name) => toolMap.get(name))
+      .filter((t): t is NonNullable<typeof t> => t !== undefined);
   } else {
     // 2. 未配置工具 → 加载所有可用工具（向后兼容）
-    const allTools = Array.from(toolMap.values());
-    finalTools = agentMode === 'chat' ? allTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name)) : allTools;
+    candidateTools = Array.from(toolMap.values());
   }
+
+  // 3. 根据模式进行二次过滤（chat 模式强制排除危险工具）
+  const finalTools =
+    agentMode === 'chat' ? candidateTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name)) : candidateTools;
 
   builder.tools(finalTools);
 
