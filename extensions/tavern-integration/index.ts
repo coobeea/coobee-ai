@@ -1,9 +1,11 @@
-import type { ExtensionModule } from '@main/common/extension';
-import { log } from '@main/common/logger';
+import type { ExtensionModule, ExtensionApi } from '@main/common/extension';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { Env } from '@main/common/env';
 import { agentExecutor } from '@main/ai/AgentExecutor';
+
+// Extension API logger (将在 register 时注入)
+let logger: ExtensionApi['logger'];
 
 /**
  * 更新任务状态（直接操作本地文件系统，即 Direct 模式）
@@ -46,7 +48,7 @@ async function updateTaskStatus(taskId: string, status: string, result?: unknown
     });
     await fs.writeFile(tasksIndexPath, newLines.join('\n') + '\n', 'utf-8');
   } catch (err) {
-    log.error(`[TavernIntegration] Failed to update tasks index for task ${taskId}:`, err);
+    logger?.error(`[TavernIntegration] Failed to update tasks index for task ${taskId}:`, err);
   }
 
   return true;
@@ -57,6 +59,8 @@ export default {
   name: 'Tavern Integration',
 
   register: (api) => {
+    // 注入 logger
+    logger = api.logger;
     // 1. 注册 Channel
     api.registerChannel({
       id: 'tavern-channel',
@@ -80,7 +84,7 @@ export default {
           const body = ctx.request.body;
           if (body && body.event === 'external.tavern.task.created' && body.task) {
             const taskObj = body.task as { id: string };
-            log.info(`[TavernIntegration] Received new task event from worker: ${taskObj.id}`);
+            logger.info(`[TavernIntegration] Received new task event from worker: ${taskObj.id}`);
 
             // 将事件推入系统全局事件总线
             api.events?.emit(body.event as string, body.task);
@@ -92,7 +96,7 @@ export default {
             ctx.body = { ok: false, error: 'Invalid event payload' };
           }
         } catch (err) {
-          log.error('[TavernIntegration] Error processing webhook event:', err);
+          logger.error('[TavernIntegration] Error processing webhook event:', err);
           ctx.status = 500;
           ctx.body = { ok: false, error: 'Internal Server Error' };
         }
@@ -103,10 +107,10 @@ export default {
     api.registerService({
       id: 'tavern-task-dispatcher',
       start: () => {
-        log.info('[TavernTaskDispatcher] Started. Listening for tavern tasks.');
+        logger.info('[TavernTaskDispatcher] Started. Listening for tavern tasks.');
         api.events?.on('external.tavern.task.created', async (task: unknown) => {
           const taskObj = task as { id: string; title: string; description: string };
-          log.info(`[TavernTaskDispatcher] Dispatching task ${taskObj.id} to app-copilot...`);
+          logger.info(`[TavernTaskDispatcher] Dispatching task ${taskObj.id} to app-copilot...`);
 
           try {
             // 直接指定接单的 Agent
@@ -146,12 +150,12 @@ Please analyze this task, use the 'external_tavern_accept_task' tool to accept i
               }
             });
           } catch (err) {
-            log.error(`[TavernTaskDispatcher] Failed to dispatch task ${task.id}:`, err);
+            logger.error(`[TavernTaskDispatcher] Failed to dispatch task ${taskObj.id}:`, err);
           }
         });
       },
       stop: () => {
-        log.info('[TavernTaskDispatcher] Stopped.');
+        logger.info('[TavernTaskDispatcher] Stopped.');
         // 取消监听。注意 ExtensionRegistry unregisterAll 时会自动清理 api.events 的监听器
       }
     });
@@ -172,7 +176,7 @@ Please analyze this task, use the 'external_tavern_accept_task' tool to accept i
         const { taskId } = params;
         const success = await updateTaskStatus(taskId, 'in-progress');
         if (success) {
-          log.info(`[TavernIntegration] Agent accepted task ${taskId}`);
+          logger.info(`[TavernIntegration] Agent accepted task ${taskId}`);
           return { success: true, message: `Task ${taskId} accepted successfully.` };
         }
         return { success: false, error: `Task ${taskId} not found or update failed.` };
@@ -202,7 +206,7 @@ Please analyze this task, use the 'external_tavern_accept_task' tool to accept i
         const success = await updateTaskStatus(taskId, 'completed', result);
 
         if (success) {
-          log.info(`[TavernIntegration] Agent submitted result for task ${taskId}`);
+          logger.info(`[TavernIntegration] Agent submitted result for task ${taskId}`);
           return { success: true, message: `Result for task ${taskId} submitted successfully.` };
         }
         return { success: false, error: `Task ${taskId} not found or update failed.` };
