@@ -30,20 +30,22 @@ workers/
 
 ## 🔧 虚拟环境约定
 
-### 自动查找规则
+### 统一位置规则
 
-WorkerManager 按以下优先级查找虚拟环境：
+所有 Worker 的虚拟环境**必须**位于其目录内：
 
-1. **就地虚拟环境**：`workers/{name}/venv/`
-   - 优势：Worker 独立打包、便于分发
-   - 适用：预构建的 Worker、LLM 生成的 Worker
+```plaintext
+workers/{name}/venv/
+```
 
-2. **独立虚拟环境**：`worker-envs/{name}_env/`
-   - 优势：统一管理、便于清理
-   - 适用：开发中的 Worker、共享管理
+**优势**：
 
-3. **默认创建位置**：`worker-envs/{name}_env/`
-   - 如果两个位置都不存在，自动在此创建
+- Worker 自包含，易于打包分发
+- 源码与环境一体化管理
+- 适合 LLM 生成 Worker
+- 简单清晰，无需额外目录
+
+**如果虚拟环境不存在**，WorkerManager 会自动创建（使用项目的 `uv` 工具或 `venv`）
 
 ### 示例场景
 
@@ -84,44 +86,35 @@ pnpm dev
 
 # ✅ WorkerManager 自动：
 #    - 扫描发现 my-worker
-#    - 创建虚拟环境：worker-envs/my-worker_env/
+#    - 创建虚拟环境：workers/my-worker/venv/
 #    - 安装依赖
 #    - 启动 Worker
 ```
 
-#### 场景 2：预构建 Worker（就地虚拟环境）
+#### 场景 2：手动预创建虚拟环境
 
 ```bash
-# 1. 创建 Worker 并预置虚拟环境
-mkdir -p workers/packaged-worker
-cd workers/packaged-worker
+# 使用项目的 uv 工具（推荐）
+cd /path/to/coobee-ai
+./runtime/macos-arm64/uv venv workers/my-worker/venv
+./runtime/macos-arm64/uv pip install -r workers/my-worker/requirements.txt --python workers/my-worker/venv/bin/python
 
-# 2. 创建就地虚拟环境
+# 或使用标准 venv
+cd workers/my-worker
 python3 -m venv venv
-source venv/bin/activate
-pip install fastapi uvicorn
+venv/bin/pip install -r requirements.txt
 
-# 3. 创建配置和代码
-# ... (同上)
-
-# 4. 打包分发
-tar -czf packaged-worker.tar.gz packaged-worker/
-
-# ✅ 用户解压后直接可用，无需重新安装依赖
+# ✅ WorkerManager 检测到 venv/，直接使用，启动更快
 ```
 
-#### 场景 3：LLM 生成 Worker
+#### 场景 3：打包分发 Worker
 
 ```bash
-# LLM 生成完整的 Worker 目录（含 venv）
-workers/
-└── llm-generated-worker/
-    ├── worker.json
-    ├── requirements.txt
-    ├── server.py
-    └── venv/              # LLM 预生成或用户一键创建
+# Worker 目录自包含，可直接打包
+cd workers
+tar -czf my-worker.tar.gz my-worker/
 
-# ✅ 完全自包含，无需额外配置
+# ✅ 接收方解压后即可使用，无需额外配置
 ```
 
 ## ⚙️ worker.json 配置约定
