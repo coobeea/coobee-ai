@@ -118,28 +118,20 @@ code {
 }
 
 /* ---- 滚动条 ----
-   全局使用细滚动条，鼠标悬停时显示 */
+   全局隐藏滚动条，但保持滚动功能 */
 
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  display: none;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--foreground) / 0.1);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--foreground) / 0.2);
-}
-
-::-webkit-scrollbar-thumb:active {
-  background: hsl(var(--foreground) / 0.3);
+  display: none;
 }
 
 /* ---- 页面加载动画 ---- */
