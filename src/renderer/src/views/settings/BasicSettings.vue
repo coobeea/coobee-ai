@@ -2,6 +2,70 @@
 /**
  * BasicSettings - 基本配置组件
  */
+
+import { ref, onMounted } from 'vue';
+import { gateway } from '@/plugins/gatewaySetup';
+import ModelSelector from '@/components/ModelSelector.vue';
+
+interface Model {
+  id: string;
+  name: string;
+  provider?: string;
+}
+
+const defaultModel = ref('');
+const loading = ref(true);
+const saving = ref(false);
+
+// 加载当前默认模型
+async function loadDefaultModel(): Promise<void> {
+  loading.value = true;
+  try {
+    const result = await gateway.request<Record<string, unknown>>('config.getAll');
+    const modelsConfig = result.models as Record<string, unknown> | undefined;
+    const defaults = modelsConfig?.defaults as Record<string, unknown> | undefined;
+    const modelDefaults = defaults?.model as Record<string, string> | undefined;
+    defaultModel.value = modelDefaults?.primary || '';
+  } catch (err: unknown) {
+    console.error('[BasicSettings] Failed to load default model:', err);
+  } finally {
+    loading.value = false;
+  }
+}
+
+// 处理默认模型变化
+function handleDefaultModelChange(model: Model | undefined): void {
+  if (model) {
+    saveDefaultModel();
+  }
+}
+
+// 保存默认模型
+async function saveDefaultModel(): Promise<void> {
+  saving.value = true;
+  try {
+    await gateway.request('config.patch', {
+      partial: {
+        models: {
+          defaults: {
+            model: {
+              primary: defaultModel.value
+            }
+          }
+        }
+      }
+    });
+    console.log('[BasicSettings] Default model saved:', defaultModel.value);
+  } catch (err: unknown) {
+    console.error('[BasicSettings] Failed to save default model:', err);
+  } finally {
+    saving.value = false;
+  }
+}
+
+onMounted(() => {
+  loadDefaultModel();
+});
 </script>
 
 <template>
@@ -24,17 +88,25 @@
               </div>
             </div>
 
-            <!-- 语言 -->
-            <div class="flex items-center justify-between py-4">
-              <div>
-                <p class="font-medium text-foreground">语言</p>
-                <p class="text-xs text-muted-foreground mt-1">选择应用程序的界面显示语言</p>
+            <!-- 默认模型 -->
+            <div class="py-4">
+              <div class="mb-3 flex items-center justify-between">
+                <div>
+                  <p class="font-medium text-foreground">默认模型</p>
+                  <p class="text-xs text-muted-foreground mt-1">对话时默认使用的 AI 模型</p>
+                </div>
+                <span v-if="saving" class="text-xs text-muted-foreground flex items-center gap-1">
+                  <span class="i-carbon-in-progress inline-block h-3 w-3 animate-spin"></span>
+                  保存中...
+                </span>
               </div>
-              <select
-                class="rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring">
-                <option>简体中文</option>
-                <option>English</option>
-              </select>
+              <ModelSelector
+                v-model="defaultModel"
+                placeholder="请选择默认模型"
+                :disabled="loading || saving"
+                :show-details="true"
+                :show-capabilities="true"
+                @change="handleDefaultModelChange" />
             </div>
           </div>
         </div>

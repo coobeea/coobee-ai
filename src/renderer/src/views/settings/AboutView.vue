@@ -2,6 +2,7 @@
 /**
  * AboutView - 关于我们组件
  */
+import logoSvg from '@/assets/logo.svg';
 </script>
 
 <template>
@@ -10,10 +11,7 @@
       <!-- Logo 图标 -->
       <div class="relative mb-8">
         <div class="absolute inset-0 bg-primary/10 blur-2xl rounded-full"></div>
-        <div
-          class="relative flex h-28 w-28 items-center justify-center rounded-[2rem] bg-gradient-to-br from-primary/30 via-primary/20 to-primary/10 shadow-xl ring-1 ring-border">
-          <span class="i-carbon-machine-learning-model h-14 w-14 text-primary"></span>
-        </div>
+        <img :src="logoSvg" alt="Coobee AI Logo" class="relative h-28 w-28 drop-shadow-xl" />
       </div>
 
       <!-- 应用名称 -->

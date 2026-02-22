@@ -13,6 +13,8 @@ import { gateway } from '@/plugins/gatewaySetup';
 interface Model {
   id: string;
   name: string;
+  params?: Record<string, unknown>;
+  features?: string[];
 }
 
 interface Provider {
@@ -257,36 +259,9 @@ onMounted(() => {
       <!-- 详细配置内容 -->
       <div v-else class="mx-auto max-w-3xl flex flex-col gap-8">
         <!-- Header -->
-        <div class="border-b border-border pb-4 flex items-center justify-between">
-          <div>
-            <h1 class="text-xl font-bold">{{ selectedProviderInfo?.name }}</h1>
-            <p class="text-sm text-muted-foreground mt-1">{{ selectedProviderInfo?.type }}</p>
-          </div>
-          <!-- 连通性测试（极简版：只有一个按钮） -->
-          <div class="flex items-center gap-3">
-            <span v-if="testStatus === 'success'" class="text-sm text-green-600 flex items-center gap-1">
-              <span class="i-carbon-checkmark-outline inline-block h-4 w-4"></span>
-              连接成功
-            </span>
-            <span
-              v-if="testStatus === 'error'"
-              class="text-sm text-red-600 flex items-center gap-1"
-              :title="testErrorMsg">
-              <span class="i-carbon-warning-alt inline-block h-4 w-4"></span>
-              测试失败
-            </span>
-            <button
-              :disabled="testing"
-              class="flex items-center gap-2 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
-              @click="testConnection">
-              <span
-                :class="[
-                  'inline-block h-4 w-4',
-                  testing ? 'i-carbon-in-progress animate-spin' : 'i-carbon-flash'
-                ]"></span>
-              {{ testing ? '测试中...' : '测试连接' }}
-            </button>
-          </div>
+        <div class="border-b border-border pb-4">
+          <h1 class="text-xl font-bold">{{ selectedProviderInfo?.name }}</h1>
+          <p class="text-sm text-muted-foreground mt-1">{{ selectedProviderInfo?.type }}</p>
         </div>
 
         <!-- Section 1: API 配置 -->
@@ -314,13 +289,42 @@ onMounted(() => {
                   class="w-full rounded-md border border-input bg-background px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
               </div>
 
-              <div class="pt-6 pb-2 flex justify-end">
-                <button
-                  class="flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 text-sm font-medium transition-colors"
-                  @click="saveConfig">
-                  <span class="i-carbon-save inline-block h-4 w-4"></span>
-                  保存更改
-                </button>
+              <div class="pt-6 pb-2 flex items-center justify-between">
+                <!-- 测试状态提示 -->
+                <div class="flex items-center gap-2">
+                  <span v-if="testStatus === 'success'" class="text-sm text-green-600 flex items-center gap-1">
+                    <span class="i-carbon-checkmark-outline inline-block h-4 w-4"></span>
+                    连接成功
+                  </span>
+                  <span
+                    v-if="testStatus === 'error'"
+                    class="text-sm text-red-600 flex items-center gap-1"
+                    :title="testErrorMsg">
+                    <span class="i-carbon-warning-alt inline-block h-4 w-4"></span>
+                    测试失败
+                  </span>
+                </div>
+
+                <!-- 操作按钮组 -->
+                <div class="flex items-center gap-3">
+                  <button
+                    :disabled="testing"
+                    class="flex items-center gap-2 rounded-md border border-border bg-background text-foreground hover:bg-muted px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+                    @click="testConnection">
+                    <span
+                      :class="[
+                        'inline-block h-4 w-4',
+                        testing ? 'i-carbon-in-progress animate-spin' : 'i-carbon-flash'
+                      ]"></span>
+                    {{ testing ? '测试中...' : '测试连接' }}
+                  </button>
+                  <button
+                    class="flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 text-sm font-medium transition-colors"
+                    @click="saveConfig">
+                    <span class="i-carbon-save inline-block h-4 w-4"></span>
+                    保存更改
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -328,36 +332,67 @@ onMounted(() => {
 
         <!-- Section 2: 模型列表 -->
         <section>
-          <div class="mb-4 flex items-center justify-between">
+          <div class="mb-4">
             <h2 class="text-sm font-semibold flex items-center gap-2">
               可用模型
               <span class="rounded bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
                 {{ selectedProviderInfo?.models.length || 0 }}
               </span>
             </h2>
-            <button class="text-sm text-primary hover:underline">刷新列表</button>
           </div>
 
-          <div class="rounded-lg border border-border bg-card overflow-hidden">
+          <!-- 空状态 -->
+          <div
+            v-if="!selectedProviderInfo?.models || selectedProviderInfo.models.length === 0"
+            class="rounded-lg border border-border bg-card py-12 text-center text-muted-foreground">
+            <span class="i-carbon-model-alt inline-block h-10 w-10 mb-3 opacity-40"></span>
+            <p class="text-sm">暂无模型数据</p>
+          </div>
+
+          <!-- 模型卡片列表 -->
+          <div v-else class="flex flex-col gap-3">
             <div
-              v-if="!selectedProviderInfo?.models || selectedProviderInfo.models.length === 0"
-              class="py-8 text-center text-muted-foreground">
-              <p class="text-sm">暂无模型数据</p>
-            </div>
-            <div v-else>
-              <div
-                class="grid grid-cols-2 gap-4 border-b border-border bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
-                <div>模型 ID</div>
-                <div>名称</div>
-              </div>
-              <div class="divide-y divide-border">
-                <div
-                  v-for="model in selectedProviderInfo.models"
-                  :key="model.id"
-                  class="grid grid-cols-2 gap-4 px-4 py-3 hover:bg-muted/50 transition-colors">
-                  <div class="font-mono text-sm">{{ model.id }}</div>
-                  <div class="text-sm text-muted-foreground">{{ model.name || model.id }}</div>
+              v-for="model in selectedProviderInfo.models"
+              :key="model.id"
+              class="rounded-lg border border-border bg-card p-4 hover:border-primary/50 transition-colors">
+              <!-- 模型名称 -->
+              <h3 class="text-sm font-semibold text-foreground mb-3">
+                {{ model.name || model.id }}
+              </h3>
+
+              <!-- 参数信息 -->
+              <div v-if="model.params" class="mb-3">
+                <p class="text-xs text-muted-foreground mb-2">参数配置</p>
+                <div class="flex flex-wrap gap-2">
+                  <span
+                    v-for="(value, key) in model.params"
+                    :key="key"
+                    class="inline-flex items-center gap-1 rounded bg-muted px-2 py-1 text-xs">
+                    <span class="font-medium text-foreground">{{ key }}:</span>
+                    <span class="text-muted-foreground">{{ value }}</span>
+                  </span>
                 </div>
+              </div>
+
+              <!-- 特性标签 -->
+              <div v-if="model.features && model.features.length > 0">
+                <p class="text-xs text-muted-foreground mb-2">支持特性</p>
+                <div class="flex flex-wrap gap-2">
+                  <span
+                    v-for="feature in model.features"
+                    :key="feature"
+                    class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                    <span class="i-carbon-checkmark inline-block h-3 w-3"></span>
+                    {{ feature }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- 如果既没有参数也没有特性，显示模型ID -->
+              <div v-if="!model.params && (!model.features || model.features.length === 0)">
+                <p class="text-xs text-muted-foreground"
+                  >模型 ID: <span class="font-mono">{{ model.id }}</span></p
+                >
               </div>
             </div>
           </div>

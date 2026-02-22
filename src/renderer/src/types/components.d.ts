@@ -37,6 +37,7 @@ declare module 'vue' {
     MessageItemAssistant: typeof import('./../components/chat/items/MessageItemAssistant.vue')['default']
     MessageItemUser: typeof import('./../components/chat/items/MessageItemUser.vue')['default']
     Modal: typeof import('./../components/common/Modal.vue')['default']
+    ModelSelector: typeof import('./../components/ModelSelector.vue')['default']
     OutlineButton: typeof import('./../components/Form/OutlineButton.vue')['default']
     OverlayMask: typeof import('./../components/OverlayMask/index.vue')['default']
     Popover: typeof import('./../components/Popover/Popover.vue')['default']
