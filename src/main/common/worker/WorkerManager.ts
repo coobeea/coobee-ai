@@ -564,36 +564,21 @@ export class WorkerManager extends EventEmitter {
   }
 
   /**
-   * Worker 虚拟环境目录（按约定自动查找，支持多种位置）
+   * Worker 虚拟环境目录（就地虚拟环境，在 Worker 目录内）
    *
-   * 查找优先级：
-   *   1. {worker_dir}/venv/       就地虚拟环境（便于独立管理）
-   *   2. worker-envs/{name}_env/  独立虚拟环境（旧方案兼容）
+   * 约定：所有 Worker 的虚拟环境都在其目录内的 venv/ 子目录
    *
-   * 如果都不存在，默认创建在 worker-envs/{name}_env/
+   * 路径：workers/{name}/venv/
    *
    * 优势：
-   *   - 支持多种组织方式
-   *   - 兼容旧版本
-   *   - 未来 LLM 生成的 worker 可以自带 venv
+   *   - Worker 自包含，便于打包分发
+   *   - 源码与环境一体化管理
+   *   - 适合 LLM 生成 Worker
+   *   - 简单清晰，无需额外目录
    */
   private getVenvDir(name: string): string {
     const workerDir = this.getWorkerScriptsDir(name);
-
-    // 优先级 1: {worker_dir}/venv/ (就地虚拟环境)
-    const localVenv = path.join(workerDir, 'venv');
-    if (fs.existsSync(localVenv)) {
-      return localVenv;
-    }
-
-    // 优先级 2: worker-envs/{name}_env/ (独立虚拟环境)
-    const sharedVenv = path.join(Env.paths.workerEnvsDir, `${name}_env`);
-    if (fs.existsSync(sharedVenv)) {
-      return sharedVenv;
-    }
-
-    // 默认：返回独立虚拟环境路径（将被自动创建）
-    return sharedVenv;
+    return path.join(workerDir, 'venv');
   }
 
   /** Worker Python 可执行文件路径（自动查找虚拟环境） */
