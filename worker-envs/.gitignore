@@ -1,0 +1,4 @@
+# Worker 虚拟环境（每个 worker 独立的虚拟环境，不提交到 git）
+
+*_env/
+*.log

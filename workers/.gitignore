@@ -1,6 +1,3 @@
-# Worker 虚拟环境（在各 worker 目录内，不提交）
-*/venv/
-
 # Python 缓存
 __pycache__/
 *.pyc

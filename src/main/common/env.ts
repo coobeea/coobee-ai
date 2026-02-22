@@ -192,12 +192,17 @@ export const Env = {
       workersDir: is.dev ? path.join(app.getAppPath(), 'workers') : path.join(process.resourcesPath, 'workers'),
 
       /**
-       * Worker 虚拟环境目录（已废弃，venv 现在在各 worker 目录内）
+       * Worker 虚拟环境目录（每个 worker 独立的虚拟环境）
        *
-       * @deprecated 现在每个 Worker 的 venv 都在其目录内（如 workers/asr/venv/）
-       * @example 旧: workers/asr_env/ → 新: workers/asr/venv/
+       * 每个 Worker 有自己独立的虚拟环境目录：
+       *   worker-envs/
+       *   ├── asr_env/       ASR worker 的虚拟环境
+       *   ├── tts_env/       TTS worker 的虚拟环境
+       *   └── ocr_env/       OCR worker 的虚拟环境
+       *
+       * @example 开发: <项目>/worker-envs/ | 生产: ~/.coobee-ai/worker-envs/
        */
-      workerEnvsDir: is.dev ? path.join(app.getAppPath(), 'workers') : path.join(_userHome, 'worker-envs'),
+      workerEnvsDir: is.dev ? path.join(app.getAppPath(), 'worker-envs') : path.join(_userHome, 'worker-envs'),
 
       /**
        * 模型仓库目录（可写，所有 Worker 共享）
