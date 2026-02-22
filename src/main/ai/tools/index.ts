@@ -11,8 +11,8 @@ export type {
   ToolError,
   ToolStreamUpdate,
   ToolExecutionContext
-} from './types'
-export { ToolCategory } from './types'
+} from './types';
+export { ToolCategory } from './types';
 
 // 内置工具
 export {
@@ -27,10 +27,9 @@ export {
   sessionHistoryTool,
   contextInspectTool,
   skillListTool,
-  manageAgentTool,
   delegateToAgentTool,
   taskPlanTool
-} from './builtin'
+} from './builtin';
 
 // 工具注册表
-export { ToolRegistry } from './registry'
+export { ToolRegistry } from './registry';

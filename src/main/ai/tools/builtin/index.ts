@@ -25,8 +25,6 @@ import { contextInspectTool } from './context_inspect';
 import { skillListTool } from './skill_list';
 import { configPatchTool } from './config_patch';
 import { configGetTool } from './config_get';
-import { manageAgentTool } from './manage-agent';
-import { manageSkillTool } from './manage-skill';
 import { delegateToAgentTool } from './delegate-to-agent';
 import { taskPlanTool } from './task-plan';
 import { todoWriteTool } from './todo-write';
@@ -46,8 +44,6 @@ export { contextInspectTool } from './context_inspect';
 export { skillListTool } from './skill_list';
 export { configPatchTool } from './config_patch';
 export { configGetTool } from './config_get';
-export { manageAgentTool } from './manage-agent';
-export { manageSkillTool } from './manage-skill';
 export { delegateToAgentTool } from './delegate-to-agent';
 export { taskPlanTool } from './task-plan';
 export { todoWriteTool } from './todo-write';
@@ -78,8 +74,6 @@ export { todoWriteTool } from './todo-write';
  *   config_get      — 查看应用配置，低风险
  *   config_patch    — 修改应用配置，中风险
  *   --- Agent 管理 ---
- *   manage_agent        — Agent 定义 CRUD，中风险
- *   manage_skill        — Skill 技能 CRUD，中风险
  *   delegate_to_agent   — 委托子任务给专业 Agent，中风险
  *   task_plan           — 任务计划管理，低风险
  *   todo_write          — 会话级 TODO 管理，低风险
@@ -99,8 +93,6 @@ export const builtinTools: ToolDefinition[] = [
   skillListTool,
   configGetTool,
   configPatchTool,
-  manageAgentTool,
-  manageSkillTool,
   delegateToAgentTool,
   taskPlanTool,
   todoWriteTool

@@ -7,7 +7,9 @@ description: '专业 Agent 设计与创建指南。当需要创建新的专业 A
 
 ## 核心职责
 
-将**用户需求或任务特征**转化为**可执行的 Agent 定义**，通过 `manage_agent` 工具持久化。
+将**用户需求或任务特征**转化为**可执行的 Agent 定义**，使用现有工具组合完成持久化（创建配置文件）。
+
+**核心原则**：通过 **现有工具组合** 完成 Agent 创建，避免工具膨胀。
 
 ## 何时创建 Agent
 
@@ -28,11 +30,13 @@ description: '专业 Agent 设计与创建指南。当需要创建新的专业 A
 
 → 你应该**主动提议或直接创建**一个专业 Agent。
 
-## 创建流程（4 步）
+## 创建流程（6 步）
 
 ```
-需求/任务特征 → ① 意图分析 → ② 能力规划 → ③ 定义生成 → ④ 持久化
+需求/任务特征 → ① 意图分析 → ② 能力规划 → ③ 定义生成 → ④ 检查重复 → ⑤ 写入文件 → ⑥ 验证
 ```
+
+**使用工具**：`glob`（检查）, `read`（读取）, `write`（创建）, `exec`（验证）
 
 ### Step 1：意图分析
 
@@ -110,18 +114,21 @@ description: '专业 Agent 设计与创建指南。当需要创建新的专业 A
 
 ### Step 3：定义生成
 
-将 Step 1-2 的分析结果组装为 `manage_agent` 工具的参数：
+将 Step 1-2 的分析结果组装为 Agent 配置对象：
 
 ```json
 {
-  "action": "create",
-  "agentId": "code-reviewer", // kebab-case
+  "id": "code-reviewer", // kebab-case
   "name": "代码审查专家", // 中文显示名
   "description": "审查代码质量...", // 一句话，用于匹配和展示
   "instructions": "你是一个专业的...", // Step 2.3 的产出
   "tools": ["read", "search", "glob"], // Step 2.1 的选择
   "skills": ["coding-standards"], // Step 2.2 的关联
-  "createdBy": "agent" // 或 "user"
+  "model": null, // 或指定模型
+  "thinkingLevel": "medium", // 思考深度
+  "createdBy": "agent", // 或 "user"
+  "createdAt": "2026-02-22T10:00:00Z", // ISO 时间戳
+  "version": 1
 }
 ```
 
@@ -131,28 +138,104 @@ description: '专业 Agent 设计与创建指南。当需要创建新的专业 A
 - 简短且有意义：`code-reviewer`、`contract-analyst`、`translator`
 - 避免前缀/后缀冗余：不用 `agent-code-reviewer` 或 `code-reviewer-agent`
 
-### Step 4：持久化
+### Step 4：检查重复
 
-调用 `manage_agent` 工具执行 create 操作：
+使用 `glob` 工具检查 Agent 是否已存在：
 
+```typescript
+// 工具：glob
+glob({ pattern: 'agents/*.json' });
+// 结果：['agents/code-reviewer.json', 'agents/translator.json', ...]
+
+// 如果发现同名 Agent，询问用户：
+// 1. 覆盖现有 Agent
+// 2. 使用不同的 ID
+// 3. 取消创建
 ```
-manage_agent(action="create", agentId="code-reviewer", name="...", ...)
+
+### Step 5：写入文件
+
+使用 `write` 工具创建 Agent 配置文件：
+
+**工具：write**
+
+```typescript
+write({
+  path: 'agents/{agentId}.json',
+  content: JSON.stringify(
+    {
+      id: 'code-reviewer',
+      name: '代码审查专家',
+      description: '审查代码质量、安全性和可维护性，输出结构化审查报告',
+      instructions: '你是一个资深的代码审查专家...',
+      tools: ['read', 'search', 'glob', 'write'],
+      skills: [],
+      model: null,
+      thinkingLevel: 'medium',
+      createdBy: 'agent',
+      createdAt: new Date().toISOString(),
+      version: 1
+    },
+    null,
+    2
+  )
+});
+```
+
+**文件位置**：
+
+- 工作空间 Agent：`{workspace}/agents/{agentId}.json`
+- 用户 Agent：`{userDataDir}/agents/{agentId}.json`
+
+**优先使用工作空间**（除非用户明确要求全局可用）。
+
+### Step 6：验证
+
+使用 `read` 工具验证文件已正确创建：
+
+```typescript
+// 工具：read
+read({ path: 'agents/{agentId}.json' });
+
+// 验证 JSON 格式是否正确
+// 验证必需字段是否存在（id, name, description, instructions）
 ```
 
 创建成功后，告知用户：
 
-- Agent 已创建
-- Agent 的能力概述
-- 如何使用（通过 agentId 指定，或由主 Agent 自动委托）
+- ✅ Agent 已创建
+- 📁 位置：`agents/{agentId}.json`
+- 🎯 Agent 的能力概述
+- 💡 如何使用（通过 `delegate_to_agent` 工具委托，或系统自动发现）
 
 ## 更新已有 Agent
 
 如果用户反馈某个 Agent 表现不好，或需要调整能力：
 
-1. `manage_agent(action="get", agentId="xxx")` 查看当前定义
-2. 分析需要调整的部分
-3. `manage_agent(action="update", agentId="xxx", instructions="新指令", ...)` 更新
-4. 版本号自动递增
+1. 使用 `read` 工具读取现有配置：`read({ path: 'agents/{agentId}.json' })`
+2. 分析需要调整的部分（instructions, tools, skills 等）
+3. 修改配置对象，版本号 +1
+4. 使用 `write` 工具覆盖文件
+5. 验证更新是否成功
+
+**示例**：
+
+```typescript
+// 1. 读取现有配置
+const config = JSON.parse(read({ path: 'agents/code-reviewer.json' }));
+
+// 2. 修改配置
+config.instructions = '更新后的指令...';
+config.tools.push('exec'); // 添加新工具
+config.version += 1; // 版本号递增
+config.updatedAt = new Date().toISOString();
+
+// 3. 写回文件
+write({
+  path: 'agents/code-reviewer.json',
+  content: JSON.stringify(config, null, 2)
+});
+```
 
 ## 与 dimension-architect 协作
 
@@ -170,7 +253,7 @@ graph LR
   D --> E[领域 Skill]
   E --> F[Agent 定义关联 Skill]
   C -->|否| F
-  F --> G[manage_agent create]
+  F --> G[write 工具创建 Agent 配置]
 ```
 
 但这**不是必须的**。简单的 Agent（翻译助手、日程管理）不需要维度体系。
