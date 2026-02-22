@@ -563,12 +563,12 @@ export class WorkerManager extends EventEmitter {
     return path.join(Env.paths.workersDir, name);
   }
 
-  /** Worker 虚拟环境目录 */
+  /** Worker 虚拟环境目录（在 worker 目录内部） */
   private getVenvDir(name: string): string {
-    return path.join(Env.paths.workerEnvsDir, `${name}_env`);
+    return path.join(this.getWorkerScriptsDir(name), 'venv');
   }
 
-  /** Worker Python 可执行文件路径 */
+  /** Worker Python 可执行文件路径（venv 在 worker 目录内） */
   private getPythonBin(name: string): string {
     const venvDir = this.getVenvDir(name);
     return Env.isWindows ? path.join(venvDir, 'Scripts', 'python.exe') : path.join(venvDir, 'bin', 'python');

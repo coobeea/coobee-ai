@@ -8,21 +8,21 @@
  * 消费方：VoicePanel 等组件读取状态、调用 start/stop 操作
  */
 
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
 import {
   onWorkerStatus,
   startWorker as wsStartWorker,
   stopWorker as wsStopWorker,
   requestWorkers as wsRequestWorkers
-} from '@/composables/useWorkerWs'
-import type { WorkerStatusInfo } from '@shared/stream-protocol'
+} from '@/composables/useWorkerWs';
+import type { WorkerStatusInfo } from '@shared/stream-protocol';
 
 export const useWorkerStore = defineStore('worker', () => {
   // ---- 状态 ----
 
   /** 所有 Worker 的状态（按 name 索引） */
-  const workers = ref<Map<string, WorkerStatusInfo>>(new Map())
+  const workers = ref<Map<string, WorkerStatusInfo>>(new Map());
 
   // ---- WebSocket 事件自动注册 ----
 
@@ -33,67 +33,62 @@ export const useWorkerStore = defineStore('worker', () => {
    * 不需要外部手动桥接。
    */
   onWorkerStatus((info) => {
-    workers.value.set(info.name, info)
+    workers.value.set(info.name, info);
     console.log(
       `[workerStore] ${info.name} → ${info.status}` +
         (info.port ? ` (port: ${info.port})` : '') +
         (info.error ? ` [${info.error}]` : '')
-    )
-  })
+    );
+  });
 
   // ---- Getters ----
 
   /** 所有 Worker 列表 */
-  const workerList = computed(() => Array.from(workers.value.values()))
+  const workerList = computed(() => Array.from(workers.value.values()));
 
   /** 获取指定 Worker */
   function getWorker(name: string): WorkerStatusInfo | undefined {
-    return workers.value.get(name)
+    return workers.value.get(name);
   }
 
   /** 指定 Worker 是否就绪 */
   function isReady(name: string): boolean {
-    return workers.value.get(name)?.status === 'ready'
+    return workers.value.get(name)?.status === 'ready';
   }
 
   /** TTS 是否可用 */
-  const ttsReady = computed(() => isReady('tts'))
+  const ttsReady = computed(() => isReady('tts'));
 
-  /** ASR 是否可用（兼容 asr / whisper-asr） */
-  const asrReady = computed(() => isReady('whisper-asr') || isReady('asr'))
+  /** ASR 是否可用 */
+  const asrReady = computed(() => isReady('asr'));
 
   /** TTS 端口 */
-  const ttsPort = computed(() => workers.value.get('tts')?.port)
+  const ttsPort = computed(() => workers.value.get('tts')?.port);
 
-  /** ASR 端口（兼容 whisper-asr / asr） */
-  const asrPort = computed(
-    () => workers.value.get('whisper-asr')?.port ?? workers.value.get('asr')?.port
-  )
+  /** ASR 端口 */
+  const asrPort = computed(() => workers.value.get('asr')?.port);
 
-  /** ASR Worker 名称（优先 whisper-asr） */
-  const asrWorkerName = computed(() => (workers.value.has('whisper-asr') ? 'whisper-asr' : 'asr'))
+  /** ASR Worker 名称 */
+  const asrWorkerName = computed(() => 'asr');
 
-  /** ASR Worker 类型（native = whisper-server HTTP, python = WebSocket） */
-  const asrWorkerType = computed(() => {
-    const name = asrWorkerName.value
-    return name === 'whisper-asr' ? 'http' : 'websocket'
-  })
+  /** ASR Worker 类型（WebSocket） */
+  const asrWorkerType = computed(() => 'websocket' as const);
 
   // ---- Actions ----
 
   /** 启动指定 Worker */
   function startWorker(name: string): void {
-    wsStartWorker(name)
+    wsStartWorker(name);
   }
 
   /** 停止指定 Worker */
   function stopWorker(name: string): void {
-    wsStopWorker(name)
+    wsStopWorker(name);
   }
 
   /** 主动请求 Worker 状态列表 */
   function requestWorkers(): void {
-    wsRequestWorkers()
+    wsRequestWorkers();
   }
 
   return {
@@ -115,5 +110,5 @@ export const useWorkerStore = defineStore('worker', () => {
     startWorker,
     stopWorker,
     requestWorkers
-  }
-})
+  };
+});

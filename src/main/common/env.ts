@@ -177,10 +177,14 @@ export const Env = {
       /**
        * Worker 脚本目录（只读，随应用打包分发）
        *
-       * 包含 Python Worker 的源码和 requirements.txt：
+       * 包含 Python Worker 的源码、requirements.txt 和虚拟环境：
        *   workers/
        *   ├── tts/         TTS 语音合成
-       *   ├── asr/         ASR 语音识别
+       *   │   ├── venv/    虚拟环境（gitignore）
+       *   │   └── server.py
+       *   ├── asr/         ASR 语音识别（FunASR）
+       *   │   ├── venv/    虚拟环境（gitignore）
+       *   │   └── server.py
        *   └── ...          未来新增的 Worker
        *
        * @example 开发: <项目>/workers | 生产: resources/workers
@@ -188,18 +192,10 @@ export const Env = {
       workersDir: is.dev ? path.join(app.getAppPath(), 'workers') : path.join(process.resourcesPath, 'workers'),
 
       /**
-       * Worker 虚拟环境目录（可写，每个 Worker 独立 venv）
+       * Worker 虚拟环境目录（已废弃，venv 现在在各 worker 目录内）
        *
-       * 结构：
-       *   worker-envs/
-       *   ├── tts_env/     TTS 的 Python 虚拟环境
-       *   ├── asr_env/     ASR 的 Python 虚拟环境
-       *   └── ...
-       *
-       * 开发模式下放在 workers/ 同级（方便管理），
-       * 生产模式下放在用户目录（可写、持久化、不随 app 更新丢失）。
-       *
-       * @example 开发: <项目>/workers | 生产: ~/.coobee-ai/worker-envs
+       * @deprecated 现在每个 Worker 的 venv 都在其目录内（如 workers/asr/venv/）
+       * @example 旧: workers/asr_env/ → 新: workers/asr/venv/
        */
       workerEnvsDir: is.dev ? path.join(app.getAppPath(), 'workers') : path.join(_userHome, 'worker-envs'),
 

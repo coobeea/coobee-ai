@@ -1,5 +1,7 @@
-# Worker 虚拟环境（开发模式下创建在此目录，不提交）
-*_env/
+# Worker 虚拟环境（在各 worker 目录内，不提交）
+*/venv/
+
+# Python 缓存
 __pycache__/
 *.pyc
 *.pyo
