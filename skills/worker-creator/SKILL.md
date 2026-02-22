@@ -9,10 +9,457 @@
 ## 🎯 核心原则
 
 - ✅ **工具组合，而非新增工具** - 使用现有的 19 个 builtin tools
-- ✅ **约定优于配置** - 遵循 `workers/CONVENTIONS.md` 的目录结构和命名规范
+- ✅ **约定优于配置** - 严格遵循项目 Worker 开发规范
 - ✅ **就地虚拟环境** - 虚拟环境放在 `workers/{name}/venv/`
 - ✅ **使用 uv 工具** - 统一使用项目内置的 `uv` 创建环境和安装依赖
 - ✅ **错误可恢复** - 每一步都需检查返回值，失败时清理现场
+
+---
+
+## 📖 Worker 开发规范（必读）
+
+### 目录结构约定
+
+```
+workers/{name}/
+├── worker.json          # 必需 - Worker 配置（元数据、端口、入口）
+├── server.py            # 必需 - FastAPI 服务入口
+├── requirements.txt     # 必需 - Python 依赖
+├── venv/                # 必需 - 就地虚拟环境（由 uv 创建）
+├── README.md            # 推荐 - 功能说明、接口文档
+├── QUICKSTART.md        # 可选 - 快速上手指南
+└── models/              # 可选 - 本地模型文件
+```
+
+### 命名规范
+
+**Worker 名称**（`name` 字段）：
+
+- ✅ 使用 **kebab-case**（小写 + 连字符）
+- ✅ 语义化命名，清晰表达功能
+- ✅ 示例：`asr`, `tts`, `ocr`, `markdown-formatter`, `image-processor`
+- ❌ 避免：`ASR`, `my_worker`, `Worker1`
+
+**显示名称**（`label` 字段）：
+
+- ✅ 使用中文，简洁明了
+- ✅ 示例：`语音识别`, `语音合成`, `文字识别`
+
+**Python 模块**：
+
+- ✅ 使用 `snake_case`
+- ✅ 示例：`model_loader.py`, `audio_processor.py`
+
+### worker.json 配置规范
+
+**必需字段**：
+
+```json
+{
+  "name": "worker-name", // Worker 唯一标识（kebab-case）
+  "label": "显示名称", // 中文显示名称
+  "type": "native", // 固定值：native（Python FastAPI）
+  "entry": "server.py", // 固定值：server.py
+  "port": 18000, // 服务端口（18000-18999）
+  "enabled": true // 是否启用
+}
+```
+
+**端口分配**：
+
+- 范围：`18000-18999`
+- 已用端口：
+  - `18001` - ASR（语音识别）
+  - `18002` - TTS（语音合成）
+  - `18003` - OCR（文字识别）
+- 新 Worker 从 `18004` 开始递增
+
+### requirements.txt 规范
+
+**基础依赖**（所有 Worker 必需）：
+
+```txt
+# FastAPI 框架（必需）
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+websockets>=14.0
+```
+
+**注释规范**：
+
+```txt
+# {功能分类} 依赖
+# 由 WorkerManager 通过 uv pip install 安装到就地 venv
+
+# FastAPI 框架（必需）
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+websockets>=14.0
+
+# 业务依赖
+torch>=2.0.0
+transformers>=4.57.3
+
+# 模型相关（如需使用 ModelScope）
+modelscope>=1.9.0
+```
+
+**版本约束**：
+
+- 使用 `>=` 指定最低版本（推荐）
+- 使用 `==` 锁定版本（如有兼容性问题）
+- 避免使用 `*` 或不指定版本
+
+### server.py 代码规范
+
+**最小模板**（必须包含以下结构）：
+
+```python
+#!/usr/bin/env python3
+"""
+{Worker 显示名称} — Worker 服务
+
+FastAPI + WebSocket 服务
+由 WorkerManager 管理生命周期
+
+启动方式（由 WorkerManager 自动调用）：
+    python server.py --port {port}
+
+环境变量（由 WorkerManager 注入）：
+    MODEL_DIR          模型存储目录（默认 ~/data/models）
+    MODELSCOPE_CACHE   ModelScope 缓存目录
+"""
+
+import argparse
+import logging
+import os
+import sys
+
+try:
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+except ImportError:
+    print(f"[{WORKER_NAME}] 缺少依赖，请先安装", file=sys.stderr)
+    sys.exit(1)
+
+# ==================== 配置 ====================
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.environ.get("MODEL_DIR", "/Users/lifeng/data/models")
+
+logging.basicConfig(level=logging.INFO, format=f"[{WORKER_NAME}] %(message)s")
+log = logging.getLogger("{worker_name}")
+
+app = FastAPI(title="{显示名称}", version="0.1.0")
+
+# ==================== 全局状态 ====================
+
+model_loaded = False
+
+# ==================== HTTP 接口 ====================
+
+@app.get("/health")
+async def health():
+    """
+    健康检查（必需）
+
+    WorkerManager 轮询此接口判断 Worker 是否就绪
+    """
+    return JSONResponse({
+        "status": "ok",
+        "model_loaded": model_loaded,
+        "model_dir": MODEL_DIR,
+    })
+
+# TODO: 添加业务接口
+# @app.post("/api/xxx")
+# async def xxx(request: dict):
+#     ...
+
+# ==================== 启动 ====================
+
+def main():
+    parser = argparse.ArgumentParser(description="{显示名称} Server")
+    parser.add_argument("--port", type=int, default={port}, help="服务端口")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="绑定地址")
+    args = parser.parse_args()
+
+    log.info(f"启动服务 {args.host}:{args.port}")
+    log.info(f"MODEL_DIR = {MODEL_DIR}")
+
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+
+if __name__ == "__main__":
+    main()
+```
+
+**关键要求**：
+
+1. **必须有 `/health` 端点**：
+   - WorkerManager 依赖此端点判断就绪状态
+   - 返回格式：`{"status": "ok", ...}`
+
+2. **必须支持命令行参数**：
+   - `--port` - 服务端口（WorkerManager 传入）
+   - `--host` - 绑定地址（默认 127.0.0.1）
+
+3. **日志格式统一**：
+   - 使用 `[WORKER_NAME] message` 格式
+   - 便于日志聚合和问题排查
+
+4. **环境变量读取**：
+   - `MODEL_DIR` - 模型存储目录
+   - `MODELSCOPE_CACHE` - ModelScope 缓存目录
+   - 提供合理默认值
+
+5. **错误处理**：
+   - 依赖缺失时打印提示并退出
+   - 模型加载失败时记录日志，不阻塞启动
+
+### 虚拟环境约定
+
+**创建方式**（使用 uv 工具）：
+
+```bash
+# macOS arm64
+./runtime/macos-arm64/uv venv workers/{name}/venv
+
+# 安装依赖
+./runtime/macos-arm64/uv pip install -r workers/{name}/requirements.txt \
+  --python workers/{name}/venv/bin/python
+```
+
+**位置**：
+
+- ✅ 就地虚拟环境：`workers/{name}/venv/`
+- ❌ 不使用：`worker-envs/{name}_env/`（已废弃）
+
+**优势**：
+
+- Worker 自包含，便于打包分发
+- 源码与环境一体化管理
+- 适合 LLM 生成 Worker
+- 简单清晰，无需额外目录
+
+**Git 忽略**：
+
+- `venv/` 已加入 `.gitignore`
+- 不提交虚拟环境到版本控制
+
+### 接口设计规范
+
+**HTTP 接口**：
+
+1. **健康检查**（必需）：
+
+   ```
+   GET /health
+   返回: {"status": "ok", "model_loaded": true, ...}
+   ```
+
+2. **同步处理**（推荐）：
+
+   ```
+   POST /api/{function}
+   请求: {"input": "...", "params": {...}}
+   返回: {"output": "...", "metadata": {...}}
+   ```
+
+3. **异步任务**（可选）：
+
+   ```
+   POST /api/tasks
+   返回: {"task_id": "uuid"}
+
+   GET /api/tasks/{task_id}
+   返回: {"status": "completed", "result": {...}}
+   ```
+
+**WebSocket 接口**（流式处理）：
+
+```
+WS /ws/{function}
+
+客户端发送:
+{"input": "...", "params": {...}}
+
+服务端返回（流式）:
+{"type": "progress", "content": "...", "percentage": 50}
+{"type": "output", "content": "..."}
+{"type": "done"}
+```
+
+**错误返回**：
+
+```json
+{
+  "error": "错误描述",
+  "code": "ERROR_CODE",
+  "details": {...}
+}
+```
+
+### 模型加载规范
+
+**异步加载**（推荐）：
+
+```python
+@app.on_event("startup")
+async def load_model():
+    """启动时异步加载模型，避免阻塞主线程"""
+    global model, model_loaded
+    try:
+        log.info(f"加载模型: {MODEL_NAME}")
+        model = load_model_from_path(MODEL_PATH)
+        model_loaded = True
+        log.info("模型加载完成")
+    except Exception as e:
+        log.error(f"模型加载失败: {e}")
+        model_loaded = False
+```
+
+**懒加载**（可选）：
+
+```python
+def get_model():
+    """首次调用时加载模型"""
+    global model
+    if model is None:
+        model = load_model_from_path(MODEL_PATH)
+    return model
+```
+
+**模型路径**：
+
+- 从环境变量读取：`MODEL_DIR`
+- 示例：`os.path.join(MODEL_DIR, "Qwen", "Qwen3-TTS")`
+
+### 文档规范
+
+**README.md**（推荐包含）：
+
+```markdown
+# {Worker 显示名称}
+
+## 功能
+
+简要描述 Worker 的功能、使用场景
+
+## 接口
+
+### HTTP
+
+- `GET /health` - 健康检查
+- `POST /api/xxx` - 业务接口
+
+### WebSocket
+
+- `/ws/xxx` - 流式处理
+
+## 依赖
+
+列出关键依赖及其作用
+
+## 配置
+
+- 端口: {port}
+- 模型路径: `MODEL_DIR` 环境变量
+
+## 测试
+
+\`\`\`bash
+
+# 手动启动
+
+workers/{name}/venv/bin/python workers/{name}/server.py --port {port}
+
+# 健康检查
+
+curl http://127.0.0.1:{port}/health
+\`\`\`
+
+## 注意事项
+
+列出已知问题、限制、注意事项
+```
+
+### 测试规范
+
+**本地测试**：
+
+```bash
+# 1. 启动 Worker
+workers/{name}/venv/bin/python workers/{name}/server.py --port {port}
+
+# 2. 健康检查
+curl http://127.0.0.1:{port}/health
+
+# 3. 业务接口测试
+curl -X POST http://127.0.0.1:{port}/api/xxx \
+  -H "Content-Type: application/json" \
+  -d '{"input": "test"}'
+```
+
+**集成测试**：
+
+- 启动完整应用，验证 WorkerManager 是否正确发现和启动 Worker
+- 检查前端是否能正常调用 Worker 接口
+- 验证错误处理和日志输出
+
+---
+
+## 🔧 WorkerManager 集成说明
+
+Worker 创建完成后，会被 WorkerManager 自动管理：
+
+### 自动发现
+
+- 扫描 `workers/` 目录
+- 读取 `worker.json` 配置
+- 验证必需文件（server.py, requirements.txt, venv/）
+
+### 生命周期管理
+
+1. **启动**：
+
+   ```bash
+   workers/{name}/venv/bin/python workers/{name}/server.py --port {port}
+   ```
+
+2. **健康检查**：
+   - 轮询 `GET /health` 端点
+   - 超时时间：5 秒
+   - 重试策略：3 次
+
+3. **重启**：
+   - 检测到配置变更时自动重启
+   - 崩溃时自动重启（最多 3 次）
+
+4. **停止**：
+   - 优雅关闭（SIGTERM）
+   - 强制关闭（SIGKILL，10 秒后）
+
+### 环境变量注入
+
+WorkerManager 自动注入以下环境变量：
+
+- `MODEL_DIR` - 模型存储目录
+- `MODELSCOPE_CACHE` - ModelScope 缓存目录
+- `WORKER_NAME` - Worker 名称
+- `WORKER_PORT` - Worker 端口
+
+### 端口管理
+
+- 从 `worker.json` 读取端口
+- 检查端口冲突
+- 分配可用端口（如需）
+
+### 日志聚合
+
+- 捕获 stdout/stderr
+- 统一日志格式
+- 支持日志查看和搜索
 
 ---
 
