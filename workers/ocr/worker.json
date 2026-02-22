@@ -1,0 +1,11 @@
+{
+  "name": "ocr",
+  "label": "图像识别",
+  "enable": false,
+  "entry": "server.py",
+  "port": 18102,
+  "autoStart": false,
+  "autoRestart": true,
+  "maxRestarts": 3,
+  "healthCheckTimeout": 120000
+}

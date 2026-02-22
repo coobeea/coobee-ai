@@ -1,0 +1,14 @@
+# OCR Worker 依赖
+# 由 RuntimeManager 通过 uv pip install 安装到独立 venv
+
+# HTTP + WebSocket 服务
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+websockets>=14.0
+
+# 图像处理
+Pillow>=10.0.0
+
+# OCR 模型依赖（GLM-OCR）
+torch>=2.0.0
+transformers>=4.30.0
