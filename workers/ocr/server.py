@@ -8,7 +8,9 @@ FastAPI + WebSocket 服务，封装本地 GLM-OCR 模型。
     python server.py --port 18102
 
 环境变量（由 RuntimeManager 注入）：
-    MODEL_DIR          模型存储目录
+    MODEL_DIR          模型存储目录（默认: /Users/lifeng/data/models）
+    AGENT_TOOLS_DIR    Agent 工具目录（默认: /Users/lifeng/git/git_agents/agent-tools）
+    GLM_OCR_SCRIPT     GLM-OCR 脚本路径（默认: {AGENT_TOOLS_DIR}/glm_ocr/ocr_image.sh）
 
 识别策略（调用已配置的 GLM-OCR 环境）：
     - 支持同步和异步识别
@@ -40,8 +42,15 @@ except ImportError:
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# GLM-OCR 脚本路径
-GLM_OCR_SCRIPT = "/Users/lifeng/git/git_agents/agent-tools/glm_ocr/ocr_image.sh"
+# 模型和工具路径配置（从环境变量读取，提供默认值）
+MODEL_DIR = os.environ.get("MODEL_DIR", "/Users/lifeng/data/models")
+AGENT_TOOLS_DIR = os.environ.get("AGENT_TOOLS_DIR", "/Users/lifeng/git/git_agents/agent-tools")
+
+# GLM-OCR 脚本路径（可通过环境变量配置）
+GLM_OCR_SCRIPT = os.environ.get(
+    "GLM_OCR_SCRIPT",
+    os.path.join(AGENT_TOOLS_DIR, "glm_ocr/ocr_image.sh")
+)
 
 logging.basicConfig(level=logging.INFO, format="[OCR] %(message)s")
 log = logging.getLogger("ocr")
@@ -87,6 +96,7 @@ async def health():
         "status": "ok",
         "ocr_ready": ocr_ready,
         "glm_ocr_script": GLM_OCR_SCRIPT,
+        "model_dir": MODEL_DIR,
     })
 
 
@@ -322,6 +332,8 @@ def main():
     args = parser.parse_args()
 
     print(f"[OCR Worker] 启动服务 {args.host}:{args.port}")
+    print(f"[OCR Worker] MODEL_DIR = {MODEL_DIR}")
+    print(f"[OCR Worker] AGENT_TOOLS_DIR = {AGENT_TOOLS_DIR}")
     print(f"[OCR Worker] GLM_OCR_SCRIPT = {GLM_OCR_SCRIPT}")
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

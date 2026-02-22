@@ -108,11 +108,21 @@ ws.onmessage = (event) => {
 
 ## 环境依赖
 
+### 环境变量配置
+
+OCR Worker 支持通过环境变量配置路径（由 RuntimeManager 注入）：
+
+| 环境变量          | 说明             | 默认值                                     |
+| ----------------- | ---------------- | ------------------------------------------ |
+| `MODEL_DIR`       | 模型存储目录     | `/Users/lifeng/data/models`                |
+| `AGENT_TOOLS_DIR` | Agent 工具目录   | `/Users/lifeng/git/git_agents/agent-tools` |
+| `GLM_OCR_SCRIPT`  | GLM-OCR 脚本路径 | `{AGENT_TOOLS_DIR}/glm_ocr/ocr_image.sh`   |
+
 ### GLM-OCR 环境
 
-- **位置**: `/Users/lifeng/git/git_agents/agent-tools/glm_ocr`
+- **位置**: `{AGENT_TOOLS_DIR}/glm_ocr`（默认: `/Users/lifeng/git/git_agents/agent-tools/glm_ocr`）
 - **虚拟环境**: `glm_env`
-- **模型路径**: `/Users/lifeng/data/models/GLM-OCR`
+- **模型路径**: `{MODEL_DIR}/GLM-OCR`（默认: `/Users/lifeng/data/models/GLM-OCR`）
 - **Python**: 3.8+
 
 ### Worker 依赖

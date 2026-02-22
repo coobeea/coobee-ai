@@ -113,11 +113,23 @@ else:
 
 ### 1. 环境依赖
 
-需要先配置 GLM-OCR 环境：
+OCR Worker 支持通过环境变量配置路径：
 
 ```bash
-# 检查 GLM-OCR 是否可用
+# 可选：自定义路径（默认会使用内置路径）
+export MODEL_DIR="/path/to/models"
+export AGENT_TOOLS_DIR="/path/to/agent-tools"
+export GLM_OCR_SCRIPT="/path/to/glm_ocr/ocr_image.sh"
+```
+
+检查 GLM-OCR 是否可用：
+
+```bash
+# 使用默认路径
 ls /Users/lifeng/git/git_agents/agent-tools/glm_ocr/ocr_image.sh
+
+# 或使用环境变量
+ls $GLM_OCR_SCRIPT
 ```
 
 如果脚本不存在，需要先配置 GLM-OCR 环境。
