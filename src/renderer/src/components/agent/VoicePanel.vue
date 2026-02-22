@@ -1,12 +1,18 @@
 <script setup lang="ts">
 /**
- * VoicePanel — 语音交互面板
+ * VoicePanel — 实时语音交互面板
  *
  * 功能：
- *   1. 展示 Worker 状态（支持 asr / tts）
+ *   1. 展示 Worker 状态（asr / tts）
  *   2. ASR Worker ready 后自动开始麦克风监听
- *   3. 麦克风录音 → WebSocket 流式发送给 FunASR → 实时显示文字
- *   4. 提供"静音/取消静音"切换
+ *   3. Web Audio API 采集 Float32 PCM → 降采样 16kHz → Int16 LE → WebSocket 直传
+ *   4. 服务端 VAD 检测停顿触发识别，保证句子完整性
+ *   5. 提供"静音/取消静音"切换
+ *
+ * 性能优化：
+ *   - 消除 ffmpeg 转码开销（~200ms 延迟）
+ *   - 带抗混叠的降采样（防止高频失真）
+ *   - VAD 智能触发（完整句子识别）
  */
 
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
@@ -36,7 +42,11 @@ const partialText = ref('');
 const micError = ref('');
 
 let audioStream: MediaStream | null = null;
-let mediaRecorder: MediaRecorder | null = null;
+let audioContext: AudioContext | null = null;
+let sourceNode: MediaStreamAudioSourceNode | null = null;
+let processorNode: ScriptProcessorNode | null = null;
+let pcmBuffer: Float32Array[] = [];
+let sendTimer: ReturnType<typeof setInterval> | null = null;
 const asrWs = ref<WebSocket | null>(null);
 
 /** ASR Worker ready → 自动开始监听 */
@@ -60,7 +70,98 @@ function startASR(port: number): void {
   connectASRWebSocket(port);
 }
 
-// ==================== WebSocket 模式（FunASR） ====================
+// ==================== 音频处理工具 ====================
+
+/**
+ * 带抗混叠的降采样（48kHz → 16kHz）
+ *
+ * 关键：先低通滤波再抽取，防止高频混叠失真
+ */
+function downsample(samples: Float32Array, inputRate: number, outputRate: number): Float32Array {
+  if (inputRate === outputRate) return samples;
+
+  const ratio = inputRate / outputRate;
+  const intRatio = Math.round(ratio);
+
+  // 整数比率：均值抽取（最佳质量，如 48000/16000=3）
+  if (Math.abs(ratio - intRatio) < 0.01 && intRatio >= 2) {
+    const newLen = Math.floor(samples.length / intRatio);
+    const result = new Float32Array(newLen);
+
+    for (let i = 0; i < newLen; i++) {
+      let sum = 0;
+      const base = i * intRatio;
+      for (let j = 0; j < intRatio; j++) {
+        sum += samples[base + j];
+      }
+      result[i] = sum / intRatio; // 低通滤波
+    }
+    return result;
+  }
+
+  // 非整数比率：移动平均滤波 + 线性插值
+  const windowHalf = Math.ceil(ratio / 2);
+  const newLen = Math.round(samples.length / ratio);
+  const result = new Float32Array(newLen);
+
+  for (let i = 0; i < newLen; i++) {
+    const center = i * ratio;
+    const lo = Math.max(0, Math.floor(center) - windowHalf);
+    const hi = Math.min(samples.length - 1, Math.floor(center) + windowHalf);
+    let sum = 0;
+    for (let j = lo; j <= hi; j++) sum += samples[j];
+    result[i] = sum / (hi - lo + 1);
+  }
+  return result;
+}
+
+/**
+ * Float32 [-1, 1] → Int16 LE ArrayBuffer
+ */
+function float32ToInt16(float32: Float32Array): ArrayBuffer {
+  const buf = new ArrayBuffer(float32.length * 2);
+  const view = new DataView(buf);
+
+  for (let i = 0; i < float32.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32[i]));
+    const sample = s < 0 ? s * 0x8000 : s * 0x7fff;
+    view.setInt16(i * 2, sample, true); // little-endian
+  }
+
+  return buf;
+}
+
+/**
+ * 发送累积的 PCM 缓冲
+ */
+function sendPcmBuffer(): void {
+  if (!asrWs.value || asrWs.value.readyState !== WebSocket.OPEN) return;
+  if (pcmBuffer.length === 0) return;
+
+  // 合并所有累积的样本
+  let totalLen = 0;
+  for (const chunk of pcmBuffer) totalLen += chunk.length;
+  const merged = new Float32Array(totalLen);
+  let offset = 0;
+  for (const chunk of pcmBuffer) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  pcmBuffer = [];
+
+  if (!audioContext) return;
+
+  // 降采样到 16kHz
+  const downsampled = downsample(merged, audioContext.sampleRate, 16000);
+
+  // 转 Int16 LE
+  const int16buf = float32ToInt16(downsampled);
+
+  // 发送
+  asrWs.value.send(int16buf);
+}
+
+// ==================== WebSocket 连接 ====================
 
 function connectASRWebSocket(port: number): void {
   if (asrWs.value) return;
@@ -120,27 +221,54 @@ async function startListening(): Promise<void> {
       return;
     }
 
-    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-    // 使用 MediaRecorder 流式发送音频数据
-    mediaRecorder = new MediaRecorder(audioStream, {
-      mimeType: 'audio/webm;codecs=opus'
+    audioStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true
+      }
     });
 
-    mediaRecorder.ondataavailable = (event) => {
-      if (isMuted.value || event.data.size === 0) return;
-      if (asrWs.value?.readyState === WebSocket.OPEN) {
-        asrWs.value.send(event.data);
+    // 使用 Web Audio API 采集 PCM
+    // 不指定 sampleRate: 16000，让浏览器使用默认采样率（通常 48kHz）
+    // 在 JS 中做降采样质量更可控
+    audioContext = new AudioContext();
+    const actualRate = audioContext.sampleRate;
+    console.log(
+      `[VoicePanel] AudioContext: ${actualRate} Hz → 降采样到 16000 Hz (比率 ${(actualRate / 16000).toFixed(1)}:1)`
+    );
+
+    sourceNode = audioContext.createMediaStreamSource(audioStream);
+
+    // ScriptProcessorNode: bufferSize=4096
+    // 48kHz 时每次约 85ms
+    processorNode = audioContext.createScriptProcessor(4096, 1, 1);
+
+    processorNode.onaudioprocess = (event) => {
+      if (isMuted.value) {
+        // 清零输出防止回放
+        event.outputBuffer.getChannelData(0).fill(0);
+        return;
       }
+
+      const samples = event.inputBuffer.getChannelData(0); // Float32
+      pcmBuffer.push(new Float32Array(samples));
+
+      // 清零输出防止回放
+      event.outputBuffer.getChannelData(0).fill(0);
     };
 
-    mediaRecorder.start(250);
+    sourceNode.connect(processorNode);
+    processorNode.connect(audioContext.destination); // 必须连接才能触发
+
+    // 每 250ms 发送一次
+    sendTimer = setInterval(sendPcmBuffer, 250);
 
     isListening.value = true;
     isMuted.value = false;
     micError.value = '';
 
-    console.log('[VoicePanel] 麦克风监听已启动 (WebSocket 模式)');
+    console.log('[VoicePanel] 麦克风监听已启动 (PCM 直传模式)');
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error('[VoicePanel] 获取麦克风失败:', errMsg);
@@ -152,11 +280,28 @@ async function startListening(): Promise<void> {
 }
 
 function stopListening(): void {
-  // 停止 MediaRecorder
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
+  // 停止定时发送
+  if (sendTimer) {
+    clearInterval(sendTimer);
+    sendTimer = null;
   }
-  mediaRecorder = null;
+
+  // 发送剩余缓冲
+  sendPcmBuffer();
+
+  // 停止 AudioContext
+  if (processorNode) {
+    processorNode.disconnect();
+    processorNode = null;
+  }
+  if (sourceNode) {
+    sourceNode.disconnect();
+    sourceNode = null;
+  }
+  if (audioContext) {
+    audioContext.close().catch(() => {});
+    audioContext = null;
+  }
 
   // 释放麦克风
   if (audioStream) {
@@ -173,6 +318,7 @@ function stopListening(): void {
   isListening.value = false;
   asrConnected.value = false;
   partialText.value = '';
+  pcmBuffer = [];
 }
 
 /** 静音/取消静音切换 */

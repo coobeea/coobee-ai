@@ -1,5 +1,5 @@
 """
-ASR Worker — 语音识别服务
+ASR Worker — 实时语音识别服务
 
 FastAPI + WebSocket 服务，封装 FunASR-Nano 模型。
 由 RuntimeManager 管理生命周期。
@@ -11,21 +11,22 @@ FastAPI + WebSocket 服务，封装 FunASR-Nano 模型。
     MODEL_DIR          模型存储目录
     MODELSCOPE_CACHE   ModelScope 缓存目录
 
-识别策略（增量式）：
-    - 保留完整 webm buffer（容器格式需要头部）
-    - 每 ~2s 只提取并识别 *新增* 音频段（通过 ffmpeg -ss 跳过已识别部分）
-    - 识别结果追加到已确认文本，确保推理时间恒定 ~1.5s
-    - 避免全量重新识别导致的 O(n) 性能退化和模型幻觉
+识别策略（PCM 直传 + VAD 触发）：
+    - 浏览器端发送 PCM Int16 LE 16kHz 字节流
+    - 服务端用 wave 模块写 WAV 头（<1ms，无需 ffmpeg）
+    - VAD 检测说话停顿才触发识别，保证句子完整性
+    - 幻觉检测：输出字数超音频时长合理范围则截断
 """
 
 import argparse
 import asyncio
 import logging
 import os
-import subprocess
+import struct
 import sys
 import tempfile
 import time
+import wave
 
 # FastAPI / uvicorn
 try:
@@ -42,14 +43,16 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_NAME = "FunAudioLLM/Fun-ASR-Nano-2512"
 MODEL_DIR = os.environ.get("MODEL_DIR", "/Users/lifeng/data/models")
 
-# 每隔多少个 chunk（250ms/个）触发一次识别
-CHUNKS_PER_RECOGNITION = 4  # ~1 秒（降低延迟）
+# PCM 音频参数
+SAMPLE_RATE = 16000
+BYTES_PER_SAMPLE = 2  # Int16
+BYTES_PER_SEC = SAMPLE_RATE * BYTES_PER_SAMPLE  # 32000
 
-# 每次识别最大音频时长（秒），防止模型输入过大导致幻觉
-MAX_SEGMENT_SECONDS = 6.0
-
-# 两次识别之间的重叠（秒），避免截断边界处丢词
-OVERLAP_SECONDS = 0.3
+# ---- VAD（语音活动检测）参数 ----
+SILENCE_THRESHOLD = 300       # Int16 振幅阈值，低于此视为静音
+SILENCE_DURATION_SEC = 1.2    # 连续静音多久才算"说完一句"
+MAX_UTTERANCE_SEC = 20.0      # 不间断说话的安全上限（超过强制识别）
+MIN_UTTERANCE_SEC = 0.3       # 最短有效语段（低于此不值得识别）
 
 logging.basicConfig(level=logging.INFO, format="[ASR] %(message)s")
 log = logging.getLogger("asr")
@@ -124,269 +127,313 @@ async def health():
     })
 
 
-# ==================== 音频转码 ====================
+# ==================== 音频处理 ====================
 
-def webm_to_wav(webm_bytes: bytes, tmp_dir: str,
-                start_seconds: float = 0,
-                max_duration: float = 0) -> str:
+def pcm_to_wav(pcm_bytes: bytes, tmp_dir: str) -> str:
     """
-    将 webm/opus 音频转码为 PCM WAV 16kHz mono。
-    支持 -ss（跳过开头）和 -t（限制时长）来只提取指定片段。
-
+    PCM Int16 LE → WAV 文件（极快，无需 ffmpeg）
+    
     Args:
-        webm_bytes: 完整的 webm 容器字节流（必须包含头部）
+        pcm_bytes: PCM Int16 LE 字节流（16kHz 单声道）
         tmp_dir: 临时目录
-        start_seconds: 起始偏移（跳过前面已识别的部分）
-        max_duration: 最大提取时长（0 = 不限）
-
+    
     Returns:
         WAV 文件路径
     """
-    webm_path = os.path.join(tmp_dir, "input.webm")
-    wav_path = os.path.join(tmp_dir, "output.wav")
-
-    with open(webm_path, "wb") as f:
-        f.write(webm_bytes)
-
-    cmd = ["ffmpeg", "-y"]
-    if start_seconds > 0:
-        cmd.extend(["-ss", f"{start_seconds:.3f}"])
-    cmd.extend(["-i", webm_path])
-    if max_duration > 0:
-        cmd.extend(["-t", f"{max_duration:.3f}"])
-    cmd.extend(["-ar", "16000", "-ac", "1", "-f", "wav", wav_path])
-
-    result = subprocess.run(cmd, capture_output=True, timeout=30)
-
-    if result.returncode != 0:
-        stderr = result.stderr.decode(errors="replace")
-        raise RuntimeError(f"ffmpeg 转码失败: {stderr[:500]}")
-
-    # 检查输出文件是否有效（至少有 WAV 头 44 字节 + 一些数据）
-    if not os.path.exists(wav_path) or os.path.getsize(wav_path) < 100:
-        raise RuntimeError("ffmpeg 输出文件过小或为空")
-
+    wav_path = os.path.join(tmp_dir, "segment.wav")
+    
+    with wave.open(wav_path, "wb") as wf:
+        wf.setnchannels(1)          # 单声道
+        wf.setsampwidth(BYTES_PER_SAMPLE)  # 2 bytes (Int16)
+        wf.setframerate(SAMPLE_RATE)       # 16000 Hz
+        wf.writeframes(pcm_bytes)
+    
     return wav_path
 
 
-def transcribe_wav(wav_path: str) -> str:
-    """对 WAV 文件执行 ASR 识别"""
-    if asr_engine is None:
-        return ""
-
-    results = asr_engine.generate(
-        input=[wav_path],
-        cache={},
-        batch_size=1,
-        hotwords=[],
-        language="中文",
-        itn=True,
-    )
-
-    if results and len(results) > 0:
-        text = results[0].get("text", "")
-        return text.strip()
-    return ""
-
-
-def do_transcribe_segment(audio_buffer: bytes,
-                          start_seconds: float = 0,
-                          max_duration: float = 0) -> str:
+def clean_asr_output(text: str, audio_sec: float) -> str:
     """
-    同步版本：提取指定片段并识别。
+    清理 ASR 输出：检测模型幻觉（重复短语）
+    
+    FunASR 在输入音频质量差时会进入循环，不断重复同一短语。
+    检测方法：输出字数远超音频时长合理范围 → 截断。
+    中文正常语速 ~4-8 字/秒，允许 2x 余量。
+    """
+    if not text:
+        return text
+    
+    max_chars = max(int(audio_sec * 15), 10)
+    if len(text) > max_chars:
+        log.warning(
+            f"幻觉检测: {len(text)} 字/{audio_sec:.1f}s 音频 → 截断到 {max_chars} 字"
+        )
+        text = text[:max_chars]
+    
+    return text
 
+
+def check_chunk_energy(data: bytes) -> int:
+    """
+    快速检测音频 chunk 的峰值振幅（采样 50 个点）
+    
     Args:
-        audio_buffer: 完整 webm buffer（从会话开始）
-        start_seconds: 从哪个时间点开始提取
-        max_duration: 最多提取多少秒
-
+        data: PCM Int16 LE 字节流
+    
     Returns:
-        识别文本
+        峰值振幅（0-32767）
     """
-    if not audio_buffer or not model_loaded:
-        return ""
-
-    with tempfile.TemporaryDirectory(prefix="asr_") as tmp_dir:
-        try:
-            t0 = time.time()
-            wav_path = webm_to_wav(audio_buffer, tmp_dir,
-                                   start_seconds=start_seconds,
-                                   max_duration=max_duration)
-            ffmpeg_ms = int((time.time() - t0) * 1000)
-
-            t1 = time.time()
-            text = transcribe_wav(wav_path)
-            infer_ms = int((time.time() - t1) * 1000)
-
-            log.info(
-                f"片段识别: ss={start_seconds:.1f}s dur={max_duration:.1f}s | "
-                f"ffmpeg={ffmpeg_ms}ms infer={infer_ms}ms | "
-                f"text=\"{text[:60]}\""
-            )
-            return text
-        except Exception as e:
-            log.warning(f"识别失败: {e}")
-            return ""
+    n_samples = len(data) // BYTES_PER_SAMPLE
+    if n_samples == 0:
+        return 0
+    
+    check_count = min(50, n_samples)
+    step = max(1, n_samples // check_count)
+    max_amp = 0
+    
+    for i in range(0, n_samples, step):
+        val = abs(struct.unpack_from("<h", data, i * BYTES_PER_SAMPLE)[0])
+        if val > max_amp:
+            max_amp = val
+    
+    return max_amp
 
 
-async def transcribe_segment(audio_buffer: bytes,
-                             start_seconds: float = 0,
-                             max_duration: float = 0) -> str:
-    """异步版本：在线程池中提取指定片段并识别"""
+def do_transcribe(pcm_bytes: bytes) -> tuple[str, int]:
+    """
+    同步识别，返回 (文本, 推理耗时ms)
+    
+    Args:
+        pcm_bytes: PCM Int16 LE 字节流
+    
+    Returns:
+        (识别文本, 推理耗时ms)
+    """
+    if not asr_engine or not pcm_bytes:
+        return "", 0
+    
+    seg_sec = len(pcm_bytes) / BYTES_PER_SEC
+    log.info(f"音频片段: {seg_sec:.1f}s, {len(pcm_bytes)} bytes")
+    
+    with tempfile.TemporaryDirectory(prefix="asr_") as tmp:
+        t0 = time.time()
+        wav_path = pcm_to_wav(pcm_bytes, tmp)
+        wav_ms = int((time.time() - t0) * 1000)
+        
+        t1 = time.time()
+        results = asr_engine.generate(
+            input=[wav_path],
+            cache={},
+            batch_size=1,
+            hotwords=[],
+            language="中文",
+            itn=True,
+        )
+        infer_ms = int((time.time() - t1) * 1000)
+        
+        text = ""
+        if results and len(results) > 0:
+            text = results[0].get("text", "").strip()
+        
+        # 幻觉检测
+        text = clean_asr_output(text, seg_sec)
+        
+        total_ms = wav_ms + infer_ms
+        log.info(
+            f"识别: {seg_sec:.1f}s 音频 | wav={wav_ms}ms 推理={infer_ms}ms | "
+            f'"{text[:80]}"'
+        )
+        return text, total_ms
+
+
+async def transcribe_async(pcm_bytes: bytes) -> tuple[str, int]:
+    """异步版本：在线程池中执行识别"""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None, do_transcribe_segment, audio_buffer, start_seconds, max_duration
-    )
+    return await loop.run_in_executor(None, do_transcribe, pcm_bytes)
 
 
 # ==================== WebSocket 流式 ASR ====================
 
+# 预计算常量
+MAX_UTTERANCE_BYTES = int(MAX_UTTERANCE_SEC * BYTES_PER_SEC)
+MIN_UTTERANCE_BYTES = int(MIN_UTTERANCE_SEC * BYTES_PER_SEC)
+SILENCE_BYTES = int(SILENCE_DURATION_SEC * BYTES_PER_SEC)
+
+
 @app.websocket("/ws/asr")
 async def asr_stream(ws: WebSocket):
     """
-    流式 ASR 接口（长连接）— 增量识别策略
-
-    核心思路：
-    - buffer 持续累积所有 webm chunks（需要完整容器头）
-    - 但每次识别只提取 "上次识别位置" 到 "当前位置" 的音频段
-    - 通过 ffmpeg -ss 跳过已识别部分，只处理 ~2-4 秒新音频
-    - 识别结果累加到 committed_text，发送给前端
-
-    性能保证：
-    - 每次模型推理固定 ~1.5s（不随会话时长增长）
-    - ffmpeg seek 开销极小（即使 webm 文件较大）
+    流式 ASR — VAD 触发识别
+    
+    策略：检测说话停顿才触发识别，保证句子完整性。
+    - 持续接收 PCM Int16 LE 音频，跟踪每个 chunk 的音量
+    - 当检测到"有说话 → 静音超过阈值"时，将整段语音送去识别
+    - 安全阀：连续说话超过 MAX_UTTERANCE_SEC 时强制切一次
     """
     await ws.accept()
     log.info("WebSocket 客户端已连接")
-
+    
     if not model_loaded:
-        await ws.send_json({"partial": "[模型加载中，请稍候...]"})
+        await ws.send_json({"status": "loading", "message": "模型加载中..."})
         while not model_loaded:
-            await asyncio.sleep(1)
-        await ws.send_json({"partial": "[模型已就绪]"})
-
-    # ---- 共享状态 ----
-    buffer = bytearray()          # 完整 webm buffer
-    chunk_count = 0               # 总 chunk 数
-    committed_text = ""           # 已确认的历史识别文本
-    recognized_chunks = 0         # 已识别到的 chunk 位置
+            await asyncio.sleep(0.5)
+    await ws.send_json({"status": "ready", "message": "模型已就绪"})
+    
+    # ---- 会话状态 ----
+    buffer = bytearray()
+    recognized_pos = 0
+    committed_text = ""
     connected = True
-    pending_recognition = asyncio.Event()
-
+    pending = asyncio.Event()
+    
+    # VAD 状态
+    speech_start_pos = -1      # 当前语音段的起始位置（-1=没在说话）
+    silence_start_pos = -1     # 静音开始的位置
+    
     async def receive_chunks():
-        """接收音频 chunks 并累积到 buffer"""
-        nonlocal chunk_count, connected
+        """接收 PCM 字节流，做 VAD 检测，在停顿时触发识别"""
+        nonlocal connected, speech_start_pos, silence_start_pos, recognized_pos
+        
         try:
             while True:
-                audio_bytes = await ws.receive_bytes()
-                buffer.extend(audio_bytes)
-                chunk_count += 1
-
-                # 每 N 个 chunk 通知识别协程
-                if chunk_count % CHUNKS_PER_RECOGNITION == 0:
-                    pending_recognition.set()
-
+                data = await ws.receive_bytes()
+                buf_pos_before = len(buffer)
+                buffer.extend(data)
+                
+                energy = check_chunk_energy(data)
+                is_speech = energy > SILENCE_THRESHOLD
+                
+                if is_speech:
+                    # 正在说话
+                    if speech_start_pos < 0:
+                        speech_start_pos = buf_pos_before
+                        # 跳过前面的静音，把 recognized_pos 推进到语音起始前 0.2s
+                        margin = int(0.2 * BYTES_PER_SEC)
+                        skip_to = max(recognized_pos, buf_pos_before - margin)
+                        if skip_to > recognized_pos:
+                            skipped_sec = (skip_to - recognized_pos) / BYTES_PER_SEC
+                            recognized_pos = skip_to
+                            log.info(
+                                f"[VAD] 开始说话 pos={speech_start_pos}, "
+                                f"跳过 {skipped_sec:.1f}s 静音"
+                            )
+                        else:
+                            log.info(f"[VAD] 开始说话 pos={speech_start_pos}")
+                    silence_start_pos = -1
+                    
+                    # 安全阀：连续说话太久，强制触发识别
+                    speech_len = len(buffer) - speech_start_pos
+                    if speech_len >= MAX_UTTERANCE_BYTES:
+                        log.info(
+                            f"[VAD] 连续说话 {speech_len / BYTES_PER_SEC:.1f}s，"
+                            f"强制触发识别"
+                        )
+                        pending.set()
+                else:
+                    # 静音
+                    if silence_start_pos < 0:
+                        silence_start_pos = buf_pos_before
+                    
+                    # 如果之前在说话，检查静音是否够长
+                    if speech_start_pos >= 0:
+                        silence_len = len(buffer) - silence_start_pos
+                        if silence_len >= SILENCE_BYTES:
+                            # 停顿够长 → 一句话说完了
+                            utterance_bytes = silence_start_pos - recognized_pos
+                            log.info(
+                                f"[VAD] 检测到停顿 "
+                                f"(语音 {utterance_bytes / BYTES_PER_SEC:.1f}s, "
+                                f"静音 {silence_len / BYTES_PER_SEC:.1f}s)"
+                            )
+                            if utterance_bytes >= MIN_UTTERANCE_BYTES:
+                                pending.set()
+                            else:
+                                # 太短的语音（如清嗓子），跳过
+                                recognized_pos = len(buffer)
+                                log.info("[VAD] 语音太短，跳过")
+                            speech_start_pos = -1
+                            silence_start_pos = -1
+        
         except (WebSocketDisconnect, Exception) as e:
-            log.info(f"WebSocket 断开: {type(e).__name__}")
+            log.info(f"连接断开: {type(e).__name__}")
             connected = False
-            pending_recognition.set()
-
+            pending.set()
+    
     async def recognize_loop():
-        """增量识别：每次只处理新增的音频段"""
-        nonlocal committed_text, recognized_chunks
-
+        """等待 VAD 触发，识别完整语段"""
+        nonlocal committed_text, recognized_pos, speech_start_pos
+        
         while connected:
-            await pending_recognition.wait()
-            pending_recognition.clear()
-
+            await pending.wait()
+            pending.clear()
+            
             if not connected:
                 break
-
-            if chunk_count <= recognized_chunks:
+            
+            # 确定识别范围
+            available = len(buffer) - recognized_pos
+            if available < MIN_UTTERANCE_BYTES:
                 continue
-
-            # 计算本次识别的时间范围
-            # 留一点 overlap 避免截断边界丢词
-            overlap_chunks = int(OVERLAP_SECONDS / 0.25)
-            start_chunk = max(0, recognized_chunks - overlap_chunks)
-            start_sec = start_chunk * 0.25
-
-            # 本次新增音频的时长
-            new_chunks = chunk_count - recognized_chunks
-            segment_sec = (new_chunks + overlap_chunks) * 0.25
-
-            # 限制最大段长
-            if segment_sec > MAX_SEGMENT_SECONDS:
-                start_sec = chunk_count * 0.25 - MAX_SEGMENT_SECONDS
-                segment_sec = MAX_SEGMENT_SECONDS
-
-            snapshot = bytes(buffer)
-
+            
+            # 取音频段（含少量尾部静音没关系，模型能处理）
+            end = min(recognized_pos + MAX_UTTERANCE_BYTES, len(buffer))
+            segment = bytes(buffer[recognized_pos:end])
+            
             try:
-                text = await transcribe_segment(
-                    snapshot,
-                    start_seconds=start_sec,
-                    max_duration=segment_sec
-                )
-
-                # 更新已识别位置
-                recognized_chunks = chunk_count
-
+                text, latency_ms = await transcribe_async(segment)
+                recognized_pos = end
+                
+                # 如果是强制触发，重置 speech_start_pos 为当前位置
+                if speech_start_pos >= 0 and speech_start_pos < end:
+                    speech_start_pos = end
+                
                 if text:
-                    # 追加到已确认文本
-                    if committed_text:
-                        committed_text = committed_text + " " + text
-                    else:
-                        committed_text = text
-
+                    committed_text = (
+                        committed_text + text if committed_text else text
+                    )
                     try:
-                        await ws.send_json({"partial": committed_text})
+                        await ws.send_json(
+                            {"partial": committed_text, "latency_ms": latency_ms}
+                        )
                     except Exception:
-                        log.info("发送 partial 失败（客户端可能已断开）")
                         break
-
+            
             except Exception as e:
                 log.warning(f"识别异常: {e}")
-
+    
     # 并发运行
     recv_task = asyncio.create_task(receive_chunks())
     recog_task = asyncio.create_task(recognize_loop())
-
+    
     await recv_task
-
     connected = False
-    pending_recognition.set()
+    pending.set()
     recog_task.cancel()
     try:
         await recog_task
     except asyncio.CancelledError:
         pass
-
-    # 最终识别（处理尚未识别的尾部）
-    if chunk_count > recognized_chunks and buffer:
+    
+    # 最终识别：处理断开时尚未识别的尾部
+    remaining = len(buffer) - recognized_pos
+    if remaining > MIN_UTTERANCE_BYTES:
+        segment = bytes(buffer[recognized_pos:])
         try:
-            start_sec = recognized_chunks * 0.25
-            remaining_sec = (chunk_count - recognized_chunks) * 0.25
-            if remaining_sec > 0.5:  # 至少 0.5 秒才值得识别
-                final_segment = await transcribe_segment(
-                    bytes(buffer),
-                    start_seconds=max(0, start_sec - OVERLAP_SECONDS),
-                    max_duration=remaining_sec + OVERLAP_SECONDS
-                )
-                if final_segment:
-                    committed_text = (committed_text + " " + final_segment).strip()
-        except Exception as e:
-            log.warning(f"最终识别异常: {e}")
-
+            text, _ = await transcribe_async(segment)
+            if text:
+                committed_text = (committed_text + text).strip()
+        except Exception:
+            pass
+    
     if committed_text:
-        log.info(f"最终文本: {committed_text[:200]}")
         try:
             await ws.send_json({"final": committed_text})
         except Exception:
-            log.info("无法发送 final（客户端已断开）")
-
-    log.info(f"会话结束: {chunk_count} chunks, {len(buffer)} bytes, "
-             f"识别 {recognized_chunks} chunks")
+            pass
+    
+    log.info(
+        f"会话结束: {len(buffer)} bytes, "
+        f"已识别到 {recognized_pos} bytes"
+    )
 
 
 # ==================== 启动 ====================
