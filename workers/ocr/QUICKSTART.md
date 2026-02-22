@@ -36,8 +36,8 @@ curl http://127.0.0.1:18102/health
 ```json
 {
   "status": "ok",
-  "ocr_ready": true,
-  "glm_ocr_script": "/Users/lifeng/git/git_agents/agent-tools/glm_ocr/ocr_image.sh"
+  "model_loaded": true,
+  "model_dir": "/Users/lifeng/data/models"
 }
 ```
 
@@ -65,10 +65,10 @@ python test_client.py ws /path/to/image.png
 # 准备图片的 base64 编码
 IMAGE_BASE64=$(base64 -i /path/to/image.png)
 
-# 调用 API
+# 调用 API (默认文本识别)
 curl -X POST http://127.0.0.1:18102/api/ocr \
   -H "Content-Type: application/json" \
-  -d "{\"image\": \"$IMAGE_BASE64\", \"format\": \"png\"}"
+  -d "{\"image\": \"$IMAGE_BASE64\", \"task\": \"text\"}"
 ```
 
 ### 使用 Python 调用
@@ -86,7 +86,7 @@ response = requests.post(
     "http://127.0.0.1:18102/api/ocr",
     json={
         "image": image_data,
-        "format": "png"
+        "task": "text"  # 可选: text | formula | table
     },
     timeout=180
 )
@@ -95,44 +95,37 @@ result = response.json()
 if result["success"]:
     print("识别结果:")
     print(result["text"])
+    print(f"耗时: {result['latency_ms']}ms")
 else:
     print("识别失败:", result["error"])
 ```
 
 ## 📊 性能参考
 
-| 指标     | 值                 |
-| -------- | ------------------ |
-| 启动时间 | 5-10 秒            |
-| 识别速度 | 80-95 秒/张（CPU） |
-| 准确率   | ⭐⭐⭐⭐⭐         |
-| 内存占用 | 2-3GB              |
-| 端口     | 18102              |
+| 指标     | 值                   |
+| -------- | -------------------- |
+| 启动时间 | 10-15 秒（加载模型） |
+| 识别速度 | 80-95 秒/张（CPU）   |
+| 准确率   | ⭐⭐⭐⭐⭐           |
+| 内存占用 | 2-3GB                |
+| 端口     | 18102                |
+| 支持任务 | 文本/公式/表格识别   |
 
 ## ⚠️ 注意事项
 
 ### 1. 环境依赖
 
-OCR Worker 支持通过环境变量配置路径：
+OCR Worker 需要 GLM-OCR 模型：
 
 ```bash
-# 可选：自定义路径（默认会使用内置路径）
+# 检查模型是否存在
+ls /Users/lifeng/data/models/GLM-OCR
+
+# 可选：自定义模型路径
 export MODEL_DIR="/path/to/models"
-export AGENT_TOOLS_DIR="/path/to/agent-tools"
-export GLM_OCR_SCRIPT="/path/to/glm_ocr/ocr_image.sh"
 ```
 
-检查 GLM-OCR 是否可用：
-
-```bash
-# 使用默认路径
-ls /Users/lifeng/git/git_agents/agent-tools/glm_ocr/ocr_image.sh
-
-# 或使用环境变量
-ls $GLM_OCR_SCRIPT
-```
-
-如果脚本不存在，需要先配置 GLM-OCR 环境。
+如果模型不存在，需要先下载 GLM-OCR 模型到 `{MODEL_DIR}/GLM-OCR` 目录。
 
 ### 2. 超时设置
 
@@ -157,14 +150,14 @@ lsof -i :18102
 python --version  # 需要 Python 3.8+
 ```
 
-### 问题：OCR 环境未就绪
+### 问题：模型加载失败
 
 ```bash
-# 检查 GLM-OCR 脚本
-ls -la /Users/lifeng/git/git_agents/agent-tools/glm_ocr/ocr_image.sh
+# 检查模型文件
+ls -la /Users/lifeng/data/models/GLM-OCR
 
-# 检查虚拟环境
-ls -la /Users/lifeng/git/git_agents/agent-tools/glm_ocr/glm_env
+# 查看启动日志
+# 确认 MODEL_DIR 环境变量是否正确
 ```
 
 ### 问题：识别超时

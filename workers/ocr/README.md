@@ -7,8 +7,9 @@
 - ✅ **本地运行** - 基于 GLM-OCR 本地模型，离线可用
 - ✅ **高质量** - OmniDocBench V1.5 第一名（94.62 分）
 - ✅ **FastAPI + WebSocket** - 支持同步和流式识别
-- ✅ **独立环境** - 使用已配置的 GLM-OCR 虚拟环境
+- ✅ **独立服务** - 直接加载模型，不依赖外部脚本
 - ✅ **自动管理** - 由 RuntimeManager 管理生命周期
+- ✅ **多任务支持** - 支持文本、公式、表格识别
 
 ## 快速开始
 
@@ -62,7 +63,7 @@ Content-Type: application/json
 
 {
   "image": "base64_encoded_image_data",
-  "format": "png"
+  "task": "text"  // 可选: text | formula | table
 }
 ```
 
@@ -71,7 +72,8 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "text": "识别的文本内容"
+  "text": "识别的文本内容",
+  "latency_ms": 85000
 }
 ```
 
@@ -85,7 +87,7 @@ ws.onopen = () => {
   ws.send(
     JSON.stringify({
       image: base64ImageData,
-      format: 'png'
+      task: 'text' // 可选: text | formula | table
     })
   );
 };
@@ -112,18 +114,18 @@ ws.onmessage = (event) => {
 
 OCR Worker 支持通过环境变量配置路径（由 RuntimeManager 注入）：
 
-| 环境变量          | 说明             | 默认值                                     |
-| ----------------- | ---------------- | ------------------------------------------ |
-| `MODEL_DIR`       | 模型存储目录     | `/Users/lifeng/data/models`                |
-| `AGENT_TOOLS_DIR` | Agent 工具目录   | `/Users/lifeng/git/git_agents/agent-tools` |
-| `GLM_OCR_SCRIPT`  | GLM-OCR 脚本路径 | `{AGENT_TOOLS_DIR}/glm_ocr/ocr_image.sh`   |
+| 环境变量           | 说明            | 默认值                      |
+| ------------------ | --------------- | --------------------------- |
+| `MODEL_DIR`        | 模型存储目录    | `/Users/lifeng/data/models` |
+| `MODELSCOPE_CACHE` | ModelScope 缓存 | `{MODEL_DIR}`               |
 
-### GLM-OCR 环境
+### 模型要求
 
-- **位置**: `{AGENT_TOOLS_DIR}/glm_ocr`（默认: `/Users/lifeng/git/git_agents/agent-tools/glm_ocr`）
-- **虚拟环境**: `glm_env`
+- **模型名称**: GLM-OCR
 - **模型路径**: `{MODEL_DIR}/GLM-OCR`（默认: `/Users/lifeng/data/models/GLM-OCR`）
+- **模型大小**: ~900M 参数
 - **Python**: 3.8+
+- **PyTorch**: 2.0+
 
 ### Worker 依赖
 
@@ -133,54 +135,55 @@ OCR Worker 支持通过环境变量配置路径（由 RuntimeManager 注入）�
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 websockets>=14.0
-Pillow>=10.0.0
 torch>=2.0.0
 transformers>=4.30.0
+Pillow>=10.0.0
 ```
 
 ## 性能说明
 
-- **启动时间**: 约 5-10 秒（检查环境）
+- **启动时间**: 约 10-15 秒（加载模型）
 - **识别速度**: 80-95 秒/张（CPU 模式）
 - **准确率**: ⭐⭐⭐⭐⭐（OmniDocBench 第一名）
 - **内存占用**: 约 2-3GB
+- **支持任务**: 文本识别、公式识别、表格识别
 
 ## 工作原理
 
 ```
-1. Worker 启动时检查 GLM-OCR 环境是否可用
+1. Worker 启动时加载 GLM-OCR 模型到内存
 2. 接收图片数据（base64 编码）
-3. 保存为临时文件
-4. 调用 GLM-OCR shell 脚本进行识别
-5. 读取识别结果
-6. 返回文本内容
-7. 清理临时文件
+3. 解码为图片字节流
+4. 使用 transformers 模型进行推理
+5. 返回识别的文本内容
+6. 支持三种任务类型：文本、公式、表格
 ```
 
 ## 故障排查
 
-### 问题 1: OCR 环境未就绪
+### 问题 1: 模型加载失败
 
-**错误**: `OCR 环境未就绪`
+**错误**: `模型加载中...` 或模型加载异常
 
 **解决**:
 
 ```bash
-# 检查 GLM-OCR 脚本是否存在
-ls /Users/lifeng/git/git_agents/agent-tools/glm_ocr/ocr_image.sh
+# 检查模型是否存在
+ls /Users/lifeng/data/models/GLM-OCR
 
-# 如果不存在，需要先配置 GLM-OCR 环境
+# 如果不存在，需要下载 GLM-OCR 模型
+# 或设置正确的 MODEL_DIR 环境变量
 ```
 
-### 问题 2: 识别超时
+### 问题 2: 识别速度慢
 
-**错误**: `处理超时（超过2分钟）`
+**现象**: 识别单张图片需要 80-95 秒
 
-**解决**:
+**说明**:
 
-- 图片过大，压缩后再试
-- 模型加载慢，首次运行需要更长时间
-- 可以修改 `server.py` 中的 timeout 参数
+- CPU 模式下正常速度
+- 首次识别可能更慢（模型预热）
+- 如需加速，考虑使用 GPU（CUDA）
 
 ### 问题 3: 内存不足
 
@@ -223,35 +226,25 @@ ls /Users/lifeng/git/git_agents/agent-tools/glm_ocr/ocr_image.sh
 
 ## 开发说明
 
-### 添加 DeepSeek-OCR 支持
+### 扩展功能
 
-如果需要支持 DeepSeek-OCR 作为备选方案：
-
-1. 修改 `server.py` 添加 OCR 引擎选择逻辑
-2. 添加 DeepSeek-OCR 调用函数
-3. 在 API 中添加 `engine` 参数
-
-示例：
-
-```python
-# 请求
-{
-  "image": "base64_data",
-  "format": "png",
-  "engine": "glm" | "deepseek"  // 选择 OCR 引擎
-}
-```
+1. **添加其他 OCR 模型**：可以在 `load_ocr_model()` 中添加模型选择逻辑
+2. **批量处理**: 支持一次识别多张图片（需修改 API）
+3. **流式输出**: 对于超长文本，可以实现流式返回
 
 ### 优化性能
 
-1. **模型缓存**: 考虑直接加载模型而不是每次调用 shell 脚本
-2. **批量处理**: 支持一次识别多张图片
-3. **GPU 加速**: 检测 GPU 可用性并自动切换
+1. **GPU 加速**: 自动检测 CUDA，大幅提升速度
+2. **模型量化**: 使用 int8/int4 量化减少内存占用
+3. **批处理**: 一次处理多张图片
 
 ## 版本历史
 
+- **v0.2.0** (2026-02-22)
+  - 重构为独立服务，直接加载模型
+  - 移除对外部脚本的依赖
+  - 支持三种任务类型（文本、公式、表格）
+  - 优化性能和内存管理
 - **v0.1.0** (2026-02-22)
   - 初始版本
-  - 支持 GLM-OCR 本地识别
-  - FastAPI + WebSocket 接口
-  - 独立环境管理
+  - 基础 FastAPI + WebSocket 接口

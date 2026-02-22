@@ -8,28 +8,20 @@ FastAPI + WebSocket 服务，封装本地 GLM-OCR 模型。
     python server.py --port 18102
 
 环境变量（由 RuntimeManager 注入）：
-    MODEL_DIR          模型存储目录（默认: /Users/lifeng/data/models）
-    AGENT_TOOLS_DIR    Agent 工具目录（默认: /Users/lifeng/git/git_agents/agent-tools）
-    GLM_OCR_SCRIPT     GLM-OCR 脚本路径（默认: {AGENT_TOOLS_DIR}/glm_ocr/ocr_image.sh）
-
-识别策略（调用已配置的 GLM-OCR 环境）：
-    - 支持同步和异步识别
-    - 通过 WebSocket 提供实时进度反馈
-    - 调用已配置好的 GLM-OCR shell 脚本
+    MODEL_DIR          模型存储目录
+    MODELSCOPE_CACHE   ModelScope 缓存目录
 """
 
 import argparse
 import asyncio
 import base64
+import io
 import logging
 import os
-import subprocess
 import sys
-import tempfile
 import time
-from pathlib import Path
 
-# FastAPI / uvicorn
+# FastAPI / uvicorn 按需导入
 try:
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect
     from fastapi.responses import JSONResponse
@@ -41,61 +33,92 @@ except ImportError:
 # ==================== 配置 ====================
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# 模型和工具路径配置（从环境变量读取，提供默认值）
+MODEL_NAME = "GLM-OCR"
 MODEL_DIR = os.environ.get("MODEL_DIR", "/Users/lifeng/data/models")
-AGENT_TOOLS_DIR = os.environ.get("AGENT_TOOLS_DIR", "/Users/lifeng/git/git_agents/agent-tools")
-
-# GLM-OCR 脚本路径（可通过环境变量配置）
-GLM_OCR_SCRIPT = os.environ.get(
-    "GLM_OCR_SCRIPT",
-    os.path.join(AGENT_TOOLS_DIR, "glm_ocr/ocr_image.sh")
-)
 
 logging.basicConfig(level=logging.INFO, format="[OCR] %(message)s")
 log = logging.getLogger("ocr")
 
-app = FastAPI(title="OCR Worker", version="0.1.0")
+app = FastAPI(title="OCR Worker", version="0.2.0")
 
 # ==================== 全局状态 ====================
 
-ocr_ready = False
+ocr_processor = None
+ocr_model = None
+model_loaded = False
 
 
-# ==================== 启动检查 ====================
+# ==================== 模型加载 ====================
 
-def check_ocr_availability():
-    """检查 OCR 环境是否可用"""
-    global ocr_ready
+def detect_device() -> str:
+    """自动选择最佳计算设备"""
+    import torch
+    if torch.cuda.is_available():
+        return "cuda:0"
+    elif torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+def load_ocr_model():
+    """加载 GLM-OCR 模型"""
+    global ocr_processor, ocr_model, model_loaded
     
-    if not Path(GLM_OCR_SCRIPT).exists():
-        log.error(f"GLM-OCR 脚本不存在: {GLM_OCR_SCRIPT}")
-        log.error("请确保已配置 GLM-OCR 环境:")
-        log.error("  位置: /Users/lifeng/git/git_agents/agent-tools/glm_ocr")
-        ocr_ready = False
-        return False
+    import torch
+    from transformers import AutoProcessor, AutoModelForImageTextToText
     
-    log.info(f"✅ GLM-OCR 脚本已找到: {GLM_OCR_SCRIPT}")
-    ocr_ready = True
-    return True
+    device = detect_device()
+    model_path = os.path.join(MODEL_DIR, MODEL_NAME)
+    
+    log.info(f"加载模型: {MODEL_NAME}")
+    log.info(f"设备: {device}")
+    log.info(f"模型路径: {model_path}")
+    
+    # 设置缓存目录
+    os.environ.setdefault("MODELSCOPE_CACHE", MODEL_DIR)
+    os.environ.setdefault("HF_HOME", MODEL_DIR)
+    os.environ.setdefault("HUGGINGFACE_HUB_CACHE", os.path.join(MODEL_DIR, "hub"))
+    
+    t0 = time.time()
+    
+    # 加载处理器
+    log.info("加载 Processor...")
+    ocr_processor = AutoProcessor.from_pretrained(
+        model_path,
+        trust_remote_code=True
+    )
+    
+    # 加载模型
+    log.info("加载模型...")
+    dtype = torch.bfloat16 if device == "cuda:0" else torch.float32
+    ocr_model = AutoModelForImageTextToText.from_pretrained(
+        model_path,
+        torch_dtype=dtype,
+        trust_remote_code=True
+    )
+    ocr_model.to(device)
+    ocr_model.eval()
+    
+    elapsed = time.time() - t0
+    model_loaded = True
+    log.info(f"模型加载完成，耗时 {elapsed:.1f}s")
 
 
 @app.on_event("startup")
 async def startup_event():
-    """应用启动时检查 OCR 环境"""
+    """应用启动时加载模型（在线程池中执行，不阻塞事件循环）"""
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, check_ocr_availability)
+    await loop.run_in_executor(None, load_ocr_model)
 
 
 # ==================== HTTP 接口 ====================
 
 @app.get("/health")
 async def health():
-    """健康检查"""
+    """健康检查（RuntimeManager 轮询此接口判断是否就绪）"""
     return JSONResponse({
         "status": "ok",
-        "ocr_ready": ocr_ready,
-        "glm_ocr_script": GLM_OCR_SCRIPT,
+        "model_loaded": model_loaded,
         "model_dir": MODEL_DIR,
     })
 
@@ -107,7 +130,7 @@ async def ocr_sync(request: dict):
     
     请求体: { 
         "image": "base64_encoded_image_data",
-        "format": "png|jpg|jpeg"
+        "task": "text|formula|table"  # 可选，默认 text
     }
     响应: { 
         "text": "识别的文本内容",
@@ -115,15 +138,15 @@ async def ocr_sync(request: dict):
         "error": "错误信息（如果有）"
     }
     """
-    if not ocr_ready:
+    if not model_loaded:
         return JSONResponse({
             "success": False,
-            "error": "OCR 环境未就绪"
+            "error": "模型加载中..."
         }, status_code=503)
     
     # 获取图片数据
     image_data = request.get("image", "")
-    image_format = request.get("format", "png")
+    task = request.get("task", "text")
     
     if not image_data:
         return JSONResponse({
@@ -135,38 +158,14 @@ async def ocr_sync(request: dict):
         # 解码 base64 图片
         image_bytes = base64.b64decode(image_data)
         
-        # 创建临时文件
-        with tempfile.NamedTemporaryFile(
-            suffix=f".{image_format}", 
-            delete=False
-        ) as tmp_img:
-            tmp_img.write(image_bytes)
-            tmp_img_path = tmp_img.name
-        
-        with tempfile.NamedTemporaryFile(
-            mode='w', 
-            suffix='.md', 
-            delete=False
-        ) as tmp_out:
-            tmp_out_path = tmp_out.name
-        
         # 调用 OCR
-        success, text, error = await call_glm_ocr_async(tmp_img_path, tmp_out_path)
+        text, latency_ms = await recognize_image_async(image_bytes, task)
         
-        # 清理临时文件
-        Path(tmp_img_path).unlink(missing_ok=True)
-        Path(tmp_out_path).unlink(missing_ok=True)
-        
-        if success:
-            return JSONResponse({
-                "success": True,
-                "text": text
-            })
-        else:
-            return JSONResponse({
-                "success": False,
-                "error": error
-            }, status_code=500)
+        return JSONResponse({
+            "success": True,
+            "text": text,
+            "latency_ms": latency_ms
+        })
             
     except Exception as e:
         log.error(f"OCR 处理异常: {e}")
@@ -183,7 +182,7 @@ async def ocr_stream(ws: WebSocket):
     
     客户端发送: { 
         "image": "base64_encoded_image_data",
-        "format": "png|jpg|jpeg"
+        "task": "text|formula|table"  # 可选，默认 text
     }
     服务端返回: 
         { "status": "processing", "message": "正在识别..." }
@@ -193,12 +192,13 @@ async def ocr_stream(ws: WebSocket):
     await ws.accept()
     log.info("WebSocket 客户端已连接")
     
-    if not ocr_ready:
+    if not model_loaded:
         await ws.send_json({
-            "status": "error",
-            "error": "OCR 环境未就绪"
+            "status": "loading",
+            "message": "模型加载中..."
         })
-        return
+        while not model_loaded:
+            await asyncio.sleep(0.5)
     
     await ws.send_json({
         "status": "ready",
@@ -210,7 +210,7 @@ async def ocr_stream(ws: WebSocket):
             data = await ws.receive_json()
             
             image_data = data.get("image", "")
-            image_format = data.get("format", "png")
+            task = data.get("task", "text")
             
             if not image_data:
                 await ws.send_json({
@@ -228,44 +228,14 @@ async def ocr_stream(ws: WebSocket):
                 # 解码 base64 图片
                 image_bytes = base64.b64decode(image_data)
                 
-                # 创建临时文件
-                with tempfile.NamedTemporaryFile(
-                    suffix=f".{image_format}", 
-                    delete=False
-                ) as tmp_img:
-                    tmp_img.write(image_bytes)
-                    tmp_img_path = tmp_img.name
-                
-                with tempfile.NamedTemporaryFile(
-                    mode='w', 
-                    suffix='.md', 
-                    delete=False
-                ) as tmp_out:
-                    tmp_out_path = tmp_out.name
-                
                 # 调用 OCR
-                t0 = time.time()
-                success, text, error = await call_glm_ocr_async(
-                    tmp_img_path, 
-                    tmp_out_path
-                )
-                latency_ms = int((time.time() - t0) * 1000)
+                text, latency_ms = await recognize_image_async(image_bytes, task)
                 
-                # 清理临时文件
-                Path(tmp_img_path).unlink(missing_ok=True)
-                Path(tmp_out_path).unlink(missing_ok=True)
-                
-                if success:
-                    await ws.send_json({
-                        "status": "success",
-                        "text": text,
-                        "latency_ms": latency_ms
-                    })
-                else:
-                    await ws.send_json({
-                        "status": "error",
-                        "error": error
-                    })
+                await ws.send_json({
+                    "status": "success",
+                    "text": text,
+                    "latency_ms": latency_ms
+                })
                     
             except Exception as e:
                 log.error(f"OCR 处理异常: {e}")
@@ -280,47 +250,81 @@ async def ocr_stream(ws: WebSocket):
 
 # ==================== OCR 处理 ====================
 
-def call_glm_ocr(image_path: str, output_path: str) -> tuple:
+# 任务提示词映射
+TASK_PROMPTS = {
+    "text": "Text Recognition:",
+    "formula": "Formula Recognition:",
+    "table": "Table Recognition:"
+}
+
+
+def do_recognize(image_bytes: bytes, task: str = "text") -> tuple[str, int]:
     """
-    调用 GLM-OCR shell 脚本（同步）
+    同步识别，返回 (文本, 推理耗时ms)
     
     Args:
-        image_path: 输入图片路径
-        output_path: 输出文件路径
-        
+        image_bytes: 图片字节流
+        task: 任务类型 (text | formula | table)
+    
     Returns:
-        (success: bool, result: str, error: str)
+        (识别文本, 推理耗时ms)
     """
-    try:
-        # 调用 GLM-OCR shell 脚本
-        result = subprocess.run(
-            [GLM_OCR_SCRIPT, image_path, output_path],
-            capture_output=True,
-            text=True,
-            timeout=120  # 2分钟超时
-        )
-        
-        if result.returncode == 0:
-            # 读取输出文件
-            if Path(output_path).exists():
-                with open(output_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                return (True, content, "")
-            else:
-                return (False, "", "输出文件未生成")
-        else:
-            return (False, "", result.stderr or result.stdout)
-            
-    except subprocess.TimeoutExpired:
-        return (False, "", "处理超时（超过2分钟）")
-    except Exception as e:
-        return (False, "", str(e))
+    if not ocr_model or not ocr_processor:
+        return "", 0
+    
+    import torch
+    from PIL import Image
+    
+    # 从字节流加载图片
+    image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+    
+    # 获取任务提示词
+    prompt = TASK_PROMPTS.get(task, "Text Recognition:")
+    
+    # 构建消息（虚拟路径，仅用于格式）
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "image", "url": "image"},
+            {"type": "text", "text": prompt}
+        ]
+    }]
+    
+    t0 = time.time()
+    
+    # 应用聊天模板
+    inputs = ocr_processor.apply_chat_template(
+        messages,
+        tokenize=True,
+        add_generation_prompt=True,
+        return_dict=True,
+        return_tensors="pt"
+    ).to(ocr_model.device)
+    
+    # 移除不需要的 token_type_ids
+    inputs.pop("token_type_ids", None)
+    
+    # 推理
+    with torch.no_grad():
+        generated_ids = ocr_model.generate(**inputs, max_new_tokens=8192)
+    
+    # 解码结果
+    text = ocr_processor.decode(
+        generated_ids[0][inputs["input_ids"].shape[1]:],
+        skip_special_tokens=True
+    )
+    
+    infer_ms = int((time.time() - t0) * 1000)
+    
+    log.info(f'识别完成: {task} 任务 | 耗时={infer_ms}ms | 字符数={len(text)}')
+    
+    return text, infer_ms
 
 
-async def call_glm_ocr_async(image_path: str, output_path: str) -> tuple:
-    """异步版本：在线程池中执行 OCR 识别"""
+async def recognize_image_async(image_bytes: bytes, task: str = "text") -> tuple[str, int]:
+    """异步版本：在线程池中执行识别"""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, call_glm_ocr, image_path, output_path)
+    return await loop.run_in_executor(None, do_recognize, image_bytes, task)
 
 
 # ==================== 启动 ====================
@@ -333,8 +337,6 @@ def main():
 
     print(f"[OCR Worker] 启动服务 {args.host}:{args.port}")
     print(f"[OCR Worker] MODEL_DIR = {MODEL_DIR}")
-    print(f"[OCR Worker] AGENT_TOOLS_DIR = {AGENT_TOOLS_DIR}")
-    print(f"[OCR Worker] GLM_OCR_SCRIPT = {GLM_OCR_SCRIPT}")
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
