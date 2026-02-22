@@ -1,3 +1,6 @@
+# Worker 虚拟环境（支持就地 venv）
+*/venv/
+
 # Python 缓存
 __pycache__/
 *.pyc

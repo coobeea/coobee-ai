@@ -563,12 +563,40 @@ export class WorkerManager extends EventEmitter {
     return path.join(Env.paths.workersDir, name);
   }
 
-  /** Worker 虚拟环境目录（每个 worker 独立环境在 workerEnvsDir 下） */
+  /**
+   * Worker 虚拟环境目录（按约定自动查找，支持多种位置）
+   *
+   * 查找优先级：
+   *   1. {worker_dir}/venv/       就地虚拟环境（便于独立管理）
+   *   2. worker-envs/{name}_env/  独立虚拟环境（旧方案兼容）
+   *
+   * 如果都不存在，默认创建在 worker-envs/{name}_env/
+   *
+   * 优势：
+   *   - 支持多种组织方式
+   *   - 兼容旧版本
+   *   - 未来 LLM 生成的 worker 可以自带 venv
+   */
   private getVenvDir(name: string): string {
-    return path.join(Env.paths.workerEnvsDir, `${name}_env`);
+    const workerDir = this.getWorkerScriptsDir(name);
+
+    // 优先级 1: {worker_dir}/venv/ (就地虚拟环境)
+    const localVenv = path.join(workerDir, 'venv');
+    if (fs.existsSync(localVenv)) {
+      return localVenv;
+    }
+
+    // 优先级 2: worker-envs/{name}_env/ (独立虚拟环境)
+    const sharedVenv = path.join(Env.paths.workerEnvsDir, `${name}_env`);
+    if (fs.existsSync(sharedVenv)) {
+      return sharedVenv;
+    }
+
+    // 默认：返回独立虚拟环境路径（将被自动创建）
+    return sharedVenv;
   }
 
-  /** Worker Python 可执行文件路径（从独立的虚拟环境目录） */
+  /** Worker Python 可执行文件路径（自动查找虚拟环境） */
   private getPythonBin(name: string): string {
     const venvDir = this.getVenvDir(name);
     return Env.isWindows ? path.join(venvDir, 'Scripts', 'python.exe') : path.join(venvDir, 'bin', 'python');
