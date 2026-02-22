@@ -11,9 +11,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ThreadStore } from '../ThreadStore';
 
-// Mock dependencies
+// ===== Mock dependencies =====
 vi.mock('../../../common/env', () => ({
   Env: {
+    main: {
+      logLevel: 'debug'
+    },
     getAgentWorkspaceDir: vi.fn().mockResolvedValue('/tmp/test-workspace'),
     paths: {
       logPath: '/tmp/test.log',

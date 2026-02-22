@@ -12,7 +12,9 @@ export default defineConfig({
       'src/main/common/extension/__tests__/**/*.test.ts',
       'src/main/common/config/__tests__/**/*.test.ts',
       'src/main/common/middleware/__tests__/**/*.test.ts',
+      'src/main/common/worker/**/__tests__/**/*.test.ts',
       'src/main/lifecycle/__tests__/**/*.test.ts',
+      'src/main/channels/__tests__/**/*.test.ts',
       'src/renderer/**/__tests__/**/*.test.ts',
       'extensions/**/__tests__/**/*.test.ts'
     ],

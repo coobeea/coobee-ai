@@ -1,0 +1,90 @@
+# Agent 系统
+
+## 概述
+
+Agent（智能体）是 coobee-ai 的核心概念。每个 Agent 定义了一个特定角色的行为模式。
+
+**存储位置**: `{userHome}/agents/`  
+**文件格式**: 每个 Agent 一个 JSON 文件（`{agent-id}.json`）
+
+---
+
+## 数据结构
+
+```json
+{
+  "id": "code-reviewer", // 唯一标识（kebab-case）
+  "name": "代码审查专家", // 显示名称
+  "description": "审查代码质量...", // 一句话描述
+  "instructions": "你是一个...", // 系统指令（Agent 的灵魂）
+  "tools": ["read", "search"], // 启用的工具名称列表
+  "skills": ["coding-standards"], // 关联的 Skill 名称列表
+  "model": "openai/gpt-4o", // 指定模型（可选）
+  "createdAt": "2025-01-01T...", // 创建时间（ISO 8601）
+  "updatedAt": "2025-01-01T...", // 最后更新时间
+  "createdBy": "user", // 创建者：user | agent
+  "version": 1 // 版本号（每次更新递增）
+}
+```
+
+---
+
+## 管理方式
+
+| 方式                | 说明                                          |
+| ------------------- | --------------------------------------------- |
+| `manage_agent` 工具 | LLM 通过 function call 管理（创建/更新/删除） |
+| HTTP REST API       | 前端通过 `/gateway/agents/*` 管理             |
+| AI 自动创建         | 用户输入需求，系统 AI 自动生成完整定义        |
+
+---
+
+## 与会话的关系
+
+- 每个 **Thread**（会话线程）绑定一个 `agentId`
+- Agent 定义决定了该会话中 LLM 的行为方式（指令、工具、技能）
+- Agent 是**模板**，Thread 是**实例**
+
+```
+用户创建 Thread → 选择 Agent → 该 Thread 使用 Agent 的配置运行
+```
+
+---
+
+## 使用场景
+
+### 创建专业 Agent
+
+```typescript
+manage_agent({
+  action: 'create',
+  agent: {
+    id: 'sql-expert',
+    name: 'SQL 专家',
+    instructions: '你是一个数据库专家，精通 SQL 查询优化...',
+    tools: ['exec', 'read', 'write'],
+    skills: ['database-design']
+  }
+});
+```
+
+### 更新 Agent 配置
+
+```typescript
+manage_agent({
+  action: 'update',
+  agentId: 'sql-expert',
+  updates: {
+    tools: ['exec', 'read', 'write', 'search'] // 添加 search 工具
+  }
+});
+```
+
+---
+
+## 注意事项
+
+1. **ID 格式** - 使用 kebab-case（如 `code-reviewer`）
+2. **指令质量** - instructions 是 Agent 的核心，要写清楚
+3. **工具选择** - 只启用必要的工具，避免能力过载
+4. **Skill 关联** - 关联相关 Skill 提供领域知识

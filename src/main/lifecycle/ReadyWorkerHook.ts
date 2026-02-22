@@ -10,9 +10,9 @@
  *          无需改动任何 TypeScript 代码。
  */
 
-import { log } from '@main/common/logger'
-import { WorkerManager } from '@main/common/worker'
-import { LifecyclePhase, LifecycleContext, LifecycleHook } from '@main/common/types'
+import { log } from '@main/common/logger';
+import { WorkerManager } from '@main/common/worker';
+import { LifecyclePhase, LifecycleContext, LifecycleHook } from '@main/common/types';
 
 /**
  * READY 阶段 Hook：扫描 + 注册 + 异步启动
@@ -24,35 +24,36 @@ export const ReadyWorkerHook: LifecycleHook = {
   critical: false, // 非关键，Worker 启动失败不阻断 app
 
   async execute(_context: LifecycleContext): Promise<void> {
-    const manager = WorkerManager.getInstance()
+    const manager = WorkerManager.getInstance();
 
     // 自动扫描 workers/ 目录，发现并注册所有 Worker
-    const count = manager.scanAndRegister()
+    const count = manager.scanAndRegister();
 
     if (count === 0) {
-      log.info('[ReadyWorkerHook] 未发现任何 Worker')
-      return
+      log.info('[ReadyWorkerHook] 未发现任何 Worker');
+      return;
     }
 
+    // 启动配置文件监控（热重载）
+    manager.startWatching();
+
     // 异步启动 autoStart 的 Worker（不 await，不阻塞）
-    const configs = manager.getRegisteredWorkers()
-    const autoStartWorkers = configs.filter((c) => c.autoStart)
+    const configs = manager.getRegisteredWorkers();
+    const autoStartWorkers = configs.filter((c) => c.autoStart && c.enable !== false);
 
     if (autoStartWorkers.length > 0) {
-      log.info(
-        `[ReadyWorkerHook] 后台启动 Worker: ${autoStartWorkers.map((c) => c.name).join(', ')}`
-      )
+      log.info(`[ReadyWorkerHook] 后台启动 Worker: ${autoStartWorkers.map((c) => c.name).join(', ')}`);
 
       for (const config of autoStartWorkers) {
         manager.start(config.name).catch((err) => {
-          log.error(`[ReadyWorkerHook] Worker "${config.name}" 后台启动失败:`, err)
-        })
+          log.error(`[ReadyWorkerHook] Worker "${config.name}" 后台启动失败:`, err);
+        });
       }
     } else {
-      log.info('[ReadyWorkerHook] 无 autoStart Worker，等待按需启动')
+      log.info('[ReadyWorkerHook] 无 autoStart Worker，等待按需启动');
     }
   }
-}
+};
 
 /**
  * BEFORE_QUIT 阶段 Hook：优雅关闭所有 Worker
@@ -64,9 +65,14 @@ export const BeforeQuitWorkerHook: LifecycleHook = {
   critical: false,
 
   async execute(_context: LifecycleContext): Promise<void> {
-    log.info('[BeforeQuitWorkerHook] 正在关闭所有 Worker...')
-    const manager = WorkerManager.getInstance()
-    await manager.stopAll()
-    log.info('[BeforeQuitWorkerHook] 所有 Worker 已关闭')
+    log.info('[BeforeQuitWorkerHook] 正在关闭所有 Worker...');
+    const manager = WorkerManager.getInstance();
+
+    // 停止配置文件监控
+    manager.stopWatching();
+
+    // 停止所有 Worker
+    await manager.stopAll();
+    log.info('[BeforeQuitWorkerHook] 所有 Worker 已关闭');
   }
-}
+};

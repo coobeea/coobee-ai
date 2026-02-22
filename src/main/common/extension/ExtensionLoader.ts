@@ -216,10 +216,38 @@ export class ExtensionLoader {
     // 2. 获取该 Extension 注册的工具名，用于同步清理 ToolRegistry
     const removedTools = this.registry.unregisterToolsByExtension(extensionId);
 
-    // 3. 清理 ExtensionRegistry（hooks、gateway methods、skill dirs，tools 已在上一步清理）
+    // 3. 停止运行中的服务和通道
+    const servicesToStop = this.registry.getServices().filter((s) => s.extensionId === extensionId);
+    for (const { service } of servicesToStop) {
+      try {
+        await service.stop();
+        log.info(`[ExtensionLoader] Stopped background service: ${service.id}`);
+      } catch (err) {
+        log.error(`[ExtensionLoader] Failed to stop background service "${service.id}":`, err);
+      }
+    }
+
+    const channelsToStop = this.registry.getChannels().filter((c) => c.extensionId === extensionId);
+    if (channelsToStop.length > 0) {
+      try {
+        const { ChannelManager } = await import('../../channels/ChannelManager');
+        const channelManager = ChannelManager.getInstance();
+        for (const { channel } of channelsToStop) {
+          await channelManager.unregisterChannel(channel.id);
+          log.info(`[ExtensionLoader] Unregistered channel: ${channel.id}`);
+        }
+      } catch (err) {
+        log.error(`[ExtensionLoader] Failed to unregister channels:`, err);
+      }
+    }
+
+    // 4. 清理 ExtensionRegistry 所有关联的注册信息
     this.registry.unregisterHooksByExtension(extensionId);
     this.registry.unregisterGatewayMethodsByExtension(extensionId);
     this.registry.unregisterSkillDirsByExtension(extensionId);
+    this.registry.unregisterChannelsByExtension(extensionId);
+    this.registry.unregisterHttpRoutesByExtension(extensionId);
+    this.registry.unregisterServicesByExtension(extensionId);
 
     // 4. 同步清理 ToolRegistry（动态 import 避免 common→ai 编译时依赖）
     if (removedTools.length > 0) {

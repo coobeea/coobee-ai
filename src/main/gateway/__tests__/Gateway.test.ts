@@ -19,8 +19,7 @@ const {
   mockGatewayServerBroadcastIf,
   mockGatewayServerForEach,
   mockGatewayServerClose,
-  mockCaptured,
-  mockHttpServer
+  mockCaptured
 } = vi.hoisted(() => ({
   mockGatewayServerStart: vi.fn(),
   mockGatewayServerSend: vi.fn(),
@@ -32,10 +31,6 @@ const {
     onMessage: null as ((ws: unknown, data: string, meta: unknown) => void | Promise<void>) | null,
     onConnect: null as ((ws: unknown, meta: unknown) => void) | null,
     onDisconnect: null as ((ws: unknown, meta: unknown) => void) | null
-  },
-  mockHttpServer: {
-    getHttpServer: vi.fn().mockReturnValue({}),
-    getApp: vi.fn().mockReturnValue({ use: vi.fn().mockReturnThis() })
   }
 }));
 
@@ -53,7 +48,9 @@ vi.mock('../GatewayServer', () => ({
     broadcastIf = mockGatewayServerBroadcastIf;
     forEachClient = mockGatewayServerForEach;
     close = mockGatewayServerClose;
-    getRouter = vi.fn().mockReturnValue({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(), use: vi.fn() });
+    getRouter = vi
+      .fn()
+      .mockReturnValue({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(), patch: vi.fn(), use: vi.fn() });
     get isStarted(): boolean {
       return false;
     }
@@ -66,9 +63,41 @@ vi.mock('../GatewayServer', () => ({
 // ===== Mock HttpServer =====
 vi.mock('@main/common/server/httpServer', () => ({
   HttpServer: {
-    getInstance: vi.fn().mockReturnValue(mockHttpServer)
+    getInstance: vi.fn().mockReturnValue({
+      getHttpServer: vi.fn().mockReturnValue({}),
+      getApp: vi.fn().mockReturnValue({ use: vi.fn().mockReturnThis() })
+    })
   }
 }));
+
+// ===== Mock Gateway internals and Electron BEFORE importing local modules
+vi.mock('electron', () => ({
+  default: {
+    app: {
+      getAppPath: () => '/mock',
+      getPath: () => '/mock',
+      getName: () => 'test',
+      getVersion: () => '0.0.0',
+      getLocale: () => 'en',
+      isPackaged: false
+    },
+    session: { defaultSession: { webRequest: { onHeadersReceived: vi.fn() } } },
+    ipcMain: { handle: vi.fn(), on: vi.fn() },
+    BrowserWindow: vi.fn()
+  },
+  app: {
+    getAppPath: () => '/mock',
+    getPath: () => '/mock',
+    getName: () => 'test',
+    getVersion: () => '0.0.0',
+    getLocale: () => 'en',
+    isPackaged: false
+  },
+  session: { defaultSession: { webRequest: { onHeadersReceived: vi.fn() } } },
+  ipcMain: { handle: vi.fn(), on: vi.fn() },
+  BrowserWindow: vi.fn()
+}));
+vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }));
 
 // ===== Mock logger =====
 vi.mock('@main/common/logger', () => {

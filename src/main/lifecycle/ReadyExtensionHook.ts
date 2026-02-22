@@ -30,6 +30,7 @@ export const ReadyExtensionHook: LifecycleHook = {
       const { ExtensionRegistry, ExtensionLoader, ExtensionManager } = await import('@main/common/extension');
       const { ToolRegistry } = await import('@main/ai/tools/registry');
       const { eventBus } = await import('@main/common/eventbus');
+      const { ChannelManager } = await import('@main/channels/ChannelManager');
 
       // 1. 获取全局搜索路径（只加载 builtin 和 user Extension）
       const globalSearchPaths = [Env.paths.builtinExtensionsDir, Env.paths.userExtensionsDir];
@@ -53,7 +54,21 @@ export const ReadyExtensionHook: LifecycleHook = {
       // 5. 初始化全局管理器（传递 loader 引用，用于动态加载任务级 Extension）
       ExtensionManager.initialize(registry, loader);
 
-      // 6. 启动 fs.watch 热插拔（只监听全局目录）
+      // 6. 启动所有已注册的 Background Service
+      for (const { service } of registry.getServices()) {
+        try {
+          await service.start();
+          log.info(`[ReadyExtensionHook] Started background service: ${service.id}`);
+        } catch (err) {
+          log.error(`[ReadyExtensionHook] Failed to start background service "${service.id}":`, err);
+        }
+      }
+
+      // 7. 并发启动所有已注册的 Channel
+      const channelManager = ChannelManager.getInstance();
+      await channelManager.startAll();
+
+      // 8. 启动 fs.watch 热插拔（只监听全局目录）
       loader.watch(globalSearchPaths);
       activeLoader = loader;
 
@@ -79,6 +94,31 @@ export const BeforeQuitExtensionHook: LifecycleHook = {
       activeLoader.stopWatch();
       activeLoader = null;
       log.info('[BeforeQuitExtensionHook] Extension watchers stopped');
+    }
+
+    try {
+      const { ExtensionManager } = await import('@main/common/extension');
+      const { ChannelManager } = await import('@main/channels/ChannelManager');
+
+      const registry = ExtensionManager.getRegistry();
+
+      // 停止所有 Channel
+      const channelManager = ChannelManager.getInstance();
+      await channelManager.stopAll();
+
+      // 停止所有 Background Service
+      if (registry) {
+        for (const { service } of registry.getServices()) {
+          try {
+            await service.stop();
+            log.info(`[BeforeQuitExtensionHook] Stopped background service: ${service.id}`);
+          } catch (err) {
+            log.error(`[BeforeQuitExtensionHook] Failed to stop background service "${service.id}":`, err);
+          }
+        }
+      }
+    } catch (err) {
+      log.error('[BeforeQuitExtensionHook] Failed to stop channels or services:', err);
     }
   }
 };

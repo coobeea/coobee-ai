@@ -7,12 +7,12 @@
  * - P2: HITL supportsHITL 属性
  * - P3: getDefaultSessionDir 的容错行为
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ===== Hoisted mocks =====
 const { mockForward, mockStreamEmitter, mockRuntime } = vi.hoisted(() => {
-  const mockForward = vi.fn()
-  const mockStreamEmitter = { forward: mockForward }
+  const mockForward = vi.fn();
+  const mockStreamEmitter = { forward: mockForward };
   const mockRuntime = {
     type: 'agent' as const,
     id: 'agent-1',
@@ -29,9 +29,9 @@ const { mockForward, mockStreamEmitter, mockRuntime } = vi.hoisted(() => {
     approveToolCall: vi.fn(),
     rejectToolCall: vi.fn(),
     resumeStream: vi.fn()
-  }
-  return { mockForward, mockStreamEmitter, mockRuntime }
-})
+  };
+  return { mockForward, mockStreamEmitter, mockRuntime };
+});
 
 // ===== Mock logger =====
 vi.mock('@main/common/logger', () => ({
@@ -47,45 +47,55 @@ vi.mock('@main/common/logger', () => ({
     error: vi.fn(),
     debug: vi.fn()
   }))
-}))
+}));
 
 // ===== Mock StreamEmitter =====
 vi.mock('../../streaming/StreamEmitter', () => ({
   createStreamEmitter: vi.fn(() => mockStreamEmitter)
-}))
+}));
 
 // ===== Mock PiMono runtime =====
 vi.mock('../pimono', () => ({
   PiMonoAgentRuntime: class MockPiMonoRuntime {
     constructor() {
-      return mockRuntime
+      return mockRuntime;
     }
   }
-}))
+}));
 
 // ===== Mock OpenAI runtime =====
 vi.mock('../openai', () => ({
   OpenAIAgentRuntime: class MockOpenAIRuntime {
     constructor() {
-      return mockRuntime
+      return mockRuntime;
     }
   }
-}))
+}));
 
-import { PiMonoBuilder, OpenAIBuilder } from '../../AgentExecutor'
+import { PiMonoBuilder, OpenAIBuilder } from '../../AgentExecutor';
 
 // ===== Mock env for getDefaultSessionDir =====
-vi.mock('@main/common/env', () => {
-  throw new Error('Env not available in test')
-})
+vi.mock('@main/common/env', () => ({
+  Env: {
+    paths: {
+      userData: '/mock/userData',
+      sessionsDir: '/mock/sessions',
+      sandboxDir: '/mock/sandbox',
+      resourcesDir: '/mock/resources',
+      builtinExtensionsDir: '/mock/builtin',
+      userExtensionsDir: '/mock/user'
+    },
+    getAgentWorkspaceDir: vi.fn(async () => '/mock/workspace')
+  }
+}));
 
 describe('OpenAIBuilder', () => {
-  let builder: OpenAIBuilder
+  let builder: OpenAIBuilder;
 
   beforeEach(() => {
-    vi.clearAllMocks()
-    builder = new OpenAIBuilder()
-  })
+    vi.clearAllMocks();
+    builder = new OpenAIBuilder();
+  });
 
   describe('链式 API', () => {
     it('所有方法返回 this（支持链式调用）', () => {
@@ -102,38 +112,38 @@ describe('OpenAIBuilder', () => {
         .sdkTools([])
         .handoffs([])
         .modelSettings({ temperature: 0.7 })
-        .compression({ enabled: true })
+        .compression({ enabled: true });
 
-      expect(result).toBe(builder)
-    })
-  })
+      expect(result).toBe(builder);
+    });
+  });
 
   describe('build()', () => {
     it('构建并返回初始化后的 Runtime', async () => {
-      mockRuntime.initialize.mockResolvedValue(undefined)
+      mockRuntime.initialize.mockResolvedValue(undefined);
 
       const runtime = await builder
         .name('openai-agent')
         .instructions('Test instructions')
         .model('gpt-4o')
         .sessionId('session-1')
-        .build()
+        .build();
 
-      expect(runtime).toBeDefined()
-      expect(mockRuntime.initialize).toHaveBeenCalled()
-    })
-  })
-})
+      expect(runtime).toBeDefined();
+      expect(mockRuntime.initialize).toHaveBeenCalled();
+    });
+  });
+});
 
 describe('PiMonoBuilder', () => {
-  let builder: PiMonoBuilder
+  let builder: PiMonoBuilder;
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.clearAllMocks();
     // 设置必要的环境变量
-    process.env.VITE_LLM_API_KEY = 'test-key'
-    builder = new PiMonoBuilder()
-  })
+    process.env.VITE_LLM_API_KEY = 'test-key';
+    builder = new PiMonoBuilder();
+  });
 
   describe('链式 API', () => {
     it('所有方法返回 this', () => {
@@ -145,34 +155,34 @@ describe('PiMonoBuilder', () => {
         .sessionDir('/tmp')
         .thinkingLevel('medium')
         .compaction({ enabled: true })
-        .retry({ enabled: true, maxRetries: 3 })
+        .retry({ enabled: true, maxRetries: 3 });
 
-      expect(result).toBe(builder)
-    })
-  })
-})
+      expect(result).toBe(builder);
+    });
+  });
+});
 
 describe('AgentExecutor — Executor 集成', () => {
   // 导入需要在 mock 之后
-  let agentExecutor: typeof import('../../AgentExecutor').agentExecutor
+  let agentExecutor: typeof import('../../AgentExecutor').agentExecutor;
 
   beforeEach(async () => {
-    vi.clearAllMocks()
-    const mod = await import('../../AgentExecutor')
-    agentExecutor = mod.agentExecutor
-  })
+    vi.clearAllMocks();
+    const mod = await import('../../AgentExecutor');
+    agentExecutor = mod.agentExecutor;
+  });
 
   describe('工厂方法', () => {
     it('piMono() 返回 PiMonoBuilder', () => {
-      const builder = agentExecutor.piMono()
-      expect(builder).toBeInstanceOf(PiMonoBuilder)
-    })
+      const builder = agentExecutor.piMono();
+      expect(builder).toBeInstanceOf(PiMonoBuilder);
+    });
 
     it('openai() 返回 OpenAIBuilder', () => {
-      const builder = agentExecutor.openai()
-      expect(builder).toBeInstanceOf(OpenAIBuilder)
-    })
-  })
+      const builder = agentExecutor.openai();
+      expect(builder).toBeInstanceOf(OpenAIBuilder);
+    });
+  });
 
   describe('stream() 中的 forward 调用', () => {
     it('每个 chunk 都通过 StreamEmitter.forward() 广播', async () => {
@@ -181,38 +191,38 @@ describe('AgentExecutor — Executor 集成', () => {
         { type: 'run:start', content: '' },
         { type: 'text:delta', content: 'hello' },
         { type: 'run:done', content: '' }
-      ]
-      const result = { output: 'hello', duration: 100 }
+      ];
+      const result = { output: 'hello', duration: 100 };
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       async function* mockStreamGen(): AsyncGenerator<any, any, unknown> {
-        for (const c of chunks) yield c
-        return result
+        for (const c of chunks) yield c;
+        return result;
       }
 
-      mockRuntime.stream.mockReturnValue(mockStreamGen())
-      mockRuntime.initialize.mockResolvedValue(undefined)
-      mockRuntime.destroy.mockResolvedValue(undefined)
+      mockRuntime.stream.mockReturnValue(mockStreamGen());
+      mockRuntime.initialize.mockResolvedValue(undefined);
+      mockRuntime.destroy.mockResolvedValue(undefined);
 
-      process.env.VITE_LLM_API_KEY = 'test-key'
-      const builder = agentExecutor.piMono().name('test').sessionId('session-test')
+      process.env.VITE_LLM_API_KEY = 'test-key';
+      const builder = agentExecutor.piMono().name('test').sessionId('session-test');
 
       const gen = agentExecutor.stream({
         sessionId: 'session-test',
         message: 'hello',
         builder
-      })
+      });
 
-      const collected: unknown[] = []
-      let r = await gen.next()
+      const collected: unknown[] = [];
+      let r = await gen.next();
       while (!r.done) {
-        collected.push(r.value)
-        r = await gen.next()
+        collected.push(r.value);
+        r = await gen.next();
       }
 
       // forward 被调用了 3 次（每个 chunk 一次）
-      expect(mockForward).toHaveBeenCalledTimes(3)
-      expect(collected).toHaveLength(3)
-    })
-  })
-})
+      expect(mockForward).toHaveBeenCalledTimes(3);
+      expect(collected).toHaveLength(3);
+    });
+  });
+});

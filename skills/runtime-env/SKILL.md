@@ -8,441 +8,119 @@ description: 描述 Agent 运行时环境的目录结构、路径约定和可用
 ## 概述
 
 你正在 **coobee-ai** 系统中运行。系统为你提供了隔离的工作空间和多级资源。
-本文档描述了你的运行时环境结构，帮助你正确地读写文件、发现 Skill、管理 Extension 和使用工具。
 
-系统在启动时会向你的上下文注入 `<runtime_environment>` 块，包含所有实际路径值和能力清单。
+**系统信息**：
 
----
-
-## 系统信息
-
-`<runtime_environment>` 中包含以下系统信息：
-
-| 键           | 说明                                                 |
-| ------------ | ---------------------------------------------------- |
-| `platform`   | 操作系统（darwin = macOS / win32 = Windows / linux） |
-| `arch`       | CPU 架构（arm64 / x64）                              |
-| `appVersion` | coobee-ai 版本号                                     |
-| `isDev`      | 是否为开发模式                                       |
-
-根据 `platform` 和 `arch` 选择正确的命令和路径格式。例如：
-
-- macOS 使用 `open` 打开文件，Linux 使用 `xdg-open`
-- arm64 架构可能需要不同的二进制文件
+- 平台: `<runtime_environment>` 中的 `platform`, `arch`, `appVersion`
+- 工作空间: `<session>` 中的 `workspace`
+- 路径: `<runtime_environment>` 中的 `paths`
 
 ---
 
-## 核心目录结构
+## 核心目录结构（概览）
 
 ```
-{systemHome}/                         # 系统用户目录（如 /Users/xxx）
 {userHome}/                           # 应用主目录（如 ~/.coobee-ai）
-├── config/                           # 用户配置
-│   ├── coobee.json5                  # 主配置文件
-│   ├── secrets.json5                 # API Key 密钥配置
-│   └── skills.json5                  # Skill 专属配置（API Key、参数等）
-├── agents/                           # 智能体定义存储（AgentStore 管理）
-│   └── {agent-id}.json              # 每个智能体一个 JSON 文件
-│                                     #   包含: id, name, description, instructions,
-│                                     #          tools, skills, model, version 等
-│                                     #   ID 格式: kebab-case（如 code-reviewer）
-│                                     #   管理方式: manage_agent 工具 或 HTTP REST API
-├── threads/                          # 会话线程存储（ThreadStore 管理）
-│   └── {threadId}.json              # 每个会话线程一个 JSON 文件
-│                                     #   threadId 使用 Snowflake ID（有序，可按 ID 排序得到时间顺序）
-│                                     #   包含: id, title, agentId, status, messageCount,
-│                                     #          createdAt, updatedAt
-│                                     #   status: active | archived | deleted
-│                                     #   管理方式: HTTP REST API（/gateway/threads/*）
+├── config/                           # 配置文件
+├── agents/                           # Agent 定义
+├── threads/                          # 会话线程
 ├── memory/                           # 记忆存储
-│   ├── user/                         # 用户级记忆（跨 Agent 共享）
-│   │   └── *.json / *.md             # 偏好、长期经验、学习成果
-│   └── agent/                        # Agent 级记忆（按 Agent 隔离）
-│       └── {agent-id}/               # 特定 Agent 的记忆
-├── skills/                           # 用户 Skill（可读写，用户安装/编写）
-│   └── {skill-name}/SKILL.md
-├── extensions/                       # 用户 Extension（可读写，用户安装/编写）
-│   └── {ext-id}/
-│       ├── extension.json            # 扩展清单
-│       ├── index.ts                  # 代码入口（可选）
-│       └── skills/                   # 扩展贡献的 Skill（可选）
-└── workspaces/                       # Agent 工作空间总根
-    └── {session-id}/                 # 你的工作空间（见 <session>.workspace）
-        ├── sessions/                 # 会话持久化数据
-        ├── contexts/                 # LLM 请求上下文快照（系统自动写入）
-        ├── events/                   # 流式事件记录（系统自动写入）
-        ├── skills/                   # 你自己生成的 Skill
-        ├── extensions/               # 你自己创建的 Extension
-        ├── output/                   # 你的输出文件（报告、代码、文档等）
-        ├── logs/                     # 运行日志
-        └── tasks/                    # [多 Agent] 委托任务目录
-            └── {taskId}/             # 每个委托任务一个目录
-                ├── plan.md           # 任务计划（task_plan 工具写入）
-                ├── status.json       # 任务状态（task_plan 工具更新）
-                ├── agents/           # 子 Agent 工作目录
-                │   └── {agentId}/   # 子 Agent 完整工作空间
-                ├── results/          # 子 Agent 的汇总结果
-                └── experiences/      # 共享执行经验
+├── skills/                           # 用户 Skill
+├── extensions/                       # 用户 Extension
+├── workers/                          # Worker 子进程
+└── workspaces/                       # Agent 工作空间
+    └── {session-id}/                 # 你的工作空间
 ```
 
 ---
 
-## 你的工作空间
+## 📚 主题索引（按需查阅）
 
-系统为你分配了一个独立工作空间（`<session>` 中的 `workspace`）。
-你的 `sessionId` 也在 `<session>` 中提供。
+详细说明请查看对应的 references 文件：
 
-### 目录用途
+### 核心系统
 
-| 子目录        | 用途         | 说明                                                       |
-| ------------- | ------------ | ---------------------------------------------------------- |
-| `sessions/`   | 会话持久化   | 系统自动管理，通常无需手动操作                             |
-| `contexts/`   | 上下文快照   | 系统自动记录每次 LLM 调用的输入配置和输出结果              |
-| `events/`     | 事件记录     | 系统自动记录所有流式事件（JSONL 格式，完整时间线）         |
-| `skills/`     | 自生成 Skill | 你可以在此创建新的 Skill 供后续使用                        |
-| `extensions/` | 自创建扩展   | 你可以在此创建新的 Extension（会被热加载）                 |
-| `output/`     | 输出文件     | 生成的代码、报告、文档等放在这里                           |
-| `logs/`       | 运行日志     | 执行过程的日志记录                                         |
-| `tasks/`      | 委托任务     | 多 Agent 委托时的任务目录（task_plan + delegate_to_agent） |
+1. **[路径系统](./references/paths.md)** - 核心路径说明、环境变量
+2. **[Agent 系统](./references/agents.md)** - Agent 定义、管理方式
+3. **[会话线程](./references/threads.md)** - Thread 结构、生命周期
+4. **[工作空间](./references/workspace.md)** - 你的工作目录、文件组织
 
-### 文件操作建议
+### 扩展机制
 
-- **输出文件** → 放入 `{workspace}/output/`
-- **自创建 Skill** → 放入 `{workspace}/skills/{skill-name}/SKILL.md`
-- **自创建 Extension** → 放入 `{workspace}/extensions/{ext-id}/`
-- **临时文件** → 使用 `<paths>` 中的 `temp` 目录
-- **不要修改** `sessions/`、`contexts/` 和 `events/` 下的文件
+5. **[Skill 系统](./references/skills.md)** - Skill 来源、创建方法、配置
+6. **[Extension 系统](./references/extensions.md)** - Extension 能力、创建方法
+7. **[Worker 管理](./references/workers.md)** - Worker 配置、启停控制 ⭐
+
+### 数据存储
+
+8. **[记忆系统](./references/memory.md)** - 用户级/Agent 级记忆
 
 ---
 
-## 智能体（Agents）
+## 🔍 快速查找
 
-智能体定义存储在 `{userHome}/agents/` 目录下，每个智能体是一个独立的 JSON 文件。
+### 文件存放位置问题
 
-### 数据结构
+→ 查看 [路径系统](./references/paths.md) 或 [工作空间](./references/workspace.md)
 
-```json
-{
-  "id": "code-reviewer", // 唯一标识（kebab-case）
-  "name": "代码审查专家", // 中文显示名称
-  "description": "审查代码质量...", // 一句话描述
-  "instructions": "你是一个...", // 系统指令（Agent 的灵魂）
-  "tools": ["read", "search"], // 启用的工具名称列表
-  "skills": ["coding-standards"], // 关联的 Skill 名称列表
-  "model": "openai/gpt-4o", // 指定模型（可选）
-  "createdAt": "2025-01-01T...", // 创建时间（ISO 8601）
-  "updatedAt": "2025-01-01T...", // 最后更新时间
-  "createdBy": "user", // 创建者：user | agent
-  "version": 1 // 版本号（每次更新递增）
-}
-```
+### Skill 相关问题
 
-### 管理方式
+→ 查看 [Skill 系统](./references/skills.md)
 
-| 方式                | 说明                                          |
-| ------------------- | --------------------------------------------- |
-| `manage_agent` 工具 | LLM 通过 function call 管理（创建/更新/删除） |
-| HTTP REST API       | 前端通过 `/gateway/agents/*` 管理             |
-| AI 自动创建         | 用户输入需求，系统 AI 自动生成完整定义        |
+### Extension 相关问题
 
-### 与当前会话的关系
+→ 查看 [Extension 系统](./references/extensions.md)
 
-- 每个 Thread（会话线程）绑定一个 `agentId`
-- Agent 定义决定了该会话中 LLM 的行为方式（指令、工具、技能）
-- Agent 是**模板**，Thread 是**实例**
+### Agent 创建和管理
+
+→ 查看 [Agent 系统](./references/agents.md)
+
+### Worker 启停控制 ⭐
+
+→ 查看 [Worker 管理](./references/workers.md)
+
+### 记忆读写
+
+→ 查看 [记忆系统](./references/memory.md)
 
 ---
 
-## 会话线程（Threads）
+## 💡 使用方式
 
-会话线程存储在 `{userHome}/threads/` 目录下，记录用户与智能体之间的对话会话。
+### 渐进式阅读
 
-### 数据结构
-
-```json
-{
-  "id": "1234567890123456789", // Snowflake ID（天然有序）
-  "title": "帮我审查代码", // 显示标题
-  "agentId": "code-reviewer", // 关联的智能体 ID
-  "status": "active", // 状态：active | archived | deleted
-  "messageCount": 12, // 消息数量
-  "createdAt": "2025-01-01T...", // 创建时间
-  "updatedAt": "2025-01-01T..." // 最后更新时间
-}
+```
+需要了解某个主题时:
+  ↓
+1. 在索引中找到对应主题
+  ↓
+2. 使用 read 工具读取 references/xxx.md
+  ↓
+3. 获取详细信息
+  ↓
+4. 执行相应操作
 ```
 
-### 关键设计
-
-| 特性          | 说明                                                         |
-| ------------- | ------------------------------------------------------------ |
-| ID 生成       | 使用 Snowflake 算法，天然有序，按 ID 降序 = 按时间降序       |
-| 持久化        | 每个线程一个 JSON 文件，应用重启后保留                       |
-| 与 Agent 绑定 | 每个 Thread 通过 `agentId` 关联到一个智能体                  |
-| 管理方式      | HTTP REST API（`/gateway/threads/*`）— GET/POST/PATCH/DELETE |
-
-### 与工作空间的关系
-
-Thread 是用户可见的"会话列表"概念，而工作空间（workspace）是 Agent 执行时的文件系统隔离区域。一般情况下，Thread 的 `id` 对应 workspace 的 `sessionId`。
+**优势**: 按需加载，节省 Token，提高效率
 
 ---
 
-## Skill 系统
-
-Skill 是场景化的操作手册 —— 一段自然语言指导文本，告诉你遇到某种场景时应该如何行动。
-
-### Skill 来源（按优先级从低到高）
-
-| 优先级    | 来源     | 路径                  | 说明                      |
-| --------- | -------- | --------------------- | ------------------------- |
-| 1（最低） | 内置     | `builtinSkillsDir`    | 随系统分发，只读          |
-| 1.5       | 扩展贡献 | Extension 声明的目录  | Extension manifest 中声明 |
-| 2         | 用户     | `userSkillsDir`       | 用户安装/编写             |
-| 3（最高） | Agent    | `{workspace}/skills/` | 你自己生成的              |
-
-同名 Skill 高优先级覆盖低优先级。
-
-### 创建 Skill
-
-在 `{workspace}/skills/` 下创建子目录，包含 `SKILL.md`：
-
-```
-{workspace}/skills/my-new-skill/
-├── SKILL.md              # 必须 — 技能描述和指令
-├── references/           # 可选 — 参考资料
-└── scripts/              # 可选 — 辅助脚本
-```
-
-SKILL.md 格式：
-
-```markdown
----
-name: My Skill Name
-description: 一句话描述，告诉系统何时使用此 Skill
----
-
-# Skill 标题
-
-## 使用场景
-
-描述何时应该使用这个 Skill...
-
-## 操作步骤
-
-1. 第一步...
-2. 第二步...
-
-## 注意事项
-
-- 注意事项...
-```
-
-### Skill 配置
-
-需要外部资源（如 API Key）的 Skill 可以在 SKILL.md 的 frontmatter 中声明 `config` 字段，描述所需配置项：
-
-```markdown
----
-name: paddle-ocr
-description: 使用 PaddleOCR 进行文字识别
-config:
-  - key: apiKey
-    description: PaddleOCR API Key
-    required: true
-  - key: baseUrl
-    description: API 地址
-    required: false
-    default: https://api.example.com
----
-```
-
-配置值统一存放在 `{userHome}/config/skills.json5`（不在 Skill 目录中），格式：
-
-```json5
-{
-  'paddle-ocr': {
-    apiKey: 'your-api-key',
-    baseUrl: 'https://custom-api.example.com'
-  }
-}
-```
-
-**Skill 脚本获取配置的流程**：
-
-1. 脚本通过环境变量 `COOBEE_CONFIG_DIR` 获取配置目录路径
-2. 读取 `$COOBEE_CONFIG_DIR/skills.json5` 获取自己的配置
-3. 如果缺少必要配置，脚本抛出清晰的错误信息
-4. Agent 看到错误 → 告诉用户需要什么配置
-5. 用户提供信息 → Agent 帮忙写入 `skills.json5`
-6. Agent 重新执行 → 成功
-
-**脚本可用的环境变量**（`exec` 工具自动注入）：
-
-| 变量                | 说明                          |
-| ------------------- | ----------------------------- |
-| `COOBEE_CONFIG_DIR` | 配置目录（读取 skills.json5） |
-| `COOBEE_WORKSPACE`  | 当前工作空间目录              |
-| `COOBEE_SESSION_ID` | 当前会话 ID                   |
-| `COOBEE_USER_HOME`  | 应用主目录                    |
-| `COOBEE_MEMORY_DIR` | 记忆目录                      |
-
-**Shell 脚本示例**：
-
-```bash
-#!/bin/bash
-# 读取 Skill 配置
-CONFIG_FILE="$COOBEE_CONFIG_DIR/skills.json5"
-if [ ! -f "$CONFIG_FILE" ]; then
-  echo "Error: 配置文件不存在: $CONFIG_FILE" >&2
-  echo "请在 $CONFIG_FILE 中添加 paddle-ocr 的配置" >&2
-  exit 1
-fi
-```
-
-**Python 脚本示例**：
-
-```python
-import os, json
-config_dir = os.environ.get("COOBEE_CONFIG_DIR")
-if not config_dir:
-    raise RuntimeError("COOBEE_CONFIG_DIR 环境变量未设置")
-# 读取 skills.json5 中自己的配置...
-```
-
-- 配置修改后自动热重载生效
-
----
-
-## Extension 系统
-
-Extension 是动态可插拔的功能模块，可以注册工具（Tool）、生命周期钩子（Hook）、Gateway 方法，还可以贡献 Skill。
-
-### Extension 来源（按优先级从低到高）
-
-| 优先级    | 来源  | 路径                      | 说明             |
-| --------- | ----- | ------------------------- | ---------------- |
-| 1（最低） | 内置  | `builtinExtensionsDir`    | 随系统分发，只读 |
-| 2         | 用户  | `userExtensionsDir`       | 用户安装/编写    |
-| 3（最高） | Agent | `{workspace}/extensions/` | 你自己创建的     |
-
-同 ID 高优先级覆盖低优先级。工作空间级 Extension 会被 `fs.watch` 热加载。
-
-### Extension 能力
-
-| 能力              | 说明                                         |
-| ----------------- | -------------------------------------------- |
-| `registerTool`    | 注册新工具，可被 LLM 通过 function call 调用 |
-| `on(hookName)`    | 注册 Agent 生命周期钩子                      |
-| `registerGateway` | 注册 Gateway RPC 方法                        |
-| 声明 `skills`     | 在 manifest 中声明 Skill 目录                |
-
-### 创建 Extension
-
-最小结构：
-
-```
-{workspace}/extensions/my-ext/
-├── extension.json        # 必须 — 扩展清单
-└── index.ts              # 可选 — 代码入口（纯 Skill 扩展可省略）
-```
-
-extension.json 格式：
-
-```json
-{
-  "id": "my-ext",
-  "name": "My Extension",
-  "version": "1.0.0",
-  "description": "扩展描述",
-  "skills": "skills"
-}
-```
-
-index.ts 代码骨架：
-
-```typescript
-import type { ExtensionApi } from '@main/common/extension'
-
-export default {
-  id: 'my-ext',
-  name: 'My Extension',
-  register(api: ExtensionApi) {
-    // 注册工具
-    api.registerTool({ ... })
-    // 注册生命周期钩子
-    api.on('before_agent_start', async (event) => { ... })
-    // 注册 Gateway 方法
-    api.registerGatewayMethod('myext.hello', async (params) => ({ ... }))
-  }
-}
-```
-
-### 纯 Skill 扩展
-
-如果只需要贡献 Skill（无代码），可以省略 `index.ts`：
-
-```
-{workspace}/extensions/my-skill-pack/
-├── extension.json        # 声明 skills 字段
-└── skills/
-    ├── skill-a/SKILL.md
-    └── skill-b/SKILL.md
-```
-
----
-
-## 可用工具
-
-`<tools>` 块列出了你当前可以调用的所有工具名称。工具通过 function calling 调用，每个工具有明确的参数定义。
-
----
-
-## 记忆系统
-
-| 层级     | 路径            | 说明                                      |
-| -------- | --------------- | ----------------------------------------- |
-| 用户级   | `memory/user/`  | 跨 Agent 共享的长期记忆（偏好、全局经验） |
-| Agent 级 | `memory/agent/` | 按 Agent 隔离的记忆（特定领域学习成果）   |
-
-- 记忆是**持久化**的，不随会话结束而清除
-- 写入记忆前请确认内容有长期价值
-
----
-
-## `<runtime_environment>` 字段参考
-
-| 块           | 键                     | 说明                                                |
-| ------------ | ---------------------- | --------------------------------------------------- |
-| `system`     | `platform`             | 操作系统                                            |
-| `system`     | `arch`                 | CPU 架构                                            |
-| `system`     | `appVersion`           | 应用版本                                            |
-| `system`     | `isDev`                | 是否开发模式                                        |
-| `session`    | `sessionId`            | 当前会话 ID                                         |
-| `session`    | `workspace`            | 工作空间根目录                                      |
-| `paths`      | `userHome`             | 应用主目录                                          |
-| `paths`      | `systemHome`           | 系统用户目录（如 /Users/xxx）                       |
-| `paths`      | `configDir`            | 配置目录（coobee.json5/secrets.json5/skills.json5） |
-| `paths`      | `agentsDir`            | 智能体定义目录（{userHome}/agents/）                |
-| `paths`      | `threadsDir`           | 会话线程目录（{userHome}/threads/）                 |
-| `paths`      | `temp`                 | 系统临时目录                                        |
-| `paths`      | `memoryDir`            | 记忆总根目录                                        |
-| `skills`     | `builtinSkillsDir`     | 内置 Skill 目录                                     |
-| `skills`     | `userSkillsDir`        | 用户 Skill 目录                                     |
-| `skills`     | `searchPaths`          | Skill 搜索路径列表                                  |
-| `extensions` | `builtinExtensionsDir` | 内置 Extension 目录                                 |
-| `extensions` | `userExtensionsDir`    | 用户 Extension 目录                                 |
-| `extensions` | `searchPaths`          | Extension 搜索路径列表                              |
-| `extensions` | `loaded`               | 已加载的 Extension ID                               |
-| `tools`      | `tool`                 | 可用工具名称                                        |
-
----
-
-## 安全边界
+## ⚠️ 安全边界
 
 以下资源**不对你开放**：
 
 - 数据库文件（由主进程管理）
 - 应用内部数据目录（userData、installDir）
 - 服务端口配置（serverPort）
-- API 密钥和凭据
+- API 密钥和凭据（由 secrets.json5 管理）
 
 需要这些资源时，请通过工具调用向主进程请求。
+
+---
+
+## 🚀 快速上手
+
+1. **了解路径** → `read skills/runtime-env/references/paths.md`
+2. **管理 Worker** → `read skills/runtime-env/references/workers.md`
+3. **创建 Skill** → `read skills/runtime-env/references/skills.md`
+4. **使用记忆** → `read skills/runtime-env/references/memory.md`

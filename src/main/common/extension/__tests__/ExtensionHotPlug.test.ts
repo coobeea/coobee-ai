@@ -30,7 +30,18 @@ vi.mock('electron', () => ({
     session: { defaultSession: { webRequest: { onHeadersReceived: vi.fn() } } },
     ipcMain: { handle: vi.fn(), on: vi.fn() },
     BrowserWindow: vi.fn()
-  }
+  },
+  app: {
+    getAppPath: () => '/mock',
+    getPath: () => '/mock',
+    getName: () => 'test',
+    getVersion: () => '0.0.0',
+    getLocale: () => 'en',
+    isPackaged: false
+  },
+  session: { defaultSession: { webRequest: { onHeadersReceived: vi.fn() } } },
+  ipcMain: { handle: vi.fn(), on: vi.fn() },
+  BrowserWindow: vi.fn()
 }));
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }));
 vi.mock('@main/common/server/httpServer', () => ({

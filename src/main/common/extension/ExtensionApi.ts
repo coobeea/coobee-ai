@@ -59,6 +59,15 @@ export function createExtensionApi(
     },
     registerGatewayMethod(method, handler) {
       registry.registerGatewayMethod(extensionId, method, handler);
+    },
+    registerChannel(config) {
+      registry.registerChannel(extensionId, config);
+    },
+    registerHttpRoute(config) {
+      registry.registerHttpRoute(extensionId, config);
+    },
+    registerService(service) {
+      registry.registerService(extensionId, service);
     }
   };
 }

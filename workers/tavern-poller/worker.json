@@ -1,0 +1,13 @@
+{
+  "name": "tavern-poller",
+  "label": "Tavern Poller",
+  "type": "python",
+  "entry": "server.py",
+  "port": 9010,
+  "requirementsFile": "requirements.txt",
+  "autoRestart": true,
+  "maxRestarts": 5,
+  "healthCheckPath": "/health",
+  "healthCheckTimeout": 5000,
+  "env": {}
+}

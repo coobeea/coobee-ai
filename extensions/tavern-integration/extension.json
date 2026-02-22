@@ -1,0 +1,6 @@
+{
+  "id": "tavern-integration",
+  "name": "Tavern Integration Channel",
+  "version": "1.0.0",
+  "description": "Integrates Tavern worker events and provides tools for agents to interact with Tavern."
+}

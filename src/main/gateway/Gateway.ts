@@ -187,7 +187,40 @@ export class Gateway implements GatewayApi {
     registerSkillRoutes(router);
     registerFileRoutes(router);
     registerTavernRoutes(router);
+
+    // 动态挂载 Extension 注册的 HTTP 路由
+    this.mountExtensionHttpRoutes(router);
+
     log.info('[Gateway] HTTP REST routes registered');
+  }
+
+  private async mountExtensionHttpRoutes(router: {
+    get?: (path: string, handler: (ctx: Record<string, unknown>) => Promise<void> | void) => void;
+    post?: (path: string, handler: (ctx: Record<string, unknown>) => Promise<void> | void) => void;
+    put?: (path: string, handler: (ctx: Record<string, unknown>) => Promise<void> | void) => void;
+    delete?: (path: string, handler: (ctx: Record<string, unknown>) => Promise<void> | void) => void;
+    patch?: (path: string, handler: (ctx: Record<string, unknown>) => Promise<void> | void) => void;
+    [key: string]: unknown;
+  }): Promise<void> {
+    try {
+      const { ExtensionManager } = await import('@main/common/extension');
+      const registry = ExtensionManager.getRegistry();
+      if (!registry) return;
+
+      const routes = registry.getHttpRoutes();
+      for (const { route } of routes) {
+        const method = route.method.toLowerCase();
+        const routerMethod = router[method];
+        if (typeof routerMethod === 'function') {
+          routerMethod(route.path, route.handler);
+          log.info(`[Gateway] Mounted extension route: ${route.method} ${route.path}`);
+        } else {
+          log.warn(`[Gateway] Unknown HTTP method: ${route.method} for path: ${route.path}`);
+        }
+      }
+    } catch (err) {
+      log.error('[Gateway] Failed to mount extension HTTP routes:', err);
+    }
   }
 
   // ==================== 消息路由 ====================

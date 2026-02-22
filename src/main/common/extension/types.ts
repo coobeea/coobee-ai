@@ -54,6 +54,45 @@ export interface ExtensionEventBus {
 
 // ==================== ExtensionApi ====================
 
+export interface ChannelContext {
+  /** Channel 绑定的 AbortSignal，用于安全退出 */
+  abortSignal: AbortSignal;
+  /** 日志 */
+  log: ExtensionLogger;
+}
+
+export interface ChannelConfig {
+  /** 通道唯一 ID */
+  id: string;
+  /** 通道名称 */
+  name: string;
+  /** Gateway 生命周期钩子 */
+  gateway?: {
+    /** 启动通道监听 */
+    start?: (ctx: ChannelContext) => Promise<void> | void;
+    /** 停止通道监听 */
+    stop?: (ctx: ChannelContext) => Promise<void> | void;
+  };
+}
+
+export interface HttpRouteConfig {
+  /** 路由路径，例如 '/webhook/tavern' */
+  path: string;
+  /** HTTP 方法 */
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  /** Koa 处理器函数 (使用 Record 避免耦合 Koa 类型) */
+  handler: (ctx: Record<string, unknown>) => Promise<void> | void;
+}
+
+export interface BackgroundService {
+  /** 服务唯一 ID */
+  id: string;
+  /** 启动服务 */
+  start: () => Promise<void> | void;
+  /** 停止服务 */
+  stop: () => Promise<void> | void;
+}
+
 /**
  * Extension Services — 核心能力的结构化访问接口
  *
@@ -112,6 +151,13 @@ export interface ExtensionApi {
   on<K extends ExtensionHookName>(hookName: K, handler: ExtensionHookHandler<K>, opts?: { priority?: number }): void;
   /** 注册 Gateway RPC 方法 */
   registerGatewayMethod(method: string, handler: MethodHandler): void;
+
+  /** 注册外部服务通道 */
+  registerChannel(config: ChannelConfig): void;
+  /** 注册 HTTP 路由 */
+  registerHttpRoute(config: HttpRouteConfig): void;
+  /** 注册后台服务 */
+  registerService(service: BackgroundService): void;
 }
 
 // ==================== Extension Hook ====================
@@ -405,4 +451,19 @@ export interface RegisteredExtensionSkillDir {
   extensionId: string;
   /** 已解析为绝对路径的 Skill 目录 */
   dir: string;
+}
+
+export interface RegisteredChannel {
+  extensionId: string;
+  channel: ChannelConfig;
+}
+
+export interface RegisteredHttpRoute {
+  extensionId: string;
+  route: HttpRouteConfig;
+}
+
+export interface RegisteredBackgroundService {
+  extensionId: string;
+  service: BackgroundService;
 }
