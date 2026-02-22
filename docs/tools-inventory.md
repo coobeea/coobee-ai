@@ -113,7 +113,21 @@
 
 ## 🚀 Agent 创建 Worker 工作流
 
-### 方案：使用现有工具组合
+### ✅ 推荐方案：使用 `worker-creator` Skill
+
+**核心原则**: 通过 **Skill 描述流程**，使用 **现有工具组合**，避免 **工具膨胀导致上下文增大**。
+
+**Skill 位置**: `.cursor/skills/worker-creator/SKILL.md`
+
+**工具使用**: 保持 **19 个工具**，使用 5 个核心工具的组合完成创建：
+
+| 工具      | 用途                         |
+| --------- | ---------------------------- |
+| `glob`    | 列出已有 Worker              |
+| `read`    | 读取配置检查端口冲突         |
+| `write`   | 生成配置和代码文件           |
+| `exec`    | 创建目录、虚拟环境、安装依赖 |
+| `process` | 启动测试进程（可选）         |
 
 Agent 可以通过组合使用现有工具来创建 Worker：
 
@@ -452,30 +466,16 @@ websockets>=14.0
 
 ## 🔮 未来扩展建议
 
-### 1. 新增 `manage_worker` 工具（高优先级）
+### 1. 更多 Skill（推荐）
 
-**理由**：
+**原则**: 优先使用 Skill 描述复杂流程，而非新增工具
 
-- 简化 Agent 操作（11 步 → 1 步）
-- 内置最佳实践（端口冲突检测、依赖校验）
-- 统一错误处理
-- 自动健康检查
+**候选 Skill**：
 
-**接口设计**：
-
-```typescript
-interface ManageWorkerTool {
-  action: 'create' | 'update' | 'delete' | 'list' | 'restart';
-  name: string;
-  spec?: {
-    label: string;
-    port: number;
-    dependencies: string[];
-    code: string; // server.py 内容
-    modelName?: string;
-  };
-}
-```
+- `extension-creator` - 创建 Extension 扩展
+- `agent-optimizer` - 优化 Agent 性能
+- `deployment-helper` - 应用部署指南
+- `debug-assistant` - 系统调试方法论
 
 ### 2. Worker 模板库
 
@@ -532,5 +532,5 @@ edit("workers/my-worker/worker.json", ...)
 **总结**：
 
 - 🎯 **当前工具**: 19 个，覆盖文件、执行、搜索、记忆、Agent 管理等
-- 🚀 **创建 Worker**: 使用现有工具组合可实现（11 步流程）
-- 💡 **优化方向**: 可新增 `manage_worker` 专用工具简化操作
+- 🚀 **创建 Worker**: 使用 `worker-creator` Skill + 现有工具组合（11 步流程）
+- 💡 **设计原则**: Skill 描述流程，工具保持正交，避免工具膨胀
