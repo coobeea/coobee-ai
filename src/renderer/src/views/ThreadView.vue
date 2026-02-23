@@ -48,6 +48,8 @@ function addToChat(node: { path: string; name: string; type: 'file' | 'directory
 }
 
 provide('addToChat', addToChat);
+// addFileToTask 功能尚未实现，提供 undefined 避免 inject 警告
+provide('addFileToTask', undefined);
 
 function enterWorkspaceForThread(id: string): void {
   const thread = threadsStore.threads.find((t) => t.id === id);
