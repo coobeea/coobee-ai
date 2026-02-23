@@ -15,16 +15,19 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import Container from '@/components/Container.vue';
 import ConfirmContainer from '@/components/Confirm/ConfirmContainer.vue';
 import MessageContainer from '@/components/Message/MessageContainer.vue';
+import StatusBar from '@/components/StatusBar.vue';
 import eventBus from '@/eventbus';
 import { EventTypes } from '@shared/ipc/events';
 import { streamCleanup } from '@/composables/useStreamWs';
 import { cleanupThreadWs } from '@/composables/useThreadWs';
 import { workerCleanup } from '@/composables/useWorkerWs';
 import { useCopilotStore } from '@/stores/copilot';
+import { useWorkerStore } from '@/stores/worker';
 
 const isReady = ref(false);
 let timeoutId: ReturnType<typeof setTimeout> | null = null;
 const copilotStore = useCopilotStore();
+const workerStore = useWorkerStore();
 
 function markReady(): void {
   if (isReady.value) return;
@@ -48,6 +51,8 @@ onMounted(async () => {
     const ready = await window.api?.isBackendReady?.();
     if (ready) {
       markReady();
+      // 请求 Worker 列表
+      workerStore.requestWorkers();
       return;
     }
   } catch {
@@ -60,6 +65,8 @@ onMounted(async () => {
   timeoutId = setTimeout(() => {
     console.warn('[App] Backend ready timeout, proceeding anyway');
     markReady();
+    // 请求 Worker 列表
+    workerStore.requestWorkers();
   }, 5000);
 });
 
@@ -88,8 +95,11 @@ onUnmounted(() => {
   <div
     v-if="isReady"
     class="bg-background text-foreground transition-theme flex min-h-0 flex-1 flex-col overflow-hidden">
-    <router-view />
-    <Container />
+    <div class="flex min-h-0 flex-1 flex-col">
+      <router-view />
+      <Container />
+    </div>
+    <StatusBar />
   </div>
 
   <!-- 全局容器 -->

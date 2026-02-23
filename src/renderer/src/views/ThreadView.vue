@@ -17,7 +17,6 @@ import { useOpenFiles } from '@/composables/useOpenFiles';
 import ProjectPanel from '@/components/agent/ProjectPanel.vue';
 import WorkbenchPanel from '@/components/agent/WorkbenchPanel.vue';
 import ChatPanel from '@/components/agent/ChatPanel.vue';
-import VoicePanel from '@/components/agent/VoicePanel.vue';
 import AgentsPanel from '@/components/agent/AgentsPanel.vue';
 
 const route = useRoute();
@@ -131,16 +130,12 @@ onUnmounted(() => {
     </div>
 
     <!-- 已选目录：三栏工作区 -->
-    <template v-else>
-      <div class="flex min-h-0 flex-1">
-        <ProjectPanel v-model:collapsed="leftCollapsed" v-model:project-path="projectPath" :thread-id="threadId" />
-        <WorkbenchPanel />
-        <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" />
-        <AgentsPanel v-model:collapsed="agentsPanelCollapsed" />
-      </div>
-
-      <VoicePanel />
-    </template>
+    <div v-else class="flex min-h-0 flex-1">
+      <ProjectPanel v-model:collapsed="leftCollapsed" v-model:project-path="projectPath" :thread-id="threadId" />
+      <WorkbenchPanel />
+      <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" />
+      <AgentsPanel v-model:collapsed="agentsPanelCollapsed" />
+    </div>
   </div>
 </template>
 

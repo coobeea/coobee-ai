@@ -52,10 +52,6 @@ const handleMenuClick = (item: MenuItem): void => {
   router.push(item.route);
 };
 
-const handleSettings = (): void => {
-  router.push('/settings');
-};
-
 const handleThreadClick = (threadId: string): void => {
   threadsStore.selectThread(threadId);
   router.push(`/thread/${threadId}`);
@@ -182,24 +178,6 @@ onMounted(() => updateActiveState());
           <span class="i-carbon-renew inline-block h-4 w-4 animate-spin opacity-20" />
         </div>
       </div>
-    </div>
-
-    <!-- 底部工具栏 -->
-    <div class="nav-footer">
-      <button
-        class="footer-icon-btn"
-        :class="{ active: activeMenuId === 'logs' }"
-        title="日志"
-        @click="router.push('/logs')">
-        <span class="i-carbon-report inline-block h-[15px] w-[15px]" />
-      </button>
-      <button
-        class="footer-icon-btn"
-        :class="{ active: activeMenuId === 'settings' }"
-        title="设置"
-        @click="handleSettings">
-        <span class="i-carbon-settings inline-block h-[15px] w-[15px] settings-icon" />
-      </button>
     </div>
   </aside>
 </template>
@@ -402,39 +380,6 @@ onMounted(() => updateActiveState());
   user-select: none;
 }
 
-/* ====== 底部工具栏 ====== */
-
-.nav-footer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 8px 8px 12px;
-  border-top: 1px solid hsl(var(--border) / 0.3);
-}
-
-.footer-icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 7px;
-  color: hsl(var(--muted-foreground) / 0.55);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.footer-icon-btn:hover {
-  background: hsl(var(--foreground) / 0.05);
-  color: hsl(var(--foreground) / 0.7);
-}
-
-.footer-icon-btn.active {
-  background: hsl(var(--primary) / 0.1);
-  color: hsl(var(--primary));
-}
-
 /* ====== 公共按钮 ====== */
 
 .nav-btn {
@@ -478,14 +423,6 @@ onMounted(() => updateActiveState());
   flex-shrink: 0;
   margin-top: 1px;
   opacity: 0.5;
-}
-
-.settings-icon {
-  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.nav-btn:hover .settings-icon {
-  transform: rotate(90deg);
 }
 
 /* ====== 滚动条 ====== */
