@@ -4,11 +4,17 @@
  *
  * 显示项目目录的文件树，通过 HTTP API 获取目录结构。
  * 支持目录展开/折叠、文件类型图标、手动刷新、文件选中。
+ * 自动监听文件变化并刷新树。
  */
-import { ref, watch, provide } from 'vue';
+import { ref, watch, provide, onUnmounted } from 'vue';
 import configManager from '@/config';
 import { useOpenFiles } from '@/composables/useOpenFiles';
+import { watchThreadFiles, type WorkspaceFileChangedPayload } from '@/composables/useWorkspaceWatcher';
 import FileTreeNodeVue from './FileTreeNode.vue';
+
+const props = defineProps<{
+  threadId?: string;
+}>();
 
 const projectPath = defineModel<string | null>('projectPath', { default: null });
 const isCollapsed = defineModel<boolean>('collapsed', { default: false });
@@ -102,6 +108,37 @@ watch(
   },
   { immediate: true }
 );
+
+// 文件变化监听
+let unwatchFiles: (() => void) | null = null;
+
+watch(
+  () => props.threadId,
+  (newThreadId) => {
+    // 清理旧订阅
+    if (unwatchFiles) {
+      unwatchFiles();
+      unwatchFiles = null;
+    }
+
+    // 创建新订阅
+    if (newThreadId) {
+      unwatchFiles = watchThreadFiles(newThreadId, (payload: WorkspaceFileChangedPayload) => {
+        console.log(`[ProjectPanel] 检测到文件变化: ${payload.files.join(', ')}`);
+        // 自动刷新文件树
+        loadTree();
+      });
+    }
+  },
+  { immediate: true }
+);
+
+onUnmounted(() => {
+  // 组件卸载时清理订阅
+  if (unwatchFiles) {
+    unwatchFiles();
+  }
+});
 
 defineExpose({ selectDirectory });
 </script>

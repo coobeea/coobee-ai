@@ -131,7 +131,7 @@ onUnmounted(() => {
     <!-- 已选目录：三栏工作区 -->
     <template v-else>
       <div class="flex min-h-0 flex-1">
-        <ProjectPanel v-model:collapsed="leftCollapsed" v-model:project-path="projectPath" />
+        <ProjectPanel v-model:collapsed="leftCollapsed" v-model:project-path="projectPath" :thread-id="threadId" />
         <WorkbenchPanel />
         <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" />
         <AgentsPanel v-model:collapsed="agentsPanelCollapsed" />
