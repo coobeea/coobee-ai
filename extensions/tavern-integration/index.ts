@@ -7,6 +7,9 @@ import { agentExecutor } from '@main/ai/AgentExecutor';
 // Extension API logger (将在 register 时注入)
 let logger: ExtensionApi['logger'];
 
+// 清理函数列表
+let cleanupListeners: Array<() => void> = [];
+
 /**
  * 更新任务状态（直接操作本地文件系统，即 Direct 模式）
  */
@@ -87,7 +90,7 @@ export default {
             logger?.info?.(`[TavernIntegration] Received new task event from worker: ${taskObj.id}`);
 
             // 将事件推入系统全局事件总线
-            api.events?.emit(body.event as string, body.task);
+            api.eventBus.emit(body.event as string, body.task);
 
             ctx.status = 200;
             ctx.body = { ok: true, message: 'Event received and published' };
@@ -108,7 +111,9 @@ export default {
       id: 'tavern-task-dispatcher',
       start: () => {
         logger?.info?.('[TavernTaskDispatcher] Started. Listening for tavern tasks.');
-        api.events?.on('external.tavern.task.created', async (task: unknown) => {
+
+        // 使用 eventBus 监听事件，并保存清理函数
+        const offTaskCreated = api.eventBus.on('external.tavern.task.created', async (task: unknown) => {
           const taskObj = task as { id: string; title: string; description: string };
           logger?.info?.(`[TavernTaskDispatcher] Dispatching task ${taskObj.id} to app-copilot...`);
 
@@ -150,13 +155,15 @@ Please analyze this task, use the 'external_tavern_accept_task' tool to accept i
               }
             });
           } catch (err) {
-            logger.error(`[TavernTaskDispatcher] Failed to dispatch task ${taskObj.id}:`, err);
+            logger?.error?.(`[TavernTaskDispatcher] Failed to dispatch task ${taskObj.id}:`, err);
           }
         });
+
+        // 保存清理函数
+        cleanupListeners.push(offTaskCreated);
       },
       stop: () => {
-        logger.info('[TavernTaskDispatcher] Stopped.');
-        // 取消监听。注意 ExtensionRegistry unregisterAll 时会自动清理 api.events 的监听器
+        logger?.info?.('[TavernTaskDispatcher] Stopped.');
       }
     });
 
@@ -212,5 +219,15 @@ Please analyze this task, use the 'external_tavern_accept_task' tool to accept i
         return { success: false, error: `Task ${taskId} not found or update failed.` };
       }
     });
+  },
+
+  unregister: () => {
+    logger?.info?.('[TavernIntegration] Cleaning up event listeners...');
+
+    // 清理所有事件监听器
+    cleanupListeners.forEach((cleanup) => cleanup());
+    cleanupListeners = [];
+
+    logger?.info?.('[TavernIntegration] Cleanup complete.');
   }
 } as ExtensionModule;

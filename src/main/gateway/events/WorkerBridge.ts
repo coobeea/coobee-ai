@@ -7,19 +7,27 @@
  *   WorkerManager worker:status → Gateway event 'worker.status'（广播所有客户端）
  */
 
-import { log } from '@main/common/logger'
-import { WorkerManager } from '@main/common/worker'
-import type { WorkerStatusInfo } from '@shared/stream-protocol'
-import type { EventBridgeInit } from '../protocol'
+import { log } from '@main/common/logger';
+import { WorkerManager } from '@main/common/worker';
+import type { WorkerStatusInfo } from '@shared/stream-protocol';
+import type { EventBridgeInit } from '../protocol';
 
 export const initWorkerBridge: EventBridgeInit = (gateway) => {
-  const manager = WorkerManager.getInstance()
+  const manager = WorkerManager.getInstance();
 
-  manager.on('worker:status', (event: { worker: WorkerStatusInfo }) => {
-    gateway.broadcastEvent('worker.status', event.worker)
+  const statusListener = (event: { worker: WorkerStatusInfo }): void => {
+    gateway.broadcastEvent('worker.status', event.worker);
 
-    log.debug(`[WorkerBridge] Worker 状态推送: ${event.worker.name} → ${event.worker.status}`)
-  })
+    log.debug(`[WorkerBridge] Worker 状态推送: ${event.worker.name} → ${event.worker.status}`);
+  };
 
-  log.info('[WorkerBridge] Worker 事件桥接初始化完成')
-}
+  manager.on('worker:status', statusListener);
+
+  log.info('[WorkerBridge] Worker 事件桥接初始化完成');
+
+  // 返回清理函数
+  return () => {
+    manager.off('worker:status', statusListener);
+    log.info('[WorkerBridge] Worker 事件桥接已清理');
+  };
+};

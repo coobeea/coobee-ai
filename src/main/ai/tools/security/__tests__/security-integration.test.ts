@@ -5,10 +5,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { checkSensitivePath, canRead, canWrite, canExec } from '../sensitive-paths';
-import { scanCommand, scanScriptContent } from '../command-scanner';
 import path from 'path';
 import os from 'os';
+
+// Import security modules (no electron dependency)
+import { checkSensitivePath, canRead, canWrite, canExec } from '../sensitive-paths';
+import { scanCommand, scanScriptContent } from '../command-scanner';
 
 describe('Sensitive Paths Protection', () => {
   describe('checkSensitivePath', () => {

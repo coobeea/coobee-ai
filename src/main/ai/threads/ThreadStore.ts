@@ -14,6 +14,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import * as lockfile from 'proper-lockfile';
 import { eventBus } from '@main/common/eventbus';
 import { createLogger } from '@main/common/logger';
 import { generateSnowflakeId } from '@main/utils/SnowflakeIdGenerator';
@@ -121,7 +122,7 @@ export class ThreadStore {
       metadata: params.metadata
     };
 
-    this.writeDefinition(definition);
+    await this.writeDefinition(definition);
     const entry = toIndexEntry(definition, this.workspacesDir);
     this.index.set(definition.id, entry);
 
@@ -207,7 +208,7 @@ export class ThreadStore {
       updatedAt: new Date().toISOString()
     };
 
-    this.writeDefinition(updated);
+    await this.writeDefinition(updated);
 
     const prevRunStatus = existing.runStatus;
 
@@ -266,9 +267,40 @@ export class ThreadStore {
     return path.join(this.threadsDir, `${threadId}.json`);
   }
 
-  private writeDefinition(def: ThreadDefinition): void {
+  private async writeDefinition(def: ThreadDefinition): Promise<void> {
     const filePath = this.getFilePath(def.id);
-    fs.writeFileSync(filePath, JSON.stringify(def, null, 2), 'utf-8');
+
+    // 确保父目录存在
+    const dirPath = path.dirname(filePath);
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+
+    // 如果文件不存在，先创建空文件（lockfile 要求）
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, '{}', 'utf-8');
+    }
+
+    // 获取文件锁，写入，释放锁
+    let release: (() => Promise<void>) | null = null;
+    try {
+      release = await lockfile.lock(filePath, {
+        retries: {
+          retries: 5,
+          minTimeout: 100,
+          maxTimeout: 2000
+        }
+      });
+
+      fs.writeFileSync(filePath, JSON.stringify(def, null, 2), 'utf-8');
+    } catch (err) {
+      log.error(`[ThreadStore] Failed to write thread ${def.id} with lock:`, err);
+      throw err;
+    } finally {
+      if (release) {
+        await release();
+      }
+    }
   }
 }
 

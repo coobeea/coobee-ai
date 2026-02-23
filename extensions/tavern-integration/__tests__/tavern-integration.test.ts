@@ -58,6 +58,10 @@ describe('Tavern Integration Extension', () => {
     registerService: vi.fn(),
     registerTool: vi.fn(),
     events: events || { emit: vi.fn(), on: vi.fn() },
+    eventBus: {
+      emit: vi.fn(),
+      on: vi.fn(() => vi.fn())
+    },
     logger: {
       info: vi.fn(),
       warn: vi.fn(),
@@ -79,10 +83,6 @@ describe('Tavern Integration Extension', () => {
 
   describe('Webhook 接收接口', () => {
     it('应该正确接收并发布任务创建事件', async () => {
-      const mockEvents = {
-        emit: vi.fn()
-      };
-
       const mockCtx = {
         request: {
           body: {
@@ -104,12 +104,13 @@ describe('Tavern Integration Extension', () => {
       const extension = extensionModule.default;
 
       // 模拟注册
-      const mockApi = createMockApi(mockEvents);
+      const mockApi = createMockApi();
+      const eventBus = mockApi.eventBus as { emit: ReturnType<typeof vi.fn> };
 
       extension.register(mockApi as never);
 
       // 获取注册的 HTTP 路由 handler
-      const httpRouteCall = mockApi.registerHttpRoute.mock.calls.find(
+      const httpRouteCall = (mockApi.registerHttpRoute as ReturnType<typeof vi.fn>).mock.calls.find(
         (call) => call[0].path === '/internal/tavern/events'
       );
       expect(httpRouteCall).toBeDefined();
@@ -121,15 +122,11 @@ describe('Tavern Integration Extension', () => {
       expect(mockCtx.status).toBe(200);
       expect(mockCtx.body).toEqual({ ok: true, message: 'Event received and published' });
 
-      // 验证事件发布
-      expect(mockEvents.emit).toHaveBeenCalledWith('external.tavern.task.created', mockCtx.request.body.task);
+      // 验证事件发布（使用 eventBus）
+      expect(eventBus.emit).toHaveBeenCalledWith('external.tavern.task.created', mockCtx.request.body.task);
     });
 
     it('应该拒绝无效的请求体', async () => {
-      const mockEvents = {
-        emit: vi.fn()
-      };
-
       const mockCtx = {
         request: {
           body: {
@@ -143,17 +140,12 @@ describe('Tavern Integration Extension', () => {
       const extensionModule = await import('../index');
       const extension = extensionModule.default;
 
-      const mockApi = {
-        registerChannel: vi.fn(),
-        registerHttpRoute: vi.fn(),
-        registerService: vi.fn(),
-        registerTool: vi.fn(),
-        events: mockEvents
-      };
+      const mockApi = createMockApi();
+      const eventBus = mockApi.eventBus as { emit: ReturnType<typeof vi.fn> };
 
       extension.register(mockApi as never);
 
-      const httpRouteCall = mockApi.registerHttpRoute.mock.calls.find(
+      const httpRouteCall = (mockApi.registerHttpRoute as ReturnType<typeof vi.fn>).mock.calls.find(
         (call) => call[0].path === '/internal/tavern/events'
       );
       const handler = httpRouteCall![0].handler;
@@ -161,7 +153,9 @@ describe('Tavern Integration Extension', () => {
 
       expect(mockCtx.status).toBe(400);
       expect(mockCtx.body).toEqual({ ok: false, error: 'Invalid event payload' });
-      expect(mockEvents.emit).not.toHaveBeenCalled();
+
+      // 验证 eventBus 没有被调用
+      expect(eventBus.emit).not.toHaveBeenCalled();
     });
   });
 
@@ -315,31 +309,23 @@ describe('Tavern Integration Extension', () => {
       const extensionModule = await import('../index');
       const extension = extensionModule.default;
 
-      const mockEvents = {
-        emit: vi.fn(),
-        on: vi.fn()
-      };
-
-      const mockApi = {
-        registerChannel: vi.fn(),
-        registerHttpRoute: vi.fn(),
-        registerService: vi.fn(),
-        registerTool: vi.fn(),
-        events: mockEvents
-      };
+      const mockApi = createMockApi();
+      const eventBus = mockApi.eventBus as { on: ReturnType<typeof vi.fn> };
 
       extension.register(mockApi as never);
 
       // 获取服务并启动
-      const serviceCall = mockApi.registerService.mock.calls.find((call) => call[0].id === 'tavern-task-dispatcher');
+      const serviceCall = (mockApi.registerService as ReturnType<typeof vi.fn>).mock.calls.find(
+        (call) => call[0].id === 'tavern-task-dispatcher'
+      );
       const service = serviceCall![0];
       await service.start();
 
       // 验证监听器已注册
-      expect(mockEvents.on).toHaveBeenCalledWith('external.tavern.task.created', expect.any(Function));
+      expect(eventBus.on).toHaveBeenCalledWith('external.tavern.task.created', expect.any(Function));
 
       // 获取监听器回调
-      const eventListener = mockEvents.on.mock.calls.find((call) => call[0] === 'external.tavern.task.created')?.[1];
+      const eventListener = eventBus.on.mock.calls.find((call) => call[0] === 'external.tavern.task.created')?.[1];
 
       // 触发事件
       const testTask = {

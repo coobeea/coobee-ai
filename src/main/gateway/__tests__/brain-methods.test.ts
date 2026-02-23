@@ -1,27 +1,31 @@
 /**
  * Gateway brain 方法测试
  *
- * 使用临时目录进行测试，避免依赖 Electron 模块
+ * 测试 Gateway 转发到 Brain Worker 的逻辑
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// 创建临时目录
-const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-test-'));
+const mockFetch = vi.fn();
+const mockWorkerManager = {
+  getInstance: vi.fn(() => ({
+    get: vi.fn((name: string) => {
+      if (name === 'brain') {
+        return {
+          status: 'ready',
+          config: {
+            port: 42043
+          }
+        };
+      }
+      return null;
+    })
+  }))
+};
 
-// Mock Env 模块
-vi.mock('@main/common/env', () => ({
-  Env: {
-    paths: {
-      userHome: testDir
-    },
-    main: {
-      logLevel: 'info'
-    }
-  }
+// Mock WorkerManager
+vi.mock('@main/common/worker', () => ({
+  WorkerManager: mockWorkerManager
 }));
 
 // Mock logger 模块
@@ -34,83 +38,34 @@ vi.mock('@main/common/logger', () => ({
   })
 }));
 
+// Mock global fetch
+global.fetch = mockFetch;
+
 // 在 mock 之后再导入
 const { brainMethods } = await import('../methods/brain');
 import type { MethodContext } from '../protocol';
 
 describe('Gateway brain methods', () => {
-  const brainDir = path.join(testDir, 'brain');
-  const packagesDir = path.join(brainDir, 'packages');
-
-  beforeAll(() => {
-    // 创建测试数据
-    fs.mkdirSync(packagesDir, { recursive: true });
-
-    // 创建测试经验包
-    const pkg1 = {
-      package_id: 'test_pkg_001',
-      pattern: {
-        name: '测试方案 1',
-        summary: '这是测试方案',
-        category: 'repair',
-        signals: ['TimeoutError', 'ConnectionError'],
-        strategy: '使用重试机制'
-      },
-      practice: {
-        name: '测试实践 1',
-        summary: '实践案例',
-        content: '实现代码...',
-        confidence: 0.85,
-        outcome: '成功率 85%'
-      },
-      status: 'promoted',
-      usage_count: 10,
-      created_at: '2026-02-23T10:00:00Z',
-      updated_at: '2026-02-23T10:00:00Z'
-    };
-
-    const pkg2 = {
-      package_id: 'test_pkg_002',
-      pattern: {
-        name: '测试方案 2',
-        summary: '优化方案',
-        category: 'optimize',
-        signals: ['SlowQuery'],
-        strategy: '使用缓存'
-      },
-      practice: {
-        name: '测试实践 2',
-        summary: '缓存实践',
-        content: '缓存实现...',
-        confidence: 0.9,
-        outcome: '性能提升 50%'
-      },
-      status: 'validated',
-      usage_count: 5,
-      created_at: '2026-02-23T11:00:00Z',
-      updated_at: '2026-02-23T11:00:00Z'
-    };
-
-    // 写入经验包
-    const pkg1Dir = path.join(packagesDir, 'test_pkg_001');
-    const pkg2Dir = path.join(packagesDir, 'test_pkg_002');
-
-    fs.mkdirSync(pkg1Dir, { recursive: true });
-    fs.mkdirSync(pkg2Dir, { recursive: true });
-
-    fs.writeFileSync(path.join(pkg1Dir, 'package.json'), JSON.stringify(pkg1, null, 2));
-    fs.writeFileSync(path.join(pkg2Dir, 'package.json'), JSON.stringify(pkg2, null, 2));
-  });
-
-  afterAll(() => {
-    // 清理测试数据
-    if (fs.existsSync(testDir)) {
-      fs.rmSync(testDir, { recursive: true, force: true });
-    }
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
   describe('brain.stats', () => {
     it('应该返回统计信息', async () => {
+      // Mock fetch 返回统计数据
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            total: 2,
+            byCategory: { repair: 1, optimize: 1 },
+            byStatus: { promoted: 1, validated: 1 },
+            recentPackages: []
+          }
+        })
+      });
+
       const result = await brainMethods.methods.stats({}, {} as MethodContext);
 
       expect(result).toHaveProperty('data');
@@ -120,10 +75,30 @@ describe('Gateway brain methods', () => {
       expect(stats.total).toBe(2);
       expect(stats).toHaveProperty('byCategory');
       expect(stats).toHaveProperty('byStatus');
-      expect(stats).toHaveProperty('recentPackages');
+
+      // 验证调用了正确的 API
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:42043/api/brain/stats',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
     });
 
     it('按类别统计应该正确', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            total: 2,
+            byCategory: { repair: 1, optimize: 1 },
+            byStatus: { promoted: 1, validated: 1 },
+            recentPackages: []
+          }
+        })
+      });
+
       const result = await brainMethods.methods.stats({}, {} as MethodContext);
       const stats = (result as { data: Record<string, unknown> }).data;
       const byCategory = stats.byCategory as Record<string, number>;
@@ -135,6 +110,19 @@ describe('Gateway brain methods', () => {
 
   describe('brain.list', () => {
     it('应该返回经验包列表', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            packages: [{ package_id: 'pkg1' }, { package_id: 'pkg2' }],
+            total: 2,
+            limit: 20,
+            offset: 0
+          }
+        })
+      });
+
       const result = await brainMethods.methods.list({}, {} as MethodContext);
 
       expect(result).toHaveProperty('data');
@@ -146,6 +134,19 @@ describe('Gateway brain methods', () => {
     });
 
     it('应该支持按类别筛选', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            packages: [{ pattern: { category: 'repair' } }],
+            total: 1,
+            limit: 20,
+            offset: 0
+          }
+        })
+      });
+
       const result = await brainMethods.methods.list({ category: 'repair' }, {} as MethodContext);
 
       const data = (result as { data: Record<string, unknown> }).data;
@@ -153,9 +154,25 @@ describe('Gateway brain methods', () => {
 
       expect(packages).toHaveLength(1);
       expect(packages[0].pattern.category).toBe('repair');
+
+      // 验证 query 参数
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('category=repair'), expect.any(Object));
     });
 
     it('应该支持分页', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            packages: [{ package_id: 'pkg1' }],
+            total: 2,
+            limit: 1,
+            offset: 0
+          }
+        })
+      });
+
       const result = await brainMethods.methods.list({ limit: 1, offset: 0 }, {} as MethodContext);
 
       const data = (result as { data: Record<string, unknown> }).data;
@@ -163,11 +180,26 @@ describe('Gateway brain methods', () => {
 
       expect(packages).toHaveLength(1);
       expect(data.total).toBe(2);
+
+      // 验证 query 参数
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('limit=1'), expect.any(Object));
     });
   });
 
   describe('brain.get', () => {
     it('应该返回经验包详情', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            package_id: 'test_pkg_001',
+            pattern: { name: 'Test Pattern' },
+            practice: { name: 'Test Practice' }
+          }
+        })
+      });
+
       const result = await brainMethods.methods.get({ packageId: 'test_pkg_001' }, {} as MethodContext);
 
       expect(result).toHaveProperty('data');
@@ -176,53 +208,61 @@ describe('Gateway brain methods', () => {
       expect(pkg.package_id).toBe('test_pkg_001');
       expect(pkg).toHaveProperty('pattern');
       expect(pkg).toHaveProperty('practice');
+
+      // 验证调用了正确的 endpoint
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:42043/api/brain/packages/test_pkg_001',
+        expect.any(Object)
+      );
     });
 
     it('不存在的经验包应该抛出错误', async () => {
-      await expect(brainMethods.methods.get({ packageId: 'pkg_999' }, {} as MethodContext)).rejects.toThrow(
-        '经验包不存在'
-      );
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => 'Not Found'
+      });
+
+      await expect(brainMethods.methods.get({ packageId: 'pkg_999' }, {} as MethodContext)).rejects.toThrow();
     });
   });
 
   describe('brain.delete', () => {
     it('应该删除经验包', async () => {
-      // 先创建一个临时包用于删除
-      const tempPkgId = 'test_pkg_temp';
-      const tempPkg = {
-        package_id: tempPkgId,
-        pattern: {
-          name: '临时包',
-          summary: '用于删除测试',
-          category: 'repair',
-          signals: [],
-          strategy: 'test'
-        },
-        practice: {
-          name: '临时实践',
-          summary: 'test',
-          content: 'test',
-          confidence: 0.8,
-          outcome: 'test'
-        },
-        status: 'candidate',
-        usage_count: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            package_id: 'test_pkg_temp',
+            message: '经验包已删除'
+          }
+        })
+      });
 
-      const tempPkgDir = path.join(packagesDir, tempPkgId);
-      fs.mkdirSync(tempPkgDir, { recursive: true });
-      fs.writeFileSync(path.join(tempPkgDir, 'package.json'), JSON.stringify(tempPkg, null, 2));
-
-      // 删除
-      const result = await brainMethods.methods.delete({ packageId: tempPkgId }, {} as MethodContext);
+      const result = await brainMethods.methods.delete({ packageId: 'test_pkg_temp' }, {} as MethodContext);
 
       expect(result).toHaveProperty('ok');
       expect((result as { ok: boolean }).ok).toBe(true);
 
-      // 验证文件已删除
-      expect(fs.existsSync(tempPkgDir)).toBe(false);
+      // 验证调用了正确的 API
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:42043/api/brain/packages/test_pkg_temp',
+        expect.objectContaining({
+          method: 'DELETE'
+        })
+      );
+    });
+
+    it('Worker 未启动应该抛出错误', async () => {
+      // Mock WorkerManager 返回 null
+      mockWorkerManager.getInstance = vi.fn(() => ({
+        get: vi.fn(() => null)
+      }));
+
+      await expect(brainMethods.methods.delete({ packageId: 'pkg_001' }, {} as MethodContext)).rejects.toThrow(
+        'Brain Worker not ready'
+      );
     });
   });
 });

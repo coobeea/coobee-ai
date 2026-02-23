@@ -411,7 +411,7 @@ def stats():
         }), 500
 
 
-@app.route('/api/brain/packages', methods=['POST'])
+@app.route('/api/brain/packages', methods=['GET', 'POST'])
 def list_packages():
     """
     列出经验包（供 Gateway 使用，带分页）
@@ -437,13 +437,20 @@ def list_packages():
         }
     """
     try:
-        data = request.get_json() or {}
-        
-        limit = data.get('limit', 20)
-        offset = data.get('offset', 0)
-        category = data.get('category')
-        status = data.get('status')
-        signals = data.get('signals', [])
+        # 支持 GET (query params) 和 POST (body)
+        if request.method == 'GET':
+            limit = int(request.args.get('limit', 20))
+            offset = int(request.args.get('offset', 0))
+            category = request.args.get('category')
+            status = request.args.get('status')
+            signals = request.args.getlist('signals')
+        else:
+            data = request.get_json() or {}
+            limit = data.get('limit', 20)
+            offset = data.get('offset', 0)
+            category = data.get('category')
+            status = data.get('status')
+            signals = data.get('signals', [])
         
         # 查找匹配的经验包
         if signals:
@@ -501,6 +508,54 @@ def list_packages():
         
     except Exception as e:
         log('ERROR', f'List packages failed: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'INTERNAL_ERROR',
+                'message': str(e)
+            }
+        }), 500
+
+
+@app.route('/api/brain/packages/<package_id>', methods=['GET'])
+def get_package(package_id: str):
+    """
+    获取经验包详情（供 Gateway 使用）
+    
+    Response:
+        {
+            "success": true,
+            "data": {
+                "package_id": "pkg_xxx",
+                "pattern": { ... },
+                "practice": { ... },
+                "evolution": { ... },
+                "status": "...",
+                "usage_count": ...,
+                "created_at": "...",
+                "updated_at": "..."
+            }
+        }
+    """
+    try:
+        pkg = store.load_package(package_id)
+        
+        if not pkg:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'NOT_FOUND',
+                    'message': f'经验包不存在: {package_id}'
+                }
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': pkg
+        })
+        
+    except Exception as e:
+        log('ERROR', f'Get package failed: {str(e)}')
         return jsonify({
             'success': False,
             'error': {

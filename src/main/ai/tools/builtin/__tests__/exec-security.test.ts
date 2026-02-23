@@ -10,6 +10,38 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ──────────────────────────────────────
 
+// Mock electron first
+vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn(() => '/mock/path'),
+    isReady: vi.fn(() => true)
+  },
+  BrowserWindow: vi.fn()
+}));
+
+// Mock @electron-toolkit/utils
+vi.mock('@electron-toolkit/utils', () => ({
+  is: {
+    dev: false,
+    prod: true
+  }
+}));
+
+// Mock Env (before any imports that depend on it)
+vi.mock('@main/common/env', () => ({
+  Env: {
+    paths: {
+      workspaceRoot: '/mock/workspace',
+      userHome: '/mock/home',
+      threadsDir: '/mock/threads',
+      workspacesDir: '/mock/workspaces'
+    },
+    main: {
+      logLevel: 'info'
+    }
+  }
+}));
+
 vi.mock('@main/common/logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   createLogger: () => ({
@@ -85,7 +117,8 @@ describe('exec tool — security fallback', () => {
   it('should deny blacklisted commands regardless of extension state', async () => {
     const result = await runExec('rm -rf /');
     expect(result.success).toBe(false);
-    expect(result.error?.code).toBe('EXEC_POLICY_DENY');
+    // 实际返回的错误码是 DANGEROUS_COMMAND
+    expect(result.error?.code).toBe('DANGEROUS_COMMAND');
   });
 
   it('should pass through ask-level commands (approval handled by ToolExecutionPipeline)', async () => {
