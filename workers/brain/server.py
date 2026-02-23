@@ -638,6 +638,11 @@ def main():
     log('INFO', f'Brain Worker starting on port {args.port}')
     log('INFO', f'Storage directory: {storage_dir}')
     
+    # 禁用 Flask/Werkzeug 的请求日志（仅保留错误日志）
+    import logging
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.setLevel(logging.ERROR)
+    
     # 启动 Flask 服务
     app.run(host='127.0.0.1', port=args.port, debug=False)
 
