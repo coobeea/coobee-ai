@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * WorkersSettings - Worker 管理设置
+ * WorkersSettings - 内置服务管理设置
  *
- * 显示所有 Worker 的状态，支持启动/停止操作
+ * 显示所有内置服务（Worker）的状态，支持启动/停止操作
  */
 
 import { ref, onMounted } from 'vue';
@@ -98,7 +98,7 @@ onMounted(() => {
   <div class="h-full overflow-y-auto p-6 lg:p-10">
     <div class="mx-auto max-w-3xl">
       <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-bold">Workers 管理</h2>
+        <h2 class="text-xl font-bold">内置服务管理</h2>
         <button
           class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted hover:bg-muted/80 transition-colors"
           :disabled="loading"
@@ -109,7 +109,7 @@ onMounted(() => {
       </div>
 
       <section>
-        <h3 class="text-sm font-semibold mb-4">Worker 进程</h3>
+        <h3 class="text-sm font-semibold mb-4">服务进程</h3>
         <div class="rounded-lg border border-border bg-card">
           <div v-if="loading" class="p-12 flex items-center justify-center text-muted-foreground">
             <span class="i-carbon-in-progress inline-block h-5 w-5 animate-spin mr-2" />
@@ -120,7 +120,7 @@ onMounted(() => {
             v-else-if="workers.length === 0"
             class="p-12 flex flex-col items-center justify-center gap-2 text-muted-foreground">
             <span class="i-carbon-cube inline-block h-8 w-8 opacity-30" />
-            <p class="text-sm">暂无 Worker</p>
+            <p class="text-sm">暂无内置服务</p>
           </div>
 
           <div v-else class="divide-y divide-border">

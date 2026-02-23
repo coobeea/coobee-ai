@@ -17,7 +17,7 @@ import AboutView from './settings/AboutView.vue';
 const menuItems = [
   { id: 'basic', label: '基本配置', icon: 'i-carbon-settings', component: markRaw(BasicSettings) },
   { id: 'models', label: '模型设置', icon: 'i-carbon-machine-learning-model', component: markRaw(ModelSettings) },
-  { id: 'workers', label: 'Workers', icon: 'i-carbon-cube', component: markRaw(WorkersSettings) },
+  { id: 'workers', label: '内置服务', icon: 'i-carbon-cube', component: markRaw(WorkersSettings) },
   { id: 'about', label: '关于我们', icon: 'i-carbon-information', component: markRaw(AboutView) }
 ];
 
