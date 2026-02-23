@@ -19,6 +19,9 @@ import { canRead } from '../security/sensitive-paths';
 /** 默认最大读取行数（防止超大文件打爆 token） */
 const DEFAULT_MAX_LINES = 2000;
 
+/** 文件大小限制（50MB） */
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
 export const readTool: ToolDefinition = {
   name: 'read',
   description:
@@ -75,6 +78,24 @@ export const readTool: ToolDefinition = {
         };
       }
 
+      // 检查文件大小
+      if (fileStat.size > MAX_FILE_SIZE) {
+        return {
+          success: false,
+          llmContent: `Error: File too large (${(fileStat.size / 1024 / 1024).toFixed(1)}MB). Maximum: ${MAX_FILE_SIZE / 1024 / 1024}MB. Use offset/limit parameters for large files.`,
+          error: { code: 'FILE_TOO_LARGE', message: 'File exceeds size limit' }
+        };
+      }
+
+      // 检测二进制文件
+      if (await isBinaryFile(absolutePath)) {
+        return {
+          success: false,
+          llmContent: `Error: Cannot read binary file: ${filePath}. This file appears to be a binary file (image, executable, archive, etc.) and cannot be displayed as text.`,
+          error: { code: 'BINARY_FILE', message: 'File is binary' }
+        };
+      }
+
       yield { type: 'progress', content: 'Reading content...', percentage: 30 };
 
       const content = await readFile(absolutePath, 'utf-8');
@@ -128,3 +149,54 @@ export const readTool: ToolDefinition = {
     }
   }
 };
+
+/**
+ * 检查文件是否为二进制文件
+ *
+ * 通过读取文件前 8KB 字节，检查是否包含 null 字节或大量非文本字符。
+ */
+async function isBinaryFile(filePath: string): Promise<boolean> {
+  try {
+    const { open } = await import('node:fs/promises');
+    const buffer = Buffer.alloc(8192);
+    const fd = await open(filePath, 'r');
+
+    try {
+      const { bytesRead } = await fd.read(buffer, 0, 8192, 0);
+
+      if (bytesRead === 0) {
+        return false; // 空文件视为文本
+      }
+
+      const sampleSize = Math.min(bytesRead, 8192);
+      let nullBytes = 0;
+      let nonTextBytes = 0;
+
+      for (let i = 0; i < sampleSize; i++) {
+        const byte = buffer[i];
+
+        // Null 字节几乎总是表明是二进制文件
+        if (byte === 0) {
+          nullBytes++;
+          if (nullBytes > 1) {
+            return true; // 发现多个 null 字节，确定是二进制
+          }
+        }
+
+        // 检查是否是非文本字符（排除常见的控制字符）
+        if (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) {
+          nonTextBytes++;
+        }
+      }
+
+      // 如果超过 30% 的字节是非文本字符，认为是二进制
+      const nonTextRatio = nonTextBytes / sampleSize;
+      return nonTextRatio > 0.3;
+    } finally {
+      await fd.close();
+    }
+  } catch {
+    // 读取失败，保守地视为二进制
+    return true;
+  }
+}
