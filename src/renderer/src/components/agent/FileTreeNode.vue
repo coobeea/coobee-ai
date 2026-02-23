@@ -89,6 +89,11 @@ function isSelected(nodePath: string): boolean {
 
 // 处理节点点击
 function handleNodeClick(node: FileNode): void {
+  // 设置选中状态（用于粘贴功能确定目标目录）
+  if (selectedPath) {
+    selectedPath.value = node.path;
+  }
+
   if (node.type === 'directory') {
     onToggleDir(node);
   } else {

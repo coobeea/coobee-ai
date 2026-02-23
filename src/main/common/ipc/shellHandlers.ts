@@ -4,7 +4,7 @@
  * - shell:get-window-info：渲染进程拉取当前窗口完整信息（windowId、tabs、currentTabId、callerTabId 等）
  */
 
-import { ipcMain, BrowserWindow, dialog } from 'electron';
+import { ipcMain, BrowserWindow, dialog, clipboard } from 'electron';
 
 import { log } from '../logger';
 import { ShellChannels } from './channels';
@@ -110,6 +110,40 @@ export function registerShellHandlers(): void {
       return result;
     }
   );
+
+  // 读取剪贴板中的文件路径列表
+  ipcMain.handle(ShellChannels.GET_CLIPBOARD_FILES, (): string[] => {
+    try {
+      // macOS: 尝试读取 public.file-url 格式
+      if (process.platform === 'darwin') {
+        const fileUrl = clipboard.read('public.file-url');
+        if (fileUrl) {
+          // 将 file:// URL 转换为路径
+          const filePath = decodeURIComponent(fileUrl.replace(/^file:\/\//, ''));
+          return [filePath];
+        }
+      }
+
+      // Windows/Linux: 尝试读取文本格式的文件路径
+      const text = clipboard.readText();
+      if (text) {
+        // 尝试解析为文件路径（Windows 文件路径格式：C:\... 或 \\...）
+        // Linux 文件路径格式：/...
+        const lines = text.split(/[\r\n]+/).filter((line) => line.trim());
+        const filePaths = lines.filter((line) => {
+          return /^[A-Za-z]:[\\]/.test(line) || /^\//.test(line) || /^\\\\/.test(line);
+        });
+        if (filePaths.length > 0) {
+          return filePaths;
+        }
+      }
+
+      return [];
+    } catch (err) {
+      log.error('[IPC] shell:get-clipboard-files - 读取剪贴板失败:', err);
+      return [];
+    }
+  });
 
   log.info('[IPC] Shell handlers registered');
 }

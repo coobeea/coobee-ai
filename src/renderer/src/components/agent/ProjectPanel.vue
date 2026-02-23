@@ -97,6 +97,63 @@ async function handleUploadFile(file: File, targetDir: string): Promise<void> {
   await uploadFileToWorkspace(file, targetDir);
 }
 
+// 处理粘贴事件（Cmd+V / Ctrl+V）
+async function handlePaste(event: KeyboardEvent): Promise<void> {
+  // 检查是否是 Cmd+V (Mac) 或 Ctrl+V (Windows/Linux)
+  if ((event.metaKey || event.ctrlKey) && event.key === 'v') {
+    event.preventDefault();
+
+    try {
+      // 从剪贴板读取文件路径
+      const filePaths = await window.api?.getClipboardFiles();
+      if (!filePaths || filePaths.length === 0) {
+        console.log('[ProjectPanel] 剪贴板中没有文件');
+        return;
+      }
+
+      // 确定目标目录：如果选中了目录节点，使用它；否则使用根目录
+      let targetDir = projectPath.value;
+      if (selectedPath.value) {
+        const selectedNode = findNodeByPath(tree.value, selectedPath.value);
+        if (selectedNode?.type === 'directory') {
+          targetDir = selectedNode.path;
+        } else if (selectedNode?.type === 'file') {
+          // 如果选中的是文件，使用其父目录
+          targetDir = selectedPath.value.substring(0, selectedPath.value.lastIndexOf('/'));
+        }
+      }
+
+      if (!targetDir) {
+        console.error('[ProjectPanel] 无法确定目标目录');
+        return;
+      }
+
+      console.log('[ProjectPanel] 粘贴文件到:', targetDir, '文件:', filePaths);
+
+      // 复制所有文件/目录
+      for (const sourcePath of filePaths) {
+        await copyFileToWorkspace(sourcePath, targetDir);
+      }
+    } catch (err) {
+      console.error('[ProjectPanel] 粘贴失败:', err);
+    }
+  }
+}
+
+// 辅助函数：根据路径查找节点
+function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
+  for (const node of nodes) {
+    if (node.path === path) {
+      return node;
+    }
+    if (node.children) {
+      const found = findNodeByPath(node.children, path);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 provide('expandedDirs', expandedDirs);
 provide('toggleDir', toggleDir);
 provide('openFile', handleOpenFile);
@@ -221,7 +278,11 @@ defineExpose({ selectDirectory });
 </script>
 
 <template>
-  <aside v-show="!isCollapsed" class="flex h-full w-64 shrink-0 flex-col border-r border-gray-200/80 bg-gray-50/50">
+  <aside
+    v-show="!isCollapsed"
+    class="flex h-full w-64 shrink-0 flex-col border-r border-gray-200/80 bg-gray-50/50"
+    tabindex="0"
+    @keydown="handlePaste">
     <!-- 面板标题 -->
     <div class="flex h-10 shrink-0 items-center justify-between border-b border-gray-200/60 px-3">
       <div class="flex items-center gap-1.5">

@@ -21,7 +21,9 @@ export const ShellChannels = {
   /** 打开目录选择对话框，返回选中的路径或 null */
   OPEN_DIRECTORY: 'shell:open-directory',
   /** 打开文件选择对话框，返回选中的文件路径列表 */
-  OPEN_FILE: 'shell:open-file'
+  OPEN_FILE: 'shell:open-file',
+  /** 读取剪贴板中的文件路径列表 */
+  GET_CLIPBOARD_FILES: 'shell:get-clipboard-files'
 } as const;
 
 /** 窗口控制通道（invoke） */

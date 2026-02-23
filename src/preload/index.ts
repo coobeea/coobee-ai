@@ -41,6 +41,11 @@ const api = {
   openDirectory: (): Promise<string | null> => ipcRenderer.invoke(ShellChannels.OPEN_DIRECTORY),
 
   /**
+   * 读取剪贴板中的文件路径列表
+   */
+  getClipboardFiles: (): Promise<string[]> => ipcRenderer.invoke(ShellChannels.GET_CLIPBOARD_FILES),
+
+  /**
    * 检查后端是否就绪（所有生命周期 Hook 完成）
    */
   isBackendReady: (): Promise<boolean> => ipcRenderer.invoke(AppChannels.IS_BACKEND_READY),
