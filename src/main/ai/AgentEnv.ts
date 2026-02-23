@@ -227,7 +227,8 @@ export function formatRuntimePaths(env: AgentEnv): string {
   // 格式化扩展列表
   const extensionsList = env.loadedExtensions.length > 0 ? env.loadedExtensions.join(', ') : 'none';
 
-  return `Your Runtime Environment:
+  return `<runtime_environment>
+Your Runtime Environment:
 - Session: ${env.sessionId}
 - Workspace: ${env.workspace}
 - Platform: ${env.platform}/${env.arch} (${env.isDev ? 'dev' : 'prod'})
@@ -248,5 +249,6 @@ When using delegate_to_agent or multi-agent workflows, write all data under {wor
 - agents/{agentId}/ (sub-agent workspace)
 - results/{agentId}.md (final output)
 
-Use manage_agent(list) before creating new agents. For simple delegations, taskId is auto-generated.`;
+Use manage_agent(list) before creating new agents. For simple delegations, taskId is auto-generated.
+</runtime_environment>`;
 }
