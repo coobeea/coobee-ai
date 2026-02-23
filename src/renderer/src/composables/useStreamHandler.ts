@@ -85,6 +85,9 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
   const messages = ref<StreamChatMessage[]>([]);
   const isStreaming = ref(false);
 
+  // 消息计数器，确保 ID 唯一（避免同一毫秒内生成重复 ID）
+  let messageCounter = 0;
+
   function trimMessages(): void {
     if (messages.value.length > maxMessages) {
       messages.value = messages.value.slice(-maxMessages);
@@ -98,7 +101,7 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
 
   function createAssistantMessage(): StreamChatMessage {
     const msg: StreamChatMessage = {
-      id: `${idPrefix}-assistant-${Date.now()}`,
+      id: `${idPrefix}-assistant-${Date.now()}-${++messageCounter}`,
       role: 'assistant',
       content: '',
       blocks: [],
@@ -112,7 +115,7 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
 
   function addUserMessage(text: string): StreamChatMessage {
     const msg: StreamChatMessage = {
-      id: `${idPrefix}-user-${Date.now()}`,
+      id: `${idPrefix}-user-${Date.now()}-${++messageCounter}`,
       role: 'user',
       content: text,
       blocks: [],
@@ -126,7 +129,7 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
 
   function addErrorMessage(error: string): StreamChatMessage {
     const msg: StreamChatMessage = {
-      id: `${idPrefix}-error-${Date.now()}`,
+      id: `${idPrefix}-error-${Date.now()}-${++messageCounter}`,
       role: 'assistant',
       content: '',
       blocks: [],
@@ -323,6 +326,7 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
   function resetAll(): void {
     messages.value = [];
     isStreaming.value = false;
+    messageCounter = 0; // 重置计数器
   }
 
   return {
