@@ -79,6 +79,9 @@ export class WorkspaceFileWatcher {
   /** 缓存的 workspacesDir 路径（在 start() 时获取） */
   private workspacesDir: string | null = null;
 
+  /** 是否已记录过 workspacesDir 不可用的错误（避免重复日志） */
+  private workspacesDirErrorLogged = false;
+
   /** 保存 bound 函数引用，用于正确移除 EventBus 监听器 */
   private boundHandlers = {
     message: null as ((event: StreamEvent) => Promise<void>) | null,
@@ -250,7 +253,15 @@ export class WorkspaceFileWatcher {
 
     // 使用缓存的 workspacesDir 路径
     if (!this.workspacesDir) {
-      log.error(`[WorkspaceFileWatcher] workspacesDir not available, cannot start watch for ${threadId}`);
+      // 只记录一次错误，避免终端日志刷屏
+      if (!this.workspacesDirErrorLogged) {
+        log.error(
+          `[WorkspaceFileWatcher] workspacesDir not available, Extension cannot function. ` +
+            `This usually means Env.paths was not initialized when Extension started. ` +
+            `All subsequent watch requests will be silently ignored.`
+        );
+        this.workspacesDirErrorLogged = true;
+      }
       return;
     }
 

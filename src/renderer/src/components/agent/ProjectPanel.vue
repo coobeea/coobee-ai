@@ -45,13 +45,16 @@ async function fetchTree(dirPath: string, depth = 3): Promise<FileNode[]> {
   return (data as { children: FileNode[] }).children;
 }
 
-async function loadTree(): Promise<void> {
+async function loadTree(clearExpanded = false): Promise<void> {
   if (!projectPath.value) return;
   loading.value = true;
   error.value = null;
   try {
     tree.value = await fetchTree(projectPath.value);
-    expandedDirs.value.clear();
+    // 只在首次加载或切换目录时清空展开状态
+    if (clearExpanded) {
+      expandedDirs.value.clear();
+    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
     tree.value = [];
@@ -104,7 +107,8 @@ async function selectDirectory(): Promise<void> {
 watch(
   projectPath,
   (newPath) => {
-    if (newPath) loadTree();
+    if (newPath)
+      loadTree(true); // 切换目录时清空展开状态
     else tree.value = [];
   },
   { immediate: true }
@@ -126,8 +130,8 @@ watch(
     if (newThreadId) {
       unwatchFiles = watchThreadFiles(newThreadId, (payload: WorkspaceFileChangedPayload) => {
         console.log(`[ProjectPanel] 检测到文件变化: ${payload.files.join(', ')}`);
-        // 自动刷新文件树
-        loadTree();
+        // 自动刷新文件树，保持展开状态
+        loadTree(false);
       });
     }
   },
@@ -200,8 +204,8 @@ async function copyFileToWorkspace(sourcePath: string, targetDir: string): Promi
     }
 
     console.log('[ProjectPanel] 复制成功:', data);
-    // 刷新文件树
-    await loadTree();
+    // 刷新文件树，保持展开状态
+    await loadTree(false);
   } catch (err) {
     console.error('[ProjectPanel] 复制错误:', err);
   }
@@ -235,7 +239,7 @@ defineExpose({ selectDirectory });
           v-if="projectPath"
           class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
           title="刷新"
-          @click="loadTree">
+          @click="() => loadTree(false)">
           <span class="i-carbon-renew inline-block h-3 w-3" :class="{ 'animate-spin': loading }"></span>
         </button>
         <button
@@ -300,7 +304,9 @@ defineExpose({ selectDirectory });
             <span class="i-carbon-warning-alt inline-block h-3.5 w-3.5 shrink-0"></span>
             <span class="truncate">{{ error }}</span>
           </div>
-          <button class="mt-2 text-[10px] text-gray-400 transition hover:text-primary" @click="loadTree"> 重试 </button>
+          <button class="mt-2 text-[10px] text-gray-400 transition hover:text-primary" @click="() => loadTree(false)">
+            重试
+          </button>
         </div>
 
         <!-- 文件树 -->
