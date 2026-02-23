@@ -1,6 +1,6 @@
 {
-  "name": "tavern-poller",
-  "label": "Tavern Poller",
+  "name": "tavern",
+  "label": "酒馆服务",
   "type": "python",
   "entry": "server.py",
   "port": 9010,
@@ -8,6 +8,7 @@
   "autoRestart": true,
   "maxRestarts": 5,
   "healthCheckPath": "/health",
-  "healthCheckTimeout": 5000,
+  "healthCheckTimeout": 10000,
+  "autoStart": false,
   "env": {}
 }
