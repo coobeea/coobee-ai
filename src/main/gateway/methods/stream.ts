@@ -11,67 +11,91 @@
  *   stream.latestSeq   — 获取最新序列号
  */
 
-import { log } from '@main/common/logger'
-import { streamStore } from '@main/ai/streaming/consumers/StreamStore'
-import type { MethodGroup } from '../protocol'
+import { log } from '@main/common/logger';
+import { streamStore } from '@main/ai/streaming/consumers/StreamStore';
+import { GatewayMethodError, GatewayErrorCode } from '../protocol/errors';
+import type { MethodGroup } from '../protocol';
 
 export const streamMethods: MethodGroup = {
   namespace: 'stream',
   methods: {
+    /**
+     * 订阅会话流式消息
+     */
     subscribe: async (params, ctx) => {
-      const { sessionId } = params as { sessionId?: string }
+      const { sessionId } = params as { sessionId?: string };
       if (!sessionId) {
-        return { ok: false, error: 'sessionId is required' }
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'sessionId is required');
       }
 
-      ctx.meta.subscribedSessions.add(sessionId)
-      log.info(`[stream.subscribe] ${ctx.clientId} → ${sessionId}`)
-      return { ok: true, sessionId }
+      ctx.meta.subscribedSessions.add(sessionId);
+      log.info(`[stream.subscribe] ${ctx.clientId} → ${sessionId}`);
+      return { data: { sessionId } };
     },
 
+    /**
+     * 取消订阅会话流式消息
+     */
     unsubscribe: async (params, ctx) => {
-      const { sessionId } = params as { sessionId?: string }
+      const { sessionId } = params as { sessionId?: string };
       if (!sessionId) {
-        return { ok: false, error: 'sessionId is required' }
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'sessionId is required');
       }
 
-      ctx.meta.subscribedSessions.delete(sessionId)
-      log.info(`[stream.unsubscribe] ${ctx.clientId} → ${sessionId}`)
-      return { ok: true }
+      const existed = ctx.meta.subscribedSessions.has(sessionId);
+      ctx.meta.subscribedSessions.delete(sessionId);
+      log.info(`[stream.unsubscribe] ${ctx.clientId} → ${sessionId}`);
+      return { data: { unsubscribed: existed } };
     },
 
+    /**
+     * 重发历史消息
+     */
     resend: async (params) => {
       const { sessionId, fromSequence } = params as {
-        sessionId?: string
-        fromSequence?: number
+        sessionId?: string;
+        fromSequence?: number;
+      };
+
+      if (!sessionId) {
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'sessionId is required');
       }
-      if (!sessionId || typeof fromSequence !== 'number') {
-        return { ok: false, error: 'sessionId and fromSequence are required' }
+      if (typeof fromSequence !== 'number') {
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'fromSequence must be a number');
       }
 
       try {
-        const messages = await streamStore.getMessages(sessionId, fromSequence, 100)
-        log.info(`[stream.resend] ${sessionId} from #${fromSequence} → ${messages.length} msgs`)
-        return { ok: true, messages }
+        const messages = await streamStore.getMessages(sessionId, fromSequence, 100);
+        log.info(`[stream.resend] ${sessionId} from #${fromSequence} → ${messages.length} msgs`);
+        return { data: { messages } };
       } catch (err) {
-        log.error(`[stream.resend] Failed for ${sessionId}:`, err)
-        return { ok: false, error: 'Failed to resend messages' }
+        log.error(`[stream.resend] Failed for ${sessionId}:`, err);
+        throw new GatewayMethodError(
+          GatewayErrorCode.INTERNAL_ERROR,
+          `Failed to resend messages: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     },
 
+    /**
+     * 获取最新序列号
+     */
     latestSeq: async (params) => {
-      const { sessionId } = params as { sessionId?: string }
+      const { sessionId } = params as { sessionId?: string };
       if (!sessionId) {
-        return { ok: false, error: 'sessionId is required' }
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'sessionId is required');
       }
 
       try {
-        const sequence = await streamStore.getLatestSequence(sessionId)
-        return { ok: true, sequence }
+        const sequence = await streamStore.getLatestSequence(sessionId);
+        return { data: { sequence } };
       } catch (err) {
-        log.error(`[stream.latestSeq] Failed for ${sessionId}:`, err)
-        return { ok: false, error: 'Failed to get latest sequence' }
+        log.error(`[stream.latestSeq] Failed for ${sessionId}:`, err);
+        throw new GatewayMethodError(
+          GatewayErrorCode.INTERNAL_ERROR,
+          `Failed to get latest sequence: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     }
   }
-}
+};

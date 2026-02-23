@@ -14,10 +14,10 @@
  */
 export interface WorkerConfig {
   /** Worker 唯一标识（如 'tts', 'asr'） */
-  name: string
+  name: string;
 
   /** 显示名称（如 '语音合成', '语音识别'） */
-  label: string
+  label: string;
 
   /**
    * Worker 类型
@@ -27,7 +27,7 @@ export interface WorkerConfig {
    *
    * @default 'python'
    */
-  type?: 'python' | 'native'
+  type?: 'python' | 'native';
 
   /**
    * 是否启用此 Worker
@@ -37,7 +37,7 @@ export interface WorkerConfig {
    *
    * @default true
    */
-  enable?: boolean
+  enable?: boolean;
 
   /**
    * Worker 入口文件
@@ -45,13 +45,13 @@ export interface WorkerConfig {
    * - type='python': 脚本路径（相对于 workers/{name}/），如 'server.py'
    * - type='native': 二进制文件名（相对于 runtime/{platform}/），如 'whisper-server'
    */
-  entry: string
+  entry: string;
 
   /**
    * 服务监听端口
    * Worker 以 HTTP/WebSocket 服务形式运行，绑定 127.0.0.1
    */
-  port: number
+  port: number;
 
   /**
    * 模型目录（绝对路径）
@@ -63,34 +63,34 @@ export interface WorkerConfig {
    *   1. worker.json 中的 modelDir（最高，per-worker 指定）
    *   2. Env.paths.modelsDir（全局默认，~/.coobee-ai/models）
    */
-  modelDir?: string
+  modelDir?: string;
 
   /**
    * 依赖文件（相对于 workers/{name}/ 目录）
    * @default 'requirements.txt'
    */
-  requirementsFile?: string
+  requirementsFile?: string;
 
   /** 额外的启动参数（追加到 python 命令后） */
-  args?: string[]
+  args?: string[];
 
   /** 额外的环境变量 */
-  env?: Record<string, string>
+  env?: Record<string, string>;
 
   /** 崩溃后自动重启 @default true */
-  autoRestart?: boolean
+  autoRestart?: boolean;
 
   /** 自动重启最大次数（0 = 无限） @default 3 */
-  maxRestarts?: number
+  maxRestarts?: number;
 
   /** 健康检查路径 @default '/health' */
-  healthCheckPath?: string
+  healthCheckPath?: string;
 
   /** 健康检查超时（ms），超时视为启动失败 @default 60000 */
-  healthCheckTimeout?: number
+  healthCheckTimeout?: number;
 
   /** 是否随应用启动自动拉起（false = 按需启动） @default false */
-  autoStart?: boolean
+  autoStart?: boolean;
 }
 
 // ==================== Worker 状态 ====================
@@ -102,7 +102,31 @@ export type WorkerStatus =
   | 'starting' // 进程已启动，等待健康检查通过
   | 'ready' // 健康检查通过，服务可用
   | 'error' // 启动或运行中出错
-  | 'stopping' // 正在停止
+  | 'stopping'; // 正在停止
+
+/**
+ * Worker 监控指标
+ *
+ * 实时性能和健康数据。
+ */
+export interface WorkerMetrics {
+  /** CPU 使用率（0-100%） */
+  cpuPercent: number;
+  /** 内存使用（字节） */
+  memoryBytes: number;
+  /** 内存使用率（0-100%） */
+  memoryPercent: number;
+  /** 健康检查平均响应时间（ms） */
+  healthCheckLatency: number;
+  /** 运行时长（秒） */
+  uptimeSeconds: number;
+  /** 最近健康检查状态 */
+  lastHealthCheck: {
+    success: boolean;
+    timestamp: number;
+    latency: number;
+  };
+}
 
 /**
  * Worker 运行时信息
@@ -111,21 +135,23 @@ export type WorkerStatus =
  */
 export interface WorkerInfo {
   /** Worker 名称 */
-  name: string
+  name: string;
   /** 显示名称 */
-  label: string
+  label: string;
   /** 当前状态 */
-  status: WorkerStatus
+  status: WorkerStatus;
   /** 服务端口（ready 时有效） */
-  port?: number
+  port?: number;
   /** 错误信息（error 时有效） */
-  error?: string
+  error?: string;
   /** 进程 PID */
-  pid?: number
+  pid?: number;
   /** 重启次数 */
-  restartCount: number
+  restartCount: number;
   /** 最近一次状态变更时间 */
-  updatedAt: number
+  updatedAt: number;
+  /** 监控指标（ready 时有效） */
+  metrics?: WorkerMetrics;
 }
 
 // ==================== Worker 事件 ====================
@@ -135,22 +161,22 @@ export interface WorkerInfo {
  */
 export interface WorkerStatusEvent {
   /** 事件类型 */
-  type: 'worker:status'
+  type: 'worker:status';
   /** Worker 信息 */
-  worker: WorkerInfo
+  worker: WorkerInfo;
 }
 
 /**
  * Worker 日志事件（Main → Renderer，可选）
  */
 export interface WorkerLogEvent {
-  type: 'worker:log'
+  type: 'worker:log';
   /** Worker 名称 */
-  name: string
+  name: string;
   /** 日志级别 */
-  level: 'info' | 'warn' | 'error'
+  level: 'info' | 'warn' | 'error';
   /** 日志内容 */
-  message: string
+  message: string;
   /** 时间戳 */
-  timestamp: number
+  timestamp: number;
 }

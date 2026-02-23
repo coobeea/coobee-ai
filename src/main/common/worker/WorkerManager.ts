@@ -20,6 +20,7 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { createLogger } from '@main/common/logger';
 import { Env } from '@main/common/env';
+import { WorkerMetricsCollector } from './WorkerMetricsCollector';
 import type { WorkerConfig, WorkerInfo, WorkerStatus } from './types';
 
 const log = createLogger('worker-manager');
@@ -35,6 +36,12 @@ interface ManagedWorker {
   stopping: boolean;
   /** Worker 专属日志（写入 logs/worker-{name}.log，控制台仅 warn+） */
   log: ReturnType<typeof createLogger>;
+  /** 监控指标收集器 */
+  metricsCollector?: WorkerMetricsCollector;
+  /** 运行期健康检查定时器 */
+  healthCheckInterval?: NodeJS.Timeout;
+  /** 连续健康检查失败次数 */
+  consecutiveHealthCheckFailures: number;
 }
 
 /**
@@ -83,6 +90,7 @@ export class WorkerManager extends EventEmitter {
         status: 'stopped',
         restartCount: 0,
         stopping: false,
+        consecutiveHealthCheckFailures: 0,
         // 每个 Worker 独立日志文件（logs/worker-{name}.log），控制台仅 warn+
         log: createLogger(`worker-${config.name}`, { consoleLevel: 'warn' })
       };
@@ -213,6 +221,16 @@ export class WorkerManager extends EventEmitter {
       await this.waitForHealth(worker);
       this.updateStatus(worker, 'ready');
 
+      // 启动监控指标收集
+      if (worker.process) {
+        worker.metricsCollector = new WorkerMetricsCollector(name, worker.process);
+        worker.metricsCollector.start();
+        log.debug(`[WorkerManager] Worker "${name}" 指标收集已启动`);
+      }
+
+      // 启动运行期健康检查（每 30 秒检查一次）
+      this.startRuntimeHealthCheck(worker);
+
       log.info(`[WorkerManager] Worker "${name}" 启动成功 (PID: ${worker.process?.pid})`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -250,8 +268,20 @@ export class WorkerManager extends EventEmitter {
 
       proc.once('exit', () => {
         clearTimeout(killTimeout);
+
+        // 停止运行期健康检查
+        this.stopRuntimeHealthCheck(worker);
+
+        // 停止监控指标收集
+        if (worker.metricsCollector) {
+          worker.metricsCollector.stop();
+          worker.metricsCollector = undefined;
+          log.debug(`[WorkerManager] Worker "${name}" 指标收集已停止`);
+        }
+
         worker.process = null;
         worker.stopping = false;
+        worker.consecutiveHealthCheckFailures = 0;
         this.updateStatus(worker, 'stopped');
         log.info(`[WorkerManager] Worker "${name}" (PID: ${pid}) 已停止`);
         resolve();
@@ -556,6 +586,95 @@ export class WorkerManager extends EventEmitter {
     throw new Error(`健康检查超时 (${timeout}ms)：${url}`);
   }
 
+  /**
+   * 启动运行期健康检查（定期轮询）
+   *
+   * 每 30 秒检查一次，连续失败 3 次则自动重启 Worker。
+   */
+  private startRuntimeHealthCheck(worker: ManagedWorker): void {
+    // 如果已经有检查在运行，先停止
+    this.stopRuntimeHealthCheck(worker);
+
+    const interval = 30000; // 30 秒
+    const maxFailures = 3; // 连续失败 3 次则重启
+
+    worker.healthCheckInterval = setInterval(async () => {
+      // Worker 已停止或正在停止，清除检查
+      if (!worker.process || worker.stopping || worker.status !== 'ready') {
+        this.stopRuntimeHealthCheck(worker);
+        return;
+      }
+
+      const { config } = worker;
+      const healthPath = config.healthCheckPath || '/health';
+      const url = `http://127.0.0.1:${config.port}${healthPath}`;
+
+      try {
+        const checkStart = Date.now();
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(5000) // 5 秒超时
+        });
+        const latency = Date.now() - checkStart;
+
+        if (response.ok) {
+          // 健康检查通过，重置失败计数
+          worker.consecutiveHealthCheckFailures = 0;
+
+          // 记录到 metrics
+          if (worker.metricsCollector) {
+            worker.metricsCollector.recordHealthCheck(true, latency);
+          }
+
+          worker.log.debug(`运行期健康检查通过: ${url} (${latency}ms)`);
+        } else {
+          throw new Error(`HTTP ${response.status}`);
+        }
+      } catch (err) {
+        worker.consecutiveHealthCheckFailures++;
+        const errorMsg = err instanceof Error ? err.message : String(err);
+
+        worker.log.warn(`运行期健康检查失败 (${worker.consecutiveHealthCheckFailures}/${maxFailures}): ${errorMsg}`);
+
+        // 记录失败到 metrics
+        if (worker.metricsCollector) {
+          worker.metricsCollector.recordHealthCheck(false, 0);
+        }
+
+        // 连续失败达到阈值，触发自动重启
+        if (worker.consecutiveHealthCheckFailures >= maxFailures) {
+          worker.log.error(`Worker 运行期健康检查连续失败 ${maxFailures} 次，触发自动重启`);
+
+          // 停止当前 Worker 并重启
+          this.stopRuntimeHealthCheck(worker);
+          await this.stop(config.name);
+
+          // 等待 2 秒后重启
+          setTimeout(() => {
+            if (!this.shuttingDown) {
+              worker.log.info('正在自动重启...');
+              this.start(config.name).catch((err) => {
+                worker.log.error('自动重启失败:', err);
+              });
+            }
+          }, 2000);
+        }
+      }
+    }, interval);
+
+    worker.log.info(`运行期健康检查已启动 (间隔: ${interval}ms, 失败阈值: ${maxFailures})`);
+  }
+
+  /**
+   * 停止运行期健康检查
+   */
+  private stopRuntimeHealthCheck(worker: ManagedWorker): void {
+    if (worker.healthCheckInterval) {
+      clearInterval(worker.healthCheckInterval);
+      worker.healthCheckInterval = undefined;
+      worker.log.debug('运行期健康检查已停止');
+    }
+  }
+
   // ==================== 路径工具 ====================
 
   /** Worker 脚本目录（只读） */
@@ -639,7 +758,8 @@ export class WorkerManager extends EventEmitter {
       error: worker.error,
       pid: worker.process?.pid,
       restartCount: worker.restartCount,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      metrics: worker.status === 'ready' && worker.metricsCollector ? worker.metricsCollector.getMetrics() : undefined
     };
   }
 

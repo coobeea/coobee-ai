@@ -29,6 +29,8 @@ export class ExtensionRegistry {
   private channels: RegisteredChannel[] = [];
   private httpRoutes: RegisteredHttpRoute[] = [];
   private backgroundServices: RegisteredBackgroundService[] = [];
+  /** 失败的 Extension（extensionId → 错误信息） */
+  private failedExtensions = new Map<string, string>();
 
   // --- 工具 ---
 
@@ -232,5 +234,39 @@ export class ExtensionRegistry {
     this.channels = [];
     this.httpRoutes = [];
     this.backgroundServices = [];
+    this.failedExtensions.clear();
+  }
+
+  // --- 失败Extension管理 ---
+
+  /**
+   * 标记 Extension 加载/注册失败
+   */
+  markExtensionFailed(extensionId: string, error: string): void {
+    this.failedExtensions.set(extensionId, error);
+  }
+
+  /**
+   * 获取失败的 Extension 列表
+   */
+  getFailedExtensions(): Array<{ extensionId: string; error: string }> {
+    return Array.from(this.failedExtensions.entries()).map(([extensionId, error]) => ({
+      extensionId,
+      error
+    }));
+  }
+
+  /**
+   * 检查 Extension 是否失败
+   */
+  isExtensionFailed(extensionId: string): boolean {
+    return this.failedExtensions.has(extensionId);
+  }
+
+  /**
+   * 清除 Extension 的失败标记（用于重试）
+   */
+  clearExtensionFailure(extensionId: string): void {
+    this.failedExtensions.delete(extensionId);
   }
 }
