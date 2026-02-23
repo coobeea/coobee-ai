@@ -24,8 +24,8 @@ defineProps<{
 const expandedDirs = inject<Ref<Set<string>>>('expandedDirs')!;
 const onToggleDir = inject<(node: FileNode) => void>('toggleDir')!;
 const onOpenFile = inject<(filePath: string) => void>('openFile')!;
-const onAddToChat = inject<((node: FileNode) => void) | undefined>('addToChat');
-const onAddFileToTask = inject<((node: FileNode) => void) | undefined>('addFileToTask');
+const onAddToChat = inject<((node: FileNode) => void) | undefined>('addToChat', undefined);
+const onAddFileToTask = inject<((node: FileNode) => void) | undefined>('addFileToTask', undefined);
 const selectedPath = inject<Ref<string | null>>('selectedPath');
 
 // 右键菜单状态
