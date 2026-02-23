@@ -31,6 +31,7 @@ const onCopyToDir = inject<((sourcePath: string, targetDir: string) => Promise<v
   'copyToDir',
   undefined
 );
+const onUploadFile = inject<((file: File, targetDir: string) => Promise<void>) | undefined>('uploadFile', undefined);
 
 // 右键菜单状态
 const menuVisible = ref(false);
@@ -115,15 +116,24 @@ async function handleDrop(event: DragEvent, node: FileNode): Promise<void> {
   event.stopPropagation();
   isNodeDragOver.value = false;
 
-  if (!onCopyToDir) return;
+  console.log('[FileTreeNode] Drop 事件触发:', node.name);
+
+  if (!onCopyToDir) {
+    console.warn('[FileTreeNode] onCopyToDir 未注入');
+    return;
+  }
 
   // 确定目标目录
   const targetDir = node.type === 'directory' ? node.path : node.path.substring(0, node.path.lastIndexOf('/'));
+  console.log('[FileTreeNode] 目标目录:', targetDir);
 
   const files = event.dataTransfer?.files;
+  console.log('[FileTreeNode] 拖入文件数量:', files?.length || 0);
+
   if (!files || files.length === 0) {
     // 尝试从文本获取路径
     const text = event.dataTransfer?.getData('text');
+    console.log('[FileTreeNode] 文本数据:', text);
     if (text) {
       await onCopyToDir(text.trim(), targetDir);
     }
@@ -134,8 +144,18 @@ async function handleDrop(event: DragEvent, node: FileNode): Promise<void> {
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const filePath = (file as File & { path?: string }).path;
-    if (filePath) {
+    console.log(`[FileTreeNode] 文件 ${i}: name=${file.name}, path=${filePath}, type=${file.type}, size=${file.size}`);
+
+    if (filePath && onCopyToDir) {
+      // 如果有 path 属性（Electron 提供），直接复制
+      console.log('[FileTreeNode] 使用 copyToDir:', filePath, '→', targetDir);
       await onCopyToDir(filePath, targetDir);
+    } else if (onUploadFile) {
+      // 否则上传文件内容
+      console.log('[FileTreeNode] 使用 uploadFile:', file.name, '→', targetDir);
+      await onUploadFile(file, targetDir);
+    } else {
+      console.warn('[FileTreeNode] 无可用的复制/上传方法');
     }
   }
 }

@@ -1,15 +1,17 @@
 /**
  * Files HTTP 路由
  *
- * 提供文件系统浏览能力。
+ * 提供文件系统浏览和文件管理能力。
  * 挂载到 GatewayServer 的 Koa Router（prefix = /gateway），最终路径：
  *
- *   GET /gateway/files/tree?path=<dir>&depth=<n>  — 获取目录树
- *   GET /gateway/files/content?path=<file>        — 读取文件内容（文本）
+ *   GET  /gateway/files/tree?path=<dir>&depth=<n>  — 获取目录树
+ *   GET  /gateway/files/content?path=<file>        — 读取文件内容（文本）
+ *   POST /gateway/files/upload                     — 上传文件到指定目录
+ *   POST /gateway/files/copy                       — 复制文件到指定目录
  *
  * 安全限制：
  *   - path 不能包含 .. 遍历
- *   - 只读操作，不修改文件系统
+ *   - 上传/复制限制在 workspaces 目录内
  *   - 限制深度（默认 3 层）和单层数量（最多 200）
  */
 
@@ -241,6 +243,75 @@ export function registerFileRoutes(router: Router): void {
         return;
       }
       log.error('[files.content] Error:', err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // ==================== UPLOAD ====================
+
+  router.post('/files/upload', async (ctx) => {
+    const body = ctx.request.body as
+      | { fileName?: string; content?: string; targetDir?: string; encoding?: string }
+      | undefined;
+    const fileName = body?.fileName;
+    const content = body?.content;
+    const targetDir = body?.targetDir;
+    const encoding = body?.encoding || 'base64';
+
+    if (!fileName || !content || !targetDir) {
+      ctx.status = 400;
+      ctx.body = { error: 'fileName, content, and targetDir are required' };
+      return;
+    }
+
+    const { Env } = await import('@main/common/env');
+    const workspacesDir = Env.paths.workspacesDir;
+
+    // 验证路径安全
+    if (!isPathSafe(targetDir, workspacesDir)) {
+      ctx.status = 400;
+      ctx.body = { error: 'Invalid target directory: directory traversal not allowed' };
+      return;
+    }
+
+    try {
+      // 检查目标目录是否存在
+      const targetDirStat = await fs.promises.stat(targetDir);
+      if (!targetDirStat.isDirectory()) {
+        ctx.status = 400;
+        ctx.body = { error: 'Target path is not a directory' };
+        return;
+      }
+
+      const targetPath = path.join(targetDir, fileName);
+
+      // 检查目标文件是否已存在
+      const targetExists = await fs.promises
+        .stat(targetPath)
+        .then(() => true)
+        .catch(() => false);
+
+      if (targetExists) {
+        ctx.status = 409;
+        ctx.body = { error: '目标位置已存在同名文件' };
+        return;
+      }
+
+      // 写入文件
+      const buffer = Buffer.from(content, encoding as BufferEncoding);
+      await fs.promises.writeFile(targetPath, buffer);
+
+      log.info(`[files.upload] 上传成功: ${fileName} → ${targetPath} (${buffer.length} bytes)`);
+
+      ctx.body = {
+        success: true,
+        fileName,
+        targetPath,
+        size: buffer.length
+      };
+    } catch (err) {
+      log.error('[files.upload] Error:', err);
       ctx.status = 500;
       ctx.body = { error: err instanceof Error ? err.message : String(err) };
     }

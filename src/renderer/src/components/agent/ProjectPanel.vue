@@ -89,7 +89,14 @@ function handleOpenFile(filePath: string): void {
 
 // 复制文件到指定目录
 async function handleCopyToDir(sourcePath: string, targetDir: string): Promise<void> {
+  console.log('[ProjectPanel] handleCopyToDir 调用:', sourcePath, '→', targetDir);
   await copyFileToWorkspace(sourcePath, targetDir);
+}
+
+// 上传文件到指定目录
+async function handleUploadFile(file: File, targetDir: string): Promise<void> {
+  console.log('[ProjectPanel] handleUploadFile 调用:', file.name, '→', targetDir);
+  await uploadFileToWorkspace(file, targetDir);
 }
 
 provide('expandedDirs', expandedDirs);
@@ -97,6 +104,7 @@ provide('toggleDir', toggleDir);
 provide('openFile', handleOpenFile);
 provide('selectedPath', selectedPath);
 provide('copyToDir', handleCopyToDir);
+provide('uploadFile', handleUploadFile);
 
 async function selectDirectory(): Promise<void> {
   try {
@@ -153,8 +161,10 @@ onUnmounted(() => {
 // ========== 文件复制功能 ==========
 
 async function copyFileToWorkspace(sourcePath: string, targetDir: string): Promise<void> {
+  console.log('[ProjectPanel] copyFileToWorkspace 开始:', sourcePath, '→', targetDir);
   try {
     const url = `${BASE_URL}/copy`;
+    console.log('[ProjectPanel] 发送请求:', url);
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -162,6 +172,7 @@ async function copyFileToWorkspace(sourcePath: string, targetDir: string): Promi
     });
 
     const data = await res.json();
+    console.log('[ProjectPanel] 响应:', res.status, data);
 
     if (!res.ok) {
       console.error('[ProjectPanel] 复制失败:', (data as { error?: string }).error);
@@ -173,6 +184,44 @@ async function copyFileToWorkspace(sourcePath: string, targetDir: string): Promi
     await loadTree(false);
   } catch (err) {
     console.error('[ProjectPanel] 复制错误:', err);
+  }
+}
+
+async function uploadFileToWorkspace(file: File, targetDir: string): Promise<void> {
+  console.log('[ProjectPanel] uploadFileToWorkspace 开始:', file.name, '→', targetDir);
+  try {
+    // 读取文件内容为 base64
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
+    const base64Content = btoa(binary);
+
+    const url = `${BASE_URL}/upload`;
+    console.log('[ProjectPanel] 发送上传请求:', url);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName: file.name,
+        content: base64Content,
+        targetDir,
+        encoding: 'base64'
+      })
+    });
+
+    const data = await res.json();
+    console.log('[ProjectPanel] 上传响应:', res.status, data);
+
+    if (!res.ok) {
+      console.error('[ProjectPanel] 上传失败:', (data as { error?: string }).error);
+      return;
+    }
+
+    console.log('[ProjectPanel] 上传成功:', data);
+    // 刷新文件树，保持展开状态
+    await loadTree(false);
+  } catch (err) {
+    console.error('[ProjectPanel] 上传错误:', err);
   }
 }
 
