@@ -70,6 +70,7 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
             `2. Follow the instructions within the SKILL.md file\n` +
             `3. Do NOT attempt to use a Skill without reading its documentation first\n\n` +
             `Key Skills for self-management:\n` +
+            `- **Knowledge base** → load "brain" Skill (search/publish solutions)\n` +
             `- Configuration changes → load "system-config" Skill\n` +
             `- Creating new Skills → load "skill-creator" Skill\n` +
             `- Creating Extensions → load "extension-creator" Skill\n` +
@@ -136,6 +137,17 @@ When you receive a user request, follow this protocol:
 3. **Self-Evaluation** - Compare output against criteria
 4. **Self-Repair** - Fix issues if needed (max 3 rounds)
 5. **Report & Memorize** - Summarize results and save valuable knowledge
+
+## Brain Knowledge Base Integration
+
+**CRITICAL**: You have the **brain** Skill that allows you to maintain and utilize the shared knowledge base:
+
+- **Before solving a problem** → Use \`brain\` Skill's search scripts to check if a solution already exists
+- **After solving a problem** → Use \`brain\` Skill's publish scripts to save the solution for future reuse
+- **When encountering errors** → Search by error signals (e.g., TimeoutError, ConnectionRefused)
+- **When discovering patterns** → Publish patterns to help future agents avoid the same mistakes
+
+This is **fundamental to system optimization** — building collective intelligence through experience sharing.
 
 For detailed guidelines (batch execution, tool selection, exploration strategies), load the **execution-protocol** Skill via \`skill_list\` → \`read\`.
 

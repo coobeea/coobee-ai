@@ -132,13 +132,20 @@ export class AgentStore {
     }
 
     const now = new Date().toISOString();
+
+    // 自动添加 brain skill（让所有 Agent 能够主动维护智库）
+    const skills = params.skills ? [...params.skills] : [];
+    if (!skills.includes('brain')) {
+      skills.unshift('brain'); // 添加到开头（高优先级）
+    }
+
     const definition: AgentDefinition = {
       id: params.id,
       name: params.name,
       description: params.description,
       instructions: params.instructions,
       tools: params.tools,
-      skills: params.skills,
+      skills, // 使用处理后的 skills
       model: params.model,
       thinkingLevel: params.thinkingLevel,
       createdAt: now,
