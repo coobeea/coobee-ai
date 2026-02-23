@@ -81,7 +81,7 @@ export class ObservabilityManager {
    * 获取系统健康状态
    */
   getSystemHealth(): SystemHealth {
-    const workers = WorkerManager.getInstance().getWorkerInfoList();
+    const workers = WorkerManager.getInstance().getAllWorkerInfo();
     const errorBoundary = ExtensionErrorBoundary.getInstance();
     const memUsage = process.memoryUsage();
 
@@ -142,7 +142,7 @@ export class ObservabilityManager {
    * 获取系统指标汇总
    */
   getSystemMetrics(): SystemMetrics {
-    const workers = WorkerManager.getInstance().getWorkerInfoList();
+    const workers = WorkerManager.getInstance().getAllWorkerInfo();
     const errorBoundary = ExtensionErrorBoundary.getInstance();
     const memUsage = process.memoryUsage();
 

@@ -198,6 +198,7 @@ export class WorkerManager extends EventEmitter {
       status: 'stopped',
       restartCount: existing?.restartCount ?? 0,
       stopping: false,
+      consecutiveHealthCheckFailures: 0,
       log: existing?.log ?? createLogger(`worker-${name}`, { consoleLevel: 'warn' })
     };
     this.workers.set(name, worker);

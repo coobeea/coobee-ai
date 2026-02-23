@@ -166,24 +166,45 @@ class Log {
     return should;
   }
 
-  info(message: string, context?: LogContext | Record<string, unknown>): void {
-    this.logger.info(this.formatMessage(message, context));
+  info(message: string, ...args: unknown[]): void {
+    // 支持向后兼容：如果第一个参数是对象，视为 context
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+      this.logger.info(this.formatMessage(message, args[0] as LogContext | Record<string, unknown>));
+    } else {
+      this.logger.info(message, ...args);
+    }
   }
 
-  warn(message: string, context?: LogContext | Record<string, unknown>): void {
-    this.logger.warn(this.formatMessage(message, context));
+  warn(message: string, ...args: unknown[]): void {
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+      this.logger.warn(this.formatMessage(message, args[0] as LogContext | Record<string, unknown>));
+    } else {
+      this.logger.warn(message, ...args);
+    }
   }
 
-  error(message: string, context?: LogContext | Record<string, unknown>): void {
-    this.logger.error(this.formatMessage(message, context));
+  error(message: string, ...args: unknown[]): void {
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+      this.logger.error(this.formatMessage(message, args[0] as LogContext | Record<string, unknown>));
+    } else {
+      this.logger.error(message, ...args);
+    }
   }
 
-  debug(message: string, context?: LogContext | Record<string, unknown>): void {
-    this.logger.debug(this.formatMessage(message, context));
+  debug(message: string, ...args: unknown[]): void {
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+      this.logger.debug(this.formatMessage(message, args[0] as LogContext | Record<string, unknown>));
+    } else {
+      this.logger.debug(message, ...args);
+    }
   }
 
-  verbose(message: string, context?: LogContext | Record<string, unknown>): void {
-    this.logger.verbose(this.formatMessage(message, context));
+  verbose(message: string, ...args: unknown[]): void {
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+      this.logger.verbose(this.formatMessage(message, args[0] as LogContext | Record<string, unknown>));
+    } else {
+      this.logger.verbose(message, ...args);
+    }
   }
 
   /**

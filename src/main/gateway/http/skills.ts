@@ -90,42 +90,7 @@ export function registerSkillRoutes(router: Router): void {
         return;
       }
 
-      // 处理路径安全
       const Env = await getEnv();
-      const workspacesDir = Env.paths.workspacesDir;
-
-      // 如果不是绝对路径，默认从 workspacesDir 开始解析
-      if (!path.isAbsolute(sourcePath)) {
-        sourcePath = path.resolve(workspacesDir, sourcePath);
-      } else {
-        sourcePath = path.normalize(sourcePath);
-      }
-
-      // 验证路径安全，防止越界读取敏感系统文件
-      const resolvedSource = path.resolve(sourcePath);
-      // 假设我们允许从 workspaces, downloads, desktop 导入
-      const allowedRoots = [
-        path.resolve(workspacesDir),
-        path.resolve(Env.paths.downloads),
-        path.resolve(Env.paths.desktop),
-        path.resolve(Env.paths.documents)
-      ];
-
-      const isAllowed = allowedRoots.some((root) => resolvedSource.startsWith(root));
-      if (!isAllowed) {
-        log.warn(`[skills.import] Attempted to import from disallowed path: ${resolvedSource}`);
-        ctx.status = 403;
-        ctx.body = { error: '出于安全原因，只允许从工作空间、下载、桌面或文档目录导入技能' };
-        return;
-      }
-
-      // 验证源路径存在
-      if (!fs.existsSync(sourcePath)) {
-        ctx.status = 400;
-        ctx.body = { error: `路径不存在: ${sourcePath}` };
-        return;
-      }
-
       const userSkillsDir = Env.paths.userSkillsDir;
 
       // 确保用户技能目录存在
@@ -133,44 +98,73 @@ export function registerSkillRoutes(router: Router): void {
         fs.mkdirSync(userSkillsDir, { recursive: true });
       }
 
-      const stat = fs.statSync(sourcePath);
+      // 判断是网络路径还是本地路径
+      const isUrl = /^https?:\/\//i.test(sourcePath);
 
-      if (stat.isDirectory()) {
-        // 导入整个目录（如 my-skill/ → userSkillsDir/my-skill/）
-        const skillMdPath = path.join(sourcePath, 'SKILL.md');
-        if (!fs.existsSync(skillMdPath)) {
+      if (isUrl) {
+        // ========== 网络路径导入 ==========
+        log.info(`[skills.import] 从网络导入: ${sourcePath}`);
+
+        try {
+          const result = await importSkillFromUrl(sourcePath, userSkillsDir);
+          SkillManager.invalidateCache();
+          ctx.body = { success: true, ...result };
+        } catch (err) {
+          log.error('[skills.import] 网络导入失败:', err);
           ctx.status = 400;
-          ctx.body = { error: '目录中未找到 SKILL.md 文件' };
+          ctx.body = { error: err instanceof Error ? err.message : String(err) };
+        }
+      } else {
+        // ========== 本地路径导入（支持任意路径） ==========
+
+        // 如果不是绝对路径，从 workspacesDir 开始解析
+        if (!path.isAbsolute(sourcePath)) {
+          sourcePath = path.resolve(Env.paths.workspacesDir, sourcePath);
+        } else {
+          sourcePath = path.normalize(sourcePath);
+        }
+
+        log.info(`[skills.import] 从本地导入: ${sourcePath}`);
+
+        // 验证源路径存在
+        if (!fs.existsSync(sourcePath)) {
+          ctx.status = 400;
+          ctx.body = { error: `路径不存在: ${sourcePath}` };
           return;
         }
 
-        const dirName = path.basename(sourcePath);
+        // 验证是否是有效的 Skill（包含 SKILL.md）
+        const stat = fs.statSync(sourcePath);
+        let skillDir: string | null = null;
+
+        if (stat.isDirectory()) {
+          const skillMdPath = path.join(sourcePath, 'SKILL.md');
+          if (!fs.existsSync(skillMdPath)) {
+            ctx.status = 400;
+            ctx.body = { error: '目录中未找到 SKILL.md 文件' };
+            return;
+          }
+          skillDir = sourcePath;
+        } else if (stat.isFile() && path.basename(sourcePath) === 'SKILL.md') {
+          skillDir = path.dirname(sourcePath);
+        } else {
+          ctx.status = 400;
+          ctx.body = { error: '请提供技能目录路径或 SKILL.md 文件路径' };
+          return;
+        }
+
+        // 复制到用户技能目录
+        const dirName = path.basename(skillDir);
         const targetDir = path.join(userSkillsDir, dirName);
 
         // 递归复制目录
-        copyDirSync(sourcePath, targetDir);
+        copyDirSync(skillDir, targetDir);
 
         // 清除缓存
         SkillManager.invalidateCache();
 
-        ctx.body = { success: true, skillDir: targetDir };
-      } else if (stat.isFile() && path.basename(sourcePath) === 'SKILL.md') {
-        // 导入单个 SKILL.md 文件
-        const dirName = path.basename(path.dirname(sourcePath));
-        const targetDir = path.join(userSkillsDir, dirName);
-
-        if (!fs.existsSync(targetDir)) {
-          fs.mkdirSync(targetDir, { recursive: true });
-        }
-
-        fs.copyFileSync(sourcePath, path.join(targetDir, 'SKILL.md'));
-
-        SkillManager.invalidateCache();
-
-        ctx.body = { success: true, skillDir: targetDir };
-      } else {
-        ctx.status = 400;
-        ctx.body = { error: '请提供技能目录路径或 SKILL.md 文件路径' };
+        log.info(`[skills.import] 导入成功: ${dirName} → ${targetDir}`);
+        ctx.body = { success: true, skillDir: targetDir, skillName: dirName };
       }
     } catch (err) {
       log.error('[skills.import] Error:', err);
@@ -306,4 +300,149 @@ function copyDirSync(src: string, dest: string): void {
       fs.copyFileSync(srcPath, destPath);
     }
   }
+}
+
+/**
+ * 从网络 URL 导入 Skill
+ *
+ * 支持的格式：
+ * 1. 直接链接到 SKILL.md: https://example.com/path/to/SKILL.md
+ * 2. GitHub raw URL: https://raw.githubusercontent.com/user/repo/main/skill-name/SKILL.md
+ * 3. GitHub 目录 URL: https://github.com/user/repo/tree/main/skill-name
+ *
+ * @param url 网络路径
+ * @param targetBaseDir 目标目录（userSkillsDir）
+ * @returns 导入结果
+ */
+async function importSkillFromUrl(
+  url: string,
+  targetBaseDir: string
+): Promise<{ skillDir: string; skillName: string }> {
+  log.info(`[importSkillFromUrl] 开始下载: ${url}`);
+
+  // 检测 URL 类型
+  let skillMdUrl = url;
+  let skillName = 'downloaded-skill';
+
+  // GitHub 目录 URL 转换为 raw URL
+  if (url.includes('github.com') && url.includes('/tree/')) {
+    // https://github.com/user/repo/tree/main/skill-name
+    // → https://raw.githubusercontent.com/user/repo/main/skill-name/SKILL.md
+    const match = url.match(/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)/);
+    if (match) {
+      const [, owner, repo, branch, skillPath] = match;
+      skillName = path.basename(skillPath);
+      skillMdUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${skillPath}/SKILL.md`;
+      log.info(`[importSkillFromUrl] 转换 GitHub URL: ${skillMdUrl}`);
+    }
+  } else if (url.endsWith('SKILL.md')) {
+    // 直接的 SKILL.md URL
+    const pathParts = new URL(url).pathname.split('/');
+    const skillDirName = pathParts[pathParts.length - 2];
+    if (skillDirName) {
+      skillName = skillDirName;
+    }
+  }
+
+  // 下载 SKILL.md 文件
+  const response = await fetch(skillMdUrl);
+  if (!response.ok) {
+    throw new Error(`下载失败: HTTP ${response.status} ${response.statusText}`);
+  }
+
+  const content = await response.text();
+
+  // 验证是否是有效的 SKILL.md（至少有 frontmatter 或者内容）
+  if (!content.trim()) {
+    throw new Error('下载的文件为空');
+  }
+
+  // 创建目标目录
+  const targetDir = path.join(targetBaseDir, skillName);
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  // 写入 SKILL.md
+  const targetPath = path.join(targetDir, 'SKILL.md');
+  fs.writeFileSync(targetPath, content, 'utf-8');
+
+  log.info(`[importSkillFromUrl] 下载成功: ${skillName} → ${targetDir}`);
+
+  // 尝试下载 references 目录（如果 URL 是 GitHub 目录）
+  if (url.includes('github.com') && url.includes('/tree/')) {
+    try {
+      await downloadGitHubSkillReferences(url, targetDir);
+    } catch (err) {
+      log.warn(`[importSkillFromUrl] 下载 references 失败（跳过）:`, err);
+    }
+  }
+
+  return { skillDir: targetDir, skillName };
+}
+
+/**
+ * 下载 GitHub Skill 的 references 目录（如果存在）
+ *
+ * 使用 GitHub API 列出目录内容并逐个下载。
+ */
+async function downloadGitHubSkillReferences(githubUrl: string, targetDir: string): Promise<void> {
+  // 提取 owner/repo/branch/path
+  const match = githubUrl.match(/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)/);
+  if (!match) return;
+
+  const [, owner, repo, branch, skillPath] = match;
+  const referencesPath = `${skillPath}/references`;
+
+  // GitHub API: https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={branch}
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${referencesPath}?ref=${branch}`;
+
+  log.debug(`[downloadGitHubSkillReferences] 检查 references 目录: ${apiUrl}`);
+
+  const response = await fetch(apiUrl, {
+    headers: {
+      'User-Agent': 'Coobee-AI-Skill-Importer',
+      Accept: 'application/vnd.github.v3+json'
+    }
+  });
+
+  if (!response.ok) {
+    // references 目录不存在（常见情况，不报错）
+    if (response.status === 404) {
+      log.debug(`[downloadGitHubSkillReferences] references 目录不存在，跳过`);
+      return;
+    }
+    throw new Error(`GitHub API 请求失败: HTTP ${response.status}`);
+  }
+
+  const files = (await response.json()) as Array<{
+    name: string;
+    type: 'file' | 'dir';
+    download_url?: string;
+  }>;
+
+  // 创建 references 目录
+  const referencesDir = path.join(targetDir, 'references');
+  if (!fs.existsSync(referencesDir)) {
+    fs.mkdirSync(referencesDir, { recursive: true });
+  }
+
+  // 下载所有文件（不递归子目录）
+  for (const file of files) {
+    if (file.type === 'file' && file.download_url) {
+      try {
+        const fileResponse = await fetch(file.download_url);
+        if (fileResponse.ok) {
+          const fileContent = await fileResponse.text();
+          const targetPath = path.join(referencesDir, file.name);
+          fs.writeFileSync(targetPath, fileContent, 'utf-8');
+          log.debug(`[downloadGitHubSkillReferences] 下载文件: ${file.name}`);
+        }
+      } catch (err) {
+        log.warn(`[downloadGitHubSkillReferences] 下载文件失败: ${file.name}`, err);
+      }
+    }
+  }
+
+  log.info(`[downloadGitHubSkillReferences] references 目录下载完成`);
 }
