@@ -27,8 +27,10 @@ const onOpenFile = inject<(filePath: string) => void>('openFile')!;
 const onAddToChat = inject<((node: FileNode) => void) | undefined>('addToChat', undefined);
 const onAddFileToTask = inject<((node: FileNode) => void) | undefined>('addFileToTask', undefined);
 const selectedPath = inject<Ref<string | null>>('selectedPath');
-const selectedNode = inject<Ref<FileNode | null>>('selectedNode', ref(null));
-const onSelectNode = inject<((node: FileNode) => void) | undefined>('selectNode', undefined);
+const onCopyToDir = inject<((sourcePath: string, targetDir: string) => Promise<void>) | undefined>(
+  'copyToDir',
+  undefined
+);
 
 // 右键菜单状态
 const menuVisible = ref(false);
@@ -76,14 +78,6 @@ async function copyPath(): Promise<void> {
   menuVisible.value = false;
 }
 
-// 设置为目标目录
-function setAsTargetDir(): void {
-  if (contextNode.value && contextNode.value.type === 'directory' && onSelectNode) {
-    onSelectNode(contextNode.value);
-  }
-  menuVisible.value = false;
-}
-
 function isExpanded(nodePath: string): boolean {
   return expandedDirs.value.has(nodePath);
 }
@@ -92,28 +86,56 @@ function isSelected(nodePath: string): boolean {
   return selectedPath?.value === nodePath;
 }
 
-// 处理节点点击（支持单击选中目录，双击展开）
-let lastClickTime = 0;
-const DOUBLE_CLICK_DELAY = 300;
+// 拖拽状态
+const isNodeDragOver = ref(false);
 
-function handleNodeClick(node: FileNode): void {
-  const now = Date.now();
-  const timeSinceLastClick = now - lastClickTime;
-  lastClickTime = now;
+// 处理拖拽进入
+function handleDragEnter(event: DragEvent): void {
+  event.preventDefault();
+  event.stopPropagation();
+  isNodeDragOver.value = true;
+}
 
-  if (node.type === 'file') {
-    // 文件：单击打开
-    onOpenFile(node.path);
-  } else {
-    // 目录：双击展开/折叠，单击选中
-    if (timeSinceLastClick < DOUBLE_CLICK_DELAY) {
-      // 双击：展开/折叠
-      onToggleDir(node);
-    } else {
-      // 单击：选中目录
-      if (onSelectNode) {
-        onSelectNode(node);
-      }
+// 处理拖拽离开
+function handleDragLeave(event: DragEvent): void {
+  event.preventDefault();
+  event.stopPropagation();
+  isNodeDragOver.value = false;
+}
+
+// 处理拖拽悬停
+function handleDragOver(event: DragEvent): void {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+// 处理文件放下
+async function handleDrop(event: DragEvent, node: FileNode): Promise<void> {
+  event.preventDefault();
+  event.stopPropagation();
+  isNodeDragOver.value = false;
+
+  if (!onCopyToDir) return;
+
+  // 确定目标目录
+  const targetDir = node.type === 'directory' ? node.path : node.path.substring(0, node.path.lastIndexOf('/'));
+
+  const files = event.dataTransfer?.files;
+  if (!files || files.length === 0) {
+    // 尝试从文本获取路径
+    const text = event.dataTransfer?.getData('text');
+    if (text) {
+      await onCopyToDir(text.trim(), targetDir);
+    }
+    return;
+  }
+
+  // 处理拖入的文件
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const filePath = (file as File & { path?: string }).path;
+    if (filePath) {
+      await onCopyToDir(filePath, targetDir);
     }
   }
 }
@@ -163,12 +185,17 @@ function getFileIcon(name: string): string {
       :class="{
         'font-medium': node.type === 'directory',
         'file-tree-node-selected': isSelected(node.path),
+        'file-tree-node-drag-over': isNodeDragOver,
         'text-gray-600': !isSelected(node.path),
         'text-gray-800': isSelected(node.path)
       }"
       :style="{ paddingLeft: `${depth * 12 + 8}px` }"
-      @click="handleNodeClick(node)"
-      @contextmenu="handleContextMenu($event, node)">
+      @click="node.type === 'directory' ? onToggleDir(node) : onOpenFile(node.path)"
+      @contextmenu="handleContextMenu($event, node)"
+      @dragenter="handleDragEnter"
+      @dragleave="handleDragLeave"
+      @dragover="handleDragOver"
+      @drop="(e) => handleDrop(e, node)">
       <!-- 箭头 -->
       <span
         v-if="node.type === 'directory'"
@@ -189,12 +216,6 @@ function getFileIcon(name: string): string {
 
       <!-- 文件名 -->
       <span class="truncate" :title="node.name">{{ node.name }}</span>
-
-      <!-- 目标标记 -->
-      <span
-        v-if="node.type === 'directory' && selectedNode?.path === node.path"
-        class="i-carbon-target ml-auto inline-block h-3 w-3 shrink-0 text-primary"
-        title="复制目标目录" />
     </div>
 
     <!-- 子节点（递归） -->
@@ -211,10 +232,6 @@ function getFileIcon(name: string): string {
       <ContextMenuItem v-if="onAddFileToTask && node.type === 'file'" @click="addToTask">
         <span class="i-carbon-task-add inline-block h-3.5 w-3.5" />
         <span>添加到任务</span>
-      </ContextMenuItem>
-      <ContextMenuItem v-if="node.type === 'directory' && onSelectNode" @click="setAsTargetDir">
-        <span class="i-carbon-target inline-block h-3.5 w-3.5" />
-        <span>设为复制目标</span>
       </ContextMenuItem>
       <ContextMenuItem @click="copyPath">
         <span class="i-carbon-copy inline-block h-3.5 w-3.5" />
@@ -252,6 +269,11 @@ function getFileIcon(name: string): string {
 
 .file-tree-node-selected:hover::before {
   background: hsl(var(--primary) / 0.26);
+}
+
+.file-tree-node-drag-over::before {
+  background: hsl(var(--primary) / 0.3);
+  border: 1px dashed hsl(var(--primary));
 }
 
 .file-tree-node > * {
