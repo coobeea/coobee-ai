@@ -373,4 +373,139 @@ describe('ToolExecutionPipeline 审批流程', () => {
     expect(hitlApprovalManager.hasSinglePending(`${sessionId}:0`)).toBe(true);
     expect(hitlApprovalManager.hasSinglePending(`${sessionId}:1`)).toBe(true);
   });
+
+  // ==========================================
+  // 测试 8: execApproval = 'never' 跳过审批
+  // ==========================================
+
+  it('execApproval=never 时未知命令跳过审批直接执行', async () => {
+    // Mock ConfigStore 返回 never 策略
+    vi.doMock('@main/common/config/ConfigStore', () => ({
+      configStoreInstance: {
+        get: vi.fn((key: string) => {
+          if (key === 'security') {
+            return {
+              approvals: { exec: 'never' }
+            };
+          }
+          return undefined;
+        })
+      }
+    }));
+
+    let toolExecuted = false;
+    const execTool: ToolDefinition = {
+      name: 'exec',
+      description: 'Execute command',
+      category: ToolCategory.Execute,
+      parameters: z.object({ command: z.string() }),
+      async *execute() {
+        toolExecuted = true;
+        yield { type: 'progress', content: 'executing...' };
+        return { success: true, llmContent: 'Command executed' };
+      }
+    };
+
+    const context = createFallbackToolContext({ workspaceRoot: tmpWorkspace, sessionId });
+    const command = 'unknown-dangerous-tool --flag';
+
+    const result = await executeToolPipeline(execTool, { command }, { sandboxContext: context });
+
+    // 验证直接执行，不触发审批
+    expect(result.suspended).toBe(false);
+    expect(result.blocked).toBe(false);
+    expect(toolExecuted).toBe(true);
+    expect(result.resultText).toContain('Command executed');
+  });
+
+  // ==========================================
+  // 测试 9: execApproval = 'always' 强制审批
+  // ==========================================
+
+  it('execApproval=always 时白名单命令仍触发审批', async () => {
+    // Mock ConfigStore 返回 always 策略
+    vi.doMock('@main/common/config/ConfigStore', () => ({
+      configStoreInstance: {
+        get: vi.fn((key: string) => {
+          if (key === 'security') {
+            return {
+              approvals: { exec: 'always' }
+            };
+          }
+          return undefined;
+        })
+      }
+    }));
+
+    let toolExecuted = false;
+    const execTool: ToolDefinition = {
+      name: 'exec',
+      description: 'Execute command',
+      category: ToolCategory.Execute,
+      parameters: z.object({ command: z.string() }),
+      async *execute() {
+        toolExecuted = true;
+        yield { type: 'progress', content: 'executing...' };
+        return { success: true, llmContent: 'Command executed' };
+      }
+    };
+
+    const context = createFallbackToolContext({ workspaceRoot: tmpWorkspace, sessionId });
+    const command = 'ls -la'; // 白名单命令
+
+    const result = await executeToolPipeline(execTool, { command }, { sandboxContext: context });
+
+    // 验证触发审批（suspended）
+    expect(result.suspended).toBe(true);
+    expect(result.suspendReason).toContain('approval');
+    expect(toolExecuted).toBe(false);
+
+    // 验证审批请求已创建
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(hitlApprovalManager.hasSinglePending(`${sessionId}:0`)).toBe(true);
+  });
+
+  // ==========================================
+  // 测试 10: execApproval = 'auto' 使用默认策略
+  // ==========================================
+
+  it('execApproval=auto 时白名单命令自动放行', async () => {
+    // Mock ConfigStore 返回 auto 策略（默认）
+    vi.doMock('@main/common/config/ConfigStore', () => ({
+      configStoreInstance: {
+        get: vi.fn((key: string) => {
+          if (key === 'security') {
+            return {
+              approvals: { exec: 'auto' }
+            };
+          }
+          return undefined;
+        })
+      }
+    }));
+
+    let toolExecuted = false;
+    const execTool: ToolDefinition = {
+      name: 'exec',
+      description: 'Execute command',
+      category: ToolCategory.Execute,
+      parameters: z.object({ command: z.string() }),
+      async *execute() {
+        toolExecuted = true;
+        yield { type: 'progress', content: 'executing...' };
+        return { success: true, llmContent: 'Command executed' };
+      }
+    };
+
+    const context = createFallbackToolContext({ workspaceRoot: tmpWorkspace, sessionId });
+    const command = 'ls -la'; // 白名单命令
+
+    const result = await executeToolPipeline(execTool, { command }, { sandboxContext: context });
+
+    // 验证自动放行
+    expect(result.suspended).toBe(false);
+    expect(result.blocked).toBe(false);
+    expect(toolExecuted).toBe(true);
+    expect(result.resultText).toContain('Command executed');
+  });
 });
