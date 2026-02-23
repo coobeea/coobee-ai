@@ -196,7 +196,110 @@ export function registerFileRoutes(router: Router): void {
     }
   });
 
+  // ==================== COPY ====================
+
+  router.post('/files/copy', async (ctx) => {
+    const body = ctx.request.body as { sourcePath?: string; targetDir?: string } | undefined;
+    const sourcePath = body?.sourcePath;
+    const targetDir = body?.targetDir;
+
+    if (!sourcePath || !targetDir) {
+      ctx.status = 400;
+      ctx.body = { error: 'sourcePath and targetDir are required' };
+      return;
+    }
+
+    const { Env } = await import('@main/common/env');
+    const workspacesDir = Env.paths.workspacesDir;
+
+    // 验证路径安全
+    if (!isPathSafe(targetDir, workspacesDir)) {
+      ctx.status = 400;
+      ctx.body = { error: 'Invalid target directory: directory traversal not allowed' };
+      return;
+    }
+
+    try {
+      // 检查源路径是否存在
+      const sourceExists = await fs.promises
+        .stat(sourcePath)
+        .then(() => true)
+        .catch(() => false);
+
+      if (!sourceExists) {
+        ctx.status = 404;
+        ctx.body = { error: 'Source path not found' };
+        return;
+      }
+
+      // 检查目标目录是否存在
+      const targetDirStat = await fs.promises.stat(targetDir);
+      if (!targetDirStat.isDirectory()) {
+        ctx.status = 400;
+        ctx.body = { error: 'Target path is not a directory' };
+        return;
+      }
+
+      // 获取源文件/目录名
+      const sourceName = path.basename(sourcePath);
+      const targetPath = path.join(targetDir, sourceName);
+
+      // 检查目标是否已存在
+      const targetExists = await fs.promises
+        .stat(targetPath)
+        .then(() => true)
+        .catch(() => false);
+
+      if (targetExists) {
+        ctx.status = 409;
+        ctx.body = { error: '目标位置已存在同名文件或目录' };
+        return;
+      }
+
+      // 执行复制
+      const sourceStat = await fs.promises.stat(sourcePath);
+      if (sourceStat.isDirectory()) {
+        await copyDirectory(sourcePath, targetPath);
+      } else {
+        await fs.promises.copyFile(sourcePath, targetPath);
+      }
+
+      log.info(`[files.copy] 复制成功: ${sourcePath} → ${targetPath}`);
+
+      ctx.body = {
+        success: true,
+        sourcePath,
+        targetPath,
+        type: sourceStat.isDirectory() ? 'directory' : 'file'
+      };
+    } catch (err) {
+      log.error('[files.copy] Error:', err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   log.info('[files] HTTP routes registered');
+}
+
+/**
+ * 递归复制目录
+ */
+async function copyDirectory(src: string, dest: string): Promise<void> {
+  await fs.promises.mkdir(dest, { recursive: true });
+
+  const entries = await fs.promises.readdir(src, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    if (entry.isDirectory()) {
+      await copyDirectory(srcPath, destPath);
+    } else {
+      await fs.promises.copyFile(srcPath, destPath);
+    }
+  }
 }
 
 /** 文件扩展名 → Monaco Editor 语言标识 */

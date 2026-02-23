@@ -14,6 +14,9 @@ export interface OpenFile {
   language: string;
   content: string;
   loading: boolean;
+  isTooLarge?: boolean;
+  error?: string;
+  size?: number;
 }
 
 const openFiles = ref<OpenFile[]>([]);
@@ -23,14 +26,28 @@ const activeFile = computed(() => openFiles.value.find((f) => f.path === activeF
 
 const BASE_URL = `${configManager.getBaseUrl()}/gateway/files`;
 
-async function fetchFileContent(filePath: string): Promise<{ content: string; language: string; name: string }> {
+async function fetchFileContent(
+  filePath: string
+): Promise<{ content: string; language: string; name: string; size?: number; isTooLarge?: boolean; error?: string }> {
   const url = `${BASE_URL}/content?path=${encodeURIComponent(filePath)}`;
   const res = await fetch(url);
   const data = await res.json();
+
+  // 文件太大（413 错误）
+  if (res.status === 413) {
+    return {
+      content: '',
+      language: 'plaintext',
+      name: filePath.split('/').pop() || filePath,
+      isTooLarge: true,
+      error: (data as { error?: string }).error || '文件过大'
+    };
+  }
+
   if (!res.ok) {
     throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
   }
-  return data as { content: string; language: string; name: string };
+  return data as { content: string; language: string; name: string; size?: number };
 }
 
 function openFile(filePath: string): void {
@@ -59,6 +76,9 @@ function openFile(filePath: string): void {
       target.content = data.content;
       target.language = data.language;
       target.name = data.name;
+      target.size = data.size;
+      target.isTooLarge = data.isTooLarge;
+      target.error = data.error;
       target.loading = false;
     })
     .catch((err) => {

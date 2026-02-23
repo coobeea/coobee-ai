@@ -31,6 +31,7 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const expandedDirs = ref<Set<string>>(new Set());
 const selectedPath = ref<string | null>(null);
+const isDragOver = ref(false);
 
 const BASE_URL = `${configManager.getBaseUrl()}/gateway/files`;
 
@@ -140,6 +141,84 @@ onUnmounted(() => {
   }
 });
 
+// ========== 拖放和粘贴功能 ==========
+
+async function handlePaste(event: ClipboardEvent): Promise<void> {
+  if (!projectPath.value) return;
+
+  event.preventDefault();
+
+  const text = event.clipboardData?.getData('text');
+  if (!text) return;
+
+  // 尝试将文本作为文件路径处理
+  await copyFileToWorkspace(text.trim(), projectPath.value);
+}
+
+async function handleDrop(event: DragEvent): Promise<void> {
+  if (!projectPath.value) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  isDragOver.value = false;
+
+  const files = event.dataTransfer?.files;
+  if (!files || files.length === 0) {
+    // 尝试从文本获取路径
+    const text = event.dataTransfer?.getData('text');
+    if (text) {
+      await copyFileToWorkspace(text.trim(), projectPath.value);
+    }
+    return;
+  }
+
+  // 处理拖入的文件
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    // 浏览器的 File API 提供的 path 在 Electron 中可用
+    const filePath = (file as File & { path?: string }).path;
+    if (filePath) {
+      await copyFileToWorkspace(filePath, projectPath.value);
+    }
+  }
+}
+
+async function copyFileToWorkspace(sourcePath: string, targetDir: string): Promise<void> {
+  try {
+    const url = `${BASE_URL}/copy`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourcePath, targetDir })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('[ProjectPanel] 复制失败:', (data as { error?: string }).error);
+      return;
+    }
+
+    console.log('[ProjectPanel] 复制成功:', data);
+    // 刷新文件树
+    await loadTree();
+  } catch (err) {
+    console.error('[ProjectPanel] 复制错误:', err);
+  }
+}
+
+function handleDragOver(event: DragEvent): void {
+  if (!projectPath.value) return;
+  event.preventDefault();
+  event.stopPropagation();
+  isDragOver.value = true;
+}
+
+function handleDragLeave(event: DragEvent): void {
+  event.preventDefault();
+  isDragOver.value = false;
+}
+
 defineExpose({ selectDirectory });
 </script>
 
@@ -169,7 +248,15 @@ defineExpose({ selectDirectory });
     </div>
 
     <!-- 内容区域 -->
-    <div class="flex-1 overflow-y-auto">
+    <div
+      class="flex-1 overflow-y-auto"
+      :class="{ 'drag-over': isDragOver }"
+      tabindex="0"
+      @paste.capture="handlePaste"
+      @drop="handleDrop"
+      @dragover="handleDragOver"
+      @dragleave="handleDragLeave"
+      @dragend="handleDragLeave">
       <!-- 未选择目录 -->
       <div v-if="!projectPath" class="flex flex-col items-center p-3 pt-12">
         <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100">
@@ -224,6 +311,24 @@ defineExpose({ selectDirectory });
           </div>
         </div>
       </template>
+
+      <!-- 拖放提示 -->
+      <div
+        v-if="isDragOver && projectPath"
+        class="pointer-events-none absolute inset-0 flex items-center justify-center bg-primary/10 backdrop-blur-sm">
+        <div class="rounded-xl bg-white px-6 py-4 shadow-lg">
+          <div class="flex items-center gap-3 text-sm font-medium text-primary">
+            <span class="i-carbon-folder-add inline-block h-5 w-5"></span>
+            <span>释放以复制文件</span>
+          </div>
+        </div>
+      </div>
     </div>
   </aside>
 </template>
+
+<style scoped>
+.drag-over {
+  position: relative;
+}
+</style>

@@ -160,8 +160,28 @@ function getFileIcon(name: string): string {
         <span class="i-carbon-renew inline-block h-5 w-5 animate-spin text-gray-300"></span>
       </div>
 
+      <!-- 文件太大提示 -->
+      <div v-else-if="activeFile?.isTooLarge" class="flex flex-1 flex-col items-center justify-center gap-4 p-8">
+        <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50">
+          <span class="i-carbon-warning-alt inline-block h-8 w-8 text-amber-500"></span>
+        </div>
+        <div class="text-center">
+          <p class="mb-1 text-sm font-medium text-gray-700">文件过大，无法预览</p>
+          <p class="max-w-md text-xs leading-relaxed text-gray-500">
+            {{ activeFile.error || '当前文件超过 2MB，为避免性能问题已禁止加载。' }}
+          </p>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-gray-400">
+          <span class="i-carbon-document inline-block h-3.5 w-3.5"></span>
+          <span>{{ activeFile.name }}</span>
+        </div>
+      </div>
+
       <!-- Monaco Editor -->
-      <div v-show="activeFile && !activeFile.loading" ref="editorContainer" class="min-h-0 flex-1"></div>
+      <div
+        v-show="activeFile && !activeFile.loading && !activeFile.isTooLarge"
+        ref="editorContainer"
+        class="min-h-0 flex-1"></div>
     </template>
   </main>
 </template>
