@@ -27,6 +27,8 @@ const onOpenFile = inject<(filePath: string) => void>('openFile')!;
 const onAddToChat = inject<((node: FileNode) => void) | undefined>('addToChat', undefined);
 const onAddFileToTask = inject<((node: FileNode) => void) | undefined>('addFileToTask', undefined);
 const selectedPath = inject<Ref<string | null>>('selectedPath');
+const selectedNode = inject<Ref<FileNode | null>>('selectedNode', ref(null));
+const onSelectNode = inject<((node: FileNode) => void) | undefined>('selectNode', undefined);
 
 // 右键菜单状态
 const menuVisible = ref(false);
@@ -74,12 +76,46 @@ async function copyPath(): Promise<void> {
   menuVisible.value = false;
 }
 
+// 设置为目标目录
+function setAsTargetDir(): void {
+  if (contextNode.value && contextNode.value.type === 'directory' && onSelectNode) {
+    onSelectNode(contextNode.value);
+  }
+  menuVisible.value = false;
+}
+
 function isExpanded(nodePath: string): boolean {
   return expandedDirs.value.has(nodePath);
 }
 
 function isSelected(nodePath: string): boolean {
   return selectedPath?.value === nodePath;
+}
+
+// 处理节点点击（支持单击选中目录，双击展开）
+let lastClickTime = 0;
+const DOUBLE_CLICK_DELAY = 300;
+
+function handleNodeClick(node: FileNode): void {
+  const now = Date.now();
+  const timeSinceLastClick = now - lastClickTime;
+  lastClickTime = now;
+
+  if (node.type === 'file') {
+    // 文件：单击打开
+    onOpenFile(node.path);
+  } else {
+    // 目录：双击展开/折叠，单击选中
+    if (timeSinceLastClick < DOUBLE_CLICK_DELAY) {
+      // 双击：展开/折叠
+      onToggleDir(node);
+    } else {
+      // 单击：选中目录
+      if (onSelectNode) {
+        onSelectNode(node);
+      }
+    }
+  }
 }
 
 function getFileIcon(name: string): string {
@@ -131,7 +167,7 @@ function getFileIcon(name: string): string {
         'text-gray-800': isSelected(node.path)
       }"
       :style="{ paddingLeft: `${depth * 12 + 8}px` }"
-      @click="node.type === 'directory' ? onToggleDir(node) : onOpenFile(node.path)"
+      @click="handleNodeClick(node)"
       @contextmenu="handleContextMenu($event, node)">
       <!-- 箭头 -->
       <span
@@ -153,6 +189,12 @@ function getFileIcon(name: string): string {
 
       <!-- 文件名 -->
       <span class="truncate" :title="node.name">{{ node.name }}</span>
+
+      <!-- 目标标记 -->
+      <span
+        v-if="node.type === 'directory' && selectedNode?.path === node.path"
+        class="i-carbon-target ml-auto inline-block h-3 w-3 shrink-0 text-primary"
+        title="复制目标目录" />
     </div>
 
     <!-- 子节点（递归） -->
@@ -170,9 +212,13 @@ function getFileIcon(name: string): string {
         <span class="i-carbon-task-add inline-block h-3.5 w-3.5" />
         <span>添加到任务</span>
       </ContextMenuItem>
+      <ContextMenuItem v-if="node.type === 'directory' && onSelectNode" @click="setAsTargetDir">
+        <span class="i-carbon-target inline-block h-3.5 w-3.5" />
+        <span>设为复制目标</span>
+      </ContextMenuItem>
       <ContextMenuItem @click="copyPath">
         <span class="i-carbon-copy inline-block h-3.5 w-3.5" />
-        <span>复制文件路径</span>
+        <span>复制路径</span>
       </ContextMenuItem>
     </ContextMenu>
   </div>
