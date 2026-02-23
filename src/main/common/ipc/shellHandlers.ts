@@ -13,26 +13,36 @@ import { windowManager } from '../window';
 import type { WindowInfoResponse, TabInfoResponse } from '@shared/ipc';
 
 /**
- * macOS: 使用 Node.js child_process 读取剪贴板中的文件路径
+ * macOS: 使用 osascript 读取剪贴板中的文件路径
+ * 使用多个 -e 参数，每行一个（这是 osascript 的标准用法）
  */
 function getMacOSClipboardFiles(): string[] {
   try {
-    // 使用 AppleScript 读取剪贴板中的文件列表
-    // 注意：不能用 .replace(/\n/g, ' ') 因为会导致 try 语法错误
-    const script = `
-tell application "System Events"
-  try
-    set theFiles to the clipboard as «class furl»
-    set output to ""
-    repeat with aFile in theFiles
-      set output to output & POSIX path of aFile & linefeed
-    end repeat
-    return output
-  end try
-end tell
-`;
+    // 构建 osascript 命令，每行用一个 -e 参数
+    const args = [
+      '-e',
+      'tell application "System Events"',
+      '-e',
+      'try',
+      '-e',
+      'set theFiles to the clipboard as «class furl»',
+      '-e',
+      'set output to ""',
+      '-e',
+      'repeat with aFile in theFiles',
+      '-e',
+      'set output to output & POSIX path of aFile & linefeed',
+      '-e',
+      'end repeat',
+      '-e',
+      'return output',
+      '-e',
+      'end try',
+      '-e',
+      'end tell'
+    ];
 
-    const output = execSync(`osascript -e ${JSON.stringify(script)}`, {
+    const output = execSync(`osascript ${args.join(' ')}`, {
       encoding: 'utf-8',
       maxBuffer: 10 * 1024 * 1024,
       timeout: 5000
