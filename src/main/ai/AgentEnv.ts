@@ -224,82 +224,29 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
  * 注入到 appendInstructions 中，让 LLM 了解可用路径。
  */
 export function formatRuntimePaths(env: AgentEnv): string {
-  return `<runtime_environment>
-<system>
-  <platform>${env.platform}</platform>
-  <arch>${env.arch}</arch>
-  <appVersion>${env.appVersion}</appVersion>
-  <isDev>${env.isDev}</isDev>
-</system>
-<session>
-  <sessionId>${env.sessionId}</sessionId>
-  <workspace>${env.workspace}</workspace>
-  <tasksDir>${env.tasksDir}</tasksDir>
-</session>
-<paths>
-  <userHome>${env.userHome}</userHome>
-  <systemHome>${env.systemHome}</systemHome>
-  <configDir>${env.configDir}</configDir>
-  <threadsDir>${env.threadsDir}</threadsDir>
-  <temp>${env.temp}</temp>
-  <memoryDir>${env.memoryDir}</memoryDir>
-</paths>
-<agents>
-  <builtinAgentsDir>${env.builtinAgentsDir}</builtinAgentsDir>
-  <userAgentsDir>${env.userAgentsDir}</userAgentsDir>
-</agents>
-<skills>
-  <builtinSkillsDir>${env.builtinSkillsDir}</builtinSkillsDir>
-  <userSkillsDir>${env.userSkillsDir}</userSkillsDir>
-  <searchPaths>
-${env.skillPaths.map((p) => `    <path>${p}</path>`).join('\n')}
-  </searchPaths>
-</skills>
-<extensions>
-  <builtinExtensionsDir>${env.builtinExtensionsDir}</builtinExtensionsDir>
-  <userExtensionsDir>${env.userExtensionsDir}</userExtensionsDir>
-  <searchPaths>
-${env.extensionPaths.map((p) => `    <path>${p}</path>`).join('\n')}
-  </searchPaths>
-  <loaded>
-${env.loadedExtensions.map((id) => `    <extension>${id}</extension>`).join('\n')}
-  </loaded>
-</extensions>
-<security>
-  <sandboxMode>${env.sandboxMode}</sandboxMode>
-  <execApproval>${env.execApproval}</execApproval>
-</security>
-<model>
-  <default>${env.defaultModel}</default>
-  <thinkingLevel>${env.thinkingLevel}</thinkingLevel>
-</model>
-<tools>
-${env.availableTools.map((t) => `  <tool>${t}</tool>`).join('\n')}
-</tools>
-<workspace_conventions>
-When performing multi-agent delegation tasks, follow these directory conventions.
-All data MUST be written under {workspace}/tasks/{taskId}/ so the user and frontend can track progress.
+  // 格式化扩展列表
+  const extensionsList = env.loadedExtensions.length > 0 ? env.loadedExtensions.join(', ') : 'none';
 
-Directory structure (created automatically by delegate_to_agent):
-  tasks/{taskId}/
-  ├── plan.md           — Task plan (human-readable, written by task_plan tool)
-  ├── status.json       — Task status (machine-readable, written by task_plan tool)
-  ├── agents/{agentId}/ — Sub-agent workspace (sessions/, contexts/, events/, output/)
-  ├── results/{agentId}.md — Sub-agent final output (written automatically on completion)
-  └── experiences/*.md  — Shared execution experiences (written by sub-agents)
+  return `Your Runtime Environment:
+- Session: ${env.sessionId}
+- Workspace: ${env.workspace}
+- Platform: ${env.platform}/${env.arch} (${env.isDev ? 'dev' : 'prod'})
+- Security: sandbox=${env.sandboxMode}, exec=${env.execApproval}
+- Model: ${env.defaultModel} (thinking=${env.thinkingLevel})
+- Extensions: ${extensionsList}
 
-status.json format:
-  { taskId, title, createdAt, updatedAt, status: "planning"|"running"|"done"|"failed",
-    steps: [{ id, description, agentId?, status: "pending"|"running"|"done"|"failed", startedAt?, completedAt?, error? }] }
+Key Directories:
+- Config: ${env.configDir}
+- Memory: ${env.memoryDir}
+- Threads: ${env.threadsDir}
+- Skills: builtin=${env.builtinSkillsDir}, user=${env.userSkillsDir}
+- Agents: builtin=${env.builtinAgentsDir}, user=${env.userAgentsDir}
 
-Workflow:
-  0. Use manage_agent(list) to check available agents before creating new ones
-  1. Use task_plan(create) to create a plan with steps → get taskId
-  2. Use task_plan(update_step) to mark each step as running/done/failed
-  3. Use delegate_to_agent(taskId=...) to delegate — sub-agents share the same task directory
-  4. Use task_plan(complete) to finalize with a summary
+Multi-Agent Tasks Convention:
+When using delegate_to_agent or multi-agent workflows, write all data under {workspace}/tasks/{taskId}/:
+- plan.md (task plan), status.json (status tracking)
+- agents/{agentId}/ (sub-agent workspace)
+- results/{agentId}.md (final output)
 
-For simple single delegations, taskId is auto-generated and task_plan is optional.
-</workspace_conventions>
-</runtime_environment>`;
+Use manage_agent(list) before creating new agents. For simple delegations, taskId is auto-generated.`;
 }
