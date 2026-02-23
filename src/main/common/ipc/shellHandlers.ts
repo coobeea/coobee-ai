@@ -5,7 +5,6 @@
  */
 
 import { ipcMain, BrowserWindow, dialog, clipboard } from 'electron';
-import { execSync } from 'child_process';
 
 import { log } from '../logger';
 import { ShellChannels } from './channels';
@@ -13,54 +12,25 @@ import { windowManager } from '../window';
 import type { WindowInfoResponse, TabInfoResponse } from '@shared/ipc';
 
 /**
- * macOS: 使用 osascript 读取剪贴板中的文件路径
- * 使用多个 -e 参数，每行一个（这是 osascript 的标准用法）
+ * macOS: 解析 plist XML 格式的文件路径列表
  */
-function getMacOSClipboardFiles(): string[] {
+function parsePlistFilePaths(plistXml: string): string[] {
   try {
-    // 构建 osascript 命令，每行用一个 -e 参数
-    const args = [
-      '-e',
-      'tell application "System Events"',
-      '-e',
-      'try',
-      '-e',
-      'set theFiles to the clipboard as «class furl»',
-      '-e',
-      'set output to ""',
-      '-e',
-      'repeat with aFile in theFiles',
-      '-e',
-      'set output to output & POSIX path of aFile & linefeed',
-      '-e',
-      'end repeat',
-      '-e',
-      'return output',
-      '-e',
-      'end try',
-      '-e',
-      'end tell'
-    ];
+    // 简单的正则解析，提取所有 <string>...</string> 标签中的内容
+    const stringPattern = /<string>([^<]+)<\/string>/g;
+    const paths: string[] = [];
+    let match: RegExpExecArray | null;
 
-    const output = execSync(`osascript ${args.join(' ')}`, {
-      encoding: 'utf-8',
-      maxBuffer: 10 * 1024 * 1024,
-      timeout: 5000
-    }).trim();
-
-    if (output) {
-      const paths = output
-        .split('\n')
-        .map((p) => p.trim())
-        .filter((p) => p.length > 0 && p !== 'missing value');
-
-      log.info('[IPC] osascript 成功读取', paths.length, '个文件路径');
-      return paths;
+    while ((match = stringPattern.exec(plistXml)) !== null) {
+      const path = match[1].trim();
+      if (path.startsWith('/') || path.startsWith('~')) {
+        paths.push(path);
+      }
     }
 
-    return [];
+    return paths;
   } catch (err) {
-    log.debug('[IPC] osascript 读取剪贴板失败:', err instanceof Error ? err.message : String(err));
+    log.error('[IPC] 解析 plist 失败:', err);
     return [];
   }
 }
@@ -171,50 +141,47 @@ export function registerShellHandlers(): void {
       const fs = await import('fs');
       const validPaths: string[] = [];
 
-      // macOS: 优先使用 osascript（最可靠）
+      // macOS: 使用 NSFilenamesPboardType（最可靠）
       if (process.platform === 'darwin') {
-        const paths = getMacOSClipboardFiles();
+        try {
+          // 方法1: NSFilenamesPboardType（plist 格式，支持多个文件和中文路径）
+          const buffer = clipboard.readBuffer('NSFilenamesPboardType');
+          if (buffer && buffer.length > 0) {
+            const plistXml = buffer.toString('utf-8');
+            log.debug('[IPC] NSFilenamesPboardType 长度:', buffer.length);
 
-        for (const path of paths) {
-          if (fs.existsSync(path)) {
-            validPaths.push(path);
-          } else {
-            log.warn('[IPC] 路径不存在:', path);
+            const paths = parsePlistFilePaths(plistXml);
+            log.info('[IPC] 从 plist 中解析到', paths.length, '个路径');
+
+            for (const path of paths) {
+              if (fs.existsSync(path)) {
+                validPaths.push(path);
+              } else {
+                log.warn('[IPC] 路径不存在:', path);
+              }
+            }
+
+            if (validPaths.length > 0) {
+              log.info('[IPC] 成功读取', validPaths.length, '个文件路径');
+              return validPaths;
+            }
           }
+        } catch (err) {
+          log.debug('[IPC] NSFilenamesPboardType 读取失败:', err);
         }
 
-        if (validPaths.length > 0) {
-          log.info('[IPC] 成功读取', validPaths.length, '个文件路径');
-          return validPaths;
-        }
-
-        // Fallback: 尝试 Electron clipboard API
-        log.debug('[IPC] osascript 未读取到文件，尝试 Electron API');
-
+        // 方法2: public.file-url（单个文件）
         try {
           const fileUrl = clipboard.read('public.file-url');
           if (fileUrl && !fileUrl.startsWith('/.file/id=')) {
             const filePath = decodeURIComponent(fileUrl.replace(/^file:\/\//, ''));
             if (fs.existsSync(filePath)) {
               log.info('[IPC] 通过 public.file-url 读取到文件:', filePath);
-              validPaths.push(filePath);
-              return validPaths;
+              return [filePath];
             }
           }
         } catch (_e) {
           // public.file-url 不可用
-        }
-
-        try {
-          const buffer = clipboard.readBuffer('NSFilenamesPboardType');
-          if (buffer && buffer.length > 0) {
-            // NSFilenamesPboardType 是 plist 格式，这里简化处理
-            const content = buffer.toString('utf-8');
-            log.debug('[IPC] NSFilenamesPboardType 内容:', content.substring(0, 200));
-            // TODO: 解析 plist 格式
-          }
-        } catch (_e) {
-          // NSFilenamesPboardType 不可用
         }
 
         log.info('[IPC] 剪贴板中没有文件');
