@@ -48,7 +48,7 @@ export function registerSkillRoutes(router: Router): void {
       const searchPaths = await Env.getSkillSearchPaths();
 
       const manager = new SkillManager();
-      const allSkills = manager.scanSkills(searchPaths, Env.paths.configDir);
+      const allSkills = manager.scanSkills(searchPaths, Env.paths.secretsDir);
 
       const builtinDir = Env.paths.builtinSkillsDir;
       const userDir = Env.paths.userSkillsDir;
@@ -249,7 +249,7 @@ export function registerSkillRoutes(router: Router): void {
       // 先扫描获取完整信息
       const searchPaths = await Env.getSkillSearchPaths();
       const manager = new SkillManager();
-      const allSkills = manager.scanSkills(searchPaths, Env.paths.configDir);
+      const allSkills = manager.scanSkills(searchPaths, Env.paths.secretsDir);
 
       const skill = allSkills.find((s) => s.name === skillName);
 

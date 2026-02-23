@@ -29,13 +29,17 @@ const CONFIG_FILE_NAME = 'coobee.json5';
 
 export class ConfigLoader {
   private configDir: string;
+  private secretsDir: string;
   private cached: ConfigSnapshot | null = null;
 
   /**
    * @param configDir 配置目录路径（开发: <项目>/.home/config | 生产: ~/.coobee-ai/config）
+   * @param secretsDir 敏感信息目录路径（开发: <项目>/.home/secrets | 生产: ~/.coobee-ai/secrets）
    */
-  constructor(configDir: string) {
+  constructor(configDir: string, secretsDir?: string) {
     this.configDir = configDir;
+    // 兼容旧调用：如果不传 secretsDir，默认为 configDir（过渡期）
+    this.secretsDir = secretsDir || configDir;
   }
 
   /** 配置文件绝对路径 */
@@ -45,12 +49,12 @@ export class ConfigLoader {
 
   /** secrets.json5 绝对路径 */
   get secretsFilePath(): string {
-    return secretsPath(this.configDir);
+    return secretsPath(this.secretsDir);
   }
 
   /** skills.json5 绝对路径 */
   get skillConfigFilePath(): string {
-    return skillConfigPath(this.configDir);
+    return skillConfigPath(this.secretsDir);
   }
 
   /**
@@ -124,7 +128,7 @@ export class ConfigLoader {
     const envResolved = resolveEnvVars(parsed);
 
     // Step 4.5: 合并 secrets.json5 中的 API Key
-    const secrets = loadSecrets(this.configDir);
+    const secrets = loadSecrets(this.secretsDir);
     const merged = mergeSecrets(envResolved, secrets);
 
     // Step 5: Zod 校验
@@ -213,8 +217,8 @@ export class ConfigLoader {
     }
 
     // 同时确保 secrets.json5 和 skills.json5 存在
-    ensureSecretsFile(this.configDir);
-    ensureSkillConfigFile(this.configDir);
+    ensureSecretsFile(this.secretsDir);
+    ensureSkillConfigFile(this.secretsDir);
   }
 
   // ─── 私有方法 ─────────────────────────────────────

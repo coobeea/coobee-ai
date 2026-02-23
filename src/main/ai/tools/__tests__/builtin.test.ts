@@ -1066,8 +1066,8 @@ describe('execTool', () => {
 // ═══════════════════════════════════════════
 
 describe('builtinTools 集合', () => {
-  it('包含 19 个内置工具', () => {
-    expect(builtinTools).toHaveLength(19);
+  it('包含 12 个内置工具（5 个工具已迁移到 Skill）', () => {
+    expect(builtinTools).toHaveLength(12);
   });
 
   it('按正确顺序包含所有工具', () => {
@@ -1081,14 +1081,10 @@ describe('builtinTools 集合', () => {
       'memory',
       'search',
       'glob',
-      'session_status',
-      'session_history',
-      'context_inspect',
+      // session_status, session_history, context_inspect 已迁移到 observability Skill
       'skill_list',
-      'config_get',
-      'config_patch',
-      'manage_agent',
-      'manage_skill',
+      // config_get, config_patch 已迁移到 config-manager Skill
+      // manage_agent, manage_skill 已移除
       'delegate_to_agent',
       'task_plan',
       'todo_write'

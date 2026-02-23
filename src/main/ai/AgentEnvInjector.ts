@@ -53,7 +53,7 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
       //    使用 agentEnv.skillPaths（已包含 Extension 贡献的 Skill 目录）
       //    传入 configDir 以加载 skills.json5 中的 Skill 配置
       const skillManager = new SkillManager();
-      skillManager.scanSkills(agentEnv.skillPaths, Env.paths.configDir);
+      skillManager.scanSkills(agentEnv.skillPaths, Env.paths.secretsDir);
       SkillManager.setCurrent(skillManager, sessionId);
 
       // 4. 注入核心执行协议 + 运行时环境 + Skill 发现提示 + Agent 发现提示到 appendInstructions

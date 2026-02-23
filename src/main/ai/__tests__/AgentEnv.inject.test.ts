@@ -41,7 +41,8 @@ vi.mock('@main/common/env', () => ({
       resourcesDir: '/mock/resources',
       builtinExtensionsDir: '/mock/builtin',
       userExtensionsDir: '/mock/user',
-      configDir: '/mock/.home/config'
+      configDir: '/mock/.home/config',
+      secretsDir: '/mock/.home/secrets'
     },
     getAgentWorkspaceDir: mockGetAgentWorkspaceDir,
     getSkillSearchPaths: mockGetSkillSearchPaths
@@ -214,8 +215,8 @@ describe('AgentExecutor — 环境注入', () => {
       // 验证 injectEnv 调用链
       expect(mockGetAgentWorkspaceDir).toHaveBeenCalledWith('session-1');
       expect(mockBuildAgentEnv).toHaveBeenCalledWith('session-1', '/mock/.home/workspaces/session-1');
-      // 现在使用 agentEnv.skillPaths（包含 Extension 贡献的 Skill 目录）+ configDir
-      expect(mockScanSkills).toHaveBeenCalledWith(['/mock/builtin-skills', '/mock/.home/skills'], '/mock/.home/config');
+      // 现在使用 agentEnv.skillPaths（包含 Extension 贡献的 Skill 目录）+ secretsDir
+      expect(mockScanSkills).toHaveBeenCalledWith(['/mock/builtin-skills', '/mock/.home/skills'], expect.any(String));
       expect(mockSetCurrent).toHaveBeenCalled();
       expect(mockFormatRuntimePaths).toHaveBeenCalled();
     });

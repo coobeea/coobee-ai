@@ -167,13 +167,13 @@ function loadSkillDefinitions(skillNames: string[]): SkillDefinition[] {
       // 注意：workspace-specific skills 需要 workspace 路径，这里暂不支持
       // 因为 createBuilderFromDefinition 调用时 workspace 还未创建
     ];
-    const configDir = Env.paths.configDir;
 
     log.info(`[loadSkillDefinitions] Searching in paths: ${searchPaths.join(', ')}`);
 
     // 扫描所有可用 Skills
     const manager = new SkillManager();
-    const allSkills = manager.scanSkills(searchPaths, configDir);
+    const secretsDir = Env.paths.secretsDir;
+    const allSkills = manager.scanSkills(searchPaths, secretsDir);
 
     log.info(
       `[loadSkillDefinitions] Scanned ${allSkills.length} total skills: ${allSkills.map((s) => s.name).join(', ')}`

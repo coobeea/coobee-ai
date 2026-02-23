@@ -57,6 +57,20 @@ export const Env = {
       /** 用户配置目录 @example 开发: <项目>/.home/config | 生产: ~/.coobee-ai/config */
       configDir: path.join(_userHome, 'config'),
 
+      // === 敏感信息目录（Secrets）===
+      /**
+       * 敏感信息目录（API Keys、Tokens 等）
+       *
+       * 独立于 config 目录，更严格的权限控制（700/600）
+       *
+       * 存储内容：
+       *   - secrets.json5  — Provider API Keys
+       *   - skills.json5   — Skill 专属配置（可能含 Key/Token）
+       *
+       * @example 开发: <项目>/.home/secrets | 生产: ~/.coobee-ai/secrets
+       */
+      secretsDir: path.join(_userHome, 'secrets'),
+
       // === 记忆目录（Memory）===
       /**
        * 记忆总根目录，与 workspaces 同级

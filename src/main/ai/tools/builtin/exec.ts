@@ -29,6 +29,7 @@ import { ToolCategory } from '../types';
 import { resolveWorkingDirectory } from '../../sandbox';
 import { ProcessRegistry } from '../../process/ProcessRegistry';
 import { checkExecPolicy } from '../../sandbox/exec-policy';
+import { scanCommand } from '../security/command-scanner';
 
 /** 默认超时（ms） */
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -78,6 +79,19 @@ export const execTool: ToolDefinition = {
       };
     }
 
+    // 工作目录：限制在 workspaceRoot 内
+    const cwd = resolveWorkingDirectory(context);
+
+    // 敏感路径和危险命令扫描（第一道防线）
+    const scanError = scanCommand(command, cwd);
+    if (scanError) {
+      return {
+        success: false,
+        llmContent: `Error: ${scanError}`,
+        error: { code: 'DANGEROUS_COMMAND', message: scanError }
+      };
+    }
+
     // 安全兜底：即使 Extension 未加载，黑名单/未知命令仍被拦截
     // Extension hook (tool-approval) 提供完整的 allow/ask/deny + HITL 逻辑，
     // 这里做 deny + ask（无审批能力时）的防线
@@ -94,9 +108,6 @@ export const execTool: ToolDefinition = {
     // 如果到达这里，说明已经通过审批（或配置为 allow）
     // 即使 policyResult.action === 'ask'，也应该继续执行
     // （审批在 Pipeline 层完成，工具层只负责执行）
-
-    // 工作目录：限制在 workspaceRoot 内
-    const cwd = resolveWorkingDirectory(context);
 
     // ==================== 后台模式 ====================
     if (background) {

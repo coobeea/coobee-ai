@@ -394,10 +394,10 @@ function createBuilderFromAgentDef(
 function loadSkillDefinitions(skillNames: string[]): SkillDefinition[] {
   try {
     const searchPaths = [Env.paths.builtinSkillsDir, Env.paths.userSkillsDir];
-    const configDir = Env.paths.configDir;
+    const secretsDir = Env.paths.secretsDir;
 
     const manager = new SkillManager();
-    const allSkills = manager.scanSkills(searchPaths, configDir);
+    const allSkills = manager.scanSkills(searchPaths, secretsDir);
 
     const skillMap = new Map(allSkills.map((s) => [s.name, s]));
     const result: SkillDefinition[] = [];

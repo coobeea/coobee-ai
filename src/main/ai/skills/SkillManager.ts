@@ -186,8 +186,8 @@ export class SkillManager {
   /** 目录名 → Skill name 的映射（用于后到覆盖时移除旧版本） */
   private dirNameToSkillName = new Map<string, string>();
 
-  /** 配置目录路径（用于加载 skills.json5） */
-  private configDir: string | undefined;
+  /** 敏感信息目录路径（用于加载 skills.json5） */
+  private secretsDir: string | undefined;
 
   // ========== 扫描与加载 ==========
 
@@ -199,11 +199,11 @@ export class SkillManager {
    * 这样工作空间中的同名 Skill 会覆盖内置 Skill，实现用户定制。
    *
    * @param searchPaths Skill 搜索路径数组（低 → 高优先级）
-   * @param configDir 可选的配置目录路径（用于加载 skills.json5 中的配置）
+   * @param secretsDir 可选的敏感信息目录路径（用于加载 skills.json5 中的配置）
    * @returns 最终有效的 SkillDefinition 数组
    */
-  scanSkills(searchPaths: string[], configDir?: string): SkillDefinition[] {
-    if (configDir) this.configDir = configDir;
+  scanSkills(searchPaths: string[], secretsDir?: string): SkillDefinition[] {
+    if (secretsDir) this.secretsDir = secretsDir;
 
     // 尝试使用缓存（同样的搜索路径 + 未过期）
     const cacheKey = searchPaths.join('|');
@@ -219,7 +219,7 @@ export class SkillManager {
     this.doScan(searchPaths);
 
     // 注入配置状态
-    if (this.configDir) {
+    if (this.secretsDir) {
       this.injectConfigStatus();
     }
 
@@ -351,11 +351,11 @@ export class SkillManager {
    * 标记每个 Skill 的配置状态：configured / partial / missing
    */
   private injectConfigStatus(): void {
-    if (!this.configDir) return;
+    if (!this.secretsDir) return;
 
     let configs: SkillConfigMap;
     try {
-      configs = loadSkillConfigs(this.configDir);
+      configs = loadSkillConfigs(this.secretsDir);
     } catch {
       return;
     }
@@ -401,8 +401,8 @@ export class SkillManager {
    * @returns 配置对象，未找到返回 undefined
    */
   getSkillRuntimeConfig(skillName: string): Record<string, unknown> | undefined {
-    if (!this.configDir) return undefined;
-    const configs = loadSkillConfigs(this.configDir);
+    if (!this.secretsDir) return undefined;
+    const configs = loadSkillConfigs(this.secretsDir);
     return configs[skillName];
   }
 

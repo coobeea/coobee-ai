@@ -10,44 +10,45 @@
  *   silicon: "sk-xxx",
  * }
  */
-import fs from 'fs'
-import JSON5 from 'json5'
-import path from 'path'
+import fs from 'fs';
+import JSON5 from 'json5';
+import path from 'path';
 
 /** 密钥文件名 */
-const SECRETS_FILE_NAME = 'secrets.json5'
+const SECRETS_FILE_NAME = 'secrets.json5';
 
 /** provider id → api key */
-export type SecretsMap = Record<string, string>
+export type SecretsMap = Record<string, string>;
 
 /**
  * 读取 secrets.json5
  *
+ * @param secretsDir 敏感信息目录（新架构使用独立的 secrets/ 目录）
  * @returns 解析后的 key-value map，文件不存在或格式错误时返回空对象
  */
-export function loadSecrets(configDir: string): SecretsMap {
-  const filePath = path.join(configDir, SECRETS_FILE_NAME)
+export function loadSecrets(secretsDir: string): SecretsMap {
+  const filePath = path.join(secretsDir, SECRETS_FILE_NAME);
 
-  if (!fs.existsSync(filePath)) return {}
+  if (!fs.existsSync(filePath)) return {};
 
   try {
-    const raw = fs.readFileSync(filePath, 'utf-8')
-    const parsed = JSON5.parse(raw)
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const parsed = JSON5.parse(raw);
 
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return {}
+      return {};
     }
 
     // 只保留 string 类型的值
-    const result: SecretsMap = {}
+    const result: SecretsMap = {};
     for (const [key, value] of Object.entries(parsed)) {
       if (typeof value === 'string' && value.length > 0) {
-        result[key] = value
+        result[key] = value;
       }
     }
-    return result
+    return result;
   } catch {
-    return {}
+    return {};
   }
 }
 
@@ -58,40 +59,45 @@ export function loadSecrets(configDir: string): SecretsMap {
  * （仅当 secrets 中有值且非空时才覆盖）
  */
 export function mergeSecrets<T>(config: T, secrets: SecretsMap): T {
-  if (!config || typeof config !== 'object') return config
-  if (Object.keys(secrets).length === 0) return config
+  if (!config || typeof config !== 'object') return config;
+  if (Object.keys(secrets).length === 0) return config;
 
   // 深拷贝，避免修改原始对象
-  const cloned = structuredClone(config)
+  const cloned = structuredClone(config);
 
-  const obj = cloned as Record<string, unknown>
+  const obj = cloned as Record<string, unknown>;
   const providers = (obj.models as Record<string, unknown>)?.providers as
     | Record<string, Record<string, unknown>>
-    | undefined
+    | undefined;
 
-  if (!providers) return config
+  if (!providers) return config;
 
   for (const [providerId, apiKey] of Object.entries(secrets)) {
     if (providers[providerId]) {
-      providers[providerId].apiKey = apiKey
+      providers[providerId].apiKey = apiKey;
     }
   }
 
-  return cloned
+  return cloned;
 }
 
 /** secrets.json5 文件路径 */
-export function secretsPath(configDir: string): string {
-  return path.join(configDir, SECRETS_FILE_NAME)
+export function secretsPath(secretsDir: string): string {
+  return path.join(secretsDir, SECRETS_FILE_NAME);
 }
 
 /** 确保 secrets.json5 存在，不存在则创建模板 */
-export function ensureSecretsFile(configDir: string): void {
-  const filePath = secretsPath(configDir)
-  if (fs.existsSync(filePath)) return
+export function ensureSecretsFile(secretsDir: string): void {
+  const filePath = secretsPath(secretsDir);
+  if (fs.existsSync(filePath)) {
+    // 修正已存在文件的权限为 600 (rw-------)
+    fs.chmodSync(filePath, 0o600);
+    return;
+  }
 
-  if (!fs.existsSync(configDir)) {
-    fs.mkdirSync(configDir, { recursive: true })
+  // 创建 secrets 目录（700 权限）
+  if (!fs.existsSync(secretsDir)) {
+    fs.mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
   }
 
   const template = `// Coobee AI — API Key 配置
@@ -107,6 +113,9 @@ export function ensureSecretsFile(configDir: string): void {
   // moonshot: "",
   // doubao: "",
 }
-`
-  fs.writeFileSync(filePath, template, 'utf-8')
+`;
+  fs.writeFileSync(filePath, template, { mode: 0o600, encoding: 'utf-8' });
+
+  // 确保父目录也是 700 权限
+  fs.chmodSync(secretsDir, 0o700);
 }
