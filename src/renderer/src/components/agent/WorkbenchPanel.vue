@@ -17,15 +17,7 @@ const editorContainer = ref<HTMLDivElement | null>(null);
 const editorInstance = shallowRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
 function initEditor(): void {
-  console.log(
-    '[WorkbenchPanel] initEditor 调用, editorContainer=',
-    !!editorContainer.value,
-    'editorInstance=',
-    !!editorInstance.value
-  );
-
   if (!editorContainer.value) {
-    console.error('[WorkbenchPanel] editorContainer.value 为空！');
     return;
   }
 
@@ -33,23 +25,15 @@ function initEditor(): void {
   if (editorInstance.value) {
     const domNode = editorInstance.value.getDomNode();
     const containerHasEditor = domNode && editorContainer.value.contains(domNode);
-    console.log('[WorkbenchPanel] 编辑器已存在, DOM是否还在容器中=', containerHasEditor);
 
     if (!containerHasEditor) {
-      console.warn('[WorkbenchPanel] 编辑器 DOM 已脱离容器，需要重建');
       editorInstance.value.dispose();
       editorInstance.value = null;
     } else {
-      console.log('[WorkbenchPanel] 编辑器正常，跳过初始化');
       return;
     }
   }
 
-  // 检查容器尺寸
-  const rect = editorContainer.value.getBoundingClientRect();
-  console.log('[WorkbenchPanel] 容器尺寸:', rect.width, 'x', rect.height);
-
-  console.log('[WorkbenchPanel] 开始创建 Monaco 编辑器...');
   editorInstance.value = monaco.editor.create(editorContainer.value, {
     value: '',
     language: 'plaintext',
@@ -73,68 +57,29 @@ function initEditor(): void {
     padding: { top: 8 }
   });
 
-  console.log('[WorkbenchPanel] Monaco 编辑器创建完成, editorInstance=', !!editorInstance.value);
-
   // 设置滚动监听（用于大文件自动加载更多）
   setupScrollListener();
 }
 
 function updateEditorContent(): void {
-  console.log('[WorkbenchPanel] updateEditorContent 开始');
-
   if (!editorInstance.value) {
-    console.warn('[WorkbenchPanel] editorInstance 为空，无法更新');
     return;
   }
 
   const file = activeFile.value;
-  console.log(
-    '[WorkbenchPanel] activeFile:',
-    file?.name,
-    'loading=',
-    file?.loading,
-    'content.length=',
-    file?.content.length
-  );
-
   if (!file || file.loading) {
-    console.log('[WorkbenchPanel] 文件不存在或加载中，清空编辑器');
     editorInstance.value.setValue('');
     return;
   }
 
-  console.log('[WorkbenchPanel] 准备设置内容，前 100 字符:', file.content.substring(0, 100));
-
   const model = editorInstance.value.getModel();
   if (model) {
     monaco.editor.setModelLanguage(model, file.language);
-    console.log('[WorkbenchPanel] 设置语言:', file.language);
   }
 
   // 更新内容（保持光标位置）
   const currentPosition = editorInstance.value.getPosition();
   editorInstance.value.setValue(file.content);
-  console.log('[WorkbenchPanel] setValue 调用完成');
-
-  // 检查编辑器容器的实际尺寸
-  if (editorContainer.value) {
-    const rect = editorContainer.value.getBoundingClientRect();
-    console.log('[WorkbenchPanel] 编辑器容器当前尺寸:', rect.width, 'x', rect.height);
-  }
-
-  // 检查 Monaco 编辑器内部状态
-  const domNode = editorInstance.value.getDomNode();
-  if (domNode) {
-    console.log(
-      '[WorkbenchPanel] Monaco DOM 节点存在, display=',
-      window.getComputedStyle(domNode).display,
-      'visibility=',
-      window.getComputedStyle(domNode).visibility
-    );
-  }
-
-  // 强制布局更新
-  console.log('[WorkbenchPanel] 调用 layout() 强制重新布局');
   editorInstance.value.layout();
 
   // 如果是追加内容（分块加载），恢复光标位置
@@ -143,8 +88,6 @@ function updateEditorContent(): void {
   } else {
     editorInstance.value.revealLine(1);
   }
-
-  console.log('[WorkbenchPanel] updateEditorContent 完成');
 }
 
 /**
@@ -190,23 +133,22 @@ watch(
     return `${f.path}::${f.loading}::${f.content.length}`;
   },
   async () => {
-    console.log(
-      '[WorkbenchPanel] watch 触发, openFiles.length=',
-      openFiles.value.length,
-      'editorInstance=',
-      !!editorInstance.value
-    );
-    console.log('[WorkbenchPanel] activeFile=', activeFile.value?.name, 'loading=', activeFile.value?.loading);
+    // 会话切换导致文件全部关闭 → 销毁编辑器实例
+    if (openFiles.value.length === 0) {
+      if (editorInstance.value) {
+        editorInstance.value.dispose();
+        editorInstance.value = null;
+      }
+      return;
+    }
 
+    // 有文件但编辑器未初始化 → 初始化编辑器
     if (openFiles.value.length > 0 && !editorInstance.value) {
-      console.log('[WorkbenchPanel] 需要初始化编辑器');
       await nextTick();
       initEditor();
-      console.log('[WorkbenchPanel] 编辑器初始化完成, editorInstance=', !!editorInstance.value);
     }
-    await nextTick();
 
-    console.log('[WorkbenchPanel] 准备更新编辑器内容, activeFile.content.length=', activeFile.value?.content.length);
+    await nextTick();
     updateEditorContent();
   }
 );
