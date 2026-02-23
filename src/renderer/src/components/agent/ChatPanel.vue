@@ -13,6 +13,7 @@ import type { HitlApprovalDecision } from '@shared/stream-protocol';
 import { gateway } from '@/plugins/gatewaySetup';
 import ChatMessages from '@/components/chat/ChatMessages.vue';
 import ChatInput from '@/components/chat/ChatInput.vue';
+import MessageQueue from '@/components/chat/MessageQueue.vue';
 
 const chatStore = useChatStore();
 const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null);
@@ -125,6 +126,11 @@ defineExpose({
         消息已排队 (位置:
         {{ chatStore.queueStatus.queueLength }})
       </span>
+    </div>
+
+    <!-- 待发送消息队列 -->
+    <div v-if="chatStore.messageQueue.length > 0" class="border-t border-gray-200/60 px-3 pt-3">
+      <MessageQueue :queue="chatStore.messageQueue" @remove="chatStore.removeFromQueue" />
     </div>
 
     <!-- 输入区域 -->

@@ -8,7 +8,7 @@
  */
 
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import configManager from '@/config';
 import { gateway } from '@/plugins/gatewaySetup';
 import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs';
@@ -34,6 +34,14 @@ export interface QueueStatusInfo {
   mode: string;
 }
 
+/** 待发送消息队列项 */
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  files?: { path: string; name: string }[];
+  timestamp: number;
+}
+
 export const useChatStore = defineStore('chat', () => {
   // ---- 共享消息处理 ----
   const { messages, isStreaming, handleStreamMessage, addUserMessage, addErrorMessage, resetAll } = useStreamHandler({
@@ -46,11 +54,31 @@ export const useChatStore = defineStore('chat', () => {
   const isQueued = ref(false);
   const queueStatus = ref<QueueStatusInfo | null>(null);
 
+  // ---- 消息队列 ----
+  const messageQueue = ref<QueuedMessage[]>([]);
+  let queueCounter = 0;
+
   // ---- 对外 Actions ----
 
   async function sendMessage(text: string, files?: { path: string; name: string }[]): Promise<void> {
-    if (!text.trim() || isStreaming.value) return;
+    if (!text.trim()) return;
 
+    // 如果正在处理，加入队列
+    if (isStreaming.value) {
+      messageQueue.value.push({
+        id: `queue-${++queueCounter}`,
+        text,
+        files,
+        timestamp: Date.now()
+      });
+      return;
+    }
+
+    // 否则直接发送
+    await sendMessageInternal(text, files);
+  }
+
+  async function sendMessageInternal(text: string, files?: { path: string; name: string }[]): Promise<void> {
     // 构建完整消息（包含文件路径）
     let finalMessage = text;
     if (files && files.length > 0) {
@@ -194,7 +222,23 @@ export const useChatStore = defineStore('chat', () => {
     sessionId.value = null;
     isQueued.value = false;
     queueStatus.value = null;
+    messageQueue.value = [];
   }
+
+  function removeFromQueue(queueId: string): void {
+    messageQueue.value = messageQueue.value.filter((q) => q.id !== queueId);
+  }
+
+  // ---- 自动处理队列 ----
+  watch(isStreaming, async (streaming) => {
+    if (!streaming && messageQueue.value.length > 0) {
+      // 处理完成，自动发送队列中的下一条
+      const next = messageQueue.value.shift();
+      if (next) {
+        await sendMessageInternal(next.text, next.files);
+      }
+    }
+  });
 
   /**
    * 加载 Thread 的历史对话
@@ -386,10 +430,12 @@ export const useChatStore = defineStore('chat', () => {
     isStreaming,
     isQueued,
     queueStatus,
+    messageQueue,
     sendMessage,
     abortSession,
     submitDecision,
     clearMessages,
+    removeFromQueue,
     loadHistory
   };
 });
