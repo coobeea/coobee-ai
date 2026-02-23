@@ -153,7 +153,8 @@ export class WorkerMetricsCollector {
         lastHealthCheck: this.currentMetrics.lastHealthCheck
       };
 
-      log.debug(
+      // 指标已收集，仅在 verbose 级别输出（避免控制台噪音）
+      log.verbose(
         `[${this.workerName}] Metrics: CPU=${this.currentMetrics.cpuPercent}%, ` +
           `MEM=${this.formatBytes(this.currentMetrics.memoryBytes)}, ` +
           `Uptime=${this.currentMetrics.uptimeSeconds}s`
