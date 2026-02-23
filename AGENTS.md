@@ -90,6 +90,12 @@ Usage notes:
 </skill>
 
 <skill>
+<name>find-skills</name>
+<description>Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill. Uses npx skills CLI to search skills.sh ecosystem.</description>
+<location>local</location>
+</skill>
+
+<skill>
 <name>icon-usage</name>
 <description>Guide for using icons in coobee-ai project with three methods - manual import (for frequent use with events), auto-import (for occasional use), and Tailwind CSS classes (for dynamic icons). Use when adding icons to Vue components, implementing icon-based UI, or answering questions about icon usage. Project uses unplugin-icons + @egoist/tailwindcss-icons with offline bundling.</description>
 <location>local</location>
