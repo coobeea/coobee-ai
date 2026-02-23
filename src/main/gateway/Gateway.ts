@@ -21,6 +21,7 @@ import { registerThreadRoutes } from './http/threads';
 import { registerSkillRoutes } from './http/skills';
 import { registerFileRoutes } from './http/files';
 import { registerTavernRoutes } from './http/tavern';
+import { registerCronJobRoutes } from './http/cron-jobs';
 import { GatewayErrorCode, GatewayMethodError } from './protocol/errors';
 import type {
   GatewayRequest,
@@ -187,6 +188,7 @@ export class Gateway implements GatewayApi {
     registerSkillRoutes(router);
     registerFileRoutes(router);
     registerTavernRoutes(router);
+    registerCronJobRoutes(router);
 
     // 动态挂载 Extension 注册的 HTTP 路由
     this.mountExtensionHttpRoutes(router);
