@@ -147,17 +147,21 @@ python skills/config-manager/scripts/config-patch.py '{
 
 ## 配置文件路径解析
 
-脚本使用以下优先级查找配置文件：
+脚本自动推导配置文件路径，无需手动配置：
 
-1. **环境变量**（推荐）：
-   - `COOBEE_CONFIG_DIR` - 由系统自动注入
-   - 路径：`$COOBEE_CONFIG_DIR/coobee.json5`
+1. **向上查找 `.home` 目录**（开发环境）
+   - 从脚本所在位置向上遍历
+   - 查找路径：`{父目录}/.home/config/coobee.json5`
 
-2. **相对路径**（降级方案）：
-   - 仅用于开发环境
-   - 路径：`{当前工作目录}/.home/config/coobee.json5`
+2. **回退到用户主目录**（生产环境）
+   - 路径：`~/.coobee-ai/config/coobee.json5`
 
-**注意**：通过 `exec` 工具调用时，`COOBEE_CONFIG_DIR` 会被自动注入。
+这种设计：
+
+- ✅ 适配开发和生产环境
+- ✅ 无需环境变量
+- ✅ 可以直接执行脚本测试
+- ✅ 路径推导逻辑规整、统一
 
 ---
 

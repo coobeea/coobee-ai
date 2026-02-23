@@ -49,22 +49,34 @@ Context Inspect Script - LLM 调用上下文检查
 """
 
 import json
-import os
 import sys
 from pathlib import Path
+
+
+def find_workspace_dir() -> Path:
+    """
+    查找当前工作空间目录
+    
+    策略：
+      1. 使用当前工作目录（假设脚本在工作空间内执行）
+      2. 向上查找包含 contexts/ 目录的父目录
+    """
+    cwd = Path.cwd()
+    if (cwd / "contexts").exists():
+        return cwd
+    
+    for parent in list(cwd.parents):
+        if (parent / "contexts").exists():
+            return parent
+    
+    return cwd
 
 
 def inspect_context(filename):
     """检查指定快照的详细上下文"""
     try:
-        # 从环境变量获取工作空间目录
-        workspace = os.environ.get("COOBEE_WORKSPACE")
-        
-        if not workspace:
-            # 降级方案：使用当前工作目录
-            workspace = str(Path.cwd())
-        
-        contexts_dir = Path(workspace) / "contexts"
+        workspace = find_workspace_dir()
+        contexts_dir = workspace / "contexts"
         
         # 检查目录是否存在
         if not contexts_dir.exists():

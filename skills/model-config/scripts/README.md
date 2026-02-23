@@ -112,8 +112,9 @@ python skills/model-config/scripts/add_model.py dashscope '{
 
 ### 1. 不暴露配置文件路径
 
-- 脚本通过环境变量 `COOBEE_CONFIG_DIR` 获取路径（系统自动注入）
-- 降级方案：相对路径 `.home/config/coobee.json5`（开发环境）
+- 脚本自动推导配置路径（向上查找 `.home` 目录或用户主目录）
+- 开发环境：`{项目}/.home/config/coobee.json5`
+- 生产环境：`~/.coobee-ai/config/coobee.json5`
 - LLM 无法直接访问配置文件，只能通过这些经过测试的脚本操作
 
 ### 2. 严格的格式验证
@@ -141,18 +142,21 @@ python skills/model-config/scripts/add_model.py dashscope '{
 
 ## 配置文件路径解析
 
-脚本使用以下优先级查找配置文件：
+脚本自动推导配置文件路径，无需手动配置：
 
-1. **环境变量**（推荐）：
-   - 读取 `COOBEE_CONFIG_DIR` 环境变量
-   - 路径：`$COOBEE_CONFIG_DIR/coobee.json5`
-   - 由系统自动注入（通过 `exec` 工具调用时）
+1. **向上查找 `.home` 目录**（开发环境）
+   - 从脚本所在位置向上遍历
+   - 查找路径：`{父目录}/.home/config/coobee.json5`
 
-2. **相对路径**（降级方案）：
-   - 仅用于开发环境或直接执行
-   - 路径：`{当前工作目录}/.home/config/coobee.json5`
+2. **回退到用户主目录**（生产环境）
+   - 路径：`~/.coobee-ai/config/coobee.json5`
 
-**注意**：当通过 `exec` 工具调用时，`COOBEE_CONFIG_DIR` 会被自动注入，无需手动设置。
+这种设计：
+
+- ✅ 适配开发和生产环境
+- ✅ 无需环境变量
+- ✅ 可以直接执行脚本测试
+- ✅ 路径推导逻辑规整、统一
 
 ---
 

@@ -50,6 +50,32 @@ except ImportError:
     sys.exit(1)
 
 
+def find_config_file() -> Path:
+    """
+    查找 coobee.json5 配置文件
+    
+    策略：
+      1. 向上查找 .home 目录（开发环境）
+      2. 回退到用户主目录（生产环境）
+    """
+    current = Path(__file__).resolve()
+    for parent in [current] + list(current.parents):
+        config_path = parent / ".home" / "config" / "coobee.json5"
+        if config_path.exists():
+            return config_path
+    
+    home_config = Path.home() / ".coobee-ai" / "config" / "coobee.json5"
+    if home_config.exists():
+        return home_config
+    
+    raise FileNotFoundError(
+        "无法定位 coobee.json5。\n"
+        "请确认：\n"
+        "  - 开发环境：项目根目录存在 .home/config/coobee.json5\n"
+        "  - 生产环境：~/.coobee-ai/config/coobee.json5 已创建"
+    )
+
+
 def validate_model(model):
     """验证模型定义格式"""
     if not isinstance(model, dict):
@@ -92,21 +118,8 @@ def add_model(provider_id, model_json):
         # 验证格式
         validate_model(model)
 
-        # 从环境变量获取配置目录（由系统注入）
-        import os
-        config_dir = os.environ.get("COOBEE_CONFIG_DIR")
+        config_path = find_config_file()
         
-        if not config_dir:
-            # 降级方案：使用相对路径（开发环境）
-            config_dir = str(Path.cwd() / ".home" / "config")
-        
-        config_path = Path(config_dir) / "coobee.json5"
-
-        # 检查文件是否存在
-        if not config_path.exists():
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
-        # 读取并解析配置文件
         with open(config_path, "r", encoding="utf-8") as f:
             config = json5.load(f)
 

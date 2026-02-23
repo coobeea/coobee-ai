@@ -84,30 +84,62 @@
 
 ## 技术实现
 
-### 1. 环境变量注入
+### 1. 自动路径推导
 
-所有脚本通过环境变量获取路径：
+所有脚本自动推导路径，无需环境变量：
 
-| 环境变量            | 说明         | 注入方式                    |
-| ------------------- | ------------ | --------------------------- |
-| `COOBEE_CONFIG_DIR` | 配置目录     | `AgentEnvInjector` 自动注入 |
-| `COOBEE_WORKSPACE`  | 工作空间目录 | `AgentEnvInjector` 自动注入 |
-| `COOBEE_SESSION_ID` | 会话 ID      | `AgentEnvInjector` 自动注入 |
-
-### 2. 降级方案
-
-所有脚本都支持降级方案（开发环境）：
+**配置文件**（model-config、config-manager）：
 
 ```python
-# 优先环境变量
-config_dir = os.environ.get("COOBEE_CONFIG_DIR")
+def find_config_file() -> Path:
+    # 1. 向上查找 .home 目录（开发环境）
+    current = Path(__file__).resolve()
+    for parent in [current] + list(current.parents):
+        config_path = parent / ".home" / "config" / "coobee.json5"
+        if config_path.exists():
+            return config_path
 
-if not config_dir:
-    # 降级：相对路径
-    config_dir = str(Path.cwd() / ".home" / "config")
+    # 2. 回退到用户主目录（生产环境）
+    home_config = Path.home() / ".coobee-ai" / "config" / "coobee.json5"
+    if home_config.exists():
+        return home_config
+
+    raise FileNotFoundError("无法定位配置文件")
 ```
 
-### 3. 调用方式
+**工作空间**（observability）：
+
+```python
+def find_workspace_dir() -> Path:
+    # 1. 使用当前目录（如果包含 contexts/）
+    cwd = Path.cwd()
+    if (cwd / "contexts").exists():
+        return cwd
+
+    # 2. 向上查找包含 contexts/ 的父目录
+    for parent in list(cwd.parents):
+        if (parent / "contexts").exists():
+            return parent
+
+    return cwd
+```
+
+### 2. 路径设计理念
+
+符合系统的规整设计：
+
+- **开发环境**：`{项目}/.home/config/`
+- **生产环境**：`~/.coobee-ai/config/`
+- 只有两个位置，规整统一
+
+### 3. 优势特性
+
+- ✅ **无需环境变量**：脚本自动推导路径
+- ✅ **开发友好**：可以直接执行脚本测试（`python skills/.../xxx.py`）
+- ✅ **环境适配**：自动适配开发和生产环境
+- ✅ **路径规整**：只有两个位置，逻辑清晰
+
+### 4. 调用方式
 
 **原工具调用**（17 KB 常驻上下文）：
 
