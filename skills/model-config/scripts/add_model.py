@@ -92,8 +92,15 @@ def add_model(provider_id, model_json):
         # 验证格式
         validate_model(model)
 
-        # 配置文件路径
-        config_path = Path.cwd() / ".home" / "config" / "coobee.json5"
+        # 从环境变量获取配置目录（由系统注入）
+        import os
+        config_dir = os.environ.get("COOBEE_CONFIG_DIR")
+        
+        if not config_dir:
+            # 降级方案：使用相对路径（开发环境）
+            config_dir = str(Path.cwd() / ".home" / "config")
+        
+        config_path = Path(config_dir) / "coobee.json5"
 
         # 检查文件是否存在
         if not config_path.exists():

@@ -48,8 +48,15 @@ except ImportError:
 def list_models():
     """列出所有已激活的模型"""
     try:
-        # 配置文件路径（相对于项目根目录）
-        config_path = Path.cwd() / ".home" / "config" / "coobee.json5"
+        # 从环境变量获取配置目录（由系统注入）
+        import os
+        config_dir = os.environ.get("COOBEE_CONFIG_DIR")
+        
+        if not config_dir:
+            # 降级方案：使用相对路径（开发环境）
+            config_dir = str(Path.cwd() / ".home" / "config")
+        
+        config_path = Path(config_dir) / "coobee.json5"
 
         # 检查文件是否存在
         if not config_path.exists():

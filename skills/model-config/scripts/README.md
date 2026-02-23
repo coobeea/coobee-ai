@@ -112,9 +112,9 @@ python skills/model-config/scripts/add_model.py dashscope '{
 
 ### 1. 不暴露配置文件路径
 
-- 脚本内部硬编码路径（`.home/config/coobee.json5`）
-- LLM 无法直接访问配置文件
-- 只能通过这些经过测试的脚本操作
+- 脚本通过环境变量 `COOBEE_CONFIG_DIR` 获取路径（系统自动注入）
+- 降级方案：相对路径 `.home/config/coobee.json5`（开发环境）
+- LLM 无法直接访问配置文件，只能通过这些经过测试的脚本操作
 
 ### 2. 严格的格式验证
 
@@ -136,6 +136,23 @@ python skills/model-config/scripts/add_model.py dashscope '{
 
 - 写回时使用 json5 库保留格式
 - 不会破坏原有配置结构
+
+---
+
+## 配置文件路径解析
+
+脚本使用以下优先级查找配置文件：
+
+1. **环境变量**（推荐）：
+   - 读取 `COOBEE_CONFIG_DIR` 环境变量
+   - 路径：`$COOBEE_CONFIG_DIR/coobee.json5`
+   - 由系统自动注入（通过 `exec` 工具调用时）
+
+2. **相对路径**（降级方案）：
+   - 仅用于开发环境或直接执行
+   - 路径：`{当前工作目录}/.home/config/coobee.json5`
+
+**注意**：当通过 `exec` 工具调用时，`COOBEE_CONFIG_DIR` 会被自动注入，无需手动设置。
 
 ---
 
