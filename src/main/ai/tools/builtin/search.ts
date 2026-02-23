@@ -29,6 +29,9 @@ const MAX_MATCHES_PER_FILE = 10;
 /** 最大扫描文件数（防止超大目录卡死） */
 const MAX_FILES_TO_SCAN = 5000;
 
+/** 单文件最大大小（5MB，超过则跳过） */
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
 /** 跳过的目录名 */
 const SKIP_DIRS = new Set([
   'node_modules',
@@ -172,9 +175,21 @@ export const searchTool: ToolDefinition = {
     for (const filePath of files) {
       if (matches.length >= maxResults) break;
       if (signal?.aborted) break;
-      filesSearched++;
 
       try {
+        // 检查文件大小
+        const stat = await fsPromises.stat(filePath);
+        if (stat.size > MAX_FILE_SIZE) {
+          continue; // 跳过大文件
+        }
+
+        // 检查是否为二进制文件
+        if (await isBinaryFile(filePath)) {
+          continue; // 跳过二进制文件
+        }
+
+        filesSearched++;
+
         const content = await fsPromises.readFile(filePath, 'utf-8');
         const lines = content.split('\n');
         let fileMatches = 0;
@@ -195,7 +210,7 @@ export const searchTool: ToolDefinition = {
           }
         }
       } catch {
-        // 跳过无法读取的文件
+        // 跳过无法读取的文件（二进制文件或编码错误）
       }
     }
 
@@ -291,4 +306,56 @@ function createGlobTest(glob: string): (name: string) => boolean {
 
   // 完整文件名匹配
   return (name: string) => name === glob;
+}
+
+/**
+ * 检查文件是否为二进制文件
+ *
+ * 通过读取文件前 8KB 字节，检查是否包含 null 字节或大量非文本字符。
+ * 这比仅检查扩展名更准确。
+ */
+async function isBinaryFile(filePath: string): Promise<boolean> {
+  try {
+    const buffer = Buffer.alloc(8192);
+    const fd = await fsPromises.open(filePath, 'r');
+
+    try {
+      const { bytesRead } = await fd.read(buffer, 0, 8192, 0);
+
+      if (bytesRead === 0) {
+        return false; // 空文件视为文本
+      }
+
+      // 检查前 N 个字节
+      const sampleSize = Math.min(bytesRead, 8192);
+      let nullBytes = 0;
+      let nonTextBytes = 0;
+
+      for (let i = 0; i < sampleSize; i++) {
+        const byte = buffer[i];
+
+        // Null 字节几乎总是表明是二进制文件
+        if (byte === 0) {
+          nullBytes++;
+          if (nullBytes > 1) {
+            return true; // 发现多个 null 字节，确定是二进制
+          }
+        }
+
+        // 检查是否是非文本字符（排除常见的控制字符）
+        if (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) {
+          nonTextBytes++;
+        }
+      }
+
+      // 如果超过 30% 的字节是非文本字符，认为是二进制
+      const nonTextRatio = nonTextBytes / sampleSize;
+      return nonTextRatio > 0.3;
+    } finally {
+      await fd.close();
+    }
+  } catch {
+    // 读取失败，保守地视为二进制
+    return true;
+  }
 }
