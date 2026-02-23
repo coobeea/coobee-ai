@@ -48,7 +48,7 @@ async function updateTaskStatus(taskId: string, status: string, result?: unknown
     });
     await fs.writeFile(tasksIndexPath, newLines.join('\n') + '\n', 'utf-8');
   } catch (err) {
-    logger?.error(`[TavernIntegration] Failed to update tasks index for task ${taskId}:`, err);
+    logger?.error?.(`[TavernIntegration] Failed to update tasks index for task ${taskId}:`, err);
   }
 
   return true;
@@ -84,7 +84,7 @@ export default {
           const body = ctx.request.body;
           if (body && body.event === 'external.tavern.task.created' && body.task) {
             const taskObj = body.task as { id: string };
-            logger.info(`[TavernIntegration] Received new task event from worker: ${taskObj.id}`);
+            logger?.info?.(`[TavernIntegration] Received new task event from worker: ${taskObj.id}`);
 
             // 将事件推入系统全局事件总线
             api.events?.emit(body.event as string, body.task);
@@ -96,7 +96,7 @@ export default {
             ctx.body = { ok: false, error: 'Invalid event payload' };
           }
         } catch (err) {
-          logger.error('[TavernIntegration] Error processing webhook event:', err);
+          logger?.error?.('[TavernIntegration] Error processing webhook event:', err);
           ctx.status = 500;
           ctx.body = { ok: false, error: 'Internal Server Error' };
         }
@@ -107,10 +107,10 @@ export default {
     api.registerService({
       id: 'tavern-task-dispatcher',
       start: () => {
-        logger.info('[TavernTaskDispatcher] Started. Listening for tavern tasks.');
+        logger?.info?.('[TavernTaskDispatcher] Started. Listening for tavern tasks.');
         api.events?.on('external.tavern.task.created', async (task: unknown) => {
           const taskObj = task as { id: string; title: string; description: string };
-          logger.info(`[TavernTaskDispatcher] Dispatching task ${taskObj.id} to app-copilot...`);
+          logger?.info?.(`[TavernTaskDispatcher] Dispatching task ${taskObj.id} to app-copilot...`);
 
           try {
             // 直接指定接单的 Agent
@@ -176,7 +176,7 @@ Please analyze this task, use the 'external_tavern_accept_task' tool to accept i
         const { taskId } = params;
         const success = await updateTaskStatus(taskId, 'in-progress');
         if (success) {
-          logger.info(`[TavernIntegration] Agent accepted task ${taskId}`);
+          logger?.info?.(`[TavernIntegration] Agent accepted task ${taskId}`);
           return { success: true, message: `Task ${taskId} accepted successfully.` };
         }
         return { success: false, error: `Task ${taskId} not found or update failed.` };
@@ -206,7 +206,7 @@ Please analyze this task, use the 'external_tavern_accept_task' tool to accept i
         const success = await updateTaskStatus(taskId, 'completed', result);
 
         if (success) {
-          logger.info(`[TavernIntegration] Agent submitted result for task ${taskId}`);
+          logger?.info?.(`[TavernIntegration] Agent submitted result for task ${taskId}`);
           return { success: true, message: `Result for task ${taskId} submitted successfully.` };
         }
         return { success: false, error: `Task ${taskId} not found or update failed.` };

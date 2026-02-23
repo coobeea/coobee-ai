@@ -58,6 +58,21 @@ describe('Tavern Worker E2E 集成测试', () => {
   const testTasksDir = path.join(testTavernDir, 'tasks');
   const testTasksIndex = path.join(testTavernDir, 'tasks.jsonl');
 
+  // Helper: create mock API with logger
+  const createMockApi = (events?: Record<string, unknown>): Record<string, unknown> => ({
+    registerChannel: vi.fn(),
+    registerHttpRoute: vi.fn(),
+    registerService: vi.fn(),
+    registerTool: vi.fn(),
+    events: events || { emit: vi.fn(), on: vi.fn() },
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn()
+    }
+  });
+
   beforeEach(async () => {
     // 清理测试目录
     await fs.rm(testTavernDir, { recursive: true, force: true });
@@ -102,13 +117,7 @@ describe('Tavern Worker E2E 集成测试', () => {
       on: vi.fn()
     };
 
-    const mockApi = {
-      registerChannel: vi.fn(),
-      registerHttpRoute: vi.fn(),
-      registerService: vi.fn(),
-      registerTool: vi.fn(),
-      events: mockEvents
-    };
+    const mockApi = createMockApi(mockEvents);
 
     extension.register(mockApi as never);
 
@@ -195,13 +204,7 @@ describe('Tavern Worker E2E 集成测试', () => {
     const extensionModule = await import('../index');
     const extension = extensionModule.default;
 
-    const mockApi = {
-      registerChannel: vi.fn(),
-      registerHttpRoute: vi.fn(),
-      registerService: vi.fn(),
-      registerTool: vi.fn(),
-      events: { emit: vi.fn(), on: vi.fn() }
-    };
+    const mockApi = createMockApi();
 
     extension.register(mockApi as never);
 
@@ -242,13 +245,7 @@ describe('Tavern Worker E2E 集成测试', () => {
     const extensionModule = await import('../index');
     const extension = extensionModule.default;
 
-    const mockApi = {
-      registerChannel: vi.fn(),
-      registerHttpRoute: vi.fn(),
-      registerService: vi.fn(),
-      registerTool: vi.fn(),
-      events: { emit: vi.fn(), on: vi.fn() }
-    };
+    const mockApi = createMockApi();
 
     extension.register(mockApi as never);
 
@@ -294,13 +291,7 @@ describe('Tavern Worker E2E 集成测试', () => {
       on: vi.fn()
     };
 
-    const mockApi = {
-      registerChannel: vi.fn(),
-      registerHttpRoute: vi.fn(),
-      registerService: vi.fn(),
-      registerTool: vi.fn(),
-      events: mockEvents
-    };
+    const mockApi = createMockApi(mockEvents);
 
     extension.register(mockApi as never);
 
