@@ -1,7 +1,7 @@
 {
   "name": "ocr",
   "label": "图像识别",
-  "enable": false,
+  "enable": true,
   "entry": "server.py",
   "port": 18102,
   "autoStart": false,

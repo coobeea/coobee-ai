@@ -1,120 +1,237 @@
 /**
  * Gateway Brain 方法组
  *
- * 用于前端管理系统查看智库（Brain）的统计信息和内容。
+ * 为前端 UI 提供智库数据访问接口。
+ * 直接从文件系统读取，无需启动 Brain Worker。
  *
- * 架构说明：
- *   - Brain Worker 的 API (localhost:42043) → 供 AI Agent 使用（通过 exec/curl）
- *   - Gateway 的 brain.* 方法 → 供前端管理系统使用
- *   - Gateway 方法会转发请求到 Brain Worker
+ * Brain Worker (localhost:42043) 是给 Agent 用的，Agent 通过 Skill 主动调用。
+ * Gateway brain.* 方法是给前端 UI 用的，直接操作文件系统。
  *
  * 方法：
- *   brain.stats     — 获取智库统计信息（总数、分类统计等）
- *   brain.list      — 列出所有经验包（带分页和筛选）
- *   brain.get       — 获取单个经验包详情
- *   brain.delete    — 删除指定经验包
+ *   brain.stats  — 获取统计信息
+ *   brain.list   — 列出经验包
+ *   brain.get    — 获取经验包详情
+ *   brain.delete — 删除经验包
  */
 
-import { log } from '@main/common/logger';
-import { WorkerManager } from '@main/common/worker';
+import * as fs from 'fs';
+import * as path from 'path';
+import { createLogger } from '@main/common/logger';
+import { Env } from '@main/common/env';
 import { GatewayErrorCode, GatewayMethodError } from '../protocol';
 import type { MethodGroup } from '../protocol';
 
-const BRAIN_WORKER_NAME = 'brain';
-const BRAIN_WORKER_PORT = 42043;
+const log = createLogger('gateway-brain');
 
-/**
- * 检查 Brain Worker 是否就绪
- */
-function checkBrainWorkerReady(): void {
-  const manager = WorkerManager.getInstance();
-  if (!manager.isReady(BRAIN_WORKER_NAME)) {
-    throw new GatewayMethodError(
-      GatewayErrorCode.INTERNAL_ERROR,
-      'Brain Worker 未启动或未就绪。请先启动 Brain Worker。'
-    );
-  }
+// ==================== 类型定义 ====================
+
+interface Pattern {
+  name: string;
+  summary: string;
+  category: string;
+  signals: string[];
+  strategy: string;
 }
 
-/**
- * 转发请求到 Brain Worker
- */
-async function forwardToBrainWorker<T = unknown>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `http://127.0.0.1:${BRAIN_WORKER_PORT}${endpoint}`;
+interface Practice {
+  name: string;
+  summary: string;
+  content: string;
+  confidence: number;
+  outcome: string;
+}
+
+interface Evolution {
+  attempts: Array<{
+    approach: string;
+    outcome: string;
+    success: boolean;
+  }>;
+  outcome: string;
+}
+
+interface Package {
+  package_id: string;
+  pattern: Pattern;
+  practice: Practice;
+  evolution?: Evolution;
+  status: string;
+  usage_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// ==================== 文件系统访问 ====================
+
+function getBrainDir(): string {
+  return path.join(Env.paths.userHome, 'brain');
+}
+
+function getPackagesDir(): string {
+  return path.join(getBrainDir(), 'packages');
+}
+
+function getIndexDir(): string {
+  return path.join(getBrainDir(), 'index');
+}
+
+// ==================== 经验包操作 ====================
+
+function loadPackage(packageId: string): Package | null {
+  const pkgPath = path.join(getPackagesDir(), packageId, 'package.json');
+
+  if (!fs.existsSync(pkgPath)) {
+    return null;
+  }
 
   try {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      },
-      signal: AbortSignal.timeout(10000) // 10秒超时
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      log.error(`[brain] Worker request failed: ${response.status} ${errorText}`);
-      throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, `Brain Worker 请求失败: ${response.statusText}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    if (error instanceof GatewayMethodError) throw error;
-
-    const msg = error instanceof Error ? error.message : String(error);
-    log.error(`[brain] Request to worker failed:`, error);
-    throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, `无法连接到 Brain Worker: ${msg}`);
+    const content = fs.readFileSync(pkgPath, 'utf-8');
+    return JSON.parse(content) as Package;
+  } catch (err) {
+    log.error(`Failed to load package ${packageId}:`, err);
+    return null;
   }
 }
+
+function listPackages(): Package[] {
+  const packagesDir = getPackagesDir();
+
+  if (!fs.existsSync(packagesDir)) {
+    return [];
+  }
+
+  try {
+    const entries = fs.readdirSync(packagesDir, { withFileTypes: true });
+    const packages: Package[] = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const pkg = loadPackage(entry.name);
+      if (pkg) {
+        packages.push(pkg);
+      }
+    }
+
+    return packages;
+  } catch (err) {
+    log.error('Failed to list packages:', err);
+    return [];
+  }
+}
+
+function deletePackage(packageId: string): boolean {
+  const pkgDir = path.join(getPackagesDir(), packageId);
+
+  if (!fs.existsSync(pkgDir)) {
+    return false;
+  }
+
+  try {
+    fs.rmSync(pkgDir, { recursive: true, force: true });
+    log.info(`[brain.delete] Deleted package: ${packageId}`);
+
+    // 从索引中移除（简单实现：重建索引）
+    rebuildIndexes();
+
+    return true;
+  } catch (err) {
+    log.error(`Failed to delete package ${packageId}:`, err);
+    return false;
+  }
+}
+
+function rebuildIndexes(): void {
+  // 简化实现：清空索引文件
+  // Agent 下次发布时会重建索引
+  const indexDir = getIndexDir();
+  if (!fs.existsSync(indexDir)) return;
+
+  try {
+    const indexFiles = ['by-signal.jsonl', 'by-category.jsonl', 'by-status.jsonl'];
+    for (const file of indexFiles) {
+      const filePath = path.join(indexDir, file);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+  } catch (err) {
+    log.error('Failed to rebuild indexes:', err);
+  }
+}
+
+// ==================== 统计信息 ====================
+
+function getStats(): {
+  total: number;
+  byCategory: Record<string, number>;
+  byStatus: Record<string, number>;
+  recentPackages: Array<{ package_id: string; pattern_name: string; created_at: string }>;
+} {
+  const packages = listPackages();
+
+  const stats = {
+    total: packages.length,
+    byCategory: {} as Record<string, number>,
+    byStatus: {} as Record<string, number>,
+    recentPackages: [] as Array<{ package_id: string; pattern_name: string; created_at: string }>
+  };
+
+  // 按类别统计
+  for (const pkg of packages) {
+    const category = pkg.pattern.category;
+    stats.byCategory[category] = (stats.byCategory[category] || 0) + 1;
+  }
+
+  // 按状态统计
+  for (const pkg of packages) {
+    const status = pkg.status;
+    stats.byStatus[status] = (stats.byStatus[status] || 0) + 1;
+  }
+
+  // 最近的包（按创建时间排序，取前 5 个）
+  const sorted = packages.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  stats.recentPackages = sorted.slice(0, 5).map((pkg) => ({
+    package_id: pkg.package_id,
+    pattern_name: pkg.pattern.name,
+    created_at: pkg.created_at
+  }));
+
+  return stats;
+}
+
+// ==================== Gateway 方法组 ====================
 
 export const brainMethods: MethodGroup = {
   namespace: 'brain',
   methods: {
     /**
-     * 获取智库统计信息
-     *
-     * 返回：
-     *   - total: 总经验包数
-     *   - byCategory: 按类别统计（repair/optimize/innovate）
-     *   - byStatus: 按状态统计（candidate/validated/promoted）
-     *   - recentPackages: 最近添加的经验包（最多 10 个）
+     * 获取统计信息
      */
     stats: async () => {
-      checkBrainWorkerReady();
       log.info('[brain.stats] 获取智库统计信息');
 
       try {
-        const response = await forwardToBrainWorker<{ data?: unknown }>('/api/brain/stats', {
-          method: 'GET'
-        });
-
-        return response.data || response;
+        const stats = getStats();
+        return { data: stats };
       } catch (error) {
-        log.error('[brain.stats] 失败:', error);
-        throw error;
+        log.error('[brain.stats] 获取统计信息失败:', error);
+        throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, '获取统计信息失败');
       }
     },
 
     /**
-     * 列出所有经验包
+     * 列出经验包
      *
      * 参数：
-     *   - limit: 每页数量（默认 20）
-     *   - offset: 偏移量（默认 0）
-     *   - category: 类别筛选（repair/optimize/innovate）
-     *   - status: 状态筛选（candidate/validated/promoted）
-     *   - signals: 按触发信号筛选（数组）
-     *
-     * 返回：
-     *   - packages: 经验包列表（摘要信息）
-     *   - total: 总数
-     *   - limit: 每页数量
+     *   - limit: 限制数量
      *   - offset: 偏移量
+     *   - category: 按类别筛选
+     *   - status: 按状态筛选
+     *   - signals: 按信号筛选
      */
     list: async (params) => {
-      checkBrainWorkerReady();
-
       const {
         limit = 20,
         offset = 0,
@@ -129,96 +246,112 @@ export const brainMethods: MethodGroup = {
         signals?: string[];
       };
 
-      log.info(`[brain.list] 列出经验包 (limit=${limit}, offset=${offset})`);
+      log.info('[brain.list] 查询经验包列表', {
+        limit,
+        offset,
+        category,
+        status,
+        signals: signals?.length
+      });
 
       try {
-        const response = await forwardToBrainWorker<{ data?: unknown }>('/api/brain/packages', {
-          method: 'POST',
-          body: JSON.stringify({
-            limit,
-            offset,
-            category,
-            status,
-            signals
-          })
-        });
+        let packages = listPackages();
 
-        return response.data || response;
+        // 按类别筛选
+        if (category) {
+          packages = packages.filter((pkg) => pkg.pattern.category === category);
+        }
+
+        // 按状态筛选
+        if (status) {
+          packages = packages.filter((pkg) => pkg.status === status);
+        }
+
+        // 按信号筛选
+        if (signals && signals.length > 0) {
+          packages = packages.filter((pkg) => signals.some((signal) => pkg.pattern.signals.includes(signal)));
+        }
+
+        // 按创建时间倒序排序
+        packages.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        // 分页
+        const total = packages.length;
+        const paged = packages.slice(offset, offset + limit);
+
+        return {
+          data: {
+            packages: paged,
+            total,
+            limit,
+            offset
+          }
+        };
       } catch (error) {
-        log.error('[brain.list] 失败:', error);
-        throw error;
+        log.error('[brain.list] 查询经验包列表失败:', error);
+        throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, '查询经验包列表失败');
       }
     },
 
     /**
-     * 获取单个经验包详情
+     * 获取经验包详情
      *
      * 参数：
-     *   - packageId: 经验包 ID（必需）
-     *
-     * 返回：
-     *   - package: 完整的经验包（包含 pattern, practice, evolution）
+     *   - packageId: 经验包 ID
      */
     get: async (params) => {
-      checkBrainWorkerReady();
-
       const { packageId } = params as { packageId?: string };
+
       if (!packageId) {
-        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, '缺少参数: packageId');
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'packageId is required');
       }
 
-      log.info(`[brain.get] 获取经验包: ${packageId}`);
+      log.info(`[brain.get] 获取经验包详情: ${packageId}`);
 
       try {
-        const response = await forwardToBrainWorker<{ data?: unknown }>('/api/brain/fetch', {
-          method: 'POST',
-          body: JSON.stringify({
-            message_id: `gateway_${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            payload: { package_id: packageId }
-          })
-        });
+        const pkg = loadPackage(packageId);
 
-        return response.data || response;
+        if (!pkg) {
+          throw new GatewayMethodError(GatewayErrorCode.NOT_FOUND, '经验包不存在');
+        }
+
+        return { data: pkg };
       } catch (error) {
-        log.error(`[brain.get] 获取经验包失败: ${packageId}`, error);
-        throw error;
+        if (error instanceof GatewayMethodError) throw error;
+
+        log.error(`[brain.get] 获取经验包详情失败: ${packageId}`, error);
+        throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, '获取经验包详情失败');
       }
     },
 
     /**
-     * 删除指定经验包
+     * 删除经验包
      *
      * 参数：
-     *   - packageId: 经验包 ID（必需）
-     *
-     * 返回：
-     *   - ok: true
-     *   - packageId: 已删除的经验包 ID
+     *   - packageId: 经验包 ID
      */
     delete: async (params) => {
-      checkBrainWorkerReady();
-
       const { packageId } = params as { packageId?: string };
+
       if (!packageId) {
-        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, '缺少参数: packageId');
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'packageId is required');
       }
 
       log.info(`[brain.delete] 删除经验包: ${packageId}`);
 
       try {
-        const response = await forwardToBrainWorker<{ data?: Record<string, unknown> }>(
-          `/api/brain/packages/${packageId}`,
-          {
-            method: 'DELETE'
-          }
-        );
+        const success = deletePackage(packageId);
 
-        const responseData = response.data || {};
-        return { ok: true, packageId, ...responseData };
+        if (!success) {
+          throw new GatewayMethodError(GatewayErrorCode.NOT_FOUND, '经验包不存在');
+        }
+
+        return { ok: true, packageId };
       } catch (error) {
+        if (error instanceof GatewayMethodError) throw error;
+
         log.error(`[brain.delete] 删除经验包失败: ${packageId}`, error);
-        throw error;
+        throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, '删除经验包失败');
       }
     }
   }

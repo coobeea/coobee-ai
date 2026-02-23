@@ -1,7 +1,7 @@
 {
   "name": "tts",
   "label": "语音合成",
-  "enable": false,
+  "enable": true,
   "entry": "server.py",
   "port": 18101,
   "autoStart": false,

@@ -1,7 +1,7 @@
 {
   "name": "asr",
   "label": "语音识别",
-  "enable": false,
+  "enable": true,
   "entry": "server.py",
   "port": 18100,
   "autoStart": false,
