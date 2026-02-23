@@ -76,6 +76,9 @@ export class WorkspaceFileWatcher {
   /** 是否已启动监听 EventBus */
   private listening = false;
 
+  /** 缓存的 workspacesDir 路径（在 start() 时获取） */
+  private workspacesDir: string | null = null;
+
   /** 保存 bound 函数引用，用于正确移除 EventBus 监听器 */
   private boundHandlers = {
     message: null as ((event: StreamEvent) => Promise<void>) | null,
@@ -112,6 +115,23 @@ export class WorkspaceFileWatcher {
 
     // Initialize dependencies
     await initDeps(logger, bus);
+
+    // 获取并缓存 workspacesDir 路径（避免每次 startWatch 时动态 import）
+    try {
+      const envModule = await import('../../src/main/common/env');
+      const Env = envModule.Env || envModule.default;
+
+      if (!Env || !Env.paths || !Env.paths.workspacesDir) {
+        log.error('[WorkspaceFileWatcher] Failed to get workspacesDir from Env, Extension will not function properly');
+        this.workspacesDir = null;
+      } else {
+        this.workspacesDir = Env.paths.workspacesDir;
+        log.info(`[WorkspaceFileWatcher] Initialized with workspacesDir: ${this.workspacesDir}`);
+      }
+    } catch (err) {
+      log.error('[WorkspaceFileWatcher] Failed to import Env module:', err);
+      this.workspacesDir = null;
+    }
 
     // 创建 bound 函数引用（保证 on/off 使用相同引用）
     this.boundHandlers.message = this.handleStreamMessage.bind(this);
@@ -228,9 +248,13 @@ export class WorkspaceFileWatcher {
       return;
     }
 
-    const envModule = await import('../../src/main/common/env');
-    const Env = envModule.Env || envModule.default;
-    const watchPath = path.join(Env.paths.workspacesDir, threadId);
+    // 使用缓存的 workspacesDir 路径
+    if (!this.workspacesDir) {
+      log.error(`[WorkspaceFileWatcher] workspacesDir not available, cannot start watch for ${threadId}`);
+      return;
+    }
+
+    const watchPath = path.join(this.workspacesDir, threadId);
 
     const watcher = watch(watchPath, {
       ignored: [
