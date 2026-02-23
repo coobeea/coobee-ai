@@ -29,6 +29,11 @@ const router = createRouter({
           component: () => import('@/views/TavernView.vue')
         },
         {
+          path: 'brain',
+          name: 'brain',
+          component: () => import('@/views/BrainView.vue')
+        },
+        {
           path: 'logs',
           name: 'logs',
           component: () => import('@/views/LogViewer.vue')

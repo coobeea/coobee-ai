@@ -39,7 +39,8 @@ const activeMenuId = ref('agent');
 const menuItems: MenuItem[] = [
   { id: 'agent', label: '智能体', icon: 'i-carbon-bot', route: '/agent' },
   { id: 'skills', label: '技能', icon: 'i-carbon-skill-level-advanced', route: '/skills' },
-  { id: 'tavern', label: '酒馆', icon: 'i-carbon-task-star', route: '/tavern' }
+  { id: 'tavern', label: '酒馆', icon: 'i-carbon-task-star', route: '/tavern' },
+  { id: 'brain', label: '智库', icon: 'i-carbon-catalog', route: '/brain' }
 ];
 
 onMounted(() => {
