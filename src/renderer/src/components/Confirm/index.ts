@@ -4,8 +4,13 @@ import ConfirmContainer from './ConfirmContainer.vue';
 import { useConfirmStore } from './store';
 import type { ConfirmAPI } from './types';
 
+let installed = false;
+
 const ConfirmPlugin = {
   install(app: App): void {
+    if (installed) return;
+    installed = true;
+
     app.component('ConfirmContainer', ConfirmContainer);
 
     const confirmStore = useConfirmStore();
