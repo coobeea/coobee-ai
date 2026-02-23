@@ -48,10 +48,18 @@ export const useChatStore = defineStore('chat', () => {
 
   // ---- 对外 Actions ----
 
-  async function sendMessage(text: string): Promise<void> {
+  async function sendMessage(text: string, files?: { path: string; name: string }[]): Promise<void> {
     if (!text.trim() || isStreaming.value) return;
 
+    // 显示给用户的消息（只显示原始文本，不显示文件路径）
     addUserMessage(text);
+
+    // 发送给 Agent 的消息（包含文件引用）
+    let finalMessage = text;
+    if (files && files.length > 0) {
+      const fileList = files.map((f) => `- ${f.path} (${f.name})`).join('\n');
+      finalMessage = `${text}\n\n[附件]\n${fileList}`;
+    }
 
     try {
       let agentId: string | undefined;
@@ -86,7 +94,7 @@ export const useChatStore = defineStore('chat', () => {
         error?: string;
         queuePosition?: number;
       }>('chat.send', {
-        message: text,
+        message: finalMessage,
         sessionId: oldSessionId,
         mode,
         ...(agentId ? { agentId } : {})

@@ -54,9 +54,8 @@ async function handleSend(data: { text: string; files: { path: string; name: str
   // 用户发送消息 → 强制滚到底部（要看回复）
   scrollToBottom(true);
 
-  // TODO: 将 files 数据传递给后端
-  // 目前先只发送文本，后续需要扩展 sendMessage 接口支持文件引用
-  await chatStore.sendMessage(data.text);
+  // 将文件引用传递给后端
+  await chatStore.sendMessage(data.text, data.files);
 }
 
 async function handleStop(): Promise<void> {
