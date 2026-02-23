@@ -239,9 +239,27 @@ export async function executeToolPipeline(
   // 只有 exec 工具需要通过 ExecPolicy 审批
   if (def.name === 'exec' && params.command) {
     try {
+      // 1. 读取全局审批策略配置
+      let execApproval: 'auto' | 'always' | 'never' = 'auto';
+      try {
+        const { configStoreInstance } = await import('../../../common/config/ConfigStore');
+        if (configStoreInstance) {
+          const security = configStoreInstance.get('security');
+          execApproval = security?.approvals?.exec ?? 'auto';
+        }
+      } catch {
+        // ConfigStore 未初始化时使用默认值 'auto'
+      }
+
+      log.info(
+        `[ToolPipeline] Exec approval policy: ${execApproval}, command: "${String(params.command).slice(0, 50)}"`
+      );
+
+      // 2. 检查命令本身的安全性
       const { checkExecPolicy } = await import('../../sandbox/exec-policy');
       const policy = checkExecPolicy(params.command as string);
 
+      // 2.1 黑名单命令始终拒绝（不受 approvals 配置影响）
       if (policy.action === 'deny') {
         log.warn(`[ToolPipeline] ExecPolicy deny: "${String(params.command).slice(0, 50)}", reason=${policy.reason}`);
         return {
@@ -252,15 +270,29 @@ export async function executeToolPipeline(
         };
       }
 
-      // policy.action === 'allow' → 自动放行，跳过审批
-      if (policy.action === 'allow') {
-        log.info(`[ToolPipeline] ExecPolicy allow: "${String(params.command).slice(0, 50)}"`);
+      // 3. 根据全局策略和命令安全性决定是否审批
+      // 3.1 execApproval = 'never' → 跳过所有审批（除非黑名单）
+      if (execApproval === 'never') {
+        log.info(`[ToolPipeline] ExecApproval=never: skip approval for "${String(params.command).slice(0, 50)}"`);
         // 继续执行，不需要审批
       }
-
-      // policy.action === 'ask' → 需要用户审批
-      if (policy.action === 'ask') {
+      // 3.2 execApproval = 'always' → 强制审批（即使白名单命令）
+      else if (execApproval === 'always') {
+        log.info(`[ToolPipeline] ExecApproval=always: force approval for "${String(params.command).slice(0, 50)}"`);
         return await requestUserApproval(sessionId, def.name, typedParams, def, opts);
+      }
+      // 3.3 execApproval = 'auto' → 根据命令安全性决定
+      else {
+        // policy.action === 'allow' → 白名单命令，自动放行
+        if (policy.action === 'allow') {
+          log.info(`[ToolPipeline] ExecPolicy allow: "${String(params.command).slice(0, 50)}"`);
+          // 继续执行，不需要审批
+        }
+        // policy.action === 'ask' → 未知命令，需要用户审批
+        else if (policy.action === 'ask') {
+          log.info(`[ToolPipeline] ExecPolicy ask: "${String(params.command).slice(0, 50)}", requesting approval`);
+          return await requestUserApproval(sessionId, def.name, typedParams, def, opts);
+        }
       }
     } catch (error) {
       log.warn(`[ToolPipeline] ExecPolicy check failed for ${def.name}:`, error);
@@ -323,10 +355,9 @@ export function resetApprovalCounter(sessionId: string): void {
  * 获取并递增会话的审批计数器（保证原子性）
  */
 async function getNextApprovalIndex(sessionId: string): Promise<number> {
-   
   await approvalCounterMutex;
   let release: () => void;
-   
+
   approvalCounterMutex = new Promise<void>((resolve) => {
     release = resolve;
   });
