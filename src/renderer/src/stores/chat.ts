@@ -51,14 +51,14 @@ export const useChatStore = defineStore('chat', () => {
   async function sendMessage(text: string, files?: { path: string; name: string }[]): Promise<void> {
     if (!text.trim() || isStreaming.value) return;
 
-    // 显示给用户的消息（只显示原始文本，不显示文件路径）
+    // 显示给用户的消息（只显示原始文本）
     addUserMessage(text);
 
-    // 发送给 Agent 的消息（包含文件引用）
+    // 发送给 Agent 的消息（追加文件路径）
     let finalMessage = text;
     if (files && files.length > 0) {
-      const fileList = files.map((f) => `- ${f.path} (${f.name})`).join('\n');
-      finalMessage = `${text}\n\n[附件]\n${fileList}`;
+      const filePaths = files.map((f) => `@${f.path}`).join(' ');
+      finalMessage = `${text} ${filePaths}`;
     }
 
     try {
