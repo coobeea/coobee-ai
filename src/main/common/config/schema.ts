@@ -47,6 +47,8 @@ export const ProviderWebsitesSchema = z.object({
   models: z.string().optional()
 });
 
+export const BillingModeSchema = z.enum(['pay-as-you-go', 'subscription']);
+
 export const ProviderConfigSchema = z.object({
   id: z.string().optional(),
   name: z.string().optional(),
@@ -57,7 +59,8 @@ export const ProviderConfigSchema = z.object({
   headers: z.record(z.string(), z.string()).optional(),
   models: z.array(ModelConfigSchema),
   enabled: z.boolean().optional().default(true),
-  websites: ProviderWebsitesSchema.optional()
+  websites: ProviderWebsitesSchema.optional(),
+  billingMode: BillingModeSchema.optional().default('pay-as-you-go')
 });
 
 // ─── 模型选择 ───────────────────────────────────────

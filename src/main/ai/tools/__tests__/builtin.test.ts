@@ -53,10 +53,11 @@ vi.mock('node:fs/promises', () => ({
   readFile: vi.fn(),
   writeFile: vi.fn(),
   mkdir: vi.fn(),
-  stat: vi.fn()
+  stat: vi.fn(),
+  open: vi.fn()
 }));
 
-import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, stat, open } from 'node:fs/promises';
 import { readTool, writeTool, editTool, execTool, builtinTools } from '../builtin';
 import { ProcessRegistry } from '../../process/ProcessRegistry';
 import { resolveSandboxPath } from '../../sandbox';
@@ -87,6 +88,13 @@ async function consumeGenerator(
 describe('readTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Mock open() 返回假的 file handle（用于 isBinaryFile 检测）
+    const mockFileHandle = {
+      read: vi.fn().mockResolvedValue({ bytesRead: 0 }),
+      close: vi.fn().mockResolvedValue(undefined)
+    };
+    vi.mocked(open).mockResolvedValue(mockFileHandle as never);
   });
 
   // --- 元数据 ---
@@ -197,7 +205,7 @@ describe('readTool', () => {
 
   describe('分页读取', () => {
     it('支持 offset/limit 分页读取', async () => {
-      vi.mocked(stat).mockResolvedValue({ isFile: () => true } as never);
+      vi.mocked(stat).mockResolvedValue({ isFile: () => true, size: 100 } as never);
       vi.mocked(readFile).mockResolvedValue('a\nb\nc\nd\ne');
 
       const { result } = await consumeGenerator(
@@ -213,7 +221,7 @@ describe('readTool', () => {
     });
 
     it('offset 超出文件行数返回空内容', async () => {
-      vi.mocked(stat).mockResolvedValue({ isFile: () => true } as never);
+      vi.mocked(stat).mockResolvedValue({ isFile: () => true, size: 100 } as never);
       vi.mocked(readFile).mockResolvedValue('only one line');
 
       const { result } = await consumeGenerator(
@@ -225,7 +233,7 @@ describe('readTool', () => {
     });
 
     it('offset 为 0 或负数时默认为 1', async () => {
-      vi.mocked(stat).mockResolvedValue({ isFile: () => true } as never);
+      vi.mocked(stat).mockResolvedValue({ isFile: () => true, size: 100 } as never);
       vi.mocked(readFile).mockResolvedValue('line1\nline2');
 
       const { result } = await consumeGenerator(
@@ -237,7 +245,7 @@ describe('readTool', () => {
     });
 
     it('limit 为 0 时使用默认值', async () => {
-      vi.mocked(stat).mockResolvedValue({ isFile: () => true } as never);
+      vi.mocked(stat).mockResolvedValue({ isFile: () => true, size: 100 } as never);
       vi.mocked(readFile).mockResolvedValue('a\nb\nc');
 
       const { result } = await consumeGenerator(
@@ -250,7 +258,7 @@ describe('readTool', () => {
     });
 
     it('有前后截断提示', async () => {
-      vi.mocked(stat).mockResolvedValue({ isFile: () => true } as never);
+      vi.mocked(stat).mockResolvedValue({ isFile: () => true, size: 100 } as never);
       vi.mocked(readFile).mockResolvedValue('a\nb\nc\nd\ne');
 
       const { result } = await consumeGenerator(
@@ -297,7 +305,16 @@ describe('readTool', () => {
     });
 
     it('其他读取错误', async () => {
-      vi.mocked(stat).mockResolvedValue({ isFile: () => true } as never);
+      vi.mocked(stat).mockResolvedValue({ isFile: () => true, size: 1000 } as never);
+      // Mock open().read() 返回文本内容（非二进制），但 readFile 抛出错误
+      const mockFileHandle = {
+        read: vi.fn().mockResolvedValue({
+          bytesRead: 5,
+          buffer: Buffer.from('hello')
+        }),
+        close: vi.fn().mockResolvedValue(undefined)
+      };
+      vi.mocked(open).mockResolvedValue(mockFileHandle as never);
       vi.mocked(readFile).mockRejectedValue(new Error('Disk read error'));
 
       const { result } = await consumeGenerator(
@@ -331,7 +348,7 @@ describe('readTool', () => {
 
   describe('流式输出', () => {
     it('至少有 progress 和 output 类型的更新', async () => {
-      vi.mocked(stat).mockResolvedValue({ isFile: () => true } as never);
+      vi.mocked(stat).mockResolvedValue({ isFile: () => true, size: 100 } as never);
       vi.mocked(readFile).mockResolvedValue('content');
 
       const { updates } = await consumeGenerator(readTool.execute({ path: '/tmp/test.txt' }, undefined, tmpContext));
@@ -341,7 +358,7 @@ describe('readTool', () => {
     });
 
     it('progress 更新包含百分比', async () => {
-      vi.mocked(stat).mockResolvedValue({ isFile: () => true } as never);
+      vi.mocked(stat).mockResolvedValue({ isFile: () => true, size: 100 } as never);
       vi.mocked(readFile).mockResolvedValue('content');
 
       const { updates } = await consumeGenerator(readTool.execute({ path: '/tmp/test.txt' }, undefined, tmpContext));
