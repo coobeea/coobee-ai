@@ -153,12 +153,8 @@ export class WorkerMetricsCollector {
         lastHealthCheck: this.currentMetrics.lastHealthCheck
       };
 
-      // 指标已收集，仅在 verbose 级别输出（避免控制台噪音）
-      log.verbose(
-        `[${this.workerName}] Metrics: CPU=${this.currentMetrics.cpuPercent}%, ` +
-          `MEM=${this.formatBytes(this.currentMetrics.memoryBytes)}, ` +
-          `Uptime=${this.currentMetrics.uptimeSeconds}s`
-      );
+      // Metrics 数据已存储在 currentMetrics 中，可通过 getMetrics() 获取
+      // 不需要每 5 秒打印到控制台
     } catch (err) {
       log.error(`[${this.workerName}] Failed to collect metrics:`, err);
     }
