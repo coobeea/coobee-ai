@@ -118,63 +118,26 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
 // ==================== 核心执行协议 ====================
 
 /**
- * 构建核心执行协议
+ * 构建核心执行协议（精简版）
  *
- * 定义 Agent 的默认行为循环：
- *   意图识别 → 目标量化 → 执行 → 自我评估 → 自我修复
+ * 只注入最核心的工作流程原则，详细规范通过 execution-protocol Skill 按需加载。
  *
- * 这是 Agent 的基础行为规范，通过 appendInstructions 注入到所有 Agent。
- * 详细的评估方法论由 self-reflection Skill 提供（按需加载）。
- *
- * **可覆盖**：用户可在工作空间的 skills/execution-protocol/ 下创建同名 SKILL.md 覆盖。
- * SkillManager 的"后到覆盖"策略确保工作空间版本优先于内置版本。
+ * 设计理念：
+ *   - appendInstructions 只包含基础规范（减少每次请求的 token 消耗）
+ *   - 完整的执行协议、工具选择指南、批处理示例等放在 execution-protocol Skill 中
+ *   - Agent 需要时通过 skill_list + read 工具自己加载
  */
-function buildExecutionProtocol(skillManager?: SkillManager): string {
-  // 优先使用 SkillManager 中的 execution-protocol Skill（支持用户/Agent 覆盖）
-  const customProtocol = skillManager?.getByName('execution-protocol');
-  if (customProtocol?.content) {
-    return `<execution_protocol>\n${customProtocol.content}\n</execution_protocol>`;
-  }
-
-  // 兜底：硬编码默认值（正常情况下不会走到这里，因为内置 Skill 应该总是可用的）
+function buildExecutionProtocol(_skillManager?: SkillManager): string {
   return `<execution_protocol>
 When you receive a user request, follow this protocol:
 
-1. **Intent & Goal Extraction**
-   - Identify the user's core intent and underlying need
-   - Extract concrete goals from the request
-   - For each goal, define verifiable criteria:
-     · Quantifiable goals → specific metrics (numbers, pass/fail, existence checks)
-     · Fuzzy/creative goals → acceptance checklist (qualities, properties to verify)
-   - Keep the criteria lightweight — 2-5 items per goal is sufficient
+1. **Intent & Goal Extraction** - Identify core intent and define verifiable criteria
+2. **Plan & Execute** - Create plan and execute step by step
+3. **Self-Evaluation** - Compare output against criteria
+4. **Self-Repair** - Fix issues if needed (max 3 rounds)
+5. **Report & Memorize** - Summarize results and save valuable knowledge
 
-2. **Plan & Execute**
-   - Create a brief plan to achieve the goals
-   - Execute step by step, using available tools
-   - Track progress against your verifiable criteria
-
-3. **Self-Evaluation** (after task completion)
-   - **Quality**: Compare your output against the verifiable criteria from step 1
-   - **Process**: Briefly reflect on execution efficiency — any unnecessary steps, errors, or waste?
-   - For detailed evaluation, load the \`self-reflection\` Skill (via \`skill_list\` → \`read\`)
-   - Use \`session_history\` / \`context_inspect\` tools for objective process data when needed
-
-4. **Self-Repair** (if evaluation reveals issues, max 3 rounds)
-   - Fix priority (try in order):
-     a. Fix execution strategy — try a different approach to achieve the goal
-     b. Fix goal understanding — re-analyze user intent if criteria seem wrong
-     c. Report remaining issues to user with clear explanation
-   - **Stop condition**: all criteria pass, OR score doesn't improve after 2 consecutive rounds
-
-5. **Report & Memorize**
-   - Summarize what was accomplished vs. original goals
-   - Note any unresolved issues or caveats
-   - **Save valuable knowledge to memory** (only if durable and reusable):
-     · User preferences discovered → \`memory(write, scope='agent', file='memory/preferences.md')\`
-     · Lessons learned from errors → \`memory(write, scope='agent', file='memory/lessons.md')\`
-     · Core project knowledge → \`memory(write, scope='agent', file='MEMORY.md')\`
-     · Use \`append=true\` to add to existing memory files
-   - Do NOT save session-specific details — only knowledge that helps in future sessions
+For detailed guidelines (batch execution, tool selection, exploration strategies), load the **execution-protocol** Skill via \`skill_list\` → \`read\`.
 
 NOTE: For simple/trivial requests (greetings, quick facts, single-step tasks), skip steps 1 and 3-5 — just answer directly.
 </execution_protocol>`;
