@@ -23,12 +23,12 @@ export {
   execTool,
   processTool,
   memoryTool,
-  sessionStatusTool,
-  sessionHistoryTool,
-  contextInspectTool,
+  searchTool,
+  globTool,
   skillListTool,
   delegateToAgentTool,
-  taskPlanTool
+  taskPlanTool,
+  todoWriteTool
 } from './builtin';
 
 // 工具注册表

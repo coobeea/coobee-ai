@@ -19,12 +19,7 @@ import { processTool } from './process';
 import { memoryTool } from './memory';
 import { searchTool } from './search';
 import { globTool } from './glob';
-import { sessionStatusTool } from './session_status';
-import { sessionHistoryTool } from './session_history';
-import { contextInspectTool } from './context_inspect';
 import { skillListTool } from './skill_list';
-import { configPatchTool } from './config_patch';
-import { configGetTool } from './config_get';
 import { delegateToAgentTool } from './delegate-to-agent';
 import { taskPlanTool } from './task-plan';
 import { todoWriteTool } from './todo-write';
@@ -38,12 +33,7 @@ export { processTool } from './process';
 export { memoryTool } from './memory';
 export { searchTool } from './search';
 export { globTool } from './glob';
-export { sessionStatusTool } from './session_status';
-export { sessionHistoryTool } from './session_history';
-export { contextInspectTool } from './context_inspect';
 export { skillListTool } from './skill_list';
-export { configPatchTool } from './config_patch';
-export { configGetTool } from './config_get';
 export { delegateToAgentTool } from './delegate-to-agent';
 export { taskPlanTool } from './task-plan';
 export { todoWriteTool } from './todo-write';
@@ -61,22 +51,19 @@ export { todoWriteTool } from './todo-write';
  *   process        — 管理后台进程，中风险
  *   --- 记忆 ---
  *   memory         — 记忆管理，低风险
- *   --- 可观测性 ---
- *   session_status  — 会话状态，低风险
- *   session_history — 对话历史，低风险
- *   context_inspect — 上下文查看，低风险
  *   --- 搜索 ---
  *   search          — 文件内容搜索，低风险
  *   glob            — 文件名搜索，低风险
  *   --- 发现 ---
  *   skill_list      — Skill 发现，低风险
- *   --- 配置 ---
- *   config_get      — 查看应用配置，低风险
- *   config_patch    — 修改应用配置，中风险
  *   --- Agent 管理 ---
  *   delegate_to_agent   — 委托子任务给专业 Agent，中风险
  *   task_plan           — 任务计划管理，低风险
  *   todo_write          — 会话级 TODO 管理，低风险
+ *
+ * 已迁移到 Skills：
+ *   - session_status, session_history, context_inspect → observability Skill
+ *   - config_get, config_patch → config-manager Skill
  */
 export const builtinTools: ToolDefinition[] = [
   readTool,
@@ -87,12 +74,7 @@ export const builtinTools: ToolDefinition[] = [
   memoryTool,
   searchTool,
   globTool,
-  sessionStatusTool,
-  sessionHistoryTool,
-  contextInspectTool,
   skillListTool,
-  configGetTool,
-  configPatchTool,
   delegateToAgentTool,
   taskPlanTool,
   todoWriteTool

@@ -1,11 +1,12 @@
 /**
  * R4 改进路线图测试
  *
- * 覆盖 08-verified-improvement-roadmap.md 中 S-1 ~ M-4 的改进：
- *   - S-1: context_inspect 路径穿越修复
+ * 覆盖 08-verified-improvement-roadmap.md 中的改进：
  *   - H-2: search / glob 工具
  *   - H-3: exec 安全兜底
  *   - M-1: memory 路径统一到 path-guard
+ *
+ * 注：S-1 (context_inspect) 已迁移为 observability Skill
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -34,7 +35,6 @@ vi.mock('@main/common/env', () => ({
 
 // ========== 工具引入 ==========
 
-import { contextInspectTool } from '../builtin/context_inspect';
 import { searchTool } from '../builtin/search';
 import { globTool } from '../builtin/glob';
 import { execTool } from '../builtin/exec';
@@ -69,69 +69,6 @@ describe('R4 Improvements', () => {
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  // ==============================================
-  // S-1: context_inspect 路径穿越修复
-  // ==============================================
-  describe('S-1: context_inspect path traversal fix', () => {
-    it('正常文件名可以正常读取', async () => {
-      const contextsDir = path.join(tmpDir, 'contexts');
-      fs.mkdirSync(contextsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(contextsDir, 'test.json'),
-        JSON.stringify({ config: { model: 'test' }, userMessage: 'ok' })
-      );
-
-      const gen = contextInspectTool.execute({ filename: 'test.json' }, undefined, makeContext(tmpDir));
-      const { result } = await consumeGenerator(gen);
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toContain('Context Snapshot');
-    });
-
-    it('路径穿越 ../../etc/passwd 被拦截', async () => {
-      const contextsDir = path.join(tmpDir, 'contexts');
-      fs.mkdirSync(contextsDir, { recursive: true });
-
-      const gen = contextInspectTool.execute({ filename: '../../etc/passwd' }, undefined, makeContext(tmpDir));
-      const { result } = await consumeGenerator(gen);
-      expect(result.success).toBe(false);
-      expect(result.llmContent).toContain('outside the allowed workspace');
-    });
-
-    it('路径穿越 ../../../etc/shadow.json 被拦截', async () => {
-      const contextsDir = path.join(tmpDir, 'contexts');
-      fs.mkdirSync(contextsDir, { recursive: true });
-
-      const gen = contextInspectTool.execute({ filename: '../../../etc/shadow' }, undefined, makeContext(tmpDir));
-      const { result } = await consumeGenerator(gen);
-      expect(result.success).toBe(false);
-      // 应该被 path-guard 拦截
-      expect(result.llmContent).toContain('outside');
-    });
-
-    it('绝对路径 /etc/passwd 被拦截', async () => {
-      const contextsDir = path.join(tmpDir, 'contexts');
-      fs.mkdirSync(contextsDir, { recursive: true });
-
-      const gen = contextInspectTool.execute({ filename: '/etc/passwd.json' }, undefined, makeContext(tmpDir));
-      const { result } = await consumeGenerator(gen);
-      expect(result.success).toBe(false);
-    });
-
-    it('latest 快捷方式仍然正常工作', async () => {
-      const contextsDir = path.join(tmpDir, 'contexts');
-      fs.mkdirSync(contextsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(contextsDir, '2026-02-14T10-00-00.json'),
-        JSON.stringify({ config: { model: 'latest-model' }, userMessage: 'hi' })
-      );
-
-      const gen = contextInspectTool.execute({ filename: 'latest' }, undefined, makeContext(tmpDir));
-      const { result } = await consumeGenerator(gen);
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toContain('latest-model');
-    });
   });
 
   // ==============================================
