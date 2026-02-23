@@ -32,6 +32,7 @@ const onCopyToDir = inject<((sourcePath: string, targetDir: string) => Promise<v
   undefined
 );
 const onUploadFile = inject<((file: File, targetDir: string) => Promise<void>) | undefined>('uploadFile', undefined);
+const onDeleteNode = inject<((nodePath: string) => Promise<void>) | undefined>('deleteNode', undefined);
 
 // 右键菜单状态
 const menuVisible = ref(false);
@@ -75,6 +76,14 @@ async function copyPath(): Promise<void> {
     } catch (err) {
       console.error('[FileTreeNode] 复制失败:', err);
     }
+  }
+  menuVisible.value = false;
+}
+
+// 删除文件/目录
+async function deleteNode(): Promise<void> {
+  if (contextNode.value && onDeleteNode) {
+    await onDeleteNode(contextNode.value.path);
   }
   menuVisible.value = false;
 }
@@ -259,6 +268,10 @@ function getFileIcon(name: string): string {
       <ContextMenuItem @click="copyPath">
         <span class="i-carbon-copy inline-block h-3.5 w-3.5" />
         <span>复制路径</span>
+      </ContextMenuItem>
+      <ContextMenuItem v-if="onDeleteNode" @click="deleteNode">
+        <span class="i-carbon-trash-can inline-block h-3.5 w-3.5 text-red-500" />
+        <span class="text-red-500">删除</span>
       </ContextMenuItem>
     </ContextMenu>
   </div>

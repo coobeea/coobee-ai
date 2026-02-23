@@ -400,6 +400,56 @@ export function registerFileRoutes(router: Router): void {
     }
   });
 
+  // ==================== DELETE ====================
+  router.post('/files/delete', async (ctx) => {
+    const body = ctx.request.body as { path?: string } | undefined;
+    const targetPath = body?.path;
+
+    if (!targetPath) {
+      ctx.status = 400;
+      ctx.body = { error: 'path is required' };
+      return;
+    }
+
+    const { Env } = await import('@main/common/env');
+    const workspacesDir = Env.paths.workspacesDir;
+
+    // 验证路径安全
+    if (!isPathSafe(targetPath, workspacesDir)) {
+      ctx.status = 400;
+      ctx.body = { error: 'Invalid path: directory traversal not allowed' };
+      return;
+    }
+
+    try {
+      // 检查路径是否存在
+      const exists = await fs.promises
+        .stat(targetPath)
+        .then(() => true)
+        .catch(() => false);
+
+      if (!exists) {
+        ctx.status = 404;
+        ctx.body = { error: 'Path not found' };
+        return;
+      }
+
+      // 删除文件或目录（递归）
+      await fs.promises.rm(targetPath, { recursive: true, force: true });
+
+      log.info(`[files.delete] 删除成功: ${targetPath}`);
+
+      ctx.body = {
+        success: true,
+        path: targetPath
+      };
+    } catch (err) {
+      log.error('[files.delete] Error:', err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   log.info('[files] HTTP routes registered');
 }
 

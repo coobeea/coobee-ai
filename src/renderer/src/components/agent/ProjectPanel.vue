@@ -97,6 +97,31 @@ async function handleUploadFile(file: File, targetDir: string): Promise<void> {
   await uploadFileToWorkspace(file, targetDir);
 }
 
+// 删除文件/目录
+async function handleDeleteNode(nodePath: string): Promise<void> {
+  try {
+    const url = `${BASE_URL}/delete`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: nodePath })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('[ProjectPanel] 删除失败:', (data as { error?: string }).error);
+      return;
+    }
+
+    console.log('[ProjectPanel] 删除成功:', data);
+    // 刷新文件树，保持展开状态
+    await loadTree(false);
+  } catch (err) {
+    console.error('[ProjectPanel] 删除错误:', err);
+  }
+}
+
 // 处理粘贴事件（Cmd+V / Ctrl+V）
 async function handlePaste(event: KeyboardEvent): Promise<void> {
   // 检查是否是 Cmd+V (Mac) 或 Ctrl+V (Windows/Linux)
@@ -160,6 +185,7 @@ provide('openFile', handleOpenFile);
 provide('selectedPath', selectedPath);
 provide('copyToDir', handleCopyToDir);
 provide('uploadFile', handleUploadFile);
+provide('deleteNode', handleDeleteNode);
 
 async function selectDirectory(): Promise<void> {
   try {
