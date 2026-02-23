@@ -17,6 +17,13 @@ export interface OpenFile {
   isTooLarge?: boolean;
   error?: string;
   size?: number;
+  // 分块加载相关
+  chunked?: boolean;
+  offset?: number;
+  limit?: number;
+  totalLines?: number;
+  hasMore?: boolean;
+  loadingMore?: boolean;
 }
 
 const openFiles = ref<OpenFile[]>([]);
@@ -27,27 +34,67 @@ const activeFile = computed(() => openFiles.value.find((f) => f.path === activeF
 const BASE_URL = `${configManager.getBaseUrl()}/gateway/files`;
 
 async function fetchFileContent(
-  filePath: string
-): Promise<{ content: string; language: string; name: string; size?: number; isTooLarge?: boolean; error?: string }> {
-  const url = `${BASE_URL}/content?path=${encodeURIComponent(filePath)}`;
+  filePath: string,
+  offset?: number,
+  limit?: number
+): Promise<{
+  content: string;
+  language: string;
+  name: string;
+  size?: number;
+  chunked?: boolean;
+  offset?: number;
+  limit?: number;
+  totalLines?: number;
+  hasMore?: boolean;
+  error?: string;
+}> {
+  let url = `${BASE_URL}/content?path=${encodeURIComponent(filePath)}`;
+  if (offset !== undefined) {
+    url += `&offset=${offset}`;
+  }
+  if (limit !== undefined) {
+    url += `&limit=${limit}`;
+  }
+
   const res = await fetch(url);
   const data = await res.json();
 
-  // 文件太大（413 错误）
+  // 文件太大（413 错误 - 旧逻辑，现在不应该出现）
   if (res.status === 413) {
     return {
       content: '',
       language: 'plaintext',
       name: filePath.split('/').pop() || filePath,
-      isTooLarge: true,
       error: (data as { error?: string }).error || '文件过大'
+    };
+  }
+
+  // 二进制文件（415 错误）
+  if (res.status === 415) {
+    return {
+      content: '',
+      language: 'plaintext',
+      name: filePath.split('/').pop() || filePath,
+      error: (data as { error?: string }).error || '不支持的文件类型'
     };
   }
 
   if (!res.ok) {
     throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
   }
-  return data as { content: string; language: string; name: string; size?: number };
+
+  return data as {
+    content: string;
+    language: string;
+    name: string;
+    size?: number;
+    chunked?: boolean;
+    offset?: number;
+    limit?: number;
+    totalLines?: number;
+    hasMore?: boolean;
+  };
 }
 
 function openFile(filePath: string): void {
@@ -77,8 +124,12 @@ function openFile(filePath: string): void {
       target.language = data.language;
       target.name = data.name;
       target.size = data.size;
-      target.isTooLarge = data.isTooLarge;
       target.error = data.error;
+      target.chunked = data.chunked;
+      target.offset = data.offset ?? 0;
+      target.limit = data.limit;
+      target.totalLines = data.totalLines;
+      target.hasMore = data.hasMore;
       target.loading = false;
     })
     .catch((err) => {
@@ -88,6 +139,33 @@ function openFile(filePath: string): void {
       target.language = 'plaintext';
       target.loading = false;
     });
+}
+
+/**
+ * 加载更多内容（用于大文件分块加载）
+ */
+async function loadMoreContent(filePath: string): Promise<void> {
+  const file = openFiles.value.find((f) => f.path === filePath);
+  if (!file || !file.chunked || !file.hasMore || file.loadingMore) {
+    return;
+  }
+
+  file.loadingMore = true;
+
+  try {
+    const nextOffset = (file.offset ?? 0) + (file.limit ?? 10000);
+    const data = await fetchFileContent(filePath, nextOffset, file.limit);
+
+    // 追加内容
+    file.content += '\n' + data.content;
+    file.offset = nextOffset;
+    file.hasMore = data.hasMore;
+    file.totalLines = data.totalLines;
+  } catch (err) {
+    console.error('[useOpenFiles] 加载更多失败:', err);
+  } finally {
+    file.loadingMore = false;
+  }
 }
 
 function closeFile(filePath: string): void {
@@ -123,6 +201,7 @@ export function useOpenFiles(): {
   closeFile: typeof closeFile;
   closeAllFiles: typeof closeAllFiles;
   activateFile: typeof activateFile;
+  loadMoreContent: typeof loadMoreContent;
 } {
   return {
     openFiles,
@@ -131,6 +210,7 @@ export function useOpenFiles(): {
     openFile,
     closeFile,
     closeAllFiles,
-    activateFile
+    activateFile,
+    loadMoreContent
   };
 }

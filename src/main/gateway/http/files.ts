@@ -139,10 +139,13 @@ export function registerFileRoutes(router: Router): void {
 
   // ==================== CONTENT ====================
 
-  const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+  const CHUNK_SIZE_LINES = 10000; // 每次加载 10000 行
+  const SMALL_FILE_THRESHOLD = 10 * 1024 * 1024; // 10MB（小于此值一次性加载）
 
   router.get('/files/content', async (ctx) => {
     const filePath = ctx.query.path as string | undefined;
+    const offsetStr = ctx.query.offset as string | undefined;
+    const limitStr = ctx.query.limit as string | undefined;
 
     if (!filePath) {
       ctx.status = 400;
@@ -168,21 +171,68 @@ export function registerFileRoutes(router: Router): void {
         return;
       }
 
-      if (stat.size > MAX_FILE_SIZE) {
-        ctx.status = 413;
-        ctx.body = { error: `File too large (${(stat.size / 1024 / 1024).toFixed(1)}MB). Max: 2MB` };
+      const ext = path.extname(filePath).slice(1).toLowerCase();
+
+      // 检查是否是二进制文件（简单判断）
+      if (isBinaryFile(ext)) {
+        ctx.status = 415;
+        ctx.body = { error: 'Binary files are not supported for preview' };
         return;
       }
 
-      const content = await fs.promises.readFile(filePath, 'utf-8');
-      const ext = path.extname(filePath).slice(1).toLowerCase();
+      // 如果指定了 offset/limit，返回分块内容
+      if (offsetStr !== undefined || limitStr !== undefined) {
+        const offset = parseInt(offsetStr || '0', 10);
+        const limit = parseInt(limitStr || String(CHUNK_SIZE_LINES), 10);
+
+        const { content, totalLines, hasMore } = await readFileChunk(filePath, offset, limit);
+
+        ctx.body = {
+          path: filePath,
+          name: path.basename(filePath),
+          size: stat.size,
+          language: extToLanguage(ext),
+          content,
+          chunked: true,
+          offset,
+          limit,
+          totalLines,
+          hasMore
+        };
+        return;
+      }
+
+      // 小文件：直接返回全部内容
+      if (stat.size < SMALL_FILE_THRESHOLD) {
+        const content = await fs.promises.readFile(filePath, 'utf-8');
+
+        ctx.body = {
+          path: filePath,
+          name: path.basename(filePath),
+          size: stat.size,
+          language: extToLanguage(ext),
+          content,
+          chunked: false
+        };
+        return;
+      }
+
+      // 大文件（>= 10MB）：返回前 N 行 + 元信息
+      log.info(`[files.content] 大文件分块加载: ${filePath} (${(stat.size / 1024 / 1024).toFixed(1)}MB)`);
+
+      const { content, totalLines, hasMore } = await readFileChunk(filePath, 0, CHUNK_SIZE_LINES);
 
       ctx.body = {
         path: filePath,
         name: path.basename(filePath),
         size: stat.size,
         language: extToLanguage(ext),
-        content
+        content,
+        chunked: true,
+        offset: 0,
+        limit: CHUNK_SIZE_LINES,
+        totalLines,
+        hasMore
       };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -339,4 +389,73 @@ function extToLanguage(ext: string): string {
     log: 'plaintext'
   };
   return map[ext] || 'plaintext';
+}
+
+/**
+ * 判断是否是二进制文件（不支持预览）
+ */
+function isBinaryFile(ext: string): boolean {
+  const binaryExts = [
+    'exe',
+    'dll',
+    'so',
+    'dylib',
+    'bin',
+    'dat',
+    'db',
+    'sqlite',
+    'zip',
+    'tar',
+    'gz',
+    'rar',
+    '7z',
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'bmp',
+    'ico',
+    'webp',
+    'mp4',
+    'avi',
+    'mov',
+    'mp3',
+    'wav',
+    'pdf',
+    'doc',
+    'docx',
+    'xls',
+    'xlsx',
+    'ppt',
+    'pptx'
+  ];
+  return binaryExts.includes(ext.toLowerCase());
+}
+
+/**
+ * 分块读取文件内容（按行）
+ *
+ * @param filePath 文件路径
+ * @param offset 起始行号（0-based）
+ * @param limit 读取行数
+ * @returns 内容、总行数、是否还有更多
+ */
+async function readFileChunk(
+  filePath: string,
+  offset: number,
+  limit: number
+): Promise<{ content: string; totalLines: number; hasMore: boolean }> {
+  const content = await fs.promises.readFile(filePath, 'utf-8');
+  const lines = content.split('\n');
+  const totalLines = lines.length;
+
+  const start = Math.max(0, offset);
+  const end = Math.min(totalLines, start + limit);
+  const chunk = lines.slice(start, end).join('\n');
+
+  return {
+    content: chunk,
+    totalLines,
+    hasMore: end < totalLines
+  };
 }

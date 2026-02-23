@@ -11,7 +11,7 @@ import { ref, watch, onMounted, onBeforeUnmount, nextTick, shallowRef } from 'vu
 import { monaco } from '@/utils/monaco-setup';
 import { useOpenFiles } from '@/composables/useOpenFiles';
 
-const { openFiles, activeFilePath, activeFile, closeFile, activateFile } = useOpenFiles();
+const { openFiles, activeFilePath, activeFile, closeFile, activateFile, loadMoreContent } = useOpenFiles();
 
 const editorContainer = ref<HTMLDivElement | null>(null);
 const editorInstance = shallowRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -41,6 +41,9 @@ function initEditor(): void {
     },
     padding: { top: 8 }
   });
+
+  // 设置滚动监听（用于大文件自动加载更多）
+  setupScrollListener();
 }
 
 function updateEditorContent(): void {
@@ -56,8 +59,53 @@ function updateEditorContent(): void {
   if (model) {
     monaco.editor.setModelLanguage(model, file.language);
   }
+
+  // 更新内容（保持光标位置）
+  const currentPosition = editorInstance.value.getPosition();
   editorInstance.value.setValue(file.content);
-  editorInstance.value.revealLine(1);
+
+  // 如果是追加内容（分块加载），恢复光标位置
+  if (file.chunked && currentPosition && currentPosition.lineNumber > 1) {
+    editorInstance.value.setPosition(currentPosition);
+  } else {
+    editorInstance.value.revealLine(1);
+  }
+}
+
+/**
+ * 监听编辑器滚动，接近底部时自动加载更多内容
+ */
+function setupScrollListener(): void {
+  if (!editorInstance.value) return;
+
+  editorInstance.value.onDidScrollChange((e) => {
+    const file = activeFile.value;
+    if (!file || !file.chunked || !file.hasMore || file.loadingMore) {
+      return;
+    }
+
+    // 滚动到底部 5% 时触发加载
+    const scrollTop = e.scrollTop;
+    const scrollHeight = e.scrollHeight;
+    const clientHeight = editorContainer.value?.clientHeight ?? 0;
+
+    const threshold = scrollHeight - clientHeight * 1.05;
+
+    if (scrollTop >= threshold) {
+      handleLoadMore();
+    }
+  });
+}
+
+async function handleLoadMore(): Promise<void> {
+  if (!activeFile.value || !activeFile.value.hasMore || activeFile.value.loadingMore) {
+    return;
+  }
+
+  await loadMoreContent(activeFile.value.path);
+
+  // 内容已追加，触发更新
+  updateEditorContent();
 }
 
 watch(
@@ -160,15 +208,15 @@ function getFileIcon(name: string): string {
         <span class="i-carbon-renew inline-block h-5 w-5 animate-spin text-gray-300"></span>
       </div>
 
-      <!-- 文件太大提示 -->
-      <div v-else-if="activeFile?.isTooLarge" class="flex flex-1 flex-col items-center justify-center gap-4 p-8">
+      <!-- 错误提示（二进制文件等） -->
+      <div v-else-if="activeFile?.error" class="flex flex-1 flex-col items-center justify-center gap-4 p-8">
         <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50">
           <span class="i-carbon-warning-alt inline-block h-8 w-8 text-amber-500"></span>
         </div>
         <div class="text-center">
-          <p class="mb-1 text-sm font-medium text-gray-700">文件过大，无法预览</p>
+          <p class="mb-1 text-sm font-medium text-gray-700">无法预览此文件</p>
           <p class="max-w-md text-xs leading-relaxed text-gray-500">
-            {{ activeFile.error || '当前文件超过 2MB，为避免性能问题已禁止加载。' }}
+            {{ activeFile.error }}
           </p>
         </div>
         <div class="flex items-center gap-3 text-xs text-gray-400">
@@ -177,11 +225,31 @@ function getFileIcon(name: string): string {
         </div>
       </div>
 
-      <!-- Monaco Editor -->
-      <div
-        v-show="activeFile && !activeFile.loading && !activeFile.isTooLarge"
-        ref="editorContainer"
-        class="min-h-0 flex-1"></div>
+      <!-- Monaco Editor + 加载更多提示 -->
+      <div v-else-if="activeFile && !activeFile.loading" class="relative flex min-h-0 flex-1 flex-col">
+        <div ref="editorContainer" class="min-h-0 flex-1"></div>
+
+        <!-- 大文件加载提示（底部浮动） -->
+        <div
+          v-if="activeFile.chunked && (activeFile.hasMore || activeFile.loadingMore)"
+          class="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs shadow-lg">
+          <template v-if="activeFile.loadingMore">
+            <span class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin text-primary"></span>
+            <span class="text-gray-600">加载中...</span>
+          </template>
+          <template v-else-if="activeFile.hasMore">
+            <span class="text-gray-500">
+              已加载 {{ ((activeFile.offset ?? 0) + (activeFile.limit ?? 0)).toLocaleString() }} /
+              {{ activeFile.totalLines?.toLocaleString() }} 行
+            </span>
+            <button
+              class="ml-2 rounded bg-primary px-3 py-1 font-medium text-white transition hover:bg-primary-hover"
+              @click="handleLoadMore">
+              加载更多
+            </button>
+          </template>
+        </div>
+      </div>
     </template>
   </main>
 </template>
