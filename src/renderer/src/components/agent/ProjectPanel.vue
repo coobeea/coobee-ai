@@ -89,13 +89,11 @@ function handleOpenFile(filePath: string): void {
 
 // 复制文件到指定目录
 async function handleCopyToDir(sourcePath: string, targetDir: string): Promise<void> {
-  console.log('[ProjectPanel] handleCopyToDir 调用:', sourcePath, '→', targetDir);
   await copyFileToWorkspace(sourcePath, targetDir);
 }
 
 // 上传文件到指定目录
 async function handleUploadFile(file: File, targetDir: string): Promise<void> {
-  console.log('[ProjectPanel] handleUploadFile 调用:', file.name, '→', targetDir);
   await uploadFileToWorkspace(file, targetDir);
 }
 
@@ -161,10 +159,8 @@ onUnmounted(() => {
 // ========== 文件复制功能 ==========
 
 async function copyFileToWorkspace(sourcePath: string, targetDir: string): Promise<void> {
-  console.log('[ProjectPanel] copyFileToWorkspace 开始:', sourcePath, '→', targetDir);
   try {
     const url = `${BASE_URL}/copy`;
-    console.log('[ProjectPanel] 发送请求:', url);
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -172,7 +168,6 @@ async function copyFileToWorkspace(sourcePath: string, targetDir: string): Promi
     });
 
     const data = await res.json();
-    console.log('[ProjectPanel] 响应:', res.status, data);
 
     if (!res.ok) {
       console.error('[ProjectPanel] 复制失败:', (data as { error?: string }).error);
@@ -188,7 +183,6 @@ async function copyFileToWorkspace(sourcePath: string, targetDir: string): Promi
 }
 
 async function uploadFileToWorkspace(file: File, targetDir: string): Promise<void> {
-  console.log('[ProjectPanel] uploadFileToWorkspace 开始:', file.name, '→', targetDir);
   try {
     // 读取文件内容为 base64
     const arrayBuffer = await file.arrayBuffer();
@@ -197,7 +191,6 @@ async function uploadFileToWorkspace(file: File, targetDir: string): Promise<voi
     const base64Content = btoa(binary);
 
     const url = `${BASE_URL}/upload`;
-    console.log('[ProjectPanel] 发送上传请求:', url);
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -210,7 +203,6 @@ async function uploadFileToWorkspace(file: File, targetDir: string): Promise<voi
     });
 
     const data = await res.json();
-    console.log('[ProjectPanel] 上传响应:', res.status, data);
 
     if (!res.ok) {
       console.error('[ProjectPanel] 上传失败:', (data as { error?: string }).error);
