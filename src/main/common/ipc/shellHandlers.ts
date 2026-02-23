@@ -13,31 +13,43 @@ import { windowManager } from '../window';
 import type { WindowInfoResponse, TabInfoResponse } from '@shared/ipc';
 
 /**
- * macOS: 使用 osascript 读取剪贴板中的文件路径
+ * macOS: 使用 Node.js child_process 读取剪贴板中的文件路径
+ * 参考 VSCode 的实现方式
  */
 function getMacOSClipboardFiles(): string[] {
   try {
-    // 使用 AppleScript 读取剪贴板中的文件 URL
-    const script = 'the clipboard as «class furl»';
-    const output = execSync(`osascript -e '${script}'`, { encoding: 'utf-8' });
+    // 方法1: 读取 NSFilenamesPboardType（macOS 专用格式）
+    // 使用 pbpaste 和 osascript 组合
+    const script = `
+      set theFiles to {}
+      try
+        set theFiles to the clipboard as «class furl»
+        set output to ""
+        repeat with aFile in theFiles
+          set output to output & POSIX path of aFile & linefeed
+        end repeat
+        return output
+      end try
+    `.replace(/\n/g, ' ');
 
-    // 输出格式：«data furl...» 或多个 file:// URL
-    // 解析 file:// URL
-    const matches = output.match(/file:\/\/[^\s,}]+/g);
-    if (matches) {
-      return matches.map((url) => {
-        // 移除 file:// 前缀并解码
-        let path = decodeURIComponent(url.replace(/^file:\/\//, ''));
-        // 移除可能的尾部换行符
-        path = path.trim();
-        return path;
-      });
+    const output = execSync(`osascript -e '${script}'`, {
+      encoding: 'utf-8',
+      maxBuffer: 10 * 1024 * 1024 // 10MB
+    }).trim();
+
+    if (output) {
+      const paths = output
+        .split('\n')
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
+
+      log.debug('[IPC] osascript 读取到路径:', paths);
+      return paths;
     }
 
     return [];
-  } catch (err) {
-    // osascript 执行失败（可能剪贴板中没有文件）
-    log.debug('[IPC] osascript 读取剪贴板失败:', err);
+  } catch (_err) {
+    log.debug('[IPC] osascript 读取剪贴板失败，可能剪贴板中没有文件');
     return [];
   }
 }
@@ -148,10 +160,26 @@ export function registerShellHandlers(): void {
       const fs = await import('fs');
       const validPaths: string[] = [];
 
-      // macOS: 使用 osascript 读取剪贴板（最可靠的方法）
+      // 调试：查看剪贴板中所有可用格式
+      const formats = clipboard.availableFormats();
+      log.info('[IPC] 剪贴板可用格式:', formats);
+
+      // macOS: 尝试多种方法
       if (process.platform === 'darwin') {
+        // 方法1: 读取所有可能的格式
+        for (const format of formats) {
+          log.debug('[IPC] 尝试读取格式:', format);
+          try {
+            const content = clipboard.read(format);
+            log.debug('[IPC] 格式', format, '内容:', content.substring(0, 200));
+          } catch (_e) {
+            log.debug('[IPC] 读取格式', format, '失败');
+          }
+        }
+
+        // 方法2: 使用 osascript
         const paths = getMacOSClipboardFiles();
-        log.debug('[IPC] osascript 读取到的路径:', paths);
+        log.info('[IPC] osascript 读取到的路径:', paths);
 
         for (const path of paths) {
           if (fs.existsSync(path)) {
@@ -161,31 +189,31 @@ export function registerShellHandlers(): void {
           }
         }
 
-        // 如果 osascript 成功读取到路径，直接返回
         if (validPaths.length > 0) {
-          log.info('[IPC] shell:get-clipboard-files -> 成功读取', validPaths.length, '个文件');
+          log.info('[IPC] 成功读取', validPaths.length, '个有效文件');
           return validPaths;
         }
 
-        // Fallback: 尝试其他方法
-        log.debug('[IPC] osascript 未读取到文件，尝试 Electron clipboard API');
+        // 方法3: Electron API fallback
+        log.info('[IPC] osascript 未读取到文件，尝试 Electron API');
 
-        const fileUrl = clipboard.read('public.file-url');
-        if (fileUrl && !fileUrl.startsWith('/.file/id=')) {
-          const filePath = decodeURIComponent(fileUrl.replace(/^file:\/\//, ''));
-          if (fs.existsSync(filePath)) {
-            validPaths.push(filePath);
+        // 尝试 public.file-url
+        if (formats.includes('public.file-url')) {
+          const fileUrl = clipboard.read('public.file-url');
+          log.info('[IPC] public.file-url 内容:', fileUrl);
+          if (fileUrl && !fileUrl.startsWith('/.file/id=')) {
+            const filePath = decodeURIComponent(fileUrl.replace(/^file:\/\//, ''));
+            if (fs.existsSync(filePath)) {
+              validPaths.push(filePath);
+            }
           }
         }
 
-        const text = clipboard.readText();
-        if (text && !text.startsWith('/.file/id=')) {
-          const lines = text.split(/[\r\n]+/).filter((line) => line.trim());
-          for (const line of lines) {
-            if (/^\/[^/]/.test(line) && fs.existsSync(line)) {
-              validPaths.push(line);
-            }
-          }
+        // 尝试 NSFilenamesPboardType
+        if (formats.includes('NSFilenamesPboardType')) {
+          const buffer = clipboard.readBuffer('NSFilenamesPboardType');
+          log.info('[IPC] NSFilenamesPboardType buffer 长度:', buffer.length);
+          log.info('[IPC] NSFilenamesPboardType 内容:', buffer.toString('utf-8').substring(0, 500));
         }
       }
 
@@ -204,7 +232,7 @@ export function registerShellHandlers(): void {
         }
       }
 
-      log.info('[IPC] shell:get-clipboard-files -> 读取到', validPaths.length, '个有效路径');
+      log.info('[IPC] 最终读取到', validPaths.length, '个有效路径');
       return validPaths;
     } catch (err) {
       log.error('[IPC] shell:get-clipboard-files - 读取剪贴板失败:', err);
