@@ -176,7 +176,7 @@ function handleApproval(approval: PendingApproval, decision: HitlApprovalDecisio
 /* ====== 悬浮按钮（固定右下角） ====== */
 .copilot-fab {
   position: fixed;
-  bottom: 20px;
+  bottom: 60px;
   right: 20px;
   display: flex;
   align-items: center;
