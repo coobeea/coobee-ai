@@ -109,7 +109,12 @@ export const DEFAULT_SWARM_CONFIG: Omit<SwarmConfig, 'id' | 'name'> = {
   maxHandoffDepth: 10,
   triageModel: undefined, // 使用系统默认模型（从 ConfigStore 自动解析）
   enableSharedContext: true,
-  enableMonitoring: true
+  enableMonitoring: true,
+  qualityLoop: {
+    enabled: true,
+    maxIterations: 3,
+    passThreshold: 70
+  }
 };
 
 // ========== 任务定义 ==========

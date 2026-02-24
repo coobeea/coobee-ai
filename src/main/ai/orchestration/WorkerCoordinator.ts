@@ -19,6 +19,7 @@ import { createLogger } from '@main/common/logger';
 import type { AgentRuntime } from '../runtime/AgentRuntime';
 import type { StreamChunk, ExecutionResult } from '../runtime/types';
 import type { SubTask, WorkerInfo } from './types';
+import { injectEnv } from '../AgentEnvInjector';
 
 const log = createLogger('orchestration:worker');
 
@@ -251,6 +252,7 @@ export class WorkerCoordinator implements IWorkerCoordinator {
 
       builder.sessionId(sessionId);
 
+      await injectEnv(sessionId, builder);
       return await builder.build();
     }
 
@@ -270,6 +272,7 @@ export class WorkerCoordinator implements IWorkerCoordinator {
 
     builder.sessionId(sessionId);
 
+    await injectEnv(sessionId, builder);
     return await builder.build();
   }
 

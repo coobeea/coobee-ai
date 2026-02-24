@@ -30,6 +30,7 @@ import { Aggregator } from '../quality-loop/Aggregator';
 import { Validator, type ValidationInput } from '../quality-loop/Validator';
 import { Repairer, type RepairInput } from '../quality-loop/Repairer';
 import { LLMClient } from '../provider/LLMClient';
+import { injectEnv } from '../AgentEnvInjector';
 
 const log = createLogger('swarm:coordinator');
 
@@ -463,7 +464,7 @@ export class SwarmCoordinator {
     const builder = agentExecutor
       .piMono()
       .name('SwarmTriage')
-      .mode('chat')
+      .mode('agent')
       .sessionMode('file')
       .instructions(instructions)
       .sessionId(sessionId);
@@ -473,6 +474,9 @@ export class SwarmCoordinator {
     }
 
     builder.tools(allTools);
+
+    // 注入执行协议、Skill 发现提示、运行时路径
+    await injectEnv(sessionId, builder);
 
     return await builder.build();
   }
@@ -492,7 +496,7 @@ export class SwarmCoordinator {
     const builder = agentExecutor
       .piMono()
       .name(`${role.name} (Swarm)`)
-      .mode('chat')
+      .mode('agent')
       .sessionMode('file')
       .instructions(specialistInstructions)
       .sessionId(sessionId);
@@ -505,6 +509,9 @@ export class SwarmCoordinator {
     if (allTools.length > 0) {
       builder.tools(allTools);
     }
+
+    // 注入执行协议、Skill 发现提示、运行时路径
+    await injectEnv(sessionId, builder);
 
     return await builder.build();
   }

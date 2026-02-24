@@ -4,11 +4,19 @@
  * 验证质量闭环（Aggregator → Validator → Repairer）是否正确集成到 SwarmCoordinator
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SwarmCoordinator } from '../SwarmCoordinator';
 import type { SwarmConfig, AgentRole } from '../types';
 import { SwarmContext } from '../SwarmContext';
 import { MessageBus } from '../MessageBus';
+
+vi.mock('@main/ai/provider/LLMClient', () => {
+  return {
+    LLMClient: class MockLLMClient {
+      chat = vi.fn().mockResolvedValue({ content: '{}' });
+    }
+  };
+});
 
 describe('Swarm 质量闭环集成测试', () => {
   let coordinator: SwarmCoordinator;
@@ -85,7 +93,7 @@ describe('Swarm 质量闭环集成测试', () => {
     expect(qualityConfig?.acceptanceCriteria).toHaveLength(2);
   });
 
-  it('默认配置应该不启用质量闭环', () => {
+  it('未配置 qualityLoop 时应使用 DEFAULT_SWARM_CONFIG 的默认值', () => {
     const defaultConfig: SwarmConfig = {
       id: 'default-swarm',
       name: 'Default Swarm',
@@ -94,13 +102,30 @@ describe('Swarm 质量闭环集成测试', () => {
       maxHandoffDepth: 3,
       enableSharedContext: true,
       enableMonitoring: true
-      // 不提供 qualityLoop 配置
     };
 
     const defaultCoord = new SwarmCoordinator(defaultConfig);
 
     // @ts-expect-error - 访问私有属性进行测试
     expect(defaultCoord.aggregator).toBeUndefined();
+  });
+
+  it('显式 qualityLoop.enabled=false 时关闭质量闭环', () => {
+    const noQualityConfig: SwarmConfig = {
+      id: 'no-quality-swarm',
+      name: 'No Quality Swarm',
+      maxConcurrentAgents: 5,
+      agentIdleTimeout: 60000,
+      maxHandoffDepth: 3,
+      enableSharedContext: true,
+      enableMonitoring: true,
+      qualityLoop: { enabled: false }
+    };
+
+    const coord = new SwarmCoordinator(noQualityConfig);
+
+    // @ts-expect-error - 访问私有属性进行测试
+    expect(coord.aggregator).toBeUndefined();
   });
 
   it('质量闭环配置应该支持自定义参数', () => {
