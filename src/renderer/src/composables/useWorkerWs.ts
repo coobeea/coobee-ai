@@ -46,20 +46,28 @@ function init(): void {
 
   // 注册连接回调：重连后自动请求 Worker 列表
   unregisterConnect = gateway.onConnect(() => {
-    gateway
-      .request<WorkerStatusInfo[]>('worker.list')
-      .then((list) => {
-        if (Array.isArray(list)) {
-          for (const info of list) {
-            for (const handler of statusHandlers) {
-              handler(info);
-            }
+    fetchWorkerList();
+  });
+
+  // 初始化时也立即请求一次（WebSocket 可能已经连接）
+  setTimeout(() => fetchWorkerList(), 500);
+}
+
+function fetchWorkerList(): void {
+  gateway
+    .request<WorkerStatusInfo[]>('worker.list')
+    .then((list) => {
+      if (Array.isArray(list)) {
+        for (const info of list) {
+          for (const handler of statusHandlers) {
+            handler(info);
           }
         }
-        console.log('[useWorkerWs] 重连后获取 Worker 列表成功');
-      })
-      .catch((err) => console.error('[useWorkerWs] 获取 Worker 列表失败:', err));
-  });
+      }
+    })
+    .catch(() => {
+      // WebSocket 尚未就绪时静默
+    });
 }
 
 // 模块加载时自动初始化
@@ -102,18 +110,7 @@ export function stopWorker(name: string): void {
  * 主动请求 Worker 状态列表
  */
 export function requestWorkers(): void {
-  gateway
-    .request<WorkerStatusInfo[]>('worker.list')
-    .then((list) => {
-      if (Array.isArray(list)) {
-        for (const info of list) {
-          for (const handler of statusHandlers) {
-            handler(info);
-          }
-        }
-      }
-    })
-    .catch((err) => console.error('[useWorkerWs] 请求 Worker 列表失败:', err));
+  fetchWorkerList();
 }
 
 /**
