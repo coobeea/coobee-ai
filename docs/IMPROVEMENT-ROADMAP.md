@@ -2,10 +2,12 @@
 
 ## 📚 改进方案文档索引
 
-本次会话产出了 **5 份核心设计文档**，涵盖系统各个层面的改进方向：
+本次会话产出了 **7 份核心设计文档**，涵盖系统各个层面的改进方向：
 
 | 文档                                        | 主题                      | 优先级   | 预估工作量 |
 | ------------------------------------------- | ------------------------- | -------- | ---------- |
+| `ARCHITECTURE-ANALYSIS.md` ⭐               | 架构深度分析与优化路线图  | P1-P3    | 见详细规划 |
+| `MODEL-GROUP-DESIGN.md` 🆕                  | 模型组与自动选择          | P1       | 3-5 天     |
 | `system-improvement-recommendations.md`     | 15 个系统改进建议（全局） | 混合     | 10-20 天   |
 | `multi-agent-quality-loop.md`               | 多 Agent 质量保证闭环     | P0       | 2-3 天     |
 | `workbench-multimodal-preview.md`           | Workbench 多模态预览      | P0       | 2-3 天     |
@@ -86,7 +88,89 @@ WorkbenchPanel (动态路由)
 
 ---
 
-### 问题 3：API 配额管理缺失（资源浪费）
+### 问题 3：模型配置不灵活（单点故障风险）
+
+**现状**：
+
+- Agent 只能配置单个固定模型
+- API 配额耗尽时无法自动切换
+- 模型故障时无法 fallback
+- 缺少成本优化和负载均衡机制
+
+**解决方案**：`MODEL-GROUP-DESIGN.md` 🆕
+
+**核心设计**：
+
+```
+配置层：模型组定义
+  └─ high-performance: [gpt-4o, claude-3-5-sonnet, ...]
+  └─ economic: [gpt-4o-mini, claude-3-5-haiku, ...]
+
+Agent 层：三种模型配置方式
+  ├─ 单个模型: "openai/gpt-4o" (兼容现有)
+  ├─ 模型组: "@high-performance"
+  └─ 自动选择: "auto"
+
+执行层：负载均衡策略
+  ├─ round-robin: 轮询使用组内模型
+  ├─ random: 随机选择
+  ├─ weighted: 加权选择
+  ├─ quota-aware: 配额感知（优先用配额充足的）
+  └─ fallback: 故障转移（失败后自动尝试下一个）
+```
+
+**关键组件**：
+
+- `ModelGroupResolver`: 模型组解析与负载均衡核心
+- `ModelSelector` (增强): 集成模型组解析，保持现有 API
+- `AgentExecutor` (增强): 自动重试逻辑（故障转移）
+- 前端 UI: 三种模式选择器 + 运行时监控
+
+**典型使用场景**：
+
+```json5
+// 1. 高性能任务（配额感知，自动选择配额充足的）
+{
+  "id": "code-reviewer",
+  "model": "@high-performance"
+}
+
+// 2. 经济任务（轮询，平均分配负载）
+{
+  "id": "chat-bot",
+  "model": "@economic"
+}
+
+// 3. 智能助手（自动选择最佳模型）
+{
+  "id": "smart-assistant",
+  "model": "auto"
+}
+
+// 4. 容错任务（故障转移链）
+{
+  "id": "critical-task",
+  "model": "@fallback-chain"
+}
+```
+
+**优先级理由**：
+
+- ✅ **提高稳定性**：单个模型故障不会导致系统不可用
+- ✅ **配额优化**：分散请求到多个模型，避免单点配额耗尽
+- ✅ **成本优化**：优先使用便宜模型，配额不足时切换
+- ✅ **向后兼容**：不影响现有 Agent 配置
+
+**实施阶段**：
+
+1. Phase 1: 基础架构（ModelGroupResolver + ModelSelector 增强）— 2-3 天
+2. Phase 2: Agent 集成（自动重试逻辑）— 1-2 天
+3. Phase 3: 前端 UI（模型选择器 + 监控）— 1-2 天
+4. Phase 4: 配额集成（quota-aware 策略）— 可选，1 天
+
+---
+
+### 问题 4：API 配额管理缺失（资源浪费）
 
 **现状**：
 
@@ -128,7 +212,7 @@ QuotaManager (配额调度器)
 
 ---
 
-### 问题 4：Agent 行为不透明（信任问题）
+### 问题 5：Agent 行为不透明（信任问题）
 
 **现状**：
 
@@ -162,7 +246,7 @@ ChatPanel 右侧增加"执行追踪"面板：
 
 ---
 
-### 问题 5：智库无法浏览（资产未释放）
+### 问题 6：智库无法浏览（资产未释放）
 
 **现状**：
 
