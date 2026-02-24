@@ -42,6 +42,11 @@ export type SwarmEvent =
   | { type: 'handoff'; data: { from: string; to: string; depth: number; reason?: string } }
   | { type: 'agent:start'; data: { roleId: string; input: string } }
   | { type: 'agent:done'; data: { roleId: string; output: string } }
+  | { type: 'discussion:turn'; data: { round: number; roleId: string; roleName: string; content: string } }
+  | {
+      type: 'discussion:consensus';
+      data: { round: number; reached: boolean; score: number; conclusion?: string };
+    }
   | { type: 'complete'; data: { output: string; handoffCount: number; rolesUsed: string[] } }
   | { type: 'error'; data: { message: string } };
 
@@ -390,6 +395,10 @@ export class SwarmCoordinator {
   // ========== 混合执行 ==========
 
   async coordinateHybrid(task: SwarmTask): Promise<CoordinationResult> {
+    if (this.detectDiscussionIntent(task.input)) {
+      return this.coordinateDiscussion(task);
+    }
+
     const needsParallel = this.detectParallelIntent(task.input);
 
     if (needsParallel) {
@@ -400,6 +409,115 @@ export class SwarmCoordinator {
     }
 
     return this.coordinate(task);
+  }
+
+  // ========== 讨论模式 ==========
+
+  /**
+   * 发起多智能体讨论
+   *
+   * 让多个 Agent 围绕一个话题轮流发言，通过主持人评估共识，最终生成结论。
+   */
+  async coordinateDiscussion(
+    task: SwarmTask,
+    discussionConfig?: Partial<import('./DiscussionCoordinator').DiscussionConfig>
+  ): Promise<CoordinationResult> {
+    const startTime = Date.now();
+    this.state.status = 'executing';
+    this.state.startedAt = startTime;
+
+    this.setupContext(task);
+    this.context.set('execution_mode', 'discussion', 'system');
+
+    try {
+      const { DiscussionCoordinator } = await import('./DiscussionCoordinator');
+
+      const participantRoleIds = discussionConfig?.participantRoleIds?.length
+        ? discussionConfig.participantRoleIds
+        : this.getAvailableRoles().map((r) => r.id);
+
+      const coordinator = new DiscussionCoordinator(this.config, {
+        ...discussionConfig,
+        participantRoleIds
+      });
+
+      for (const role of this.getAvailableRoles()) {
+        coordinator.registerRole(role);
+      }
+
+      coordinator.setOnEvent((event: import('./DiscussionCoordinator').DiscussionEvent) => {
+        switch (event.type) {
+          case 'discussion:start':
+            this.emit({
+              type: 'agent:start',
+              data: { roleId: 'moderator', input: `讨论: ${event.data.topic}` }
+            });
+            break;
+          case 'discussion:turn':
+            this.emit({
+              type: 'discussion:turn',
+              data: event.data
+            });
+            break;
+          case 'discussion:consensus_check':
+            this.emit({
+              type: 'discussion:consensus',
+              data: {
+                round: event.data.round,
+                reached: event.data.reached,
+                score: event.data.score,
+                conclusion: event.data.reached ? undefined : undefined
+              }
+            });
+            break;
+          case 'discussion:done':
+            this.emit({
+              type: 'complete',
+              data: {
+                output: `讨论完成 (${event.data.totalRounds} 轮)`,
+                handoffCount: 0,
+                rolesUsed: participantRoleIds
+              }
+            });
+            break;
+        }
+      });
+
+      const result = await coordinator.discuss(task);
+
+      await this.updateState({
+        status: 'completed',
+        completedAt: Date.now(),
+        progress: 100
+      });
+      this.monitor.completeExecution(true);
+
+      await coordinator.destroy();
+
+      return {
+        output: result.conclusion,
+        state: { ...this.state },
+        rolesUsed: result.participantRoles,
+        handoffCount: 0,
+        duration: Date.now() - startTime
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await this.updateState({
+        status: 'failed',
+        error: errorMessage,
+        completedAt: Date.now()
+      });
+      this.monitor.completeExecution(false, errorMessage);
+
+      return {
+        output: `讨论失败: ${errorMessage}`,
+        state: { ...this.state },
+        rolesUsed: [],
+        handoffCount: 0,
+        duration: Date.now() - startTime
+      };
+    }
   }
 
   // ========== 内部方法 ==========
@@ -562,6 +680,27 @@ ${contextSection}
       }
     }
     this.context.addProgressNote('任务开始处理', 'triage');
+  }
+
+  private detectDiscussionIntent(input: string): boolean {
+    const keywords = [
+      '讨论',
+      '辩论',
+      '商议',
+      '探讨',
+      '各方意见',
+      '多方讨论',
+      '集思广益',
+      '头脑风暴',
+      '圆桌',
+      'discuss',
+      'debate',
+      'brainstorm',
+      'deliberate',
+      'round-table'
+    ];
+    const lower = input.toLowerCase();
+    return keywords.some((kw) => lower.includes(kw));
   }
 
   private detectParallelIntent(input: string): boolean {

@@ -110,7 +110,7 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       // 从 Thread 获取 mode（agentMode/agentType）
-      let mode: 'agent' | 'orchestrator' | 'swarm' | 'delegate' = 'agent';
+      let mode: 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'delegate' = 'agent';
       const oldSessionId = sessionId.value;
 
       if (oldSessionId) {

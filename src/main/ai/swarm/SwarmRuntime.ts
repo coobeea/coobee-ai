@@ -137,7 +137,12 @@ export class SwarmRuntime extends AbstractAgentRuntime {
       };
 
       let result;
-      if (executionMode === 'parallel' && config?.subTasks) {
+      if (executionMode === 'discussion') {
+        const discussionConfig = config?.discussionConfig as
+          | Partial<import('./DiscussionCoordinator').DiscussionConfig>
+          | undefined;
+        result = await this.coordinator.coordinateDiscussion(task, discussionConfig);
+      } else if (executionMode === 'parallel' && config?.subTasks) {
         result = await this.coordinator.coordinateParallel(task, config.subTasks as SwarmSubTask[]);
       } else if (executionMode === 'hybrid' || executionMode === 'auto') {
         result = await this.coordinator.coordinateHybrid(task);
@@ -207,8 +212,20 @@ export class SwarmRuntime extends AbstractAgentRuntime {
         error: Error | null;
       } = { result: null, error: null };
 
-      const taskPromise = this.coordinator
-        .coordinate(task)
+      const executionMode = (config?.executionMode as string) || 'auto';
+      const coordinatePromise =
+        executionMode === 'discussion'
+          ? this.coordinator.coordinateDiscussion(
+              task,
+              config?.discussionConfig as Partial<import('./DiscussionCoordinator').DiscussionConfig> | undefined
+            )
+          : executionMode === 'parallel' && config?.subTasks
+            ? this.coordinator.coordinateParallel(task, config.subTasks as SwarmSubTask[])
+            : executionMode === 'hybrid' || executionMode === 'auto'
+              ? this.coordinator.coordinateHybrid(task)
+              : this.coordinator.coordinate(task);
+
+      const taskPromise = coordinatePromise
         .then((r) => {
           outcome.result = r;
           log.info(`[SwarmRuntime] Coordination completed: status=${r.state.status}, output length=${r.output.length}`);
@@ -496,6 +513,30 @@ export class SwarmRuntime extends AbstractAgentRuntime {
             type: 'text:delta',
             content: event.data.output + '\n',
             data: { delta: event.data.output + '\n' }
+          }
+        ];
+      case 'discussion:turn':
+        return [
+          {
+            type: 'text:delta',
+            content: `\n**[${event.data.roleName}]** (第${event.data.round}轮):\n${event.data.content}\n`,
+            data: {
+              delta: `\n**[${event.data.roleName}]** (第${event.data.round}轮):\n${event.data.content}\n`
+            }
+          }
+        ];
+      case 'discussion:consensus':
+        return [
+          {
+            type: 'text:delta',
+            content: event.data.reached
+              ? `\n---\n**[主持人]** 第${event.data.round}轮共识评估: ✅ 达成共识 (${event.data.score}分)\n`
+              : `\n---\n**[主持人]** 第${event.data.round}轮共识评估: ⏳ 继续讨论 (${event.data.score}分)\n`,
+            data: {
+              delta: event.data.reached
+                ? `[主持人] 达成共识 (${event.data.score}分)\n`
+                : `[主持人] 继续讨论 (${event.data.score}分)\n`
+            }
           }
         ];
       case 'error':

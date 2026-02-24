@@ -225,7 +225,7 @@ export const chatMethods: MethodGroup = {
       }
 
       // 校验 mode 参数
-      const validModes = ['chat', 'agent', 'orchestrator', 'swarm'];
+      const validModes = ['chat', 'agent', 'orchestrator', 'swarm', 'discussion'];
       if (!validModes.includes(mode)) {
         throw new GatewayMethodError(
           GatewayErrorCode.INVALID_PARAMS,
@@ -237,8 +237,15 @@ export const chatMethods: MethodGroup = {
       let sid = sessionId;
       if (!sid) {
         const threadStore = await ThreadStore.getInstance();
-        const agentType = mode === 'orchestrator' ? 'orchestrator' : mode === 'swarm' ? 'swarm' : 'agent';
-        const agentMode = mode === 'orchestrator' || mode === 'swarm' ? 'agent' : mode;
+        const agentType =
+          mode === 'orchestrator'
+            ? 'orchestrator'
+            : mode === 'swarm'
+              ? 'swarm'
+              : mode === 'discussion'
+                ? 'discussion'
+                : 'agent';
+        const agentMode = mode === 'orchestrator' || mode === 'swarm' || mode === 'discussion' ? 'agent' : mode;
         const thread = await threadStore.create({
           title: message.slice(0, 50),
           agentId: agentId || 'default',
@@ -285,6 +292,27 @@ export const chatMethods: MethodGroup = {
             sessionId: sid,
             message,
             runtime: swarm
+          });
+
+          if (result.status === 'busy') {
+            throw new GatewayMethodError(GatewayErrorCode.SESSION_BUSY, '当前会话正在处理中');
+          }
+
+          return { sessionId: sid, status: 'streaming', mode };
+        }
+
+        // ========== Discussion 讨论模式 ==========
+        if (mode === 'discussion') {
+          const swarm = new SwarmRuntime(sid, sid, {
+            config: { parentSessionId: sid, name: 'Discussion' }
+          });
+          await swarm.initialize();
+
+          const result = agentExecutor.submit({
+            sessionId: sid,
+            message,
+            runtime: swarm,
+            executionConfig: { executionMode: 'discussion' }
           });
 
           if (result.status === 'busy') {

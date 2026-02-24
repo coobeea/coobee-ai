@@ -21,7 +21,7 @@ import type { AgentMode } from '../runtime/types';
 export type ThreadRunStatus = 'idle' | 'running' | 'tool-pending' | 'approval-pending' | 'completed' | 'error';
 
 /** Agent 分类类型（用于前端展示和模式区分） */
-export type AgentType = 'agent' | 'orchestrator' | 'swarm';
+export type AgentType = 'agent' | 'orchestrator' | 'swarm' | 'discussion';
 
 // ==================== Thread 定义 ====================
 

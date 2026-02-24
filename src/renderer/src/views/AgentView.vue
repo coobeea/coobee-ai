@@ -99,6 +99,12 @@ const modeOptions: { value: AgentType; label: string; description: string; icon:
     label: '蜂群模式',
     description: '智能体群组，动态切换处理不同子任务',
     icon: 'i-carbon-network-3'
+  },
+  {
+    value: 'discussion',
+    label: '讨论模式',
+    description: '多智能体围绕话题讨论，最终达成共识结论',
+    icon: 'i-carbon-chat-launch'
   }
 ];
 

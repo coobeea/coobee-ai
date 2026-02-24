@@ -66,6 +66,8 @@ export interface ExecuteRequest {
    * 当 Agent 使用 @group-name 或 auto 时传入，失败后可切换到组内下一个模型
    */
   modelSourceRef?: string;
+  /** 执行配置（传递给 Runtime.stream/run，用于指定 executionMode 等） */
+  executionConfig?: import('./runtime/types').ExecutionConfig;
 }
 
 /** 执行状态 */
@@ -1072,14 +1074,15 @@ class AgentExecutor {
 
     try {
       if (request.runtime) {
-        // === 预构建 Runtime 路径（Orchestrator / Swarm） ===
+        // === 预构建 Runtime 路径（Orchestrator / Swarm / Discussion） ===
         eventWriter = new AgentEventWriter(workspaceDir);
         eventWriter.register(sessionId);
 
         runtime = request.runtime;
         eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
 
-        const gen = runtime.stream(message, { signal });
+        const streamConfig = { signal, ...request.executionConfig };
+        const gen = runtime.stream(message, streamConfig);
         const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal, workspaceDir);
 
         const duration = Date.now() - startTime;

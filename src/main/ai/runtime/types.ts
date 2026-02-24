@@ -80,7 +80,7 @@ export interface SkillDefinition {
  *
  * 模式在 Builder 上设置，AgentEnvInjector 根据模式决定注入内容。
  */
-export type AgentMode = 'chat' | 'agent' | 'orchestrator' | 'swarm';
+export type AgentMode = 'chat' | 'agent' | 'orchestrator' | 'swarm' | 'discussion';
 
 // ========== Agent 运行时通用选项 ==========
 
