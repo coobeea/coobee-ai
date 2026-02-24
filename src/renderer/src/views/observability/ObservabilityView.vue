@@ -114,19 +114,40 @@ async function fetchMemory(): Promise<void> {
 }
 
 async function fetchTokens(): Promise<void> {
-  const since = getSinceTimestamp();
-  const res = await fetch(`${BASE_URL}/tokens?since=${since}`);
+  const res = await fetch(`${BASE_URL}/tokens`);
   if (!res.ok) throw new Error('Failed to load tokens');
   const data = await res.json();
-  tokenData.value = { records: data.records, summary: data.summary, byModel: data.byModel || {} };
+  const summary = data.summary || {};
+  tokenData.value = {
+    records: data.records || [],
+    summary: {
+      total: summary.total || 0,
+      prompt: summary.prompt || 0,
+      completion: summary.completion || 0,
+      totalCost: summary.cost || summary.totalCost || 0
+    },
+    byModel: data.byModel || {}
+  };
 }
 
 async function fetchSystem(): Promise<void> {
-  const since = getSinceTimestamp();
-  const res = await fetch(`${BASE_URL}/system?since=${since}`);
+  const res = await fetch(`${BASE_URL}/system`);
   if (!res.ok) throw new Error('Failed to load system');
   const data = await res.json();
-  systemData.value = data;
+  const metrics = data.metrics || {};
+  systemData.value = {
+    uptimeSeconds: data.uptime || 0,
+    requests: {
+      total: metrics.totalRequests || 0,
+      success: Math.round((metrics.successRate || 0) * (metrics.totalRequests || 0)),
+      failed: Math.round((1 - (metrics.successRate || 0)) * (metrics.totalRequests || 0)),
+      successRate: metrics.successRate || 0,
+      avgDuration: metrics.avgResponseTime || 0
+    },
+    tokens: { total: 0 },
+    compressions: { total: 0 },
+    memoryTool: { total: 0 }
+  };
 }
 
 async function loadAll(): Promise<void> {

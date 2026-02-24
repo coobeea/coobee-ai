@@ -12,85 +12,79 @@ import { getMetricsCollector } from '@main/metrics/MetricsCollector';
  */
 export function registerMonitoringRoutes(router: Router): void {
   // GET /monitoring/compression - 获取会话压缩记录
+  // Response: { records: CompressionMetric[], summary: { total, avgCompressionRatio, totalTokensSaved } }
   router.get('/monitoring/compression', async (ctx: Context) => {
     try {
       const metricsCollector = getMetricsCollector();
       const { limit = 50, offset = 0 } = ctx.query;
-      const compressionEvents = metricsCollector.getCompressionEvents(Number(limit), Number(offset));
+      const records = metricsCollector.getCompressionEvents(Number(limit), Number(offset));
+      const all = metricsCollector.getCompressionEvents(10000, 0);
+
+      const totalTokensSaved = all.reduce((sum, r) => sum + Math.max(0, r.beforeTokens - r.afterTokens), 0);
+      const avgCompressionRatio = all.length > 0 ? all.reduce((sum, r) => sum + r.compressionRatio, 0) / all.length : 0;
 
       ctx.body = {
-        success: true,
-        data: {
-          events: compressionEvents,
-          total: metricsCollector.getCompressionEventsCount()
+        records,
+        summary: {
+          total: metricsCollector.getCompressionEventsCount(),
+          avgCompressionRatio,
+          totalTokensSaved
         }
       };
     } catch (error) {
       ctx.status = 500;
-      ctx.body = {
-        success: false,
-        error: {
-          code: 'METRICS_ERROR',
-          message: error instanceof Error ? error.message : 'Unknown error'
-        }
-      };
+      ctx.body = { error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
 
   // GET /monitoring/memory - 获取 Memory 工具使用统计
+  // Response: { records: MemoryToolMetric[], summary: { total, byOperation, successRate } }
   router.get('/monitoring/memory', async (ctx: Context) => {
     try {
       const metricsCollector = getMetricsCollector();
       const { limit = 50, offset = 0 } = ctx.query;
-      const memoryStats = metricsCollector.getMemoryStats(Number(limit), Number(offset));
+      const records = metricsCollector.getMemoryStats(Number(limit), Number(offset));
+      const all = metricsCollector.getMemoryStats(10000, 0);
+
+      const byOperation: Record<string, number> = { store: 0, retrieve: 0, search: 0 };
+      let successCount = 0;
+      for (const r of all) {
+        byOperation[r.operation] = (byOperation[r.operation] || 0) + 1;
+        if (r.success) successCount++;
+      }
+      const successRate = all.length > 0 ? successCount / all.length : 0;
 
       ctx.body = {
-        success: true,
-        data: {
-          stats: memoryStats,
-          total: metricsCollector.getMemoryStatsCount()
+        records,
+        summary: {
+          total: metricsCollector.getMemoryStatsCount(),
+          byOperation,
+          successRate
         }
       };
     } catch (error) {
       ctx.status = 500;
-      ctx.body = {
-        success: false,
-        error: {
-          code: 'METRICS_ERROR',
-          message: error instanceof Error ? error.message : 'Unknown error'
-        }
-      };
+      ctx.body = { error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
 
   // GET /monitoring/tokens - 获取 Token 使用统计
+  // Response: { records: TokenUsageMetric[], summary: { total, prompt, completion, cost }, byModel }
   router.get('/monitoring/tokens', async (ctx: Context) => {
     try {
       const metricsCollector = getMetricsCollector();
-      const { agentId, sessionId, groupBy = 'agent' } = ctx.query;
-
-      let tokenStats;
-      if (groupBy === 'agent') {
-        tokenStats = metricsCollector.getTokenStatsByAgent(agentId as string | undefined);
-      } else if (groupBy === 'session') {
-        tokenStats = metricsCollector.getTokenStatsBySession(sessionId as string | undefined);
-      } else {
-        tokenStats = metricsCollector.getTokenStatsOverview();
-      }
+      const overview = metricsCollector.getTokenStatsOverview();
+      const byAgent = metricsCollector.getTokenStatsByAgent();
 
       ctx.body = {
-        success: true,
-        data: tokenStats
+        records: [],
+        summary: overview.total,
+        byModel: overview.byModel,
+        byAgent
       };
     } catch (error) {
       ctx.status = 500;
-      ctx.body = {
-        success: false,
-        error: {
-          code: 'METRICS_ERROR',
-          message: error instanceof Error ? error.message : 'Unknown error'
-        }
-      };
+      ctx.body = { error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
 
@@ -98,21 +92,10 @@ export function registerMonitoringRoutes(router: Router): void {
   router.get('/monitoring/system', async (ctx: Context) => {
     try {
       const metricsCollector = getMetricsCollector();
-      const systemHealth = metricsCollector.getSystemHealth();
-
-      ctx.body = {
-        success: true,
-        data: systemHealth
-      };
+      ctx.body = metricsCollector.getSystemHealth();
     } catch (error) {
       ctx.status = 500;
-      ctx.body = {
-        success: false,
-        error: {
-          code: 'METRICS_ERROR',
-          message: error instanceof Error ? error.message : 'Unknown error'
-        }
-      };
+      ctx.body = { error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
 }

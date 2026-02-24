@@ -219,7 +219,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 34px;
+  height: 40px;
   padding: 0 10px;
   border-bottom: 1px solid hsl(var(--border) / 0.25);
   background: hsl(var(--surface) / 0.3);

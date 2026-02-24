@@ -40,6 +40,7 @@ import type { QueueSettings, SubmitResult } from './pipeline/types';
 import { SkillManager } from './skills/SkillManager';
 import { CheckpointManager } from './threads/CheckpointManager';
 import { WorkspaceManager } from './storage/WorkspaceManager';
+import { getMetricsCollector } from '@main/metrics/MetricsCollector';
 
 // ==================== 类型定义 ====================
 
@@ -641,6 +642,9 @@ class AgentExecutor {
         turnToolCallCount++;
       }
 
+      // === 指标采集（fire-and-forget，不阻塞流） ===
+      this.recordChunkMetrics(chunk, sessionId);
+
       onChunk?.(chunk);
 
       // 使用 Promise.race 让 abort 信号能在 gen.next() 阻塞期间生效
@@ -750,6 +754,79 @@ class AgentExecutor {
           status as 'approval-pending' | 'running' | 'tool-pending' | 'error' | 'idle' | 'completed'
         );
       }
+    }
+  }
+
+  /**
+   * 指标采集：从 stream chunk 中提取 token 用量和压缩事件，写入 MetricsCollector
+   * fire-and-forget，不影响流式响应
+   */
+  private recordChunkMetrics(chunk: StreamChunk, sessionId: string): void {
+    try {
+      const collector = getMetricsCollector();
+
+      if (chunk.type === 'llm:done') {
+        const data = chunk.data as
+          | {
+              usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+              responseId?: string;
+            }
+          | undefined;
+        if (data?.usage && (data.usage.totalTokens ?? 0) > 0) {
+          collector
+            .recordTokenUsage({
+              sessionId,
+              model: 'unknown',
+              promptTokens: data.usage.inputTokens ?? 0,
+              completionTokens: data.usage.outputTokens ?? 0,
+              totalTokens: data.usage.totalTokens ?? 0
+            })
+            .catch(() => {});
+        }
+      }
+
+      if (chunk.type === 'compression:done') {
+        const data = chunk.data as
+          | {
+              originalTokens?: number;
+              summaryTokens?: number;
+              compressionRatio?: number;
+              duration?: number;
+            }
+          | undefined;
+        if (data) {
+          const before = data.originalTokens ?? 0;
+          const after = data.summaryTokens ?? 0;
+          if (before > 0) {
+            collector
+              .recordCompression({
+                sessionId,
+                beforeTokens: before,
+                afterTokens: after,
+                compressionRatio: data.compressionRatio ?? (before > 0 ? 1 - after / before : 0),
+                duration: data.duration ?? 0
+              })
+              .catch(() => {});
+          }
+        }
+      }
+
+      if (chunk.type === 'tool:done') {
+        const data = chunk.data as { toolName?: string } | undefined;
+        const toolName = data?.toolName ?? '';
+        if (toolName === 'memory') {
+          collector
+            .recordMemoryTool({
+              sessionId,
+              operation: 'store',
+              success: true,
+              duration: 0
+            })
+            .catch(() => {});
+        }
+      }
+    } catch {
+      // MetricsCollector 未初始化时静默忽略
     }
   }
 
