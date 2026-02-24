@@ -133,10 +133,16 @@ export class AgentStore {
 
     const now = new Date().toISOString();
 
-    // 自动添加 brain skill（让所有 Agent 能够主动维护智库）
+    // 自动注入默认 Skills（所有 Agent 必备）
+    // - brain:             主动维护智库、经验沉淀与复用
+    // - dimension-architect: 将需求量化拆解为可评估维度
+    // - eval-refine-loop:  LLM 输出质量评估与自动优化闭环
+    const DEFAULT_SKILLS = ['brain', 'dimension-architect', 'eval-refine-loop'];
     const skills = params.skills ? [...params.skills] : [];
-    if (!skills.includes('brain')) {
-      skills.unshift('brain'); // 添加到开头（高优先级）
+    for (const s of [...DEFAULT_SKILLS].reverse()) {
+      if (!skills.includes(s)) {
+        skills.unshift(s);
+      }
     }
 
     const definition: AgentDefinition = {
@@ -212,13 +218,25 @@ export class AgentStore {
       );
     }
 
+    // 如果 skills 被更新，确保默认 skills 不被丢失
+    let updatedSkills: string[] | undefined = undefined;
+    if (params.skills !== undefined) {
+      const DEFAULT_SKILLS = ['brain', 'dimension-architect', 'eval-refine-loop'];
+      updatedSkills = [...params.skills];
+      for (const s of [...DEFAULT_SKILLS].reverse()) {
+        if (!updatedSkills.includes(s)) {
+          updatedSkills.unshift(s);
+        }
+      }
+    }
+
     const updated: AgentDefinition = {
       ...existing,
       ...(params.name !== undefined && { name: params.name }),
       ...(params.description !== undefined && { description: params.description }),
       ...(params.instructions !== undefined && { instructions: params.instructions }),
       ...(params.tools !== undefined && { tools: params.tools }),
-      ...(params.skills !== undefined && { skills: params.skills }),
+      ...(updatedSkills !== undefined && { skills: updatedSkills }),
       ...(params.model !== undefined && { model: params.model }),
       ...(params.thinkingLevel !== undefined && { thinkingLevel: params.thinkingLevel }),
       ...(params.metadata !== undefined && { metadata: params.metadata }),
