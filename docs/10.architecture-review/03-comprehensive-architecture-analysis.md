@@ -66,28 +66,28 @@ Gateway (IPC) → AgentExecutor.submit() / stream()
 ```typescript
 interface AgentRuntime {
   // 身份
-  type: 'agent' | 'team' | 'swarm'
-  id: string
-  name: string
-  interrupted: boolean
-  supportsHITL: boolean
+  type: 'agent' | 'team' | 'swarm';
+  id: string;
+  name: string;
+  interrupted: boolean;
+  supportsHITL: boolean;
 
   // 生命周期
-  initialize(): Promise<void>
-  destroy(): Promise<void>
+  initialize(): Promise<void>;
+  destroy(): Promise<void>;
 
   // 执行（核心）
-  stream(input: string, config?): AsyncGenerator<StreamChunk, ExecutionResult>
-  run(input: string, config?): Promise<ExecutionResult>
+  stream(input: string, config?): AsyncGenerator<StreamChunk, ExecutionResult>;
+  run(input: string, config?): Promise<ExecutionResult>;
 
   // HITL
-  approveToolCall(index: number, options?): void
-  rejectToolCall(index: number, options?): void
-  resumeStream(config?): AsyncGenerator<StreamChunk, ExecutionResult>
+  approveToolCall(index: number, options?): void;
+  rejectToolCall(index: number, options?): void;
+  resumeStream(config?): AsyncGenerator<StreamChunk, ExecutionResult>;
 
   // 会话
-  getSession(): Promise<SessionInfo>
-  clearSession(): Promise<void>
+  getSession(): Promise<SessionInfo>;
+  clearSession(): Promise<void>;
 }
 ```
 
@@ -425,20 +425,20 @@ LLM 执行中按需调用 skill_list → read SKILL.md → 按指令操作
 
 ```typescript
 interface ToolDefinition {
-  name: string
-  description: string
-  category: ToolCategory
-  needUserConfirm?: boolean
-  parameters: ZodSchema
-  execute: AsyncGenerator<ToolStreamUpdate, ToolResult, unknown>
+  name: string;
+  description: string;
+  category: ToolCategory;
+  needUserConfirm?: boolean;
+  parameters: ZodSchema;
+  execute: AsyncGenerator<ToolStreamUpdate, ToolResult, unknown>;
 }
 
 // ToolResult
 interface ToolResult {
-  success: boolean
-  llmContent: string // 返回给 LLM 的文本
-  error?: { code; message }
-  details?: Record<string, unknown> // 结构化数据（前端展示用）
+  success: boolean;
+  llmContent: string; // 返回给 LLM 的文本
+  error?: { code; message };
+  details?: Record<string, unknown>; // 结构化数据（前端展示用）
 }
 ```
 
@@ -649,7 +649,7 @@ type StreamChunkType =
   | 'handoff:done'
   // 压缩级
   | 'compression:start'
-  | 'compression:done'
+  | 'compression:done';
 ```
 
 ### 8.2 事件传播链

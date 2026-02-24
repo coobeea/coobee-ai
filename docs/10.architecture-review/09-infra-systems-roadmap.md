@@ -95,32 +95,32 @@ type FollowupRun = {
 
 ```typescript
 // src/main/ai/pipeline/types.ts
-export type QueueMode = 'followup' | 'steer' | 'collect' | 'interrupt'
+export type QueueMode = 'followup' | 'steer' | 'collect' | 'interrupt';
 
 export interface QueueSettings {
-  mode: QueueMode
-  debounceMs: number // 默认 500ms
-  cap: number // 默认 20
-  dropPolicy: 'old' | 'new' | 'summarize'
+  mode: QueueMode;
+  debounceMs: number; // 默认 500ms
+  cap: number; // 默认 20
+  dropPolicy: 'old' | 'new' | 'summarize';
 }
 
 export interface PendingMessage {
-  id: string
-  sessionId: string
-  message: string
-  enqueuedAt: number
-  metadata?: Record<string, unknown>
+  id: string;
+  sessionId: string;
+  message: string;
+  enqueuedAt: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SessionPipelineState {
-  sessionId: string
-  settings: QueueSettings
-  queue: PendingMessage[]
-  isRunning: boolean
-  currentRunAbortController?: AbortController
-  draining: boolean
-  droppedCount: number
-  summaryLines: string[]
+  sessionId: string;
+  settings: QueueSettings;
+  queue: PendingMessage[];
+  isRunning: boolean;
+  currentRunAbortController?: AbortController;
+  draining: boolean;
+  droppedCount: number;
+  summaryLines: string[];
 }
 ```
 
@@ -145,19 +145,19 @@ src/main/ai/pipeline/
 ```typescript
 class MessagePipeline {
   // 提交消息（替代 AgentExecutor.submit）
-  submit(sessionId: string, message: string, opts?: SubmitOptions): SubmitResult
+  submit(sessionId: string, message: string, opts?: SubmitOptions): SubmitResult;
 
   // 中断当前 run
-  abort(sessionId: string): boolean
+  abort(sessionId: string): boolean;
 
   // 获取队列状态
-  getQueueStatus(sessionId: string): QueueStatus
+  getQueueStatus(sessionId: string): QueueStatus;
 
   // 清空队列
-  clearQueue(sessionId: string): number
+  clearQueue(sessionId: string): number;
 
   // 设置队列模式
-  setQueueMode(sessionId: string, mode: QueueMode): void
+  setQueueMode(sessionId: string, mode: QueueMode): void;
 }
 ```
 
@@ -222,28 +222,28 @@ OpenClaw 的 Provider 体系：
 ```typescript
 // Provider 配置
 type ModelProviderConfig = {
-  baseUrl: string
-  apiKey?: string
-  api?: ModelApi // openai-completions | anthropic-messages | ...
-  auth?: AuthMode
-  headers?: Record<string, string>
-  models: ModelDefinitionConfig[]
-}
+  baseUrl: string;
+  apiKey?: string;
+  api?: ModelApi; // openai-completions | anthropic-messages | ...
+  auth?: AuthMode;
+  headers?: Record<string, string>;
+  models: ModelDefinitionConfig[];
+};
 
 // 模型定义
 type ModelDefinitionConfig = {
-  id: string
-  name: string
-  api?: ModelApi // 可覆盖 Provider 的 api
-  reasoning: boolean
-  input: ('text' | 'image')[]
-  cost: { input; output; cacheRead; cacheWrite } // $/M tokens
-  contextWindow: number
-  maxTokens: number
-}
+  id: string;
+  name: string;
+  api?: ModelApi; // 可覆盖 Provider 的 api
+  reasoning: boolean;
+  input: ('text' | 'image')[];
+  cost: { input; output; cacheRead; cacheWrite }; // $/M tokens
+  contextWindow: number;
+  maxTokens: number;
+};
 
 // 模型引用（provider/model 格式）
-type ModelRef = { provider: string; model: string }
+type ModelRef = { provider: string; model: string };
 ```
 
 **四级选择优先级**（高→低）：
@@ -288,59 +288,59 @@ primary → fallbacks[0] → fallbacks[1] → ... → 全局 default
 export type ModelApi =
   | 'openai-compatible' // OpenAI / 阿里云 / MiniMax / 各兼容厂商
   | 'anthropic' // Anthropic Claude
-  | 'google' // Google Gemini
+  | 'google'; // Google Gemini
 
 /** Provider 配置 */
 export interface ProviderConfig {
-  id: string
-  name: string
-  baseUrl: string
-  apiKey?: string // 密钥或 ${ENV_VAR}
-  api: ModelApi
-  headers?: Record<string, string>
-  models: ModelConfig[]
-  enabled: boolean
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey?: string; // 密钥或 ${ENV_VAR}
+  api: ModelApi;
+  headers?: Record<string, string>;
+  models: ModelConfig[];
+  enabled: boolean;
 }
 
 /** 模型配置 */
 export interface ModelConfig {
-  id: string // 模型 ID（如 qwen3-max）
-  name: string // 显示名称
-  api?: ModelApi // 可覆盖 Provider
-  reasoning?: boolean // 支持推理模式
-  input?: ('text' | 'image')[]
-  contextWindow?: number
-  maxTokens?: number
-  cost?: ModelCostConfig
+  id: string; // 模型 ID（如 qwen3-max）
+  name: string; // 显示名称
+  api?: ModelApi; // 可覆盖 Provider
+  reasoning?: boolean; // 支持推理模式
+  input?: ('text' | 'image')[];
+  contextWindow?: number;
+  maxTokens?: number;
+  cost?: ModelCostConfig;
 }
 
 /** 成本配置（$/百万 token） */
 export interface ModelCostConfig {
-  input: number
-  output: number
-  cacheRead?: number
-  cacheWrite?: number
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
 }
 
 /** 模型引用 */
 export interface ModelRef {
-  provider: string // Provider ID
-  model: string // 模型 ID
+  provider: string; // Provider ID
+  model: string; // 模型 ID
 }
 
 /** 模型选择配置 */
 export interface ModelSelectionConfig {
-  primary: string // "provider/model" 格式
-  fallbacks?: string[] // 备选列表
+  primary: string; // "provider/model" 格式
+  fallbacks?: string[]; // 备选列表
 }
 
 /** Fallback 结果 */
 export interface FallbackResult<T> {
-  result: T
-  provider: string
-  model: string
-  attempts: number
-  failedModels: string[]
+  result: T;
+  provider: string;
+  model: string;
+  attempts: number;
+  failedModels: string[];
 }
 ```
 
@@ -373,37 +373,37 @@ src/main/ai/provider/
 ```typescript
 /** Provider 注册中心 */
 class ProviderRegistry {
-  register(config: ProviderConfig): void
-  unregister(id: string): void
-  get(id: string): ProviderConfig | undefined
-  getAll(): ProviderConfig[]
+  register(config: ProviderConfig): void;
+  unregister(id: string): void;
+  get(id: string): ProviderConfig | undefined;
+  getAll(): ProviderConfig[];
 
   // 从配置加载所有 Provider
-  loadFromConfig(config: AppConfig): void
+  loadFromConfig(config: AppConfig): void;
 
   // 解析隐式 Provider（基于环境变量）
-  resolveImplicit(): ProviderConfig[]
+  resolveImplicit(): ProviderConfig[];
 }
 
 /** 模型目录 */
 class ModelCatalog {
   // 查找模型
-  find(ref: ModelRef): ResolvedModel | undefined
+  find(ref: ModelRef): ResolvedModel | undefined;
 
   // 列出所有可用模型
-  listAll(): ResolvedModel[]
+  listAll(): ResolvedModel[];
 
   // 按能力过滤
-  listByCapability(cap: { reasoning?: boolean; image?: boolean }): ResolvedModel[]
+  listByCapability(cap: { reasoning?: boolean; image?: boolean }): ResolvedModel[];
 }
 
 /** 模型选择器 */
 class ModelSelector {
   // 四级优先级解析
-  resolve(opts: { sessionId?: string; agentId?: string }): ModelRef
+  resolve(opts: { sessionId?: string; agentId?: string }): ModelRef;
 
   // 带 Fallback 的完整解析
-  resolveWithFallbacks(opts): ModelSelectionConfig
+  resolveWithFallbacks(opts): ModelSelectionConfig;
 }
 
 /** Fallback 执行器 */
@@ -412,7 +412,7 @@ class ModelFallback {
     candidates: ModelRef[],
     execute: (ref: ModelRef) => Promise<T>,
     opts?: { isRetryable?: (error: Error) => boolean }
-  ): Promise<FallbackResult<T>>
+  ): Promise<FallbackResult<T>>;
 }
 ```
 
@@ -513,21 +513,21 @@ chokidar 监听文件变更
 
 ```typescript
 type ReloadRule = {
-  prefix: string
-  kind: 'restart' | 'hot' | 'none'
-  actions?: ReloadAction[]
-}
+  prefix: string;
+  kind: 'restart' | 'hot' | 'none';
+  actions?: ReloadAction[];
+};
 
 type ConfigFileSnapshot = {
-  path: string
-  exists: boolean
-  raw: string | null
-  parsed: unknown
-  valid: boolean
-  config: OpenClawConfig
-  hash?: string
-  issues: ConfigValidationIssue[]
-}
+  path: string;
+  exists: boolean;
+  raw: string | null;
+  parsed: unknown;
+  valid: boolean;
+  config: OpenClawConfig;
+  hash?: string;
+  issues: ConfigValidationIssue[];
+};
 ```
 
 ### 3.3 我们的设计方案
@@ -640,16 +640,16 @@ type ConfigFileSnapshot = {
 
 ```typescript
 // src/main/common/config/schema.ts
-import { z } from 'zod'
+import { z } from 'zod';
 
-const ModelApiSchema = z.enum(['openai-compatible', 'anthropic', 'google'])
+const ModelApiSchema = z.enum(['openai-compatible', 'anthropic', 'google']);
 
 const ModelCostSchema = z.object({
   input: z.number(),
   output: z.number(),
   cacheRead: z.number().optional(),
   cacheWrite: z.number().optional()
-})
+});
 
 const ModelConfigSchema = z.object({
   id: z.string(),
@@ -663,7 +663,7 @@ const ModelConfigSchema = z.object({
   contextWindow: z.number().optional(),
   maxTokens: z.number().optional(),
   cost: ModelCostSchema.optional()
-})
+});
 
 const ProviderConfigSchema = z.object({
   baseUrl: z.string().url(),
@@ -672,7 +672,7 @@ const ProviderConfigSchema = z.object({
   headers: z.record(z.string()).optional(),
   models: z.array(ModelConfigSchema),
   enabled: z.boolean().optional().default(true)
-})
+});
 
 export const CoobeeConfigSchema = z
   .object({
@@ -727,12 +727,8 @@ export const CoobeeConfigSchema = z
       .optional(),
     security: z
       .object({
-        sandbox: z
-          .object({ mode: z.enum(['off', 'path-only', 'docker']).default('path-only') })
-          .optional(),
-        approvals: z
-          .object({ exec: z.enum(['auto', 'always', 'never']).default('auto') })
-          .optional()
+        sandbox: z.object({ mode: z.enum(['off', 'path-only', 'docker']).default('path-only') }).optional(),
+        approvals: z.object({ exec: z.enum(['auto', 'always', 'never']).default('auto') }).optional()
       })
       .optional(),
     ui: z
@@ -749,9 +745,9 @@ export const CoobeeConfigSchema = z
       })
       .optional()
   })
-  .strict()
+  .strict();
 
-export type CoobeeConfig = z.infer<typeof CoobeeConfigSchema>
+export type CoobeeConfig = z.infer<typeof CoobeeConfigSchema>;
 ```
 
 #### 3.3.3 模块结构
@@ -780,36 +776,36 @@ src/main/common/config/
 /** 配置加载器 */
 class ConfigLoader {
   // 加载配置（带缓存）
-  load(): CoobeeConfig
+  load(): CoobeeConfig;
 
   // 直接读文件快照（无缓存）
-  snapshot(): ConfigSnapshot
+  snapshot(): ConfigSnapshot;
 
   // 清除缓存
-  clearCache(): void
+  clearCache(): void;
 }
 
 /** 配置监听器 */
 class ConfigWatcher {
   // 启动监听
-  start(): void
+  start(): void;
 
   // 停止监听
-  stop(): void
+  stop(): void;
 
   // 注册变更回调
-  onReload(handler: (plan: ReloadPlan) => void): void
+  onReload(handler: (plan: ReloadPlan) => void): void;
 }
 
 /** diff + 重载 */
-function diffConfigPaths(prev: unknown, next: unknown): string[]
-function buildReloadPlan(changedPaths: string[]): ReloadPlan
+function diffConfigPaths(prev: unknown, next: unknown): string[];
+function buildReloadPlan(changedPaths: string[]): ReloadPlan;
 
 /** 配置存储 */
 class ConfigStore {
-  get<K extends keyof CoobeeConfig>(key: K): CoobeeConfig[K]
-  set<K extends keyof CoobeeConfig>(key: K, value: CoobeeConfig[K]): void
-  patch(partial: DeepPartial<CoobeeConfig>): void
+  get<K extends keyof CoobeeConfig>(key: K): CoobeeConfig[K];
+  set<K extends keyof CoobeeConfig>(key: K, value: CoobeeConfig[K]): void;
+  patch(partial: DeepPartial<CoobeeConfig>): void;
 }
 ```
 

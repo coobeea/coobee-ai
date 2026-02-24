@@ -80,9 +80,9 @@
 
 ```typescript
 // 修改为
-const { configStoreInstance } = await import('../../src/main/common/config/ConfigStore')
-const approvals = configStoreInstance?.get?.('security')?.approvals
-return approvals?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS
+const { configStoreInstance } = await import('../../src/main/common/config/ConfigStore');
+const approvals = configStoreInstance?.get?.('security')?.approvals;
+return approvals?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS;
 ```
 
 #### P0-2: 前端 selectedDir 未传递给后端

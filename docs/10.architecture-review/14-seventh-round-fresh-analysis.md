@@ -30,8 +30,8 @@ this.pipeline = new MessagePipeline(async (sessionId, message, _signal) => {
 
 ```typescript
 if (!this.builderFactory) {
-  log.error(`[AgentExecutor] Pipeline executor: no builderFactory registered`)
-  return
+  log.error(`[AgentExecutor] Pipeline executor: no builderFactory registered`);
+  return;
 }
 ```
 
@@ -149,7 +149,7 @@ Chokidar 的 `close()` 返回 Promise，但调用方使用 `void this.watcher.cl
 **文件**：`src/main/common/middleware/security.ts` 第 74-76 行
 
 ```typescript
-const clientKey = (metadata?.clientId as string) || 'default'
+const clientKey = (metadata?.clientId as string) || 'default';
 ```
 
 `clientId` 来自客户端 metadata，可随意更换绕过限速。
@@ -221,7 +221,7 @@ HTTP 用 `127.0.0.1`，WebSocket 用 `localhost`。在某些环境下解析为�
 **文件**：`src/main/ai/tools/__tests__/builtin.test.ts` 第 738-748 行
 
 ```typescript
-expect(result.llmContent).toMatch(/\/tmp|\/private\/tmp/)
+expect(result.llmContent).toMatch(/\/tmp|\/private\/tmp/);
 ```
 
 macOS 特定，在 Linux/Windows 上会失败。

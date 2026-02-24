@@ -278,9 +278,9 @@ Gateway (IPC) → AgentExecutor.execute() / stream()
 write.ts, edit.ts, read.ts 中重复的模式：
 
 ```typescript
-const resolved = resolveSandboxPath(filePath, context)
-if (resolved.error) return pathGuardErrorToToolResult(resolved.error)
-const absolutePath = resolved.path
+const resolved = resolveSandboxPath(filePath, context);
+if (resolved.error) return pathGuardErrorToToolResult(resolved.error);
+const absolutePath = resolved.path;
 ```
 
 **建议**：提取 `resolveToolPath(filePath, context)` 统一工具路径解析。

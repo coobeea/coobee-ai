@@ -69,13 +69,13 @@
 
 ```typescript
 // Before (L236-237)
-const { ConfigStore } = await import('../../src/main/common/config/ConfigStore')
-const store = ConfigStore.getInstance()
+const { ConfigStore } = await import('../../src/main/common/config/ConfigStore');
+const store = ConfigStore.getInstance();
 
 // After
-const { configStoreInstance } = await import('../../src/main/common/config/ConfigStore')
-const approvals = configStoreInstance?.get?.('security')?.approvals
-return approvals?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS
+const { configStoreInstance } = await import('../../src/main/common/config/ConfigStore');
+const approvals = configStoreInstance?.get?.('security')?.approvals;
+return approvals?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS;
 ```
 
 **验收标准**:
@@ -274,7 +274,7 @@ return approvals?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS
 
 ```typescript
 output: {
-  inlineDynamicImports: process.env.NODE_ENV === 'production'
+  inlineDynamicImports: process.env.NODE_ENV === 'production';
 }
 ```
 

@@ -99,8 +99,8 @@
 
 ```typescript
 // chat.ts createBuilder() 修改为：
-import { ToolRegistry } from '@main/ai/tools/registry'
-builder.tools(ToolRegistry.getInstance().getAll())
+import { ToolRegistry } from '@main/ai/tools/registry';
+builder.tools(ToolRegistry.getInstance().getAll());
 ```
 
 ---
@@ -164,10 +164,10 @@ builder.tools(ToolRegistry.getInstance().getAll())
 ```typescript
 // executor 需要实际调用 execute()
 this.pipeline = new MessagePipeline(async (sessionId, message, signal) => {
-  const builder = this.piMono() // 或根据配置选择
+  const builder = this.piMono(); // 或根据配置选择
   // 应用 Provider 配置
-  await this.execute({ sessionId, message, builder }, signal)
-}, settings)
+  await this.execute({ sessionId, message, builder }, signal);
+}, settings);
 ```
 
 ---

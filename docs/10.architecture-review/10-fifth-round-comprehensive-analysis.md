@@ -114,7 +114,7 @@
 
 ```typescript
 // src/main/common/scan.ts
-import.meta.glob('@main/lifecycle/**/*Hook.ts', { eager: true })
+import.meta.glob('@main/lifecycle/**/*Hook.ts', { eager: true });
 ```
 
 - 导出符合 `LifecycleHook` 接口的模块自动注册

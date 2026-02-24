@@ -23,7 +23,7 @@
 // electron.vite.config.ts
 build: {
   externalizeDeps: {
-    exclude: ['@mariozechner/pi-coding-agent', '@mariozechner/pi-ai', 'ws']
+    exclude: ['@mariozechner/pi-coding-agent', '@mariozechner/pi-ai', 'ws'];
   }
 }
 ```
@@ -76,7 +76,7 @@ rollupOptions: {
 ```typescript
 // 仅在 production 时内联
 output: {
-  inlineDynamicImports: process.env.NODE_ENV === 'production'
+  inlineDynamicImports: process.env.NODE_ENV === 'production';
 }
 ```
 
@@ -94,7 +94,7 @@ external: [
   'electron',
   '@mariozechner/pi-coding-agent', // 外部化
   '@mariozechner/pi-ai' // 外部化
-]
+];
 ```
 
 **预期效果**：bundle 大幅缩小（可能从 12MB 降到 2-3MB），构建时间降至 1-2 秒。

@@ -81,17 +81,17 @@
 
 ```typescript
 // context_inspect.ts — 修复前
-const filePath = path.join(workspace, 'contexts', filename)
-const content = fs.readFileSync(filePath, 'utf-8')
+const filePath = path.join(workspace, 'contexts', filename);
+const content = fs.readFileSync(filePath, 'utf-8');
 
 // context_inspect.ts — 修复后
-const contextsDir = path.join(workspace, 'contexts')
+const contextsDir = path.join(workspace, 'contexts');
 const resolved = resolveSandboxPath(filename, {
   ...context,
   workspaceRoot: contextsDir // 限制在 contexts/ 目录内
-})
-if (resolved.error) return pathGuardErrorToToolResult(resolved.error)
-const content = fs.readFileSync(resolved.path, 'utf-8')
+});
+if (resolved.error) return pathGuardErrorToToolResult(resolved.error);
+const content = fs.readFileSync(resolved.path, 'utf-8');
 ```
 
 **改动范围**：
@@ -121,11 +121,11 @@ const recoveryContext: RecoveryContext = {
     thinkingLevel: (this as any).options?.thinkingLevel,
     setThinkingLevel: (level) => {
       if ((this as any).options) {
-        ;(this as any).options.thinkingLevel = level
+        (this as any).options.thinkingLevel = level;
       }
     }
   }
-}
+};
 ```
 
 **改动范围**：
@@ -218,12 +218,12 @@ const recoveryContext: RecoveryContext = {
 
 ```typescript
 // exec.ts — 在 execute 函数开头添加 fallback 安全检查
-import { checkExecPolicy } from '../../sandbox/exec-policy'
+import { checkExecPolicy } from '../../sandbox/exec-policy';
 
 // 在工具执行函数中：
-const policyResult = checkExecPolicy(command)
+const policyResult = checkExecPolicy(command);
 if (policyResult === 'deny') {
-  return { success: false, llmContent: 'Error: Command blocked by security policy' }
+  return { success: false, llmContent: 'Error: Command blocked by security policy' };
 }
 // Extension hook 会进一步细化处理（ask → HITL）
 // 如果 Extension 未加载，至少 deny 列表仍然生效

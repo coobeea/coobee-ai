@@ -80,14 +80,14 @@ export async function* executeToolWithPipeline(
   toolDef: ToolDefinition
 ): AsyncGenerator<ToolStreamUpdate, ToolResult> {
   // 1. 参数归一化（provider 适配）
-  const normalized = normalizeParams(toolName, params, context.provider)
+  const normalized = normalizeParams(toolName, params, context.provider);
 
   // 2. 路径解析（自动处理所有包含 file_path / path 参数的工具）
-  const resolved = resolveToolPaths(normalized, context)
-  if (resolved.error) return pathGuardErrorToToolResult(resolved.error)
+  const resolved = resolveToolPaths(normalized, context);
+  if (resolved.error) return pathGuardErrorToToolResult(resolved.error);
 
   // 3. 工具执行
-  yield* toolDef.execute(resolved.params, undefined, context)
+  yield* toolDef.execute(resolved.params, undefined, context);
 }
 ```
 
@@ -171,15 +171,15 @@ pimono/
 // 新增策略
 export class ContextCompressionStrategy implements RecoveryStrategy {
   canHandle(error: Error): boolean {
-    return error.message.includes('context_length') || error.message.includes('max_tokens')
+    return error.message.includes('context_length') || error.message.includes('max_tokens');
   }
   async recover(error: Error, context: RecoveryContext): Promise<RecoveryAction> {
     // 触发 SessionCompressor.compress() 后重试
     if (context.runtime?.compressor) {
-      await context.runtime.compressor.compress()
-      return { action: 'retry', reason: 'Context compressed, retrying' }
+      await context.runtime.compressor.compress();
+      return { action: 'retry', reason: 'Context compressed, retrying' };
     }
-    return { action: 'throw', reason: 'No compressor available' }
+    return { action: 'throw', reason: 'No compressor available' };
   }
 }
 
@@ -217,16 +217,16 @@ export class ThinkingLevelFallbackStrategy implements RecoveryStrategy {
 
 ```typescript
 interface MemoryIndex {
-  version: 1
-  lastUpdated: string
+  version: 1;
+  lastUpdated: string;
   entries: {
-    file: string
-    title: string
-    tags: string[] // 自动提取
-    summary: string // 首段
-    updatedAt: string
-    size: number
-  }[]
+    file: string;
+    title: string;
+    tags: string[]; // 自动提取
+    summary: string; // 首段
+    updatedAt: string;
+    size: number;
+  }[];
 }
 ```
 
@@ -292,18 +292,18 @@ interface MemoryIndex {
 // Extension API 暴露的服务接口
 interface ExtensionServices {
   hitl: {
-    requestApproval(sessionId: string, toolName: string, params: unknown): Promise<ApprovalResult>
-  }
+    requestApproval(sessionId: string, toolName: string, params: unknown): Promise<ApprovalResult>;
+  };
   memory: {
-    read(scope: 'agent' | 'user', path: string): Promise<string>
-    write(scope: 'agent' | 'user', path: string, content: string): Promise<void>
-  }
-  events: StreamEmitter
+    read(scope: 'agent' | 'user', path: string): Promise<string>;
+    write(scope: 'agent' | 'user', path: string, content: string): Promise<void>;
+  };
+  events: StreamEmitter;
 }
 
 // Extension 注册时通过 api 获取
 export function register(api: ExtensionAPI): void {
-  const hitl = api.services.hitl
+  const hitl = api.services.hitl;
   // ...
 }
 ```
@@ -324,9 +324,9 @@ export function register(api: ExtensionAPI): void {
 
 ```typescript
 interface LaneConfig {
-  main: number // 主交互通道并发数
-  subagent: number // 子 Agent 并发数
-  background: number // 后台任务并发数
+  main: number; // 主交互通道并发数
+  subagent: number; // 子 Agent 并发数
+  background: number; // 后台任务并发数
 }
 ```
 

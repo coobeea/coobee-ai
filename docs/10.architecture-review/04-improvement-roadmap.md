@@ -84,35 +84,35 @@ extensions/tool-approval/
 // path-guard.ts — 新增 realpathSync 检查
 
 export function resolveSandboxPath(filePath: string, context: SandboxContext): string {
-  const resolved = path.resolve(context.workspaceRoot, filePath)
+  const resolved = path.resolve(context.workspaceRoot, filePath);
 
   // 1. 字符串级检查（现有逻辑）
   if (!isWithinRoot(resolved, context.workspaceRoot)) {
-    throw new PathGuardError(`Path escapes workspace: ${filePath}`)
+    throw new PathGuardError(`Path escapes workspace: ${filePath}`);
   }
 
   // 2. 符号链接穿越检查（新增）
-  let realTarget: string
+  let realTarget: string;
   if (fs.existsSync(resolved)) {
-    realTarget = fs.realpathSync(resolved)
+    realTarget = fs.realpathSync(resolved);
   } else {
     // 文件不存在（write 场景），检查最近存在的祖先目录
-    let current = path.dirname(resolved)
+    let current = path.dirname(resolved);
     while (!fs.existsSync(current) && current !== path.dirname(current)) {
-      current = path.dirname(current)
+      current = path.dirname(current);
     }
-    realTarget = fs.existsSync(current) ? fs.realpathSync(current) : current
+    realTarget = fs.existsSync(current) ? fs.realpathSync(current) : current;
   }
 
   const realRoot = fs.existsSync(context.workspaceRoot)
     ? fs.realpathSync(context.workspaceRoot)
-    : context.workspaceRoot
+    : context.workspaceRoot;
 
   if (!isWithinRoot(realTarget, realRoot)) {
-    throw new PathGuardError(`Symlink escapes workspace: ${filePath} → ${realTarget}`)
+    throw new PathGuardError(`Symlink escapes workspace: ${filePath} → ${realTarget}`);
   }
 
-  return resolved
+  return resolved;
 }
 ```
 
@@ -134,15 +134,15 @@ skillManager.scanSkills([
   Env.paths.userSkillsDir, // ✅
   path.join(workspace, 'skills') // ✅
   // ❌ Extension 贡献的 Skill 目录未包含
-])
+]);
 ```
 
 #### 方案
 
 ```typescript
 // 修复：将 agentEnv.skillPaths 作为 scanSkills 的输入
-const agentEnv = await buildAgentEnv(sessionId, workspace)
-skillManager.scanSkills(agentEnv.skillPaths) // 已包含 Extension Skill 目录
+const agentEnv = await buildAgentEnv(sessionId, workspace);
+skillManager.scanSkills(agentEnv.skillPaths); // 已包含 Extension Skill 目录
 ```
 
 **同时修复 Skill 优先级**：当前 `scanSkills` 先到先得，应改为后到覆盖（高优先级覆盖低优先级）。
@@ -218,10 +218,10 @@ skillManager.scanSkills(agentEnv.skillPaths) // 已包含 Extension Skill 目录
 
 ```typescript
 interface MemorySearchResult {
-  file: string // 文件路径
-  score: number // 相关度评分 (0-1)
-  snippet: string // 匹配片段（带上下文）
-  section?: string // 所在章节标题
+  file: string; // 文件路径
+  score: number; // 相关度评分 (0-1)
+  snippet: string; // 匹配片段（带上下文）
+  section?: string; // 所在章节标题
 }
 ```
 
@@ -271,21 +271,21 @@ LLM 需要主动调用 `memory(write)` 才能存储记忆。大多数情况下 L
 // extensions/builtin/memory-auto/index.ts
 
 api.on('agent_end', async (event) => {
-  const { sessionId, output, success } = event
+  const { sessionId, output, success } = event;
 
   // 简单规则匹配：检测输出中的记忆信号词
-  const signals = detectMemorySignals(output)
+  const signals = detectMemorySignals(output);
   // signals: 'remember', 'prefer', 'always', 'never', 'important',
   //          'learned', 'note to self', 电话号码, 邮箱地址等
 
-  if (signals.length === 0) return
+  if (signals.length === 0) return;
 
   // 提取相关段落，追加到 memory/{date}.md
-  const today = new Date().toISOString().slice(0, 10)
-  const memoryFile = path.join(workspace, 'memory', `${today}.md`)
-  const entries = signals.map((s) => `- ${s.text}\n`)
-  fs.appendFileSync(memoryFile, entries.join(''), 'utf-8')
-})
+  const today = new Date().toISOString().slice(0, 10);
+  const memoryFile = path.join(workspace, 'memory', `${today}.md`);
+  const entries = signals.map((s) => `- ${s.text}\n`);
+  fs.appendFileSync(memoryFile, entries.join(''), 'utf-8');
+});
 ```
 
 **实施优先级**：方式 1（本次立即做）→ 方式 2（本次尝试做）
@@ -309,32 +309,32 @@ api.on('agent_end', async (event) => {
 // extensions/builtin/memory-auto/index.ts
 
 api.on('before_agent_start', async (event) => {
-  const { sessionId, prompt } = event
+  const { sessionId, prompt } = event;
 
   // 1. 读取主记忆文件（MEMORY.md）的前 N 字符作为核心记忆
-  const coreMemory = readMemoryMdHead(workspace, 2000)
+  const coreMemory = readMemoryMdHead(workspace, 2000);
 
   // 2. 基于用户消息关键字搜索相关记忆
-  const keywords = extractKeywords(prompt)
+  const keywords = extractKeywords(prompt);
   const relevantMemories = searchMemoryFiles([path.join(workspace, 'memory')], keywords.join(' '), {
     maxResults: 5,
     minScore: 0.3
-  })
+  });
 
-  if (!coreMemory && relevantMemories.length === 0) return {}
+  if (!coreMemory && relevantMemories.length === 0) return {};
 
   // 3. 格式化注入
-  const blocks: string[] = []
+  const blocks: string[] = [];
   if (coreMemory) {
-    blocks.push(`<core_memory>\n${coreMemory}\n</core_memory>`)
+    blocks.push(`<core_memory>\n${coreMemory}\n</core_memory>`);
   }
   if (relevantMemories.length > 0) {
-    const items = relevantMemories.map((r) => `- [${r.file}] ${r.snippet}`).join('\n')
-    blocks.push(`<recalled_memories>\n${items}\n</recalled_memories>`)
+    const items = relevantMemories.map((r) => `- [${r.file}] ${r.snippet}`).join('\n');
+    blocks.push(`<recalled_memories>\n${items}\n</recalled_memories>`);
   }
 
-  return { prependContext: blocks.join('\n\n') }
-})
+  return { prependContext: blocks.join('\n\n') };
+});
 ```
 
 **注入格式**：
@@ -419,19 +419,19 @@ write({workspace}/skills/{skill-name}/SKILL.md, content)
 
 ```typescript
 // 1. 执行协议作为内置 Skill（而非硬编码函数）
-skills / execution - protocol / SKILL.md
+skills / execution - protocol / SKILL.md;
 
 // 2. 用户可通过同名 Skill 覆盖（利用 Skill 优先级机制）
 {
-  userSkillsDir
+  userSkillsDir;
 }
-;/execution-protocol/IKLLS.md // 覆盖内置
+/execution-protocol/IKLLS.md; // 覆盖内置
 
 // 3. Agent 可自行创建针对特定场景的变体
 {
-  workspace
+  workspace;
 }
-;/skills/ceeinotux - protocol - code - review / SKILL.md
+/skills/ceeinotux - protocol - code - review / SKILL.md;
 ```
 
 **好处**：
@@ -467,16 +467,16 @@ Extension 代码在主进程中用 `jiti` 直接执行，无任何隔离。恶�
 ```typescript
 // ExtensionLoader.ts — 加载前验证
 async function verifyExtension(dir: string): Promise<boolean> {
-  const manifest = readManifest(dir)
+  const manifest = readManifest(dir);
 
   // 1. 来源检查：内置 > 用户 > 工作空间
-  if (isBuiltinDir(dir)) return true // 内置免检
+  if (isBuiltinDir(dir)) return true; // 内置免检
 
   // 2. 已知 ID 检查
-  if (isTrustedExtension(manifest.id)) return true
+  if (isTrustedExtension(manifest.id)) return true;
 
   // 3. 用户确认（首次加载时）
-  return await promptUserTrust(manifest)
+  return await promptUserTrust(manifest);
 }
 ```
 
@@ -511,15 +511,15 @@ class ErrorRecoveryChain {
 
     // 5. 重试（临时网络错误）
     new SimpleRetryRecovery({ maxRetries: 2, backoffMs: 1000 })
-  ]
+  ];
 
   async recover(error: Error, context: ExecutionContext): Promise<RecoveryAction> {
     for (const strategy of this.strategies) {
       if (strategy.canHandle(error)) {
-        return await strategy.recover(error, context)
+        return await strategy.recover(error, context);
       }
     }
-    return { action: 'throw' } // 所有策略都无法处理
+    return { action: 'throw' }; // 所有策略都无法处理
   }
 }
 ```
@@ -541,15 +541,15 @@ write/edit 工具修改文件后无法回退。如果 LLM 犯错，只能手动�
 // 在 write/edit 工具执行前，自动备份到 .versions/ 目录
 
 async function backupBeforeWrite(filePath: string, workspaceRoot: string): Promise<void> {
-  if (!fs.existsSync(filePath)) return // 新文件无需备份
+  if (!fs.existsSync(filePath)) return; // 新文件无需备份
 
-  const versionsDir = path.join(workspaceRoot, '.versions')
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-  const relativePath = path.relative(workspaceRoot, filePath)
-  const backupPath = path.join(versionsDir, `${relativePath}.${timestamp}`)
+  const versionsDir = path.join(workspaceRoot, '.versions');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const relativePath = path.relative(workspaceRoot, filePath);
+  const backupPath = path.join(versionsDir, `${relativePath}.${timestamp}`);
 
-  fs.mkdirSync(path.dirname(backupPath), { recursive: true })
-  fs.copyFileSync(filePath, backupPath)
+  fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+  fs.copyFileSync(filePath, backupPath);
 }
 ```
 
