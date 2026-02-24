@@ -812,13 +812,25 @@ class AgentExecutor {
       }
 
       if (chunk.type === 'tool:done') {
-        const data = chunk.data as { toolName?: string } | undefined;
+        const data = chunk.data as
+          | {
+              toolName?: string;
+              toolArgs?: Record<string, unknown>;
+            }
+          | undefined;
         const toolName = data?.toolName ?? '';
         if (toolName === 'memory') {
+          const action = (data?.toolArgs?.action as string) || 'unknown';
+          const operationMap: Record<string, 'store' | 'retrieve' | 'search'> = {
+            write: 'store',
+            get: 'retrieve',
+            list: 'retrieve',
+            search: 'search'
+          };
           collector
             .recordMemoryTool({
               sessionId,
-              operation: 'store',
+              operation: operationMap[action] || 'store',
               success: true,
               duration: 0
             })

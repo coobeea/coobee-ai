@@ -11,6 +11,7 @@ import { ref, shallowRef, markRaw } from 'vue';
 import BasicSettings from './settings/BasicSettings.vue';
 import ModelSettings from './settings/ModelSettings.vue';
 import WorkersSettings from './settings/WorkersSettings.vue';
+import MemorySettings from './settings/MemorySettings.vue';
 import AboutView from './settings/AboutView.vue';
 
 // 一级导航状态
@@ -18,6 +19,7 @@ const menuItems = [
   { id: 'basic', label: '基本配置', icon: 'i-carbon-settings', component: markRaw(BasicSettings) },
   { id: 'models', label: '模型设置', icon: 'i-carbon-machine-learning-model', component: markRaw(ModelSettings) },
   { id: 'workers', label: '内置服务', icon: 'i-carbon-cube', component: markRaw(WorkersSettings) },
+  { id: 'memory', label: '记忆管理', icon: 'i-carbon-cognitive', component: markRaw(MemorySettings) },
   { id: 'about', label: '关于我们', icon: 'i-carbon-information', component: markRaw(AboutView) }
 ];
 
