@@ -23,6 +23,7 @@ import { registerFileRoutes } from './http/files';
 import { registerTavernRoutes } from './http/tavern';
 import { registerCronJobRoutes } from './http/cron-jobs';
 import { registerBrainMetricsRoutes } from './http/brain-metrics';
+import { registerMetricsRoutes } from './http/metrics';
 import { GatewayErrorCode, GatewayMethodError } from './protocol/errors';
 import type {
   GatewayRequest,
@@ -191,6 +192,7 @@ export class Gateway implements GatewayApi {
     registerTavernRoutes(router);
     registerCronJobRoutes(router);
     registerBrainMetricsRoutes(router);
+    registerMetricsRoutes(router);
 
     // 动态挂载 Extension 注册的 HTTP 路由
     this.mountExtensionHttpRoutes(router);
