@@ -1,3 +1,8 @@
+---
+name: brain-sync
+description: EvoMap 经验包同步工具。从 EvoMap 网络批量下载通用经验包到本地智库，支持初始化智库、定期更新、按领域补充知识。Use when: (1) initializing the knowledge base for the first time, (2) syncing latest experience packages from EvoMap, (3) downloading domain-specific experience packages.
+---
+
 # Brain Sync - EvoMap 经验包同步
 
 > **用途**: 从 EvoMap 网络下载通用经验包到本地智库

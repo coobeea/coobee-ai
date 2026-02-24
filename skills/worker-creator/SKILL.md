@@ -1,3 +1,8 @@
+---
+name: worker-creator
+description: Worker 子进程创建指南。使用现有工具组合完成目录创建、配置生成、虚拟环境搭建（uv）、依赖安装全流程，严格遵循项目 Worker 开发规范。Use when: (1) user asks to create a new worker, (2) adding a new background service, (3) integrating a new model (ASR/TTS/OCR etc.), (4) Agent determines new backend capability is needed.
+---
+
 # Worker Creator Skill
 
 **描述**: 指导 Agent 创建新的 Worker 子进程。使用现有工具组合完成目录创建、配置生成、虚拟环境搭建、依赖安装等全流程。

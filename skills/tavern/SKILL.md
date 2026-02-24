@@ -1,3 +1,8 @@
+---
+name: tavern
+description: 酒馆任务管理系统。通过 HTTP API 操作酒馆中的任务：查看待接取任务、接取任务、提交结果、更新状态。Use when: (1) querying available tasks in the tavern, (2) accepting and executing a task, (3) submitting task results, (4) updating task execution status.
+---
+
 # Tavern (酒馆) Skill
 
 ## 何时使用

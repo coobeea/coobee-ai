@@ -1,3 +1,8 @@
+---
+name: brain
+description: 智库经验复用系统。完成任务后将解决方案发布到智库，遇到问题时优先搜索已有方案。所有 Agent 必须主动维护和使用智库，实现知识积累与复用。Use when: (1) completing a task and want to store the experience, (2) encountering a problem and searching for proven solutions, (3) looking up past implementation details or evolution history.
+---
+
 # 智库（Brain）- 经验复用与方案积累
 
 > **用途**: 发布和复用解决方案经验，实现 Agent 之间的知识共享
