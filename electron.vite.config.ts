@@ -102,6 +102,7 @@ export default defineConfig({
         external: [
           'better-sqlite3-multiple-ciphers',
           'fs-ext',
+          'node-pty',
           'electron',
           'bufferutil',
           'utf-8-validate',

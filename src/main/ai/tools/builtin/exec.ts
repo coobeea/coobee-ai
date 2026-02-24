@@ -30,6 +30,7 @@ import { resolveWorkingDirectory } from '../../sandbox';
 import { ProcessRegistry } from '../../process/ProcessRegistry';
 import { checkExecPolicy } from '../../sandbox/exec-policy';
 import { scanCommand } from '../security/command-scanner';
+import { getPtyManager } from '@main/terminal/PtyManager';
 
 /** 默认超时（ms） */
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -53,6 +54,14 @@ export const execTool: ToolDefinition = {
       .boolean()
       .optional()
       .describe('Run in background mode. Returns processId immediately. Use `process` tool to manage.'),
+    terminal: z
+      .boolean()
+      .optional()
+      .describe(
+        'Run command in the interactive PTY terminal. ' +
+          'Output is streamed to the user-visible terminal panel in real-time. ' +
+          'Use for commands that benefit from real-time visual output (builds, tests, dev servers).'
+      ),
     timeout: z
       .number()
       .optional()
@@ -68,6 +77,7 @@ export const execTool: ToolDefinition = {
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
     const command = params.command as string;
     const background = params.background as boolean | undefined;
+    const terminal = params.terminal as boolean | undefined;
     const timeout = (params.timeout as number) || DEFAULT_TIMEOUT_MS;
     const startTime = Date.now();
 
@@ -108,6 +118,43 @@ export const execTool: ToolDefinition = {
     // 如果到达这里，说明已经通过审批（或配置为 allow）
     // 即使 policyResult.action === 'ask'，也应该继续执行
     // （审批在 Pipeline 层完成，工具层只负责执行）
+
+    // ==================== 终端模式 ====================
+    if (terminal) {
+      const ptyMgr = getPtyManager();
+      const terminalList = ptyMgr.list();
+      let termId: string;
+
+      if (terminalList.length > 0) {
+        termId = terminalList[0].id;
+      } else {
+        const info = ptyMgr.create({ cwd });
+        termId = info.id;
+      }
+
+      yield { type: 'progress', content: `[terminal:${termId}] $ ${command}`, percentage: 0 };
+
+      ptyMgr.write(termId, command + '\n');
+
+      const duration = Date.now() - startTime;
+      return {
+        success: true,
+        llmContent:
+          `Command sent to terminal ${termId}.\n` +
+          `command: ${command}\n` +
+          `cwd: ${cwd}\n\n` +
+          `The output is streaming to the user's terminal panel in real-time.\n` +
+          `Note: This mode does not capture exit codes. Use foreground mode if you need to check the result.`,
+        userContent: `Terminal: ${command} → ${termId}`,
+        metadata: {
+          startTime,
+          endTime: Date.now(),
+          duration,
+          terminalId: termId,
+          cwd
+        }
+      };
+    }
 
     // ==================== 后台模式 ====================
     if (background) {

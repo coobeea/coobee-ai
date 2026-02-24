@@ -26,6 +26,7 @@ import { registerBrainMetricsRoutes } from './http/brain-metrics';
 import { registerMetricsRoutes } from './http/metrics';
 import { registerMonitoringRoutes } from './http/monitoring';
 import { registerProcessRoutes } from './http/processes';
+import { registerTerminalRoutes } from './http/terminals';
 import { GatewayErrorCode, GatewayMethodError } from './protocol/errors';
 import type {
   GatewayRequest,
@@ -239,6 +240,7 @@ export class Gateway implements GatewayApi {
     registerMetricsRoutes(router);
     registerMonitoringRoutes(router);
     registerProcessRoutes(router);
+    registerTerminalRoutes(router);
 
     // 动态挂载 Extension 注册的 HTTP 路由
     this.mountExtensionHttpRoutes(router);

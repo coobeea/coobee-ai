@@ -1,9 +1,11 @@
 <script setup lang="ts">
 /**
- * TerminalPanel — 终端输出面板
+ * TerminalPanel — 终端面板
  *
- * 展示 exec 工具的实时输出和后台进程状态。
- * 放置在 WorkbenchPanel 下方（可折叠），提供类似 IDE 底部终端的体验。
+ * 三个 Tab：
+ *   1. 终端 — 真正的 xterm.js PTY 终端，支持交互式命令
+ *   2. 输出 — exec 工具的实时输出（只读文本流）
+ *   3. 进程 — 后台进程列表及状态
  */
 
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
@@ -15,12 +17,16 @@ import {
   type ProcessInfo,
   type ProcessOutputLine
 } from '@/composables/useProcessWs';
+import { useTerminal, initTerminalWs } from '@/composables/useTerminal';
 
 const chatStore = useChatStore();
 const { processes, outputBuffer } = useProcessState();
+const { terminals, activeTerminalId, createTerminal, destroyTerminal, attachToElement, fitTerminal, fitAllTerminals } =
+  useTerminal();
 
-const activeTab = ref<'output' | 'processes'>('output');
+const activeTab = ref<'terminal' | 'output' | 'processes'>('terminal');
 const outputEl = ref<HTMLDivElement | null>(null);
+const terminalContainerEl = ref<HTMLDivElement | null>(null);
 const autoScroll = ref(true);
 const selectedProcessId = ref<string | null>(null);
 
@@ -99,15 +105,92 @@ function viewProcessOutput(processId: string): void {
   activeTab.value = 'output';
 }
 
+// ==================== 终端管理 ====================
+
+const isCreatingTerminal = ref(false);
+
+async function handleCreateTerminal(): Promise<void> {
+  if (isCreatingTerminal.value) return;
+  isCreatingTerminal.value = true;
+
+  try {
+    const term = await createTerminal();
+    if (term && terminalContainerEl.value) {
+      await nextTick();
+      const container = terminalContainerEl.value;
+      if (container) {
+        await attachToElement(term.id, container);
+      }
+    }
+  } finally {
+    isCreatingTerminal.value = false;
+  }
+}
+
+async function handleDestroyTerminal(id: string): Promise<void> {
+  await destroyTerminal(id);
+}
+
+async function switchTerminal(id: string): Promise<void> {
+  activeTerminalId.value = id;
+  await nextTick();
+
+  const term = terminals.value.find((t) => t.id === id);
+  if (term && terminalContainerEl.value) {
+    if (!term.xterm) {
+      await attachToElement(id, terminalContainerEl.value);
+    } else {
+      terminalContainerEl.value.innerHTML = '';
+      term.xterm.open(terminalContainerEl.value);
+      requestAnimationFrame(() => fitTerminal(id));
+    }
+  }
+}
+
+// 当终端 Tab 被选中且有终端时，确保 xterm 正确渲染
+watch(activeTab, async (tab) => {
+  if (tab === 'terminal') {
+    await nextTick();
+    if (activeTerminalId.value) {
+      fitTerminal(activeTerminalId.value);
+    }
+  }
+});
+
+// 使用 ResizeObserver 让终端自适应大小
+let resizeObserver: ResizeObserver | null = null;
+
+function setupResizeObserver(): void {
+  if (resizeObserver) resizeObserver.disconnect();
+  resizeObserver = new ResizeObserver(() => {
+    if (activeTab.value === 'terminal') {
+      fitAllTerminals();
+    }
+  });
+  if (terminalContainerEl.value) {
+    resizeObserver.observe(terminalContainerEl.value);
+  }
+}
+
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(() => {
   initProcessWs();
+  initTerminalWs();
   refreshTimer = setInterval(refreshProcessList, 10000);
+
+  nextTick(() => {
+    setupResizeObserver();
+  });
+
+  if (terminals.value.length === 0) {
+    handleCreateTerminal();
+  }
 });
 
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer);
+  if (resizeObserver) resizeObserver.disconnect();
 });
 </script>
 
@@ -116,8 +199,13 @@ onUnmounted(() => {
     <!-- 标签栏 -->
     <div class="terminal-tabs">
       <div class="flex items-center gap-1">
-        <button class="terminal-tab" :class="{ active: activeTab === 'output' }" @click="activeTab = 'output'">
+        <button class="terminal-tab" :class="{ active: activeTab === 'terminal' }" @click="activeTab = 'terminal'">
           <span class="i-carbon-terminal inline-block h-3 w-3"></span>
+          <span>终端</span>
+          <span v-if="terminals.length > 0" class="tab-badge terminal-badge">{{ terminals.length }}</span>
+        </button>
+        <button class="terminal-tab" :class="{ active: activeTab === 'output' }" @click="activeTab = 'output'">
+          <span class="i-carbon-data-vis-1 inline-block h-3 w-3"></span>
           <span>输出</span>
           <span v-if="execOutputs.length > 0" class="tab-badge">{{ execOutputs.length }}</span>
         </button>
@@ -134,23 +222,59 @@ onUnmounted(() => {
         </button>
       </div>
       <div class="flex items-center gap-1">
-        <button v-if="selectedProcessId" class="terminal-action" title="查看全部输出" @click="selectedProcessId = null">
-          <span class="i-carbon-filter-remove inline-block h-3 w-3"></span>
-        </button>
-        <button
-          class="terminal-action"
-          :title="autoScroll ? '自动滚动: 开' : '自动滚动: 关'"
-          :class="{ active: autoScroll }"
-          @click="autoScroll = !autoScroll">
-          <span class="i-carbon-arrow-down inline-block h-3 w-3"></span>
-        </button>
+        <!-- 终端 Tab 的操作按钮 -->
+        <template v-if="activeTab === 'terminal'">
+          <!-- 终端切换下拉 -->
+          <div v-if="terminals.length > 1" class="terminal-switcher">
+            <select
+              class="terminal-select"
+              :value="activeTerminalId"
+              @change="switchTerminal(($event.target as HTMLSelectElement).value)">
+              <option v-for="t in terminals" :key="t.id" :value="t.id">{{ t.id }} ({{ t.shell }})</option>
+            </select>
+          </div>
+          <button class="terminal-action" title="新建终端" :disabled="isCreatingTerminal" @click="handleCreateTerminal">
+            <span class="i-carbon-add inline-block h-3 w-3"></span>
+          </button>
+          <button
+            v-if="activeTerminalId"
+            class="terminal-action"
+            title="关闭当前终端"
+            @click="handleDestroyTerminal(activeTerminalId)">
+            <span class="i-carbon-close inline-block h-3 w-3"></span>
+          </button>
+        </template>
+        <!-- 输出 Tab 的操作按钮 -->
+        <template v-if="activeTab === 'output'">
+          <button
+            v-if="selectedProcessId"
+            class="terminal-action"
+            title="查看全部输出"
+            @click="selectedProcessId = null">
+            <span class="i-carbon-filter-remove inline-block h-3 w-3"></span>
+          </button>
+          <button
+            class="terminal-action"
+            :title="autoScroll ? '自动滚动: 开' : '自动滚动: 关'"
+            :class="{ active: autoScroll }"
+            @click="autoScroll = !autoScroll">
+            <span class="i-carbon-arrow-down inline-block h-3 w-3"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <!-- 终端内容 -->
+    <div v-show="activeTab === 'terminal'" ref="terminalContainerEl" class="xterm-container">
+      <div v-if="terminals.length === 0 && !isCreatingTerminal" class="terminal-empty">
+        <span class="i-carbon-terminal inline-block h-5 w-5 text-gray-300"></span>
+        <span class="text-xs text-gray-400">点击 + 创建终端</span>
       </div>
     </div>
 
     <!-- 输出内容 -->
     <div v-if="activeTab === 'output'" ref="outputEl" class="terminal-output">
       <template v-if="execOutputs.length > 0 || filteredProcessOutput.length > 0">
-        <!-- exec 工具输出 -->
         <div v-for="(entry, i) in execOutputs" :key="'exec-' + i" class="output-line">
           <span class="output-time">{{ formatTime(entry.timestamp) }}</span>
           <span
@@ -165,8 +289,6 @@ onUnmounted(() => {
             entry.content
           }}</span>
         </div>
-
-        <!-- 后台进程输出 -->
         <div v-for="(line, i) in filteredProcessOutput" :key="'proc-' + i" class="output-line">
           <span class="output-time">{{ formatTime(line.timestamp) }}</span>
           <span class="output-tag tag-process">{{ line.processId }}</span>
@@ -275,6 +397,11 @@ onUnmounted(() => {
   color: hsl(142 76% 36%);
 }
 
+.tab-badge.terminal-badge {
+  background: hsl(217 91% 60% / 0.15);
+  color: hsl(217 91% 60%);
+}
+
 .terminal-action {
   display: flex;
   align-items: center;
@@ -293,6 +420,36 @@ onUnmounted(() => {
 
 .terminal-action.active {
   color: hsl(var(--primary));
+}
+
+.terminal-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.terminal-switcher {
+  display: flex;
+  align-items: center;
+}
+
+.terminal-select {
+  appearance: none;
+  background: hsl(var(--muted) / 0.4);
+  border: 1px solid hsl(var(--border) / 0.3);
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  color: hsl(var(--foreground) / 0.7);
+  padding: 1px 16px 1px 6px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.xterm-container {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 2px;
 }
 
 .terminal-output {
@@ -385,5 +542,15 @@ onUnmounted(() => {
 .process-action:hover {
   background: hsl(var(--muted) / 0.5);
   color: hsl(var(--primary));
+}
+</style>
+
+<style>
+.xterm-container .xterm {
+  height: 100%;
+}
+
+.xterm-container .xterm-viewport {
+  overflow-y: auto !important;
 }
 </style>
