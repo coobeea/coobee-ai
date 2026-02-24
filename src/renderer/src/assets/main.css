@@ -134,6 +134,128 @@ code {
   display: none;
 }
 
+/* ---- ContextPanel Skills Popover ---- */
+
+.skills-popover {
+  position: fixed;
+  z-index: 9999;
+  width: 280px;
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border) / 0.3);
+  border-radius: 10px;
+  box-shadow:
+    0 4px 24px hsl(var(--foreground) / 0.08),
+    0 1px 4px hsl(var(--foreground) / 0.04);
+  overflow: hidden;
+  animation: popoverIn 0.12s ease;
+}
+
+@keyframes popoverIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.skills-popover .popover-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 12px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(var(--muted-foreground) / 0.5);
+  border-bottom: 1px solid hsl(var(--border) / 0.15);
+}
+
+.skills-popover .popover-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: hsl(var(--muted-foreground) / 0.35);
+}
+
+.skills-popover .popover-list {
+  padding: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.skills-popover .popover-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.4);
+}
+
+.skills-popover .popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  transition: background 0.1s ease;
+}
+
+.skills-popover .popover-item:hover {
+  background: hsl(var(--foreground) / 0.04);
+}
+
+.skills-popover .popover-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.skills-popover .popover-item-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--foreground) / 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.skills-popover .popover-item-desc {
+  display: block;
+  font-size: 10.5px;
+  color: hsl(var(--muted-foreground) / 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.skills-popover .popover-item-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: hsl(var(--primary) / 0.7);
+  background: hsl(var(--primary) / 0.07);
+  border: 1px solid hsl(var(--primary) / 0.12);
+  flex-shrink: 0;
+  transition: all 0.12s ease;
+  cursor: pointer;
+}
+
+.skills-popover .popover-item-btn:hover {
+  background: hsl(var(--primary) / 0.14);
+  color: hsl(var(--primary));
+  border-color: hsl(var(--primary) / 0.25);
+}
+
 /* ---- 页面加载动画 ---- */
 
 @keyframes fadeIn {

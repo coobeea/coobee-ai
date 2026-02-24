@@ -103,14 +103,6 @@ defineExpose({
 
 <template>
   <aside v-show="!isCollapsed" class="flex min-h-0 flex-1 flex-col border-l border-gray-200/80 bg-[#f7f7f8]">
-    <!-- 面板标题 -->
-    <div class="flex h-10 shrink-0 items-center border-b border-gray-200/60 px-3">
-      <div class="flex items-center gap-1.5">
-        <span class="i-carbon-chat inline-block h-3.5 w-3.5 text-gray-500"></span>
-        <span class="text-xs font-semibold text-gray-600">对话</span>
-      </div>
-    </div>
-
     <!-- 消息区域 -->
     <ChatMessages
       ref="chatMessagesRef"
