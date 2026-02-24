@@ -7,14 +7,46 @@
  * 无打开文件时显示空状态引导。
  */
 
-import { ref, watch, onMounted, onBeforeUnmount, nextTick, shallowRef } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount, nextTick, shallowRef, computed, defineAsyncComponent } from 'vue';
 import { monaco } from '@/utils/monaco-setup';
 import { useOpenFiles } from '@/composables/useOpenFiles';
+import { routePreview, type PreviewMode } from '@/utils/previewRouter';
+
+const PDFViewer = defineAsyncComponent(() => import('./preview/PDFViewer.vue'));
+const ImageViewer = defineAsyncComponent(() => import('./preview/ImageViewer.vue'));
+const VideoPlayer = defineAsyncComponent(() => import('./preview/VideoPlayer.vue'));
+const HTMLPreview = defineAsyncComponent(() => import('./preview/HTMLPreview.vue'));
+const MarkdownPreview = defineAsyncComponent(() => import('./preview/MarkdownPreview.vue'));
 
 const { openFiles, activeFilePath, activeFile, closeFile, activateFile, loadMoreContent } = useOpenFiles();
 
 const editorContainer = ref<HTMLDivElement | null>(null);
 const editorInstance = shallowRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+
+// 🆕 预览模式
+const previewMode = computed<PreviewMode>(() => {
+  if (!activeFile.value) return 'code';
+  const result = routePreview(activeFile.value.path);
+  return result.mode;
+});
+
+// 🆕 动态组件
+const previewComponent = computed(() => {
+  switch (previewMode.value) {
+    case 'pdf':
+      return PDFViewer;
+    case 'image':
+      return ImageViewer;
+    case 'video':
+      return VideoPlayer;
+    case 'html':
+      return HTMLPreview;
+    case 'markdown':
+      return MarkdownPreview;
+    default:
+      return null;
+  }
+});
 
 function initEditor(): void {
   if (!editorContainer.value) {
@@ -254,11 +286,20 @@ function getFileIcon(name: string): string {
         </div>
       </div>
 
-      <!-- Monaco Editor 容器（始终存在，避免被销毁） -->
+      <!-- 🆕 多模态预览容器 -->
       <div
         v-show="activeFile && !activeFile.loading && !activeFile.error"
         class="relative flex min-h-0 flex-1 flex-col">
-        <div ref="editorContainer" class="min-h-0 flex-1 bg-white"></div>
+        <!-- 特殊格式预览 -->
+        <component
+          :is="previewComponent"
+          v-if="previewComponent"
+          :file-path="activeFile!.path"
+          :content="activeFile!.content"
+          class="min-h-0 flex-1" />
+
+        <!-- Monaco Editor（代码文件） -->
+        <div v-else ref="editorContainer" class="min-h-0 flex-1 bg-white"></div>
 
         <!-- 大文件加载提示（底部浮动） -->
         <div
