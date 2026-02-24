@@ -70,6 +70,33 @@ export const ModelSelectionSchema = z.object({
   fallbacks: z.array(z.string()).optional()
 });
 
+// ─── 模型组和负载均衡 ───────────────────────────────────────
+
+export const LoadBalanceStrategySchema = z.enum(['round-robin', 'random', 'weighted', 'quota-aware', 'fallback']);
+
+export const ModelGroupSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  models: z.array(z.string()).min(1),
+  strategy: LoadBalanceStrategySchema.default('round-robin'),
+  weights: z.record(z.string(), z.number()).optional(),
+  enabled: z.boolean().default(true)
+});
+
+export const AutoModelConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  strategy: LoadBalanceStrategySchema.default('quota-aware'),
+  candidates: z.array(z.string()).optional(),
+  filters: z
+    .object({
+      maxCost: z.number().optional(),
+      minContextWindow: z.number().optional(),
+      requireFunctionCalling: z.boolean().optional(),
+      requireVision: z.boolean().optional()
+    })
+    .optional()
+});
+
 // ─── 队列配置 ───────────────────────────────────────
 
 export const QueueModeSchema = z.enum(['followup', 'steer', 'collect', 'interrupt']);
@@ -87,6 +114,8 @@ export const CoobeeConfigSchema = z.object({
   models: z
     .object({
       providers: z.record(z.string(), ProviderConfigSchema).optional(),
+      groups: z.record(z.string(), ModelGroupSchema).optional(),
+      auto: AutoModelConfigSchema.optional(),
       defaults: z
         .object({
           model: ModelSelectionSchema.optional(),
