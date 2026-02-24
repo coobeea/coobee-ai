@@ -36,7 +36,7 @@ export function getFilePreviewUrl(filePath: string, content?: string, mimeType?:
   }
 
   // 二进制文件（无 content）：使用 Gateway serve 端点
-  if (PREVIEWABLE_BINARY_MODES.includes(mode)) {
+  if (PREVIEWABLE_BINARY_MODES.includes(mode as (typeof PREVIEWABLE_BINARY_MODES)[number])) {
     const baseUrl = configManager.getBaseUrl();
     return `${baseUrl}/gateway/files/serve?path=${encodeURIComponent(filePath)}`;
   }
