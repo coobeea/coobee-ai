@@ -13,12 +13,14 @@ import { useAgentsStore } from '@/stores/agents';
 import { useThreadsStore } from '@/stores/threads';
 import { useCopilotStore } from '@/stores/copilot';
 import { useOpenFiles } from '@/composables/useOpenFiles';
+import { initProcessWs } from '@/composables/useProcessWs';
 
 import ProjectPanel from '@/components/agent/ProjectPanel.vue';
 import WorkbenchPanel from '@/components/agent/WorkbenchPanel.vue';
 import ChatPanel from '@/components/agent/ChatPanel.vue';
 import AgentsPanel from '@/components/agent/AgentsPanel.vue';
 import ContextPanel from '@/components/agent/ContextPanel.vue';
+import TerminalPanel from '@/components/agent/TerminalPanel.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -31,6 +33,7 @@ const { closeAllFiles } = useOpenFiles();
 const leftCollapsed = ref(false);
 const rightCollapsed = ref(false);
 const agentsPanelCollapsed = ref(true);
+const terminalCollapsed = ref(true);
 const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null);
 
 const projectPath = ref<string | null>(null);
@@ -99,8 +102,19 @@ function goBackToAgents(): void {
   router.push('/agent');
 }
 
+// 有 exec 输出时自动展开终端面板
+watch(
+  () => chatStore.execOutputs.length,
+  (newLen, oldLen) => {
+    if (newLen > (oldLen ?? 0) && terminalCollapsed.value) {
+      terminalCollapsed.value = false;
+    }
+  }
+);
+
 onMounted(() => {
   copilotStore.hideBubble();
+  initProcessWs();
   if (threadId.value) {
     enterWorkspaceForThread(threadId.value);
   }
@@ -142,7 +156,20 @@ onUnmounted(() => {
     <!-- 已选目录：三栏工作区 -->
     <div v-else class="flex min-h-0 flex-1">
       <ProjectPanel v-model:collapsed="leftCollapsed" v-model:project-path="projectPath" :thread-id="threadId" />
-      <WorkbenchPanel />
+      <div class="middle-area">
+        <WorkbenchPanel />
+        <!-- 终端面板（可折叠） -->
+        <div class="terminal-section" :class="{ collapsed: terminalCollapsed }">
+          <button class="terminal-toggle" @click="terminalCollapsed = !terminalCollapsed">
+            <span
+              class="inline-block h-3 w-3 transition-transform"
+              :class="terminalCollapsed ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'">
+            </span>
+            <span class="text-[11px]">终端</span>
+          </button>
+          <TerminalPanel v-if="!terminalCollapsed" />
+        </div>
+      </div>
       <div class="right-area">
         <ContextPanel :thread-id="threadId" @use-skill="handleUseSkill" />
         <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" />
@@ -159,6 +186,48 @@ onUnmounted(() => {
   height: 100%;
   width: 100%;
   background: hsl(var(--background));
+}
+
+.middle-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.terminal-section {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 200px;
+  min-height: 0;
+  transition: height 0.15s ease;
+}
+
+.terminal-section.collapsed {
+  height: auto;
+}
+
+.terminal-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  border-top: 1px solid hsl(var(--border) / 0.3);
+  background: hsl(var(--muted) / 0.2);
+  color: hsl(var(--muted-foreground) / 0.5);
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.1s ease;
+  width: 100%;
+}
+
+.terminal-toggle:hover {
+  background: hsl(var(--muted) / 0.4);
+  color: hsl(var(--foreground) / 0.7);
 }
 
 .right-area {

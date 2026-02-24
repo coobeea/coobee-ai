@@ -22,7 +22,8 @@ export type {
   ToolCallInfo,
   DelegateInfo,
   PendingApproval,
-  MessageStatus
+  MessageStatus,
+  ExecOutputEntry
 } from '@/composables/useStreamHandler';
 
 // ==================== Store ====================
@@ -44,10 +45,11 @@ export interface QueuedMessage {
 
 export const useChatStore = defineStore('chat', () => {
   // ---- 共享消息处理 ----
-  const { messages, isStreaming, handleStreamMessage, addUserMessage, addErrorMessage, resetAll } = useStreamHandler({
-    idPrefix: 'chat',
-    maxMessages: 500
-  });
+  const { messages, isStreaming, execOutputs, handleStreamMessage, addUserMessage, addErrorMessage, resetAll } =
+    useStreamHandler({
+      idPrefix: 'chat',
+      maxMessages: 500
+    });
 
   // ---- 独立状态 ----
   const sessionId = ref<string | null>(null);
@@ -437,6 +439,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionId,
     messages,
     isStreaming,
+    execOutputs,
     isQueued,
     queueStatus,
     messageQueue,

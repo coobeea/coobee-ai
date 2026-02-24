@@ -12,6 +12,7 @@
  */
 
 import type { ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { log } from '@main/common/logger';
 
 // ==================== 类型定义 ====================
@@ -81,9 +82,14 @@ let instance: ProcessRegistry | null = null;
 
 // ==================== 类定义 ====================
 
-export class ProcessRegistry {
+export class ProcessRegistry extends EventEmitter {
   private processes = new Map<string, ProcessEntry>();
   private nextId = 1;
+
+  constructor() {
+    super();
+    this.setMaxListeners(50);
+  }
 
   // ---- 单例 ----
 
@@ -142,24 +148,28 @@ export class ProcessRegistry {
 
     // 收集 stdout
     child.stdout?.on('data', (data: Buffer) => {
-      this.appendOutput(processId, data.toString('utf-8'));
+      const text = data.toString('utf-8');
+      this.appendOutput(processId, text);
+      this.emit('process:output', { processId, text });
     });
 
     // 收集 stderr
     child.stderr?.on('data', (data: Buffer) => {
-      this.appendOutput(processId, data.toString('utf-8'));
+      const text = data.toString('utf-8');
+      this.appendOutput(processId, text);
+      this.emit('process:output', { processId, text });
     });
 
     // 监听退出
     child.on('close', (code: number | null, signal: string | null) => {
       const proc = this.processes.get(processId);
       if (proc) {
-        // 保留 error 状态，不被子进程正常退出覆盖
         if (proc.info.status !== 'error') {
           proc.info.status = signal ? 'killed' : 'exited';
         }
         proc.info.endedAt = Date.now();
         proc.info.exitCode = code;
+        this.emit('process:exit', { processId, status: proc.info.status, exitCode: code });
       }
     });
 

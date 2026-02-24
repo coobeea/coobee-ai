@@ -5,7 +5,7 @@
  * 封装了优秀的消息排版布局，负责消息的整体渲染与自动滚动控制。
  */
 
-import { ref, watch, nextTick, onMounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import type { ContentBlock, PendingApproval } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
 import MessageItemUser from './items/MessageItemUser.vue';
@@ -35,6 +35,23 @@ const props = withDefaults(
 const emit = defineEmits<{
   decide: [approval: PendingApproval, decision: HitlApprovalDecision];
 }>();
+
+const currentActivity = computed<string>(() => {
+  if (!props.isStreaming || props.messages.length === 0) return '处理中...';
+  const last = props.messages[props.messages.length - 1];
+  if (last.role !== 'assistant' || !last.blocks?.length) return '思考中...';
+  const lastBlock = last.blocks[last.blocks.length - 1];
+  if (lastBlock.type === 'tool' && 'tool' in lastBlock) {
+    const toolName = lastBlock.tool.name;
+    if (lastBlock.tool.status === 'calling') return `执行 ${toolName}...`;
+    if (lastBlock.tool.status === 'approval-pending') return `等待审批 ${toolName}...`;
+  }
+  if (lastBlock.type === 'thinking') return '推理中...';
+  if (lastBlock.type === 'delegate' && 'delegate' in lastBlock) {
+    return `委派给 ${lastBlock.delegate.agentName || '子智能体'}...`;
+  }
+  return '生成中...';
+});
 
 const messageContainer = ref<HTMLElement | null>(null);
 
@@ -112,8 +129,11 @@ onMounted(() => {
     </template>
 
     <div v-if="isStreaming" class="stream-indicator">
-      <span class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin text-primary" />
-      <span class="text-xs font-medium text-muted-foreground ml-1">处理中...</span>
+      <span class="relative flex h-2 w-2">
+        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60"></span>
+        <span class="relative inline-flex h-2 w-2 rounded-full bg-primary"></span>
+      </span>
+      <span class="text-xs font-medium text-muted-foreground ml-1.5">{{ currentActivity }}</span>
     </div>
   </div>
 </template>

@@ -40,6 +40,13 @@ export interface PendingApproval {
   canShow?: boolean;
 }
 
+export interface ExecOutputEntry {
+  timestamp: number;
+  type: 'progress' | 'output' | 'result';
+  toolName: string;
+  content: string;
+}
+
 export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'thinking'; text: string }
@@ -71,6 +78,7 @@ interface StreamHandlerOptions {
 export interface StreamHandlerReturn {
   messages: Ref<StreamChatMessage[]>;
   isStreaming: Ref<boolean>;
+  execOutputs: Ref<ExecOutputEntry[]>;
   getCurrentAssistantMessage: () => StreamChatMessage | undefined;
   createAssistantMessage: () => StreamChatMessage;
   addUserMessage: (text: string) => StreamChatMessage;
@@ -84,6 +92,7 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
 
   const messages = ref<StreamChatMessage[]>([]);
   const isStreaming = ref(false);
+  const execOutputs = ref<ExecOutputEntry[]>([]);
 
   // 消息计数器，确保 ID 唯一
   let messageCounter = 0;
@@ -141,6 +150,22 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
     return msg;
   }
 
+  const EXEC_TOOL_NAMES = new Set(['exec_command', 'exec']);
+
+  function isExecTool(name: string): boolean {
+    return EXEC_TOOL_NAMES.has(name);
+  }
+
+  function findLastCallingTool(assistantMsg: StreamChatMessage): ToolCallInfo | undefined {
+    for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
+      const block = assistantMsg.blocks[i];
+      if (block.type === 'tool' && block.tool.status === 'calling') {
+        return block.tool;
+      }
+    }
+    return undefined;
+  }
+
   /**
    * StreamMessage → StreamChatMessage 的核心映射
    *
@@ -191,6 +216,21 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
         break;
       }
 
+      case 'tool:delta': {
+        if (assistantMsg) {
+          const currentTool = findLastCallingTool(assistantMsg);
+          if (currentTool && isExecTool(currentTool.name)) {
+            execOutputs.value.push({
+              timestamp: Date.now(),
+              type: 'progress',
+              toolName: currentTool.name,
+              content: msg.content
+            });
+          }
+        }
+        break;
+      }
+
       case 'tool:done': {
         if (assistantMsg) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -199,9 +239,16 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
           for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
             const block = assistantMsg.blocks[i];
             if (block.type === 'tool' && block.tool.status === 'calling') {
+              if (isExecTool(block.tool.name)) {
+                execOutputs.value.push({
+                  timestamp: Date.now(),
+                  type: 'result',
+                  toolName: block.tool.name,
+                  content: msg.content
+                });
+              }
               block.tool.result = msg.content;
 
-              // 如果工具需要审批，状态设置为 approval-pending，而不是 done
               if (suspended) {
                 block.tool.status = 'approval-pending';
               } else {
@@ -326,12 +373,14 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
   function resetAll(): void {
     messages.value = [];
     isStreaming.value = false;
-    messageCounter = 0; // 重置计数器
+    execOutputs.value = [];
+    messageCounter = 0;
   }
 
   return {
     messages,
     isStreaming,
+    execOutputs,
     getCurrentAssistantMessage,
     createAssistantMessage,
     addUserMessage,

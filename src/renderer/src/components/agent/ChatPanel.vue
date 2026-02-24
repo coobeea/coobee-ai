@@ -6,11 +6,12 @@
  * 从原 ChatView.vue 提取，适配窄面板布局。
  */
 
-import { ref, inject, watch, onMounted } from 'vue';
+import { ref, inject, watch, onMounted, onUnmounted } from 'vue';
 import { useChatStore } from '@/stores/chat';
 import type { PendingApproval } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
 import { gateway } from '@/plugins/gatewaySetup';
+import configManager from '@/config';
 import ChatMessages from '@/components/chat/ChatMessages.vue';
 import ChatInput from '@/components/chat/ChatInput.vue';
 import MessageQueue from '@/components/chat/MessageQueue.vue';
@@ -91,8 +92,59 @@ function handleApproval(approval: PendingApproval, decision: HitlApprovalDecisio
   });
 }
 
+/**
+ * 运行状态验证：当前端认为在 streaming 时，定期向后端确认实际状态。
+ * 如果后端 thread 的 runStatus 不是 running/tool-pending/approval-pending，
+ * 则强制结束前端的 streaming 状态，避免旋转图标永远不消失。
+ */
+let statusCheckTimer: ReturnType<typeof setInterval> | null = null;
+const STATUS_CHECK_INTERVAL = 15_000;
+
+async function verifyRunStatus(): Promise<void> {
+  if (!chatStore.isStreaming || !chatStore.sessionId) return;
+
+  try {
+    const baseUrl = configManager.getBaseUrl();
+    const res = await fetch(`${baseUrl}/gateway/threads/${chatStore.sessionId}`);
+    if (res.ok) {
+      const data = (await res.json()) as { thread?: { runStatus?: string } };
+      const backendStatus = data?.thread?.runStatus;
+      if (backendStatus && !['running', 'tool-pending', 'approval-pending'].includes(backendStatus)) {
+        console.warn(`[ChatPanel] Backend runStatus="${backendStatus}" but frontend is streaming. Force ending.`);
+        chatStore.isStreaming = false;
+      }
+    }
+  } catch {
+    // Silent fail — if we can't reach the backend, keep the current state
+  }
+}
+
+watch(
+  () => chatStore.isStreaming,
+  (streaming) => {
+    if (streaming) {
+      if (!statusCheckTimer) {
+        statusCheckTimer = setInterval(verifyRunStatus, STATUS_CHECK_INTERVAL);
+      }
+    } else {
+      if (statusCheckTimer) {
+        clearInterval(statusCheckTimer);
+        statusCheckTimer = null;
+      }
+    }
+  },
+  { immediate: true }
+);
+
 onMounted(() => {
   scrollToBottom();
+});
+
+onUnmounted(() => {
+  if (statusCheckTimer) {
+    clearInterval(statusCheckTimer);
+    statusCheckTimer = null;
+  }
 });
 
 defineExpose({
