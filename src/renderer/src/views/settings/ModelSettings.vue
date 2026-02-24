@@ -187,15 +187,19 @@ async function saveGroup(): Promise<void> {
   groupSaving.value = true;
   groupError.value = null;
   try {
+    const groupId = groupForm.value.id.trim();
+    // config.patch 接受 partial 对象（深度合并）
+    const groupsUpdate: Record<string, unknown> = {};
+    groupsUpdate[groupId] = {
+      id: groupId,
+      name: groupForm.value.name,
+      description: groupForm.value.description || undefined,
+      models,
+      strategy: groupForm.value.strategy,
+      enabled: groupForm.value.enabled
+    };
     await gateway.request('config.patch', {
-      path: `models.groups.${groupForm.value.id}`,
-      value: {
-        name: groupForm.value.name,
-        description: groupForm.value.description || undefined,
-        models,
-        strategy: groupForm.value.strategy,
-        enabled: groupForm.value.enabled
-      }
+      partial: { models: { groups: groupsUpdate } }
     });
     // 更新本地列表
     const updated: ModelGroup = { ...groupForm.value, models };
@@ -216,9 +220,10 @@ async function saveGroup(): Promise<void> {
 
 async function toggleGroupEnabled(group: ModelGroup): Promise<void> {
   try {
+    const groupsUpdate: Record<string, unknown> = {};
+    groupsUpdate[group.id] = { enabled: !group.enabled };
     await gateway.request('config.patch', {
-      path: `models.groups.${group.id}.enabled`,
-      value: !group.enabled
+      partial: { models: { groups: groupsUpdate } }
     });
     group.enabled = !group.enabled;
   } catch (err: unknown) {
