@@ -12,6 +12,7 @@
 
 import { ref, computed, onMounted } from 'vue';
 import { gateway } from '@/plugins/gatewaySetup';
+import ErrorDisplay from '@/components/common/ErrorDisplay.vue';
 
 interface Package {
   package_id: string;
@@ -42,20 +43,26 @@ const stats = ref<Stats | null>(null);
 const packages = ref<Package[]>([]);
 const selectedCategory = ref<string | null>(null);
 const selectedStatus = ref<string | null>(null);
+const error = ref<{ message: string; details?: string } | null>(null);
 
 // 加载统计信息
 async function loadStats(): Promise<void> {
   try {
     const result = (await gateway.request('brain.stats', {})) as { data: Stats };
     stats.value = result.data;
+    error.value = null;
   } catch (err: unknown) {
-    console.error('[BrainView] Failed to load stats:', err);
+    error.value = {
+      message: '加载统计信息失败',
+      details: err instanceof Error ? err.message : String(err)
+    };
   }
 }
 
 // 加载经验包列表
 async function loadPackages(): Promise<void> {
   loading.value = true;
+  error.value = null;
   try {
     const result = (await gateway.request('brain.list', {
       limit: 50,
@@ -66,7 +73,10 @@ async function loadPackages(): Promise<void> {
 
     packages.value = result.data.packages;
   } catch (err: unknown) {
-    console.error('[BrainView] Failed to load packages:', err);
+    error.value = {
+      message: '加载经验包列表失败',
+      details: err instanceof Error ? err.message : String(err)
+    };
     packages.value = [];
   } finally {
     loading.value = false;
@@ -145,6 +155,11 @@ onMounted(() => {
         </button>
       </div>
     </header>
+
+    <!-- 错误提示 -->
+    <div v-if="error" class="px-5 pt-4">
+      <ErrorDisplay :error="error" level="error" title="加载失败" :dismissible="true" @dismiss="error = null" />
+    </div>
 
     <!-- 内容区域 -->
     <div class="content">

@@ -11,6 +11,7 @@
 
 import { ref, onMounted, computed } from 'vue';
 import configManager from '@/config';
+import ErrorDisplay from '@/components/common/ErrorDisplay.vue';
 
 interface BrainCallRecord {
   id: string;
@@ -47,6 +48,7 @@ const stats = ref<BrainStats | null>(null);
 const records = ref<BrainCallRecord[]>([]);
 const loading = ref(false);
 const selectedAgent = ref<string>('all');
+const error = ref<{ message: string; details?: string } | null>(null);
 
 const BASE_URL = `${configManager.getBaseUrl()}/gateway/brain-metrics`;
 
@@ -66,6 +68,7 @@ onMounted(() => {
  */
 async function loadStats(): Promise<void> {
   loading.value = true;
+  error.value = null;
   try {
     const url =
       selectedAgent.value === 'all' ? `${BASE_URL}/stats` : `${BASE_URL}/stats?agentId=${selectedAgent.value}`;
@@ -76,7 +79,10 @@ async function loadStats(): Promise<void> {
     const data = await res.json();
     stats.value = data.stats;
   } catch (err) {
-    console.error('[BrainMonitorView] 加载统计失败:', err);
+    error.value = {
+      message: '加载统计数据失败',
+      details: err instanceof Error ? err.message : String(err)
+    };
   } finally {
     loading.value = false;
   }
@@ -86,6 +92,7 @@ async function loadStats(): Promise<void> {
  * 加载调用记录
  */
 async function loadRecords(): Promise<void> {
+  error.value = null;
   try {
     const url =
       selectedAgent.value === 'all'
@@ -98,7 +105,10 @@ async function loadRecords(): Promise<void> {
     const data = await res.json();
     records.value = data.records;
   } catch (err) {
-    console.error('[BrainMonitorView] 加载记录失败:', err);
+    error.value = {
+      message: '加载调用记录失败',
+      details: err instanceof Error ? err.message : String(err)
+    };
   }
 }
 
@@ -108,6 +118,7 @@ async function loadRecords(): Promise<void> {
 async function clearRecords(): Promise<void> {
   if (!confirm('确定要清空所有记录吗？此操作不可撤销。')) return;
 
+  error.value = null;
   try {
     const res = await fetch(`${BASE_URL}/clear`, { method: 'POST' });
     if (!res.ok) throw new Error('Failed to clear records');
@@ -115,8 +126,10 @@ async function clearRecords(): Promise<void> {
     await loadStats();
     await loadRecords();
   } catch (err) {
-    console.error('[BrainMonitorView] 清空记录失败:', err);
-    alert('清空失败');
+    error.value = {
+      message: '清空记录失败',
+      details: err instanceof Error ? err.message : String(err)
+    };
   }
 }
 
@@ -166,6 +179,11 @@ const agentIds = computed(() => {
           清空记录
         </button>
       </div>
+    </div>
+
+    <!-- 错误提示 -->
+    <div v-if="error" class="px-6 pt-4">
+      <ErrorDisplay :error="error" level="error" title="操作失败" :dismissible="true" @dismiss="error = null" />
     </div>
 
     <!-- 加载中 -->

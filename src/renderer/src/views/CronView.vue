@@ -12,6 +12,7 @@
 import { ref, onMounted } from 'vue';
 import { useAgentsStore } from '@/stores/agents';
 import configManager from '@/config';
+import ErrorDisplay from '@/components/common/ErrorDisplay.vue';
 
 interface CronJobDefinition {
   id: string;
@@ -34,6 +35,7 @@ const agentsStore = useAgentsStore();
 const cronJobs = ref<CronJobDefinition[]>([]);
 const loading = ref(false);
 const showCreateDialog = ref(false);
+const error = ref<{ message: string; details?: string } | null>(null);
 
 // 新任务表单
 const newJob = ref({
@@ -54,13 +56,17 @@ onMounted(() => {
  */
 async function loadCronJobs(): Promise<void> {
   loading.value = true;
+  error.value = null;
   try {
     const res = await fetch(BASE_URL);
     if (!res.ok) throw new Error('Failed to load cron jobs');
     const data = await res.json();
     cronJobs.value = data.jobs || [];
   } catch (err) {
-    console.error('[CronView] 加载任务失败:', err);
+    error.value = {
+      message: '加载任务列表失败',
+      details: err instanceof Error ? err.message : String(err)
+    };
   } finally {
     loading.value = false;
   }
@@ -70,8 +76,13 @@ async function loadCronJobs(): Promise<void> {
  * 创建定时任务
  */
 async function createCronJob(): Promise<void> {
+  error.value = null;
+
   if (!newJob.value.name || !newJob.value.description || !newJob.value.agentId) {
-    alert('请填写所有必填字段');
+    error.value = {
+      message: '请填写所有必填字段',
+      details: '任务名称、任务描述和智能体都是必填项'
+    };
     return;
   }
 
@@ -96,8 +107,10 @@ async function createCronJob(): Promise<void> {
     // 重新加载列表
     await loadCronJobs();
   } catch (err) {
-    console.error('[CronView] 创建任务失败:', err);
-    alert('创建失败');
+    error.value = {
+      message: '创建任务失败',
+      details: err instanceof Error ? err.message : String(err)
+    };
   }
 }
 
@@ -107,13 +120,16 @@ async function createCronJob(): Promise<void> {
 async function deleteCronJob(id: string): Promise<void> {
   if (!confirm('确定要删除这个定时任务吗？')) return;
 
+  error.value = null;
   try {
     const res = await fetch(`${BASE_URL}/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to delete cron job');
     await loadCronJobs();
   } catch (err) {
-    console.error('[CronView] 删除任务失败:', err);
-    alert('删除失败');
+    error.value = {
+      message: '删除任务失败',
+      details: err instanceof Error ? err.message : String(err)
+    };
   }
 }
 
@@ -123,6 +139,7 @@ async function deleteCronJob(id: string): Promise<void> {
 async function toggleJobStatus(job: CronJobDefinition): Promise<void> {
   const newStatus = job.status === 'active' ? 'paused' : 'active';
 
+  error.value = null;
   try {
     const res = await fetch(`${BASE_URL}/${job.id}`, {
       method: 'PATCH',
@@ -133,8 +150,10 @@ async function toggleJobStatus(job: CronJobDefinition): Promise<void> {
     if (!res.ok) throw new Error('Failed to update job status');
     await loadCronJobs();
   } catch (err) {
-    console.error('[CronView] 更新任务状态失败:', err);
-    alert('操作失败');
+    error.value = {
+      message: '更新任务状态失败',
+      details: err instanceof Error ? err.message : String(err)
+    };
   }
 }
 
@@ -192,6 +211,11 @@ function getStatusText(status: CronJobDefinition['status']): string {
         <span class="i-carbon-add inline-block h-4 w-4" />
         <span>创建任务</span>
       </button>
+    </div>
+
+    <!-- 错误提示 -->
+    <div v-if="error" class="px-6 pt-4">
+      <ErrorDisplay :error="error" level="error" title="操作失败" :dismissible="true" @dismiss="error = null" />
     </div>
 
     <!-- 任务列表 -->
