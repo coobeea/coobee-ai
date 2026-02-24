@@ -107,7 +107,7 @@ export const Env = {
        *   2. userAgentsDir     — 用户级（最高）
        *
        * 每个 Agent 一个 JSON 文件：{agentsDir}/{agentId}.json
-       * 由 AgentStore 管理，通过 manage_agent 工具暴露给 LLM。
+       * 由 AgentStore 管理，通过 HTTP API 和 AI Creator 暴露给 LLM。
        *
        * @example 开发: <项目>/.home/agents | 生产: ~/.coobee-ai/agents
        */

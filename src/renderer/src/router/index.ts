@@ -34,6 +34,11 @@ const router = createRouter({
           component: () => import('@/views/BrainView.vue')
         },
         {
+          path: 'brain-monitor',
+          name: 'brain-monitor',
+          component: () => import('@/views/BrainMonitorView.vue')
+        },
+        {
           path: 'cron',
           name: 'cron',
           component: () => import('@/views/CronView.vue')

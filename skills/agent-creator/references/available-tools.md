@@ -51,21 +51,20 @@ agent-creator 在设计 Agent 时，可从以下工具中选择：
 | `config_get`   | 低   | 查看应用配置 |
 | `config_patch` | 中   | 修改应用配置 |
 
-## Agent 管理
+## Agent 协作
 
 | 工具                | 风险 | 描述                                |
 | ------------------- | ---- | ----------------------------------- |
-| `manage_agent`      | 中   | Agent 定义 CRUD                     |
 | `delegate_to_agent` | 中   | 委托子任务给专业 Agent              |
 | `task_plan`         | 低   | 任务计划管理（创建/更新/查看/完成） |
 
 ## 工具组合建议
 
-| Agent 类型           | 推荐工具集                                                     |
-| -------------------- | -------------------------------------------------------------- |
-| 纯对话（翻译、问答） | 无（不指定 tools）                                             |
-| 只读分析             | `read`, `search`, `glob`                                       |
-| 读写型               | `read`, `write`, `edit`, `search`, `glob`                      |
-| 全能型               | 不指定 tools（继承全部）                                       |
-| 自动化               | `read`, `write`, `edit`, `exec`, `process`                     |
-| 元 Agent             | `manage_agent`, `delegate_to_agent`, `task_plan`, `skill_list` |
+| Agent 类型           | 推荐工具集                                                   |
+| -------------------- | ------------------------------------------------------------ |
+| 纯对话（翻译、问答） | 无（不指定 tools）                                           |
+| 只读分析             | `read`, `search`, `glob`                                     |
+| 读写型               | `read`, `write`, `edit`, `search`, `glob`                    |
+| 全能型               | 不指定 tools（继承全部）                                     |
+| 自动化               | `read`, `write`, `edit`, `exec`, `process`                   |
+| 协调型               | `delegate_to_agent`, `task_plan`, `skill_list`, `todo_write` |

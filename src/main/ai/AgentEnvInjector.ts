@@ -176,44 +176,30 @@ async function buildAgentDiscoveryHint(): Promise<string | undefined> {
     const agentList =
       agents.length > 0
         ? agents.map((a) => `- **${a.name}** (\`${a.id}\`): ${a.description}`).join('\n')
-        : '_No registered agents yet. Use `manage_agent(create)` to create one._';
+        : '_No registered agents yet. New agents are created via the AI Creator or HTTP API._';
 
     return `<agent_discovery>
 ## Registered Agents
 
 ${agentList}
 
-## Multi-Agent Modes
+## Multi-Agent Collaboration
 
-You have three ways to collaborate with other agents:
-
-1. **Tool Delegation** (\`delegate_to_agent\`)
-   - You maintain control; sub-agent is like a tool call
-   - Best for: specific, well-defined sub-tasks
-   - Usage: manage_agent(list) → delegate_to_agent(agentId, task)
-
-2. **Orchestrator** (programmatic plan → parallel workers)
-   - A Planner decomposes the task, then workers execute in stages
-   - Best for: complex tasks that can be pre-decomposed
-   - Currently available as OrchestratorRuntime (not yet exposed as tool)
-
-3. **Swarm** (dynamic handoff between specialist agents)
-   - Triage routes to specialists; agents hand off to each other
-   - Best for: exploratory tasks where the path is unclear
-   - Currently available as SwarmRuntime (not yet exposed as tool)
+You can collaborate with other agents using \`delegate_to_agent\`:
+- You maintain control; the sub-agent runs like a tool call
+- Best for: specific, well-defined sub-tasks
+- Usage: pick an agent from the list above → delegate_to_agent(agentId, task)
 
 ### Decision Guide
 
-- Simple sub-task → delegate_to_agent
-- Complex, decomposable task → Orchestrator (future)
-- Exploratory, uncertain task → Swarm (future)
-- Need a new specialist? → manage_agent(create) first, then delegate
+- Simple sub-task → delegate_to_agent(agentId, task)
+- Need a new specialist? → Describe the need; the system's AI Creator handles agent creation
+- Agent definitions are managed via the HTTP REST API (/gateway/agents/*)
 
 ### Agent Lifecycle
 
-- Use \`manage_agent(list)\` to discover registered agents
-- Use \`manage_agent(create)\` to create reusable specialists
-- Use \`manage_agent(get, id)\` to read an agent's full definition
+- Registered agents are listed above; use \`delegate_to_agent\` to invoke them
+- New agents are created through the AI Creator service or HTTP API, not via tools
 - Temporary agents in Orchestrator/Swarm are session-scoped and auto-destroyed
 </agent_discovery>`;
   } catch (error) {

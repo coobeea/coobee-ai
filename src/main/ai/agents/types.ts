@@ -3,7 +3,7 @@
  *
  * 描述一个可创建的 Agent 实例的所有配置。
  * Agent 定义持久化到 .home/agents/{agentId}.json，
- * 由 AgentStore 管理 CRUD，由 manage_agent 工具暴露给 LLM。
+ * 由 AgentStore 管理 CRUD，通过 HTTP API 和 AI Creator 暴露给 LLM。
  *
  * 设计原则：
  *   - Agent = instructions + tools + skills + model 配置

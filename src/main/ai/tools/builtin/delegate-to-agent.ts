@@ -51,7 +51,6 @@ const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
  */
 const SUB_AGENT_BLOCKED_TOOLS = new Set([
   'delegate_to_agent', // 禁止递归委托
-  'manage_agent', // 禁止在子 Agent 层级创建/修改 Agent
   'task_plan' // 计划管理由主 Agent 负责
 ]);
 
@@ -85,8 +84,7 @@ export const delegateToAgentTool: ToolDefinition = {
   name: 'delegate_to_agent',
   description:
     'Delegate a sub-task to a specialized Agent. The agent runs in a sub-workspace under the current task directory. ' +
-    'Before delegating, use manage_agent(list) to check if a suitable agent already exists. ' +
-    'Use this when you need a specialist (created via manage_agent) to handle a specific part of the task. ' +
+    'Check the registered agents listed in <agent_discovery> to find a suitable agent. ' +
     'Pass taskId to group related delegations; the tool automatically shares execution experiences between sub-agents. ' +
     'Results are written to tasks/{taskId}/results/{agentId}.md and returned as a string.',
   category: ToolCategory.Execute,

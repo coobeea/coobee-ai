@@ -165,25 +165,37 @@ export interface AgentRuntimeOptions {
 // ========== 系统提示词构建 ==========
 
 /**
- * 格式化技能列表为提示词文本
+ * 格式化技能列表为提示词文本（摘要模式）
  *
- * 使用 XML 结构化格式，便于 LLM 解析：
+ * 仅注入 name、description 和 filePath，不注入完整 content。
+ * Agent 需要完整内容时，通过 read 工具按需加载 SKILL.md。
+ *
+ * 格式：
  *   <skills>
- *     <skill name="xxx">
- *       <description>...</description>
- *       <content>...</content>
+ *     <skill name="xxx" path="/path/to/SKILL.md">
+ *       description text
  *     </skill>
  *   </skills>
+ *
+ * 使用 mode='full' 可切换为完整注入模式（用于 active_skill 等场景）。
  */
-export function formatSkills(skills: SkillDefinition[]): string {
+export function formatSkills(skills: SkillDefinition[], mode: 'summary' | 'full' = 'summary'): string {
   if (!skills.length) return '';
   const items = skills
-    .map(
-      (s) =>
-        `<skill name="${s.name}">\n<description>${s.description}</description>\n<content>\n${s.content}\n</content>\n</skill>`
-    )
+    .map((s) => {
+      if (mode === 'full') {
+        return `<skill name="${s.name}">\n<description>${s.description}</description>\n<content>\n${s.content}\n</content>\n</skill>`;
+      }
+      const pathAttr = s.filePath ? ` path="${s.filePath}"` : '';
+      return `<skill name="${s.name}"${pathAttr}>\n${s.description}\n</skill>`;
+    })
     .join('\n');
-  return `<skills>\n${items}\n</skills>`;
+
+  const hint =
+    mode === 'summary'
+      ? '\n<!-- To use a skill, read its SKILL.md file with the read tool for full instructions. -->'
+      : '';
+  return `<skills>${hint}\n${items}\n</skills>`;
 }
 
 /**

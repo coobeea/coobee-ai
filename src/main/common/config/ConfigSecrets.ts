@@ -13,9 +13,15 @@
 import fs from 'fs';
 import JSON5 from 'json5';
 import path from 'path';
+import { createLogger } from '@main/common/logger';
+
+const log = createLogger('ConfigSecrets');
 
 /** 密钥文件名 */
 const SECRETS_FILE_NAME = 'secrets.json5';
+
+/** 期望的 secrets 文件权限：仅所有者可读写 (rw-------) */
+const EXPECTED_MODE = 0o600;
 
 /** provider id → api key */
 export type SecretsMap = Record<string, string>;
@@ -30,6 +36,19 @@ export function loadSecrets(secretsDir: string): SecretsMap {
   const filePath = path.join(secretsDir, SECRETS_FILE_NAME);
 
   if (!fs.existsSync(filePath)) return {};
+
+  // Unix 平台检查文件权限，非 600 时告警
+  if (process.platform !== 'win32') {
+    try {
+      const stat = fs.statSync(filePath);
+      const mode = stat.mode & 0o777;
+      if (mode !== EXPECTED_MODE) {
+        log.warn(`secrets.json5 文件权限为 ${mode.toString(8)}，建议改为 600 (chmod 600) 以保护敏感信息`);
+      }
+    } catch {
+      // 权限获取失败时不影响加载，静默跳过
+    }
+  }
 
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');

@@ -109,6 +109,15 @@ describe('AgentEnvInjector', () => {
     expect(appendArgs[1]).toBe('<runtime_paths />');
   });
 
+  it('should not reference manage_agent in agent discovery', async () => {
+    const result = await injectEnv('session-123', mockBuilder);
+    expect(result).toBe('/mock/workspace');
+
+    const allArgs = mockBuilder.appendInstructions.mock.calls[0];
+    const fullText = allArgs.join(' ');
+    expect(fullText).not.toContain('manage_agent');
+  });
+
   it('should inject partial environment for chat mode', async () => {
     mockBuilder.getMode.mockReturnValue('chat');
 

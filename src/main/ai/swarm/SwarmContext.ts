@@ -8,7 +8,10 @@
  * - 所有 Agent 可通过工具函数访问
  */
 
+import { createLogger } from '@main/common/logger';
 import type { SwarmArtifact, SwarmContextData } from './types';
+
+const log = createLogger('SwarmContext');
 
 /**
  * 上下文变更事件
@@ -139,7 +142,7 @@ export class SwarmContext {
       timestamp: Date.now()
     });
 
-    console.log(`[SwarmContext] Artifact added: "${name}" by ${createdBy}`);
+    log.info(`Artifact added: "${name}" by ${createdBy}`);
   }
 
   /**
@@ -306,7 +309,7 @@ export class SwarmContext {
       try {
         listener(event);
       } catch (error) {
-        console.error('[SwarmContext] Change listener error:', error);
+        log.error('Change listener error:', error);
       }
     }
   }

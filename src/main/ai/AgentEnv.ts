@@ -249,6 +249,6 @@ When using delegate_to_agent or multi-agent workflows, write all data under {wor
 - agents/{agentId}/ (sub-agent workspace)
 - results/{agentId}.md (final output)
 
-Use manage_agent(list) before creating new agents. For simple delegations, taskId is auto-generated.
+Use delegate_to_agent to invoke registered agents. For simple delegations, taskId is auto-generated.
 </runtime_environment>`;
 }

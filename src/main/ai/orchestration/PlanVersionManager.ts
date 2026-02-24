@@ -3,8 +3,11 @@
  * 负责管理所有计划版本的创建、查询和分析
  */
 
+import { createLogger } from '@main/common/logger';
 import type { SessionFileManager } from '../storage/SessionFileManager';
 import type { ExecutionPlan, PlanIndex, PlanVersionMetadata, PlanChangeLog, PlanVersionReason } from './types';
+
+const log = createLogger('PlanVersionManager');
 
 /**
  * 计划版本管理器
@@ -38,7 +41,7 @@ export class PlanVersionManager {
       await this.saveIndex();
     }
 
-    console.log(`[PlanVersionManager] Initialized with ${this.index.totalVersions} versions`);
+    log.info(`Initialized with ${this.index.totalVersions} versions`);
   }
 
   /**
@@ -104,7 +107,7 @@ export class PlanVersionManager {
       changes: parentVersion ? await this.calculateChanges(parentVersion, newVersion) : undefined
     });
 
-    console.log(`[PlanVersionManager] Created plan version ${newVersion} (reason: ${reason})`);
+    log.info(`Created plan version ${newVersion} (reason: ${reason})`);
 
     return newVersion;
   }
@@ -242,7 +245,7 @@ export class PlanVersionManager {
     }
 
     await this.saveIndex();
-    console.log(`[PlanVersionManager] Archived ${toArchive.length} old plans`);
+    log.info(`Archived ${toArchive.length} old plans`);
   }
 
   // ========== 私有方法 ==========

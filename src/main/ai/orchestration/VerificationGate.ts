@@ -3,8 +3,11 @@
  * 负责验证 Worker 输出的质量，并生成修复建议
  */
 
+import { createLogger } from '@main/common/logger';
 import type { SessionFileManager } from '../storage/SessionFileManager';
 import type { VerificationRule, VerificationResult, VerificationIssue } from './types';
+
+const log = createLogger('VerificationGate');
 
 /**
  * 评审者接口
@@ -42,7 +45,7 @@ export class VerificationGate implements IVerificationGate {
     output: unknown,
     rules: VerificationRule[] = []
   ): Promise<{ passed: boolean; results: VerificationResult[] }> {
-    console.log(`[VerificationGate] Verifying subtask: ${subTaskId}`);
+    log.info(`Verifying subtask: ${subTaskId}`);
 
     const results: VerificationResult[] = [];
 
@@ -63,7 +66,7 @@ export class VerificationGate implements IVerificationGate {
       await this.sessionManager.appendVerificationIssues(subTaskId, allIssues);
     }
 
-    console.log(`[VerificationGate] Verification ${passed ? 'passed' : 'failed'}: ${subTaskId}`);
+    log.info(`Verification ${passed ? 'passed' : 'failed'}: ${subTaskId}`);
 
     return { passed, results };
   }

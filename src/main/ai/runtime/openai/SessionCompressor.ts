@@ -21,9 +21,12 @@
 
 import { Agent, run } from '@openai/agents';
 import type { AgentInputItem } from '@openai/agents';
+import { createLogger } from '@main/common/logger';
 import type { FileSession } from './FileSession';
 import type { SessionCompressionOptions, CompressionResult, SessionItem, SummaryMeta } from './types';
 import { countTokens, countItemsTokens } from './tokenCounter';
+
+const log = createLogger('SessionCompressor');
 
 /** 默认配置 */
 const DEFAULTS: Required<SessionCompressionOptions> = {
@@ -107,10 +110,7 @@ export class SessionCompressor {
     // 检查最小消息数
     if (unsummarized.length < this.options.minMessageCount) {
       if (this.options.debug) {
-        console.log(
-          `[SessionCompressor] 未压缩消息不足 ${this.options.minMessageCount} 条` +
-            `（当前 ${unsummarized.length}），跳过`
-        );
+        log.info(`未压缩消息不足 ${this.options.minMessageCount} 条` + `（当前 ${unsummarized.length}），跳过`);
       }
       return { compressed: false };
     }
@@ -121,10 +121,7 @@ export class SessionCompressor {
     const threshold = this.options.contextWindowSize * this.options.thresholdRatio;
 
     if (this.options.debug) {
-      console.log(
-        `[SessionCompressor] Token 检查: ${totalTokens} / ${threshold} ` +
-          `(${((totalTokens / threshold) * 100).toFixed(1)}%)`
-      );
+      log.info(`Token 检查: ${totalTokens} / ${threshold} ` + `(${((totalTokens / threshold) * 100).toFixed(1)}%)`);
     }
 
     // 未达到阈值
@@ -175,14 +172,13 @@ export class SessionCompressor {
       const toKeep = unsummarized.slice(splitIndex);
 
       if (this.options.debug) {
-        console.log(
-          `[SessionCompressor] 分段: 未压缩 ${unsummarized.length} 条，` +
-            `总结 ${toSummarize.length} 条，保留 ${toKeep.length} 条`
+        log.info(
+          `分段: 未压缩 ${unsummarized.length} 条，` + `总结 ${toSummarize.length} 条，保留 ${toKeep.length} 条`
         );
       }
 
       if (toSummarize.length === 0) {
-        console.warn('[SessionCompressor] 没有可总结的消息');
+        log.warn('没有可总结的消息');
         return { compressed: false };
       }
 
@@ -197,14 +193,14 @@ export class SessionCompressor {
       contentToSummarize += this.buildContentForSummary(toSummarize.map((si) => si.item));
 
       if (!contentToSummarize.trim()) {
-        console.warn('[SessionCompressor] 没有需要总结的内容');
+        log.warn('没有需要总结的内容');
         return { compressed: false };
       }
 
       // 3. 调用 LLM 生成总结
       const summaryText = await this.generateSummary(contentToSummarize, summaryModel);
       if (!summaryText?.trim()) {
-        console.warn('[SessionCompressor] 生成的总结为空');
+        log.warn('生成的总结为空');
         return { compressed: false };
       }
 
@@ -243,8 +239,8 @@ export class SessionCompressor {
       };
 
       if (this.options.debug) {
-        console.log(
-          `[SessionCompressor] 压缩完成: ` +
+        log.info(
+          `压缩完成: ` +
             `${result.summarizedCount} 条已总结 (seq ${summarizedSeqs[0]}-${endSeq})，` +
             `${result.keptCount} 条保留, ` +
             `tokens: ${result.originalTokens} → ${result.summaryTokens}, ` +
@@ -255,7 +251,7 @@ export class SessionCompressor {
 
       return result;
     } catch (error) {
-      console.error('[SessionCompressor] 压缩失败:', error);
+      log.error('压缩失败:', error);
       // 压缩失败不影响主流程
       return { compressed: false };
     }

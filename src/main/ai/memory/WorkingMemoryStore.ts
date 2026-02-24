@@ -3,8 +3,11 @@
  * 管理会话级别的临时状态和变量
  */
 
+import { createLogger } from '@main/common/logger';
 import type { SessionFileManager } from '../storage/SessionFileManager';
 import type { SessionState, Checkpoint } from './types';
+
+const log = createLogger('WorkingMemoryStore');
 
 /**
  * 工作记忆存储
@@ -38,7 +41,7 @@ export class WorkingMemoryStore {
       this.state = savedState as SessionState;
     }
 
-    console.log(`[WorkingMemoryStore] Initialized for session: ${this.sessionId}`);
+    log.info(`Initialized for session: ${this.sessionId}`);
   }
 
   // ========== 变量管理 ==========
@@ -211,7 +214,7 @@ export class WorkingMemoryStore {
     this.state.checkpoints.push(checkpoint);
     await this.persist();
 
-    console.log(`[WorkingMemoryStore] Created checkpoint: ${checkpoint.id}`);
+    log.info(`Created checkpoint: ${checkpoint.id}`);
     return checkpoint.id;
   }
 
@@ -230,11 +233,11 @@ export class WorkingMemoryStore {
       this.state = checkpoint.state as unknown as SessionState;
       await this.persist();
 
-      console.log(`[WorkingMemoryStore] Restored checkpoint: ${checkpointId}`);
+      log.info(`Restored checkpoint: ${checkpointId}`);
       return true;
     }
 
-    console.warn(`[WorkingMemoryStore] Invalid checkpoint state: ${checkpointId}`);
+    log.warn(`Invalid checkpoint state: ${checkpointId}`);
     return false;
   }
 
@@ -261,7 +264,7 @@ export class WorkingMemoryStore {
     this.state.checkpoints.splice(index, 1);
     await this.persist();
 
-    console.log(`[WorkingMemoryStore] Deleted checkpoint: ${checkpointId}`);
+    log.info(`Deleted checkpoint: ${checkpointId}`);
     return true;
   }
 
@@ -297,6 +300,6 @@ export class WorkingMemoryStore {
     };
 
     await this.persist();
-    console.log(`[WorkingMemoryStore] State cleared`);
+    log.info(`State cleared`);
   }
 }

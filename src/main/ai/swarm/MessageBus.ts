@@ -9,6 +9,10 @@
  * - 消息队列：未读消息自动累积
  */
 
+import { createLogger } from '@main/common/logger';
+
+const log = createLogger('MessageBus');
+
 // ========== 类型定义 ==========
 
 /**
@@ -114,9 +118,7 @@ export class MessageBus {
       timestamp: Date.now()
     });
 
-    console.log(
-      `[MessageBus] ${fromRoleId} -> ${toRoleId}: ${content.substring(0, 80)}${content.length > 80 ? '...' : ''}`
-    );
+    log.info(`${fromRoleId} -> ${toRoleId}: ${content.substring(0, 80)}${content.length > 80 ? '...' : ''}`);
 
     return message;
   }
@@ -375,7 +377,7 @@ export class MessageBus {
           try {
             sub.callback(message);
           } catch (error) {
-            console.error('[MessageBus] Topic subscriber error:', error);
+            log.error('Topic subscriber error:', error);
           }
         }
       }
@@ -387,7 +389,7 @@ export class MessageBus {
       try {
         listener(message);
       } catch (error) {
-        console.error('[MessageBus] Global listener error:', error);
+        log.error('Global listener error:', error);
       }
     }
   }
@@ -410,7 +412,7 @@ export class MessageBus {
       try {
         listener(event);
       } catch (error) {
-        console.error('[MessageBus] Event listener error:', error);
+        log.error('Event listener error:', error);
       }
     }
   }
