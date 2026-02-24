@@ -11,6 +11,20 @@ import { ref, watch, onMounted, onBeforeUnmount, nextTick, shallowRef, computed,
 import { monaco } from '@/utils/monaco-setup';
 import { useOpenFiles } from '@/composables/useOpenFiles';
 import { routePreview, type PreviewMode } from '@/utils/previewRouter';
+import eventBus from '@/eventbus';
+import { EventTypes } from '@shared/ipc/events';
+
+/** 判断当前是否为暗色模式（支持 class 和 prefers-color-scheme） */
+function isDarkMode(): boolean {
+  return (
+    document.documentElement.classList.contains('dark') || window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+}
+
+/** 根据暗色模式返回 Monaco 主题 */
+function getMonacoTheme(): 'vs' | 'vs-dark' {
+  return isDarkMode() ? 'vs-dark' : 'vs';
+}
 
 const PDFViewer = defineAsyncComponent(() => import('./preview/PDFViewer.vue'));
 const ImageViewer = defineAsyncComponent(() => import('./preview/ImageViewer.vue'));
@@ -69,7 +83,7 @@ function initEditor(): void {
   editorInstance.value = monaco.editor.create(editorContainer.value, {
     value: '',
     language: 'plaintext',
-    theme: 'vs',
+    theme: getMonacoTheme(),
     readOnly: true,
     minimap: { enabled: false },
     fontSize: 12,
@@ -91,6 +105,13 @@ function initEditor(): void {
 
   // 设置滚动监听（用于大文件自动加载更多）
   setupScrollListener();
+}
+
+/** 根据当前主题更新 Monaco 编辑器主题 */
+function applyMonacoTheme(): void {
+  if (editorInstance.value) {
+    monaco.editor.setTheme(getMonacoTheme());
+  }
 }
 
 function updateEditorContent(): void {
@@ -185,15 +206,28 @@ watch(
   }
 );
 
+// 主题变更监听：matchMedia + config:theme:changed
+let mediaQueryList: MediaQueryList | null = null;
+
 onMounted(async () => {
   if (openFiles.value.length > 0) {
     await nextTick();
     initEditor();
     updateEditorContent();
   }
+
+  // 监听系统/Electron 主题变化（prefers-color-scheme）
+  mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
+  mediaQueryList.addEventListener('change', applyMonacoTheme);
+
+  // 监听配置主题变更（用户切换 light/dark/auto）
+  eventBus.on(EventTypes.CONFIG_THEME_CHANGED, applyMonacoTheme);
 });
 
 onBeforeUnmount(() => {
+  mediaQueryList?.removeEventListener('change', applyMonacoTheme);
+  mediaQueryList = null;
+  eventBus.off(EventTypes.CONFIG_THEME_CHANGED, applyMonacoTheme);
   editorInstance.value?.dispose();
   editorInstance.value = null;
 });

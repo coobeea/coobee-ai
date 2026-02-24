@@ -16,7 +16,7 @@
  */
 
 import { createLogger } from '@main/common/logger';
-import type { AgentRole, SwarmConfig, SwarmTask } from './types';
+import type { AgentRole, ISwarmContext, SwarmConfig, SwarmTask } from './types';
 import { AgentPool } from './AgentPool';
 import { SwarmContext } from './SwarmContext';
 import { MessageBus } from './MessageBus';
@@ -128,7 +128,7 @@ export class DiscussionCoordinator {
   private config: DiscussionConfig;
   private swarmConfig: SwarmConfig;
   private pool: AgentPool;
-  private context: SwarmContext;
+  private context: ISwarmContext;
   private messageBus: MessageBus;
   private roleRegistry: RoleRegistry;
   private onEvent: SwarmEventCallback | null = null;

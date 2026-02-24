@@ -7,6 +7,8 @@
 
 import type { ToolDefinition } from '../tools/types';
 import type { AgentRuntime } from '../runtime/AgentRuntime';
+import type { MessageBus } from './MessageBus';
+import type { KnowledgeBase } from './KnowledgeBase';
 
 // ========== 角色定义 ==========
 
@@ -44,6 +46,37 @@ export interface RoleRegistryEntry {
   builtin: boolean;
   /** 注册时间 */
   registeredAt: number;
+}
+
+// ========== Swarm 可注入依赖接口 ==========
+
+/**
+ * SwarmContext 接口（供 SwarmConfig 注入）
+ * 支持 SwarmContext 与 FileSwarmContext 等实现
+ */
+export interface ISwarmContext {
+  set(key: string, value: unknown, roleId?: string): void;
+  get<T = unknown>(key: string): T | undefined;
+  keys(): string[];
+  addArtifact(name: string, content: string, createdBy: string, type?: string): void;
+  getArtifact(name: string): SwarmArtifact | undefined;
+  getArtifacts(): SwarmArtifact[];
+  addProgressNote(note: string, roleId?: string): void;
+  getRecentProgress(count?: number): string[];
+  addChangeListener(listener: (event: SwarmContextChangeEvent) => void): void;
+  clear(): void;
+  destroy(): void;
+  toSummary(): string;
+}
+
+/**
+ * 上下文变更事件（与 SwarmContext.ContextChangeEvent 兼容）
+ */
+export interface SwarmContextChangeEvent {
+  type: 'state_set' | 'state_delete' | 'artifact_added' | 'progress_updated';
+  key: string;
+  roleId: string;
+  timestamp: number;
 }
 
 // ========== Swarm 配置 ==========
@@ -90,14 +123,11 @@ export interface SwarmConfig {
     }>;
   };
   /** 🆕 自定义 SwarmContext（用于注入持久化版本） */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  context?: any;
+  context?: ISwarmContext;
   /** 🆕 自定义 MessageBus（用于注入持久化版本） */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  messageBus?: any;
+  messageBus?: MessageBus;
   /** 🆕 共享知识库（用于 Agent 上下文共享） */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  knowledgeBase?: any;
+  knowledgeBase?: KnowledgeBase;
 }
 
 /**

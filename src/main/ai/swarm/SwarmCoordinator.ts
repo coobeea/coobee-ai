@@ -15,7 +15,7 @@
 import { createLogger } from '@main/common/logger';
 import type { AgentRuntime } from '../runtime/AgentRuntime';
 import type { ToolDefinition } from '../tools/types';
-import type { AgentRole, SwarmConfig, SwarmState, SwarmTask } from './types';
+import type { AgentRole, ISwarmContext, SwarmConfig, SwarmState, SwarmTask } from './types';
 import { createInitialSwarmState, extractHandoffTarget } from './types';
 import { AgentPool } from './AgentPool';
 import { HandoffRouter } from './HandoffRouter';
@@ -98,7 +98,7 @@ import { AsyncLock } from '../utils/AsyncLock';
 export class SwarmCoordinator {
   readonly pool: AgentPool;
   readonly router: HandoffRouter;
-  readonly context: SwarmContext;
+  readonly context: ISwarmContext;
   readonly monitor: SwarmMonitor;
   readonly messageBus: MessageBus;
   readonly concurrency: ConcurrencyManager;
