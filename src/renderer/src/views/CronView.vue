@@ -12,10 +12,26 @@
 import { ref, onMounted } from 'vue';
 import { useAgentsStore } from '@/stores/agents';
 import configManager from '@/config';
-import type { CronJob } from '@shared/types/cron';
+
+interface CronJobDefinition {
+  id: string;
+  name: string;
+  description: string;
+  cronExpression: string;
+  status: 'active' | 'paused' | 'disabled' | 'error';
+  agentId?: string;
+  task: string;
+  createdAt: string;
+  updatedAt: string;
+  lastRunAt?: string;
+  nextRunAt?: string;
+  runCount: number;
+  failCount: number;
+  lastError?: string;
+}
 
 const agentsStore = useAgentsStore();
-const cronJobs = ref<CronJob[]>([]);
+const cronJobs = ref<CronJobDefinition[]>([]);
 const loading = ref(false);
 const showCreateDialog = ref(false);
 
@@ -104,7 +120,7 @@ async function deleteCronJob(id: string): Promise<void> {
 /**
  * 切换任务状态（暂停/恢复）
  */
-async function toggleJobStatus(job: CronJob): Promise<void> {
+async function toggleJobStatus(job: CronJobDefinition): Promise<void> {
   const newStatus = job.status === 'active' ? 'paused' : 'active';
 
   try {
@@ -134,7 +150,7 @@ function formatTime(iso?: string): string {
 /**
  * 获取状态颜色
  */
-function getStatusColor(status: CronJob['status']): string {
+function getStatusColor(status: CronJobDefinition['status']): string {
   switch (status) {
     case 'active':
       return 'bg-emerald-100 text-emerald-700';
@@ -150,7 +166,7 @@ function getStatusColor(status: CronJob['status']): string {
 /**
  * 获取状态文本
  */
-function getStatusText(status: CronJob['status']): string {
+function getStatusText(status: CronJobDefinition['status']): string {
   switch (status) {
     case 'active':
       return '运行中';

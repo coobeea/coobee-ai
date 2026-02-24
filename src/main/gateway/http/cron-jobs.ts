@@ -13,8 +13,7 @@
 import type Router from '@koa/router';
 import type { Context } from 'koa';
 import { createLogger } from '@main/common/logger';
-import * as CronJobStore from '@main/storage/CronJobStore';
-import type { CreateCronJobParams, UpdateCronJobParams } from '@shared/types/cron';
+import { getCronJobStore, getCronScheduler, type CreateCronJobParams, type UpdateCronJobParams } from '@main/ai/cron';
 
 const log = createLogger('gateway-http-cron-jobs');
 
@@ -25,7 +24,8 @@ export function registerCronJobRoutes(router: Router): void {
    */
   router.get('/cron-jobs', async (ctx: Context) => {
     try {
-      const jobs = await CronJobStore.getAllCronJobs();
+      const store = getCronJobStore();
+      const jobs = await store.list();
       ctx.status = 200;
       ctx.body = { jobs };
     } catch (err) {
@@ -42,7 +42,8 @@ export function registerCronJobRoutes(router: Router): void {
   router.get('/cron-jobs/:id', async (ctx: Context) => {
     try {
       const { id } = ctx.params;
-      const job = await CronJobStore.getCronJob(id);
+      const store = getCronJobStore();
+      const job = await store.get(id);
 
       if (!job) {
         ctx.status = 404;
@@ -67,13 +68,20 @@ export function registerCronJobRoutes(router: Router): void {
     try {
       const body = ctx.request.body as CreateCronJobParams | undefined;
 
-      if (!body || !body.name || !body.description || !body.cronExpression || !body.agentId) {
+      if (!body || !body.name || !body.description || !body.cronExpression || !body.task) {
         ctx.status = 400;
-        ctx.body = { error: 'Missing required fields: name, description, cronExpression, agentId' };
+        ctx.body = { error: 'Missing required fields: name, description, cronExpression, task' };
         return;
       }
 
-      const job = await CronJobStore.createCronJob(body);
+      const store = getCronJobStore();
+      const job = await store.create(body);
+
+      // 如果状态为 active，自动调度
+      if (job.status === 'active') {
+        const scheduler = getCronScheduler();
+        await scheduler.scheduleJob(job);
+      }
 
       ctx.status = 201;
       ctx.body = { job };
@@ -99,13 +107,18 @@ export function registerCronJobRoutes(router: Router): void {
         return;
       }
 
-      const job = await CronJobStore.updateCronJob(id, body);
+      const store = getCronJobStore();
+      const job = await store.update(id, body);
 
       if (!job) {
         ctx.status = 404;
         ctx.body = { error: 'Cron job not found' };
         return;
       }
+
+      // 重新加载调度
+      const scheduler = getCronScheduler();
+      await scheduler.reloadJob(id);
 
       ctx.status = 200;
       ctx.body = { job };
@@ -123,7 +136,14 @@ export function registerCronJobRoutes(router: Router): void {
   router.delete('/cron-jobs/:id', async (ctx: Context) => {
     try {
       const { id } = ctx.params;
-      const success = await CronJobStore.deleteCronJob(id);
+
+      // 先取消调度
+      const scheduler = getCronScheduler();
+      await scheduler.unscheduleJob(id);
+
+      // 再删除数据
+      const store = getCronJobStore();
+      const success = await store.delete(id);
 
       if (!success) {
         ctx.status = 404;
@@ -134,6 +154,53 @@ export function registerCronJobRoutes(router: Router): void {
       ctx.status = 204;
     } catch (err) {
       log.error('[cron-jobs] DELETE /:id 失败:', err);
+      ctx.status = 500;
+      ctx.body = { error: 'Internal server error' };
+    }
+  });
+
+  /**
+   * POST /gateway/cron-jobs/:id/trigger
+   * 立即触发定时任务
+   */
+  router.post('/cron-jobs/:id/trigger', async (ctx: Context) => {
+    try {
+      const { id } = ctx.params;
+
+      const scheduler = getCronScheduler();
+      const success = await scheduler.triggerJob(id);
+
+      if (!success) {
+        ctx.status = 404;
+        ctx.body = { error: 'Cron job not found' };
+        return;
+      }
+
+      ctx.status = 200;
+      ctx.body = { success: true };
+    } catch (err) {
+      log.error('[cron-jobs] POST /:id/trigger 失败:', err);
+      ctx.status = 500;
+      ctx.body = { error: 'Internal server error' };
+    }
+  });
+
+  /**
+   * GET /gateway/cron-jobs/:id/executions
+   * 获取任务执行历史
+   */
+  router.get('/cron-jobs/:id/executions', async (ctx: Context) => {
+    try {
+      const { id } = ctx.params;
+      const limit = parseInt(ctx.query.limit as string) || 10;
+
+      const store = getCronJobStore();
+      const executions = await store.getExecutions(id, limit);
+
+      ctx.status = 200;
+      ctx.body = { executions };
+    } catch (err) {
+      log.error('[cron-jobs] GET /:id/executions 失败:', err);
       ctx.status = 500;
       ctx.body = { error: 'Internal server error' };
     }
