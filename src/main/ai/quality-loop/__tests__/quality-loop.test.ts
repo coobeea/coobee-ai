@@ -11,6 +11,13 @@ describe('Quality Loop', () => {
     mockLLMClient = {
       chat: vi.fn()
     } as unknown as LLMClient;
+
+    // Mock Date.now() to ensure duration > 0
+    let mockTime = 1000;
+    vi.spyOn(Date, 'now').mockImplementation(() => {
+      mockTime += 100; // 每次调用增加 100ms
+      return mockTime;
+    });
   });
 
   describe('Aggregator', () => {

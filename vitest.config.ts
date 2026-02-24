@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['./vitest.setup.ts'],
     include: [
       'src/main/ai/**/__tests__/**/*.test.ts',
       'src/main/common/server/**/__tests__/**/*.test.ts',
