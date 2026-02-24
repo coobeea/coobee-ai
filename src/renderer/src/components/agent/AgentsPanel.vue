@@ -11,6 +11,7 @@
 
 import { onMounted, ref, reactive } from 'vue';
 import { useAgentsStore } from '@/stores/agents';
+import { gateway } from '@/plugins/gatewaySetup';
 
 const isCollapsed = defineModel<boolean>('collapsed', { default: false });
 const agentsStore = useAgentsStore();
@@ -21,11 +22,60 @@ const newAgent = reactive({
   id: '',
   name: '',
   description: '',
-  instructions: ''
+  instructions: '',
+  model: ''
 });
+
+// 模型选项（单模型 + 分组）
+interface ModelOption {
+  value: string;
+  label: string;
+  isGroup: boolean;
+}
+
+const modelOptions = ref<ModelOption[]>([]);
+
+async function loadModelOptions(): Promise<void> {
+  try {
+    const data = await gateway.request<Record<string, unknown>>('config.getAll');
+    const modelsConfig = data?.models as Record<string, unknown> | undefined;
+
+    const options: ModelOption[] = [];
+
+    // 模型分组
+    const groups = modelsConfig?.groups as Record<string, unknown> | undefined;
+    if (groups) {
+      for (const [id, cfg] of Object.entries(groups)) {
+        const g = cfg as Record<string, unknown>;
+        if (g.enabled !== false) {
+          options.push({ value: `@group:${id}`, label: `[分组] ${(g.name as string) || id}`, isGroup: true });
+        }
+      }
+    }
+
+    // 单个模型（来自 providers）
+    const providers = modelsConfig?.providers as Record<string, unknown> | undefined;
+    if (providers) {
+      for (const [, provCfg] of Object.entries(providers)) {
+        const prov = provCfg as Record<string, unknown>;
+        const models = prov.models as Array<{ id: string; name?: string }> | undefined;
+        if (models) {
+          for (const m of models) {
+            options.push({ value: m.id, label: m.name || m.id, isGroup: false });
+          }
+        }
+      }
+    }
+
+    modelOptions.value = options;
+  } catch {
+    // 加载失败时静默忽略
+  }
+}
 
 onMounted(() => {
   agentsStore.fetchAgents();
+  loadModelOptions();
 });
 
 function handleSelect(agentId: string): void {
@@ -56,6 +106,8 @@ function toggleCreateForm(): void {
     newAgent.name = '';
     newAgent.description = '';
     newAgent.instructions = '';
+    newAgent.model = '';
+    loadModelOptions();
   }
 }
 
@@ -66,7 +118,8 @@ async function handleCreate(): Promise<void> {
     id: newAgent.id.trim(),
     name: newAgent.name.trim(),
     description: newAgent.description.trim() || newAgent.name.trim(),
-    instructions: newAgent.instructions.trim()
+    instructions: newAgent.instructions.trim(),
+    model: newAgent.model.trim() || undefined
   });
 
   if (ok) {
@@ -136,6 +189,22 @@ async function handleCreate(): Promise<void> {
           placeholder="系统指令：定义角色、行为规范、输出格式..."
           rows="3"
           class="w-full resize-none rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] leading-relaxed text-gray-700 outline-none transition focus:border-primary/40 focus:bg-white"></textarea>
+        <!-- 模型选择 -->
+        <select
+          v-model="newAgent.model"
+          class="w-full rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-700 outline-none transition focus:border-primary/40 focus:bg-white">
+          <option value="">自动选择模型</option>
+          <optgroup v-if="modelOptions.filter((o) => o.isGroup).length > 0" label="── 模型分组 ──">
+            <option v-for="opt in modelOptions.filter((o) => o.isGroup)" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </optgroup>
+          <optgroup v-if="modelOptions.filter((o) => !o.isGroup).length > 0" label="── 单个模型 ──">
+            <option v-for="opt in modelOptions.filter((o) => !o.isGroup)" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </optgroup>
+        </select>
         <div class="flex justify-end gap-1">
           <button
             class="rounded-md px-2.5 py-1 text-[11px] text-gray-500 transition hover:bg-gray-100"
@@ -260,11 +329,21 @@ async function handleCreate(): Promise<void> {
           </div>
 
           <!-- 底部标签 -->
-          <div class="mt-1 flex items-center gap-1">
+          <div class="mt-1 flex flex-wrap items-center gap-1">
             <span
               class="rounded-sm px-1 py-px text-[9px]"
               :class="[agent.createdBy === 'agent' ? 'bg-blue-50 text-blue-500' : 'bg-green-50 text-green-500']">
               {{ agent.createdBy === 'agent' ? 'AI 创建' : '手动创建' }}
+            </span>
+            <span
+              v-if="agent.model"
+              class="rounded-sm bg-amber-50 px-1 py-px text-[9px] text-amber-600 font-mono"
+              :title="agent.model">
+              {{
+                agent.model.startsWith('@group:')
+                  ? agent.model
+                  : agent.model.slice(0, 12) + (agent.model.length > 12 ? '…' : '')
+              }}
             </span>
           </div>
         </div>

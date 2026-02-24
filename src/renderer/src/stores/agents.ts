@@ -22,6 +22,8 @@ export interface AgentEntry {
   tools?: string[];
   /** Agent 完整定义中的 skills 字段 */
   skills?: string[];
+  /** 使用的模型 ID 或模型组引用（@group:xxx） */
+  model?: string;
 }
 
 /** AI 创建进度步骤 */
@@ -108,6 +110,7 @@ export const useAgentsStore = defineStore('agents', () => {
     name: string;
     description: string;
     instructions: string;
+    model?: string;
   }): Promise<boolean> {
     try {
       await apiRequest<{ agent: AgentEntry }>('', {

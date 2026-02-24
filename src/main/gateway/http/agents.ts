@@ -81,13 +81,14 @@ export function registerAgentRoutes(router: Router): void {
 
   router.post('/agents', async (ctx) => {
     const body = ctx.request.body as Record<string, unknown> | undefined;
-    const { id, name, description, instructions, tools, skills } = (body ?? {}) as {
+    const { id, name, description, instructions, tools, skills, model } = (body ?? {}) as {
       id?: string;
       name?: string;
       description?: string;
       instructions?: string;
       tools?: string[];
       skills?: string[];
+      model?: string;
     };
 
     if (!id || !name || !description || !instructions) {
@@ -105,6 +106,7 @@ export function registerAgentRoutes(router: Router): void {
         instructions,
         tools,
         skills,
+        model,
         createdBy: 'user'
       });
       ctx.status = 201;
