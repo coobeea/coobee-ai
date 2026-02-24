@@ -9,6 +9,6 @@
   "maxRestarts": 5,
   "healthCheckPath": "/health",
   "healthCheckTimeout": 10000,
-  "autoStart": false,
+  "autoStart": true,
   "env": {}
 }
