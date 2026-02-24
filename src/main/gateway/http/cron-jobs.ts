@@ -6,6 +6,7 @@
  *   GET    /gateway/cron-jobs           — 获取所有定时任务列表
  *   GET    /gateway/cron-jobs/:id       — 获取单个定时任务
  *   POST   /gateway/cron-jobs           — 创建定时任务
+ *   POST   /gateway/cron-jobs/parse     — AI 解析自然语言为定时任务参数
  *   PATCH  /gateway/cron-jobs/:id       — 更新定时任务
  *   DELETE /gateway/cron-jobs/:id       — 删除定时任务
  */
@@ -14,6 +15,8 @@ import type Router from '@koa/router';
 import type { Context } from 'koa';
 import { createLogger } from '@main/common/logger';
 import { getCronJobStore, getCronScheduler, type CreateCronJobParams, type UpdateCronJobParams } from '@main/ai/cron';
+import { LLMClient } from '@main/ai/provider/LLMClient';
+import { configStoreInstance } from '@main/common/config/ConfigStore';
 
 const log = createLogger('gateway-http-cron-jobs');
 
@@ -57,6 +60,89 @@ export function registerCronJobRoutes(router: Router): void {
       log.error('[cron-jobs] GET /:id 失败:', err);
       ctx.status = 500;
       ctx.body = { error: 'Internal server error' };
+    }
+  });
+
+  /**
+   * POST /gateway/cron-jobs/parse
+   * AI 解析自然语言为定时任务参数
+   */
+  router.post('/cron-jobs/parse', async (ctx: Context) => {
+    try {
+      const body = ctx.request.body as { input?: string } | undefined;
+      if (!body?.input?.trim()) {
+        ctx.status = 400;
+        ctx.body = { error: '请输入任务描述' };
+        return;
+      }
+
+      if (!configStoreInstance) {
+        ctx.status = 500;
+        ctx.body = { error: '配置未初始化' };
+        return;
+      }
+      const config = configStoreInstance.getAll();
+      const providers = (config as Record<string, unknown>).models as
+        | {
+            providers?: Record<string, { baseURL?: string; apiKey?: string; models?: Record<string, unknown> }>;
+            defaults?: { model?: { primary?: string } };
+          }
+        | undefined;
+
+      const primaryModel = providers?.defaults?.model?.primary;
+      if (!primaryModel) {
+        ctx.status = 500;
+        ctx.body = { error: '未配置默认模型' };
+        return;
+      }
+
+      const [providerId, modelId] = primaryModel.includes('/') ? primaryModel.split('/') : ['', primaryModel];
+      const provider = providerId ? providers?.providers?.[providerId] : undefined;
+
+      const client = new LLMClient({
+        model: modelId,
+        apiKey: provider?.apiKey,
+        baseURL: provider?.baseURL
+      });
+
+      const result = await client.chat({
+        messages: [
+          {
+            role: 'system',
+            content: `你是一个定时任务解析助手。用户会用自然语言描述一个定时任务，你需要解析为结构化参数。
+必须严格输出 JSON 对象，不要有其他文字。字段如下：
+- name: 简短的任务名称（4-10字）
+- description: 任务详细描述
+- cronExpression: 标准 cron 表达式（5位：分 时 日 月 周）
+- task: 执行的具体指令（智能体收到的提示词）
+- cronHumanReadable: cron 表达式的中文解释
+
+示例：
+输入："每天早上9点帮我汇总项目进度"
+输出：{"name":"每日进度汇总","description":"每天早上自动汇总项目进度并生成报告","cronExpression":"0 9 * * *","task":"请汇总今天的项目进度，整理成报告格式输出","cronHumanReadable":"每天上午 9:00"}
+
+输入："每周一下午3点做代码审查"
+输出：{"name":"周一代码审查","description":"每周一下午定期进行代码审查","cronExpression":"0 15 * * 1","task":"请对本周的代码变更进行全面审查，输出审查报告","cronHumanReadable":"每周一下午 3:00"}
+
+当前时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`
+          },
+          { role: 'user', content: body.input.trim() }
+        ],
+        temperature: 0.3
+      });
+
+      const jsonStr = result.content
+        .replace(/```json?\s*\n?/g, '')
+        .replace(/```\s*$/g, '')
+        .trim();
+      const parsed = JSON.parse(jsonStr);
+
+      ctx.status = 200;
+      ctx.body = { parsed };
+    } catch (err) {
+      log.error('[cron-jobs] POST /parse 失败:', err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : 'AI 解析失败' };
     }
   });
 
