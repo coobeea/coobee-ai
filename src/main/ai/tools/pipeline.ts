@@ -12,17 +12,15 @@
  * @module tools/pipeline
  */
 
-import { resolveSandboxPath, pathGuardErrorToToolResult } from '../sandbox'
-import type { ToolResult, ToolExecutionContext } from './types'
+import { resolveSandboxPath, pathGuardErrorToToolResult } from '../sandbox';
+import type { ToolResult, ToolExecutionContext } from './types';
 
 // ==================== 路径解析 ====================
 
 /**
  * 解析路径结果
  */
-export type ResolvePathResult =
-  | { ok: true; absolutePath: string }
-  | { ok: false; error: ToolResult }
+export type ResolvePathResult = { ok: true; absolutePath: string } | { ok: false; error: ToolResult };
 
 /**
  * 统一工具路径解析
@@ -42,11 +40,11 @@ export function resolveToolPath(
   context?: ToolExecutionContext,
   options?: { readOnly?: boolean }
 ): ResolvePathResult {
-  const resolved = resolveSandboxPath(filePath, context, options)
+  const resolved = resolveSandboxPath(filePath, context, options);
   if (resolved.error) {
-    return { ok: false, error: pathGuardErrorToToolResult(resolved.error) }
+    return { ok: false, error: pathGuardErrorToToolResult(resolved.error) };
   }
-  return { ok: true, absolutePath: resolved.path }
+  return { ok: true, absolutePath: resolved.path };
 }
 
 // ==================== 参数归一化 ====================
@@ -61,7 +59,7 @@ export function resolveToolPath(
  * 统一提取为 `path`。
  */
 export function normalizePathParam(params: Record<string, unknown>): string | undefined {
-  return (params.path ?? params.file_path ?? params.file ?? params.filepath) as string | undefined
+  return (params.path ?? params.file_path ?? params.file ?? params.filepath) as string | undefined;
 }
 
 // ==================== 错误格式化 ====================
@@ -71,15 +69,10 @@ export function normalizePathParam(params: Record<string, unknown>): string | un
  *
  * 替代各工具中重复的 ENOENT / EACCES / generic 错误判断。
  */
-export function formatFileError(
-  error: unknown,
-  filePath: string,
-  operation: string,
-  startTime?: number
-): ToolResult {
-  const msg = error instanceof Error ? error.message : String(error)
-  const now = Date.now()
-  const metadata = startTime ? { startTime, endTime: now, duration: now - startTime } : undefined
+export function formatFileError(error: unknown, filePath: string, operation: string, startTime?: number): ToolResult {
+  const msg = error instanceof Error ? error.message : String(error);
+  const now = Date.now();
+  const metadata = startTime ? { startTime, endTime: now, duration: now - startTime } : undefined;
 
   if (msg.includes('ENOENT')) {
     return {
@@ -87,7 +80,7 @@ export function formatFileError(
       llmContent: `Error: File not found: ${filePath}`,
       error: { code: 'ENOENT', message: `File not found: ${filePath}` },
       metadata
-    }
+    };
   }
   if (msg.includes('EACCES')) {
     return {
@@ -95,7 +88,7 @@ export function formatFileError(
       llmContent: `Error: Permission denied: ${filePath}`,
       error: { code: 'EACCES', message: `Permission denied: ${filePath}` },
       metadata
-    }
+    };
   }
   if (msg.includes('EISDIR')) {
     return {
@@ -103,7 +96,7 @@ export function formatFileError(
       llmContent: `Error: Path is a directory: ${filePath}`,
       error: { code: 'EISDIR', message: `Path is a directory: ${filePath}` },
       metadata
-    }
+    };
   }
 
   // 生成简洁错误码：reading → READ, writing → WRITE, editing → EDIT
@@ -111,14 +104,14 @@ export function formatFileError(
     reading: 'READ',
     writing: 'WRITE',
     editing: 'EDIT'
-  }
-  const code = OPERATION_CODES[operation] || operation.toUpperCase()
+  };
+  const code = OPERATION_CODES[operation] || operation.toUpperCase();
   return {
     success: false,
     llmContent: `Error ${operation} file: ${msg}`,
     error: { code: `${code}_ERROR`, message: msg },
     metadata
-  }
+  };
 }
 
 // ==================== 取消信号检查 ====================
@@ -129,9 +122,9 @@ export function formatFileError(
  * @returns null 表示未取消，ToolResult 表示已取消
  */
 export function checkAborted(signal?: AbortSignal): ToolResult | null {
-  if (!signal?.aborted) return null
+  if (!signal?.aborted) return null;
   return {
     success: false,
     error: { code: 'ABORTED', message: 'Operation cancelled' }
-  }
+  };
 }

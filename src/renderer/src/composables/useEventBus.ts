@@ -4,17 +4,17 @@
  * 自动管理事件生命周期（组件卸载时自动清理）
  */
 
-import { onUnmounted } from 'vue'
-import eventBus from '@/eventbus'
-import type { EventPayloads } from '@shared/ipc/events'
+import { onUnmounted } from 'vue';
+import eventBus from '@/eventbus';
+import type { EventPayloads } from '@shared/ipc/events';
 
 /**
  * 事件订阅记录
  */
 interface EventSubscription {
-  eventType: keyof EventPayloads
+  eventType: keyof EventPayloads;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handler: any
+  handler: any;
 }
 
 /**
@@ -22,22 +22,13 @@ interface EventSubscription {
  * @returns EventBus 操作方法
  */
 export function useEventBus(): {
-  on: <T extends keyof EventPayloads>(
-    eventType: T,
-    handler: (data: EventPayloads[T]) => void
-  ) => void
-  off: <T extends keyof EventPayloads>(
-    eventType: T,
-    handler: (data: EventPayloads[T]) => void
-  ) => void
-  once: <T extends keyof EventPayloads>(
-    eventType: T,
-    handler: (data: EventPayloads[T]) => void
-  ) => void
-  emit: <T extends keyof EventPayloads>(eventType: T, data: EventPayloads[T]) => void
+  on: <T extends keyof EventPayloads>(eventType: T, handler: (data: EventPayloads[T]) => void) => void;
+  off: <T extends keyof EventPayloads>(eventType: T, handler: (data: EventPayloads[T]) => void) => void;
+  once: <T extends keyof EventPayloads>(eventType: T, handler: (data: EventPayloads[T]) => void) => void;
+  emit: <T extends keyof EventPayloads>(eventType: T, data: EventPayloads[T]) => void;
 } {
   // 记录当前组件订阅的事件，用于自动清理
-  const subscriptions: EventSubscription[] = []
+  const subscriptions: EventSubscription[] = [];
 
   /**
    * 订阅事件
@@ -45,12 +36,9 @@ export function useEventBus(): {
    * @param eventType 事件类型
    * @param handler 事件处理器
    */
-  function on<T extends keyof EventPayloads>(
-    eventType: T,
-    handler: (data: EventPayloads[T]) => void
-  ): void {
-    eventBus.on(eventType, handler)
-    subscriptions.push({ eventType, handler })
+  function on<T extends keyof EventPayloads>(eventType: T, handler: (data: EventPayloads[T]) => void): void {
+    eventBus.on(eventType, handler);
+    subscriptions.push({ eventType, handler });
   }
 
   /**
@@ -58,16 +46,11 @@ export function useEventBus(): {
    * @param eventType 事件类型
    * @param handler 事件处理器
    */
-  function off<T extends keyof EventPayloads>(
-    eventType: T,
-    handler: (data: EventPayloads[T]) => void
-  ): void {
-    eventBus.off(eventType, handler)
-    const index = subscriptions.findIndex(
-      (sub) => sub.eventType === eventType && sub.handler === handler
-    )
+  function off<T extends keyof EventPayloads>(eventType: T, handler: (data: EventPayloads[T]) => void): void {
+    eventBus.off(eventType, handler);
+    const index = subscriptions.findIndex((sub) => sub.eventType === eventType && sub.handler === handler);
     if (index !== -1) {
-      subscriptions.splice(index, 1)
+      subscriptions.splice(index, 1);
     }
   }
 
@@ -77,20 +60,15 @@ export function useEventBus(): {
    * @param eventType 事件类型
    * @param handler 事件处理器
    */
-  function once<T extends keyof EventPayloads>(
-    eventType: T,
-    handler: (data: EventPayloads[T]) => void
-  ): void {
+  function once<T extends keyof EventPayloads>(eventType: T, handler: (data: EventPayloads[T]) => void): void {
     // 包装 handler：触发后从 subscriptions 中移除
     const wrappedHandler = ((data: EventPayloads[T]) => {
-      const idx = subscriptions.findIndex(
-        (sub) => sub.eventType === eventType && sub.handler === wrappedHandler
-      )
-      if (idx !== -1) subscriptions.splice(idx, 1)
-      handler(data)
-    }) as typeof handler
-    eventBus.once(eventType, wrappedHandler)
-    subscriptions.push({ eventType, handler: wrappedHandler })
+      const idx = subscriptions.findIndex((sub) => sub.eventType === eventType && sub.handler === wrappedHandler);
+      if (idx !== -1) subscriptions.splice(idx, 1);
+      handler(data);
+    }) as typeof handler;
+    eventBus.once(eventType, wrappedHandler);
+    subscriptions.push({ eventType, handler: wrappedHandler });
   }
 
   /**
@@ -99,7 +77,7 @@ export function useEventBus(): {
    * @param data 事件数据
    */
   function emit<T extends keyof EventPayloads>(eventType: T, data: EventPayloads[T]): void {
-    eventBus.emit(eventType, data)
+    eventBus.emit(eventType, data);
   }
 
   /**
@@ -107,15 +85,15 @@ export function useEventBus(): {
    */
   onUnmounted(() => {
     subscriptions.forEach((sub) => {
-      eventBus.off(sub.eventType, sub.handler)
-    })
-    subscriptions.length = 0
-  })
+      eventBus.off(sub.eventType, sub.handler);
+    });
+    subscriptions.length = 0;
+  });
 
   return {
     on,
     off,
     once,
     emit
-  }
+  };
 }

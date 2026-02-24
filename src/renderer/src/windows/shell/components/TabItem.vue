@@ -1,31 +1,31 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import IconMdiClose from '~icons/mdi/close'
+import { ref } from 'vue';
+import IconMdiClose from '~icons/mdi/close';
 
 defineProps<{
-  active: boolean
-  canClose: boolean
-}>()
+  active: boolean;
+  canClose: boolean;
+}>();
 
 const emit = defineEmits<{
-  click: []
-  close: []
-}>()
+  click: [];
+  close: [];
+}>();
 
-const tabItem = ref<HTMLElement | null>(null)
+const tabItem = ref<HTMLElement | null>(null);
 
 const onClick = (): void => {
-  emit('click')
+  emit('click');
 
   // 平滑滚动到可见区域
   setTimeout(() => {
-    tabItem.value?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
-  }, 100)
-}
+    tabItem.value?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+  }, 100);
+};
 
 const onClose = (): void => {
-  emit('close')
-}
+  emit('close');
+};
 </script>
 
 <template>
@@ -37,8 +37,7 @@ const onClose = (): void => {
         ? 'bg-gray-600 text-white hover:bg-gray-500 active:bg-gray-500'
         : 'bg-gray-700 text-gray-200 hover:bg-gray-600 active:bg-gray-500'
     ]"
-    @click="onClick"
-  >
+    @click="onClick">
     <!-- Tab Content -->
     <div class="flex max-w-36 items-center truncate">
       <slot></slot>
@@ -49,8 +48,7 @@ const onClose = (): void => {
       v-if="canClose"
       type="button"
       class="ml-2 rounded p-0.5 text-gray-300 opacity-0 transition-all hover:bg-gray-400 hover:text-white active:bg-gray-300 group-hover:opacity-100"
-      @click.stop="onClose"
-    >
+      @click.stop="onClose">
       <IconMdiClose class="text-sm" />
     </button>
   </div>

@@ -1,13 +1,13 @@
-import { CronJobConfig, JobExecutionContext } from '../types'
+import { CronJobConfig, JobExecutionContext } from '../types';
 
 export abstract class BaseJob {
-  abstract readonly id: string
-  abstract readonly name: string
-  abstract readonly description: string
-  abstract readonly cron: string
-  abstract readonly enabled: boolean
+  abstract readonly id: string;
+  abstract readonly name: string;
+  abstract readonly description: string;
+  abstract readonly cron: string;
+  abstract readonly enabled: boolean;
 
-  abstract execute(context: JobExecutionContext): Promise<unknown>
+  abstract execute(context: JobExecutionContext): Promise<unknown>;
 
   getJobConfig(): CronJobConfig {
     return {
@@ -16,6 +16,6 @@ export abstract class BaseJob {
       description: this.description,
       cron: this.cron,
       enabled: this.enabled
-    }
+    };
   }
 }

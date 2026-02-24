@@ -194,4 +194,15 @@ export class ModelGroupResolver {
     this.roundRobinCounters.clear();
     log.debug('[ModelGroupResolver] 清空所有计数器');
   }
+
+  /**
+   * 获取模型组的所有候选模型（用于故障转移重试）
+   */
+  getGroupCandidates(groupName: string): string[] {
+    const group = this.modelGroups[groupName];
+    if (!group || !group.enabled || group.models.length === 0) {
+      return [];
+    }
+    return [...group.models];
+  }
 }

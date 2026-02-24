@@ -382,16 +382,16 @@ pnpm run format:check   # 格式检查
 **查看性能统计**:
 
 ```typescript
-import { performanceMonitor } from '@main/ai/monitoring'
+import { performanceMonitor } from '@main/ai/monitoring';
 
 // 获取统计
-const stats = performanceMonitor.getStats()
+const stats = performanceMonitor.getStats();
 
 // 获取最慢操作
-const slowest = performanceMonitor.getSlowestOperations(10)
+const slowest = performanceMonitor.getSlowestOperations(10);
 
 // 获取失败操作
-const failed = performanceMonitor.getFailedOperations(20)
+const failed = performanceMonitor.getFailedOperations(20);
 ```
 
 ### 架构检查

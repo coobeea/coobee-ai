@@ -103,35 +103,35 @@ extensions/
 ### 2.1 `types.ts` — 全部类型
 
 ```typescript
-import type { ToolDefinition } from '../ai/tools/types'
-import type { MethodHandler } from '../gateway/protocol/types'
+import type { ToolDefinition } from '../ai/tools/types';
+import type { MethodHandler } from '../gateway/protocol/types';
 
 // ==================== Extension 模块 ====================
 
 /** Extension 清单（extension.json） */
 export interface ExtensionManifest {
-  id: string
-  name: string
-  version: string
-  description?: string
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
 }
 
 /** Extension 来源 */
-export type ExtensionOrigin = 'builtin' | 'user' | 'workspace'
+export type ExtensionOrigin = 'builtin' | 'user' | 'workspace';
 
 /** Extension 模块导出格式 */
 export interface ExtensionModule {
-  id: string
-  name: string
-  register: (api: ExtensionApi) => void
+  id: string;
+  name: string;
+  register: (api: ExtensionApi) => void;
 }
 
 /** Extension 日志 */
 export interface ExtensionLogger {
-  info(msg: string, ...args: unknown[]): void
-  warn(msg: string, ...args: unknown[]): void
-  error(msg: string, ...args: unknown[]): void
-  debug(msg: string, ...args: unknown[]): void
+  info(msg: string, ...args: unknown[]): void;
+  warn(msg: string, ...args: unknown[]): void;
+  error(msg: string, ...args: unknown[]): void;
+  debug(msg: string, ...args: unknown[]): void;
 }
 
 // ==================== ExtensionApi ====================
@@ -139,24 +139,20 @@ export interface ExtensionLogger {
 /** Extension 与系统交互的唯一接口 */
 export interface ExtensionApi {
   /** Extension ID */
-  id: string
+  id: string;
   /** Extension 名称 */
-  name: string
+  name: string;
   /** 来源 */
-  origin: ExtensionOrigin
+  origin: ExtensionOrigin;
   /** 日志 */
-  logger: ExtensionLogger
+  logger: ExtensionLogger;
 
   /** 注册工具 */
-  registerTool(tool: ToolDefinition): void
+  registerTool(tool: ToolDefinition): void;
   /** 注册 Agent 生命周期钩子 */
-  on<K extends ExtensionHookName>(
-    hookName: K,
-    handler: ExtensionHookHandler<K>,
-    opts?: { priority?: number }
-  ): void
+  on<K extends ExtensionHookName>(hookName: K, handler: ExtensionHookHandler<K>, opts?: { priority?: number }): void;
   /** 注册 Gateway RPC 方法 */
-  registerGatewayMethod(method: string, handler: MethodHandler): void
+  registerGatewayMethod(method: string, handler: MethodHandler): void;
 }
 
 // ==================== Extension Hook ====================
@@ -170,10 +166,10 @@ export type ExtensionHookName =
   | 'tool_result_persist' // modifying：修改持久化结果
   | 'message_received' // void：收到用户消息
   | 'session_start' // void：会话开始
-  | 'session_end' // void：会话结束
+  | 'session_end'; // void：会话结束
 
 /** 执行模式 */
-export type ExtensionHookMode = 'void' | 'modifying'
+export type ExtensionHookMode = 'void' | 'modifying';
 
 export const EXTENSION_HOOK_MODE: Record<ExtensionHookName, ExtensionHookMode> = {
   before_agent_start: 'modifying',
@@ -184,112 +180,112 @@ export const EXTENSION_HOOK_MODE: Record<ExtensionHookName, ExtensionHookMode> =
   message_received: 'void',
   session_start: 'void',
   session_end: 'void'
-}
+};
 
 // ---- 各 Hook 的 Event / Result ----
 
 export interface BeforeAgentStartEvent {
-  sessionId: string
-  prompt: string
-  systemPrompt?: string
+  sessionId: string;
+  prompt: string;
+  systemPrompt?: string;
 }
 export interface BeforeAgentStartResult {
-  prependContext?: string
-  replaceSystemPrompt?: string
+  prependContext?: string;
+  replaceSystemPrompt?: string;
 }
 
 export interface BeforeToolCallEvent {
-  sessionId: string
-  toolName: string
-  params: Record<string, unknown>
+  sessionId: string;
+  toolName: string;
+  params: Record<string, unknown>;
 }
 export interface BeforeToolCallResult {
-  block?: boolean
-  blockReason?: string
-  params?: Record<string, unknown>
+  block?: boolean;
+  blockReason?: string;
+  params?: Record<string, unknown>;
 }
 
 export interface ToolResultPersistEvent {
-  sessionId: string
-  toolName: string
-  result: string
+  sessionId: string;
+  toolName: string;
+  result: string;
 }
 export interface ToolResultPersistResult {
-  result?: string
+  result?: string;
 }
 
 export interface AgentEndEvent {
-  sessionId: string
-  success: boolean
-  output: string
-  durationMs: number
+  sessionId: string;
+  success: boolean;
+  output: string;
+  durationMs: number;
 }
 
 export interface AfterToolCallEvent {
-  sessionId: string
-  toolName: string
-  params: Record<string, unknown>
-  result: string
-  durationMs: number
+  sessionId: string;
+  toolName: string;
+  params: Record<string, unknown>;
+  result: string;
+  durationMs: number;
 }
 
 export interface MessageReceivedEvent {
-  sessionId: string
-  message: string
+  sessionId: string;
+  message: string;
 }
 
 export interface SessionEvent {
-  sessionId: string
+  sessionId: string;
 }
 
 /** Event 映射 */
 export type ExtensionHookEventMap = {
-  before_agent_start: BeforeAgentStartEvent
-  agent_end: AgentEndEvent
-  before_tool_call: BeforeToolCallEvent
-  after_tool_call: AfterToolCallEvent
-  tool_result_persist: ToolResultPersistEvent
-  message_received: MessageReceivedEvent
-  session_start: SessionEvent
-  session_end: SessionEvent
-}
+  before_agent_start: BeforeAgentStartEvent;
+  agent_end: AgentEndEvent;
+  before_tool_call: BeforeToolCallEvent;
+  after_tool_call: AfterToolCallEvent;
+  tool_result_persist: ToolResultPersistEvent;
+  message_received: MessageReceivedEvent;
+  session_start: SessionEvent;
+  session_end: SessionEvent;
+};
 
 /** Result 映射 */
 export type ExtensionHookResultMap = {
-  before_agent_start: BeforeAgentStartResult | void
-  agent_end: void
-  before_tool_call: BeforeToolCallResult | void
-  after_tool_call: void
-  tool_result_persist: ToolResultPersistResult | void
-  message_received: void
-  session_start: void
-  session_end: void
-}
+  before_agent_start: BeforeAgentStartResult | void;
+  agent_end: void;
+  before_tool_call: BeforeToolCallResult | void;
+  after_tool_call: void;
+  tool_result_persist: ToolResultPersistResult | void;
+  message_received: void;
+  session_start: void;
+  session_end: void;
+};
 
 /** Handler 签名 */
 export type ExtensionHookHandler<K extends ExtensionHookName> = (
   event: ExtensionHookEventMap[K]
-) => Promise<ExtensionHookResultMap[K]>
+) => Promise<ExtensionHookResultMap[K]>;
 
 /** 已注册的 Hook */
 export interface RegisteredExtensionHook<K extends ExtensionHookName = ExtensionHookName> {
-  extensionId: string
-  hookName: K
-  handler: ExtensionHookHandler<K>
-  priority: number
+  extensionId: string;
+  hookName: K;
+  handler: ExtensionHookHandler<K>;
+  priority: number;
 }
 
 // ==================== 注册记录 ====================
 
 export interface RegisteredExtensionTool {
-  extensionId: string
-  tool: ToolDefinition
+  extensionId: string;
+  tool: ToolDefinition;
 }
 
 export interface RegisteredExtensionMethod {
-  extensionId: string
-  method: string
-  handler: MethodHandler
+  extensionId: string;
+  method: string;
+  handler: MethodHandler;
 }
 ```
 
@@ -298,23 +294,23 @@ export interface RegisteredExtensionMethod {
 ```typescript
 class ExtensionRegistry {
   // --- 工具 ---
-  registerTool(extensionId: string, tool: ToolDefinition): void
-  unregisterToolsByExtension(extensionId: string): string[] // 返回被移除的工具名
-  getTools(): RegisteredExtensionTool[]
+  registerTool(extensionId: string, tool: ToolDefinition): void;
+  unregisterToolsByExtension(extensionId: string): string[]; // 返回被移除的工具名
+  getTools(): RegisteredExtensionTool[];
 
   // --- Hook ---
-  registerHook(hook: RegisteredExtensionHook): void
-  unregisterHooksByExtension(extensionId: string): void
-  getHooks<K extends ExtensionHookName>(name: K): RegisteredExtensionHook<K>[]
+  registerHook(hook: RegisteredExtensionHook): void;
+  unregisterHooksByExtension(extensionId: string): void;
+  getHooks<K extends ExtensionHookName>(name: K): RegisteredExtensionHook<K>[];
 
   // --- Gateway 方法 ---
-  registerGatewayMethod(extensionId: string, method: string, handler: MethodHandler): void
-  unregisterGatewayMethodsByExtension(extensionId: string): string[] // 返回被移除的方法名
+  registerGatewayMethod(extensionId: string, method: string, handler: MethodHandler): void;
+  unregisterGatewayMethodsByExtension(extensionId: string): string[]; // 返回被移除的方法名
 
   // --- 整体 ---
-  unregisterAll(extensionId: string): void // 一键卸载某 Extension 的所有注册
-  getExtensionIds(): string[]
-  clear(): void
+  unregisterAll(extensionId: string): void; // 一键卸载某 Extension 的所有注册
+  getExtensionIds(): string[];
+  clear(): void;
 }
 ```
 
@@ -353,13 +349,10 @@ class ExtensionRegistry {
 
 ```typescript
 class ExtensionHookRunner {
-  constructor(registry: ExtensionRegistry)
+  constructor(registry: ExtensionRegistry);
 
-  async runVoidHook<K>(name: K, event: ExtensionHookEventMap[K]): Promise<void>
-  async runModifyingHook<K>(
-    name: K,
-    event: ExtensionHookEventMap[K]
-  ): Promise<ExtensionHookResultMap[K]>
+  async runVoidHook<K>(name: K, event: ExtensionHookEventMap[K]): Promise<void>;
+  async runModifyingHook<K>(name: K, event: ExtensionHookEventMap[K]): Promise<ExtensionHookResultMap[K]>;
 }
 ```
 
@@ -389,26 +382,26 @@ class ExtensionHookRunner {
 ```typescript
 class ExtensionManager {
   /** 初始化（应用启动时调用一次） */
-  static initialize(registry: ExtensionRegistry): void
+  static initialize(registry: ExtensionRegistry): void;
 
   /** 获取注册中心 */
-  static getRegistry(): ExtensionRegistry | null
+  static getRegistry(): ExtensionRegistry | null;
 
   /** 获取 Hook 执行引擎 */
-  static getHookRunner(): ExtensionHookRunner | null
+  static getHookRunner(): ExtensionHookRunner | null;
 
   /** 重置（测试用） */
-  static reset(): void
+  static reset(): void;
 }
 ```
 
 调用方式：
 
 ```typescript
-import { ExtensionManager } from '../extension'
+import { ExtensionManager } from '../extension';
 
 // 注入 hook 调用
-ExtensionManager.getHookRunner()?.runVoidHook('agent_end', event)
+ExtensionManager.getHookRunner()?.runVoidHook('agent_end', event);
 ```
 
 ### 测试清单
@@ -426,13 +419,13 @@ ExtensionManager.getHookRunner()?.runVoidHook('agent_end', event)
 ### 5.1 jiti 加载
 
 ```typescript
-import { createJiti } from 'jiti'
+import { createJiti } from 'jiti';
 
-const jiti = createJiti(import.meta.url)
+const jiti = createJiti(import.meta.url);
 
 async function loadExtensionModule(entryPath: string): Promise<ExtensionModule> {
-  const mod = await jiti.import(entryPath)
-  return (mod as { default: ExtensionModule }).default || mod
+  const mod = await jiti.import(entryPath);
+  return (mod as { default: ExtensionModule }).default || mod;
 }
 ```
 
@@ -484,7 +477,7 @@ function createExtensionApi(
     origin,
     logger: createExtensionLogger(extensionId),
     registerTool(tool) {
-      registry.registerTool(extensionId, tool)
+      registry.registerTool(extensionId, tool);
     },
     on(hookName, handler, opts) {
       registry.registerHook({
@@ -492,12 +485,12 @@ function createExtensionApi(
         hookName,
         handler,
         priority: opts?.priority ?? 0
-      })
+      });
     },
     registerGatewayMethod(method, handler) {
-      registry.registerGatewayMethod(extensionId, method, handler)
+      registry.registerGatewayMethod(extensionId, method, handler);
     }
-  }
+  };
 }
 ```
 
@@ -550,7 +543,7 @@ async getExtensionSearchPaths(workspace?: string): Promise<string[]> {
 ```typescript
 export interface AgentEnv {
   // ...现有字段...
-  extensionPaths: string[]
+  extensionPaths: string[];
 }
 ```
 
@@ -571,28 +564,28 @@ export const ReadyExtensionHook: LifecycleHook = {
   priority: 50,
   critical: false, // Extension 加载失败不阻止应用启动
   async execute() {
-    const searchPaths = await Env.getExtensionSearchPaths()
-    const registry = new ExtensionRegistry()
-    const loader = new ExtensionLoader(registry)
+    const searchPaths = await Env.getExtensionSearchPaths();
+    const registry = new ExtensionRegistry();
+    const loader = new ExtensionLoader(registry);
 
     // 1. 加载所有 Extension
-    await loader.loadAll(searchPaths)
+    await loader.loadAll(searchPaths);
 
     // 2. 将 Extension 工具注入 ToolRegistry
     for (const { tool } of registry.getTools()) {
-      ToolRegistry.getInstance().register(tool)
+      ToolRegistry.getInstance().register(tool);
     }
 
     // 3. 将 Extension Gateway 方法注入 Gateway
     // （通过 gateway.registerMethod）
 
     // 4. 初始化全局管理器
-    ExtensionManager.initialize(registry)
+    ExtensionManager.initialize(registry);
 
     // 5. 启动 fs.watch 热插拔
-    loader.watch(searchPaths)
+    loader.watch(searchPaths);
   }
-}
+};
 ```
 
 ---

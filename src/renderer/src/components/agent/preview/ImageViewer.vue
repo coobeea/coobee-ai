@@ -21,6 +21,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { getFilePreviewUrl } from '@/utils/filePreviewUrl';
 
 const props = defineProps<{
   filePath: string;
@@ -31,12 +32,7 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 const zoom = ref(1);
 
-const imageUrl = computed(() => {
-  if (props.content) {
-    return `data:image/png;base64,${props.content}`;
-  }
-  return `file://${props.filePath}`;
-});
+const imageUrl = computed(() => getFilePreviewUrl(props.filePath, props.content));
 
 function handleLoad(): void {
   loading.value = false;

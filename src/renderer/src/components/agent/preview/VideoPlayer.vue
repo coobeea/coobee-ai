@@ -10,6 +10,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { getFilePreviewUrl } from '@/utils/filePreviewUrl';
 
 const props = defineProps<{
   filePath: string;
@@ -19,12 +20,7 @@ const props = defineProps<{
 
 const error = ref<string | null>(null);
 
-const videoUrl = computed(() => {
-  if (props.content) {
-    return `data:${props.mimeType || 'video/mp4'};base64,${props.content}`;
-  }
-  return `file://${props.filePath}`;
-});
+const videoUrl = computed(() => getFilePreviewUrl(props.filePath, props.content, props.mimeType));
 
 function handleError(): void {
   error.value = '视频加载失败';

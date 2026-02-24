@@ -34,34 +34,34 @@ import {
   restartApp,
   getHardwareSerialNumbers,
   getMachineId
-} from '@main/common'
+} from '@main/common';
 
 // 获取应用版本
-const version = await getAppVersion()
+const version = await getAppVersion();
 
 // 获取设备信息
-const deviceInfo = await getDeviceInfo()
+const deviceInfo = await getDeviceInfo();
 
 // 获取 CPU 使用率
-const cpuUsage = await getCPUUsage()
+const cpuUsage = await getCPUUsage();
 
 // 获取内存使用情况
-const memInfo = await getMemoryUsage()
+const memInfo = await getMemoryUsage();
 
 // 获取磁盘空间
-const diskInfo = await getDiskSpace()
+const diskInfo = await getDiskSpace();
 
 // 选择目录
-const dirResult = await selectDirectory()
+const dirResult = await selectDirectory();
 
 // 选择文件
 const fileResult = await selectFiles({
   filters: [{ name: 'Images', extensions: ['png', 'jpg'] }],
   multiple: true
-})
+});
 
 // 重启应用
-await restartApp()
+await restartApp();
 ```
 
 ---
@@ -71,7 +71,7 @@ await restartApp()
 ### getAppVersion()
 
 ```typescript
-async function getAppVersion(): Promise<string>
+async function getAppVersion(): Promise<string>;
 ```
 
 获取应用版本号。
@@ -79,7 +79,7 @@ async function getAppVersion(): Promise<string>
 ### getDeviceInfo()
 
 ```typescript
-async function getDeviceInfo(): Promise<DeviceInfo>
+async function getDeviceInfo(): Promise<DeviceInfo>;
 ```
 
 获取设备信息，包括平台、架构、CPU、内存等。
@@ -87,7 +87,7 @@ async function getDeviceInfo(): Promise<DeviceInfo>
 ### getCPUUsage()
 
 ```typescript
-async function getCPUUsage(): Promise<number>
+async function getCPUUsage(): Promise<number>;
 ```
 
 获取 CPU 使用率（0-100），采样时间 100ms。
@@ -95,7 +95,7 @@ async function getCPUUsage(): Promise<number>
 ### getMemoryUsage()
 
 ```typescript
-async function getMemoryUsage(): Promise<MemoryInfo>
+async function getMemoryUsage(): Promise<MemoryInfo>;
 ```
 
 获取内存使用情况。
@@ -103,7 +103,7 @@ async function getMemoryUsage(): Promise<MemoryInfo>
 ### getDiskSpace()
 
 ```typescript
-async function getDiskSpace(): Promise<DiskInfo>
+async function getDiskSpace(): Promise<DiskInfo>;
 ```
 
 获取磁盘空间信息（跨平台）。
@@ -111,7 +111,7 @@ async function getDiskSpace(): Promise<DiskInfo>
 ### selectDirectory()
 
 ```typescript
-async function selectDirectory(): Promise<{ canceled: boolean; filePaths: string[] }>
+async function selectDirectory(): Promise<{ canceled: boolean; filePaths: string[] }>;
 ```
 
 打开目录选择对话框。
@@ -120,9 +120,9 @@ async function selectDirectory(): Promise<{ canceled: boolean; filePaths: string
 
 ```typescript
 async function selectFiles(options?: {
-  filters?: { name: string; extensions: string[] }[]
-  multiple?: boolean
-}): Promise<{ canceled: boolean; filePaths: string[] }>
+  filters?: { name: string; extensions: string[] }[];
+  multiple?: boolean;
+}): Promise<{ canceled: boolean; filePaths: string[] }>;
 ```
 
 打开文件选择对话框。
@@ -130,7 +130,7 @@ async function selectFiles(options?: {
 ### restartApp()
 
 ```typescript
-async function restartApp(): Promise<void>
+async function restartApp(): Promise<void>;
 ```
 
 重启应用程序。
@@ -138,7 +138,7 @@ async function restartApp(): Promise<void>
 ### getHardwareSerialNumbers()
 
 ```typescript
-async function getHardwareSerialNumbers(): Promise<HardwareSerialNumbers>
+async function getHardwareSerialNumbers(): Promise<HardwareSerialNumbers>;
 ```
 
 获取硬件序列号信息，包括 CPU ID、主板序列号、机器 UUID 等。
@@ -152,7 +152,7 @@ async function getHardwareSerialNumbers(): Promise<HardwareSerialNumbers>
 ### getMachineId()
 
 ```typescript
-async function getMachineId(): Promise<string>
+async function getMachineId(): Promise<string>;
 ```
 
 获取机器唯一标识符（SHA256 哈希）。综合多个硬件信息生成稳定的机器指纹，用于设备识别和授权验证。
@@ -164,13 +164,7 @@ async function getMachineId(): Promise<string>
 ### 示例 1：系统信息面板
 
 ```typescript
-import {
-  getAppVersion,
-  getDeviceInfo,
-  getCPUUsage,
-  getMemoryUsage,
-  getDiskSpace
-} from '@main/common'
+import { getAppVersion, getDeviceInfo, getCPUUsage, getMemoryUsage, getDiskSpace } from '@main/common';
 
 async function getSystemInfo(): Promise<void> {
   const [version, deviceInfo, cpuUsage, memInfo, diskInfo] = await Promise.all([
@@ -179,51 +173,49 @@ async function getSystemInfo(): Promise<void> {
     getCPUUsage(),
     getMemoryUsage(),
     getDiskSpace()
-  ])
+  ]);
 
-  console.log('=== System Information ===')
-  console.log(`App Version: ${version}`)
-  console.log(`Platform: ${deviceInfo.platform}`)
-  console.log(`CPU Usage: ${cpuUsage.toFixed(2)}%`)
+  console.log('=== System Information ===');
+  console.log(`App Version: ${version}`);
+  console.log(`Platform: ${deviceInfo.platform}`);
+  console.log(`CPU Usage: ${cpuUsage.toFixed(2)}%`);
   console.log(
     `Memory: ${(memInfo.used / 1024 / 1024 / 1024).toFixed(2)} GB / ${(memInfo.total / 1024 / 1024 / 1024).toFixed(2)} GB`
-  )
+  );
 }
 ```
 
 ### 示例 2：IPC Handler
 
 ```typescript
-import { ipcMain } from 'electron'
-import { getAppVersion, getDeviceInfo, selectFiles } from '@main/common'
+import { ipcMain } from 'electron';
+import { getAppVersion, getDeviceInfo, selectFiles } from '@main/common';
 
-ipcMain.handle('platform:getVersion', () => getAppVersion())
-ipcMain.handle('platform:getDeviceInfo', () => getDeviceInfo())
-ipcMain.handle('platform:selectFiles', (_event, options) => selectFiles(options))
+ipcMain.handle('platform:getVersion', () => getAppVersion());
+ipcMain.handle('platform:getDeviceInfo', () => getDeviceInfo());
+ipcMain.handle('platform:selectFiles', (_event, options) => selectFiles(options));
 ```
 
 ### 示例 3：性能监控
 
 ```typescript
-import { getCPUUsage, getMemoryUsage } from '@main/common'
+import { getCPUUsage, getMemoryUsage } from '@main/common';
 
 setInterval(async () => {
-  const [cpuUsage, memInfo] = await Promise.all([getCPUUsage(), getMemoryUsage()])
+  const [cpuUsage, memInfo] = await Promise.all([getCPUUsage(), getMemoryUsage()]);
 
-  console.log(
-    `CPU: ${cpuUsage.toFixed(2)}%, Memory: ${((memInfo.used / memInfo.total) * 100).toFixed(2)}%`
-  )
-}, 5000)
+  console.log(`CPU: ${cpuUsage.toFixed(2)}%, Memory: ${((memInfo.used / memInfo.total) * 100).toFixed(2)}%`);
+}, 5000);
 ```
 
 ### 示例 4：设备识别和授权
 
 ```typescript
-import { getHardwareSerialNumbers, getMachineId } from '@main/common'
+import { getHardwareSerialNumbers, getMachineId } from '@main/common';
 
 // 获取硬件序列号
 async function getDeviceIdentity() {
-  const serialNumbers = await getHardwareSerialNumbers()
+  const serialNumbers = await getHardwareSerialNumbers();
 
   console.log('Hardware Serial Numbers:', {
     platform: serialNumbers.platform,
@@ -231,27 +223,27 @@ async function getDeviceIdentity() {
     boardSerial: serialNumbers.boardSerial,
     machineUUID: serialNumbers.machineUUID,
     diskSerial: serialNumbers.diskSerial
-  })
+  });
 
   // 获取稳定的机器指纹（用于授权验证）
-  const machineId = await getMachineId()
-  console.log('Machine ID:', machineId)
+  const machineId = await getMachineId();
+  console.log('Machine ID:', machineId);
 
-  return { serialNumbers, machineId }
+  return { serialNumbers, machineId };
 }
 
 // 用于软件激活验证
 async function validateLicense(licenseKey: string) {
-  const machineId = await getMachineId()
+  const machineId = await getMachineId();
 
   // 将 machineId 发送到服务器验证授权
   const response = await fetch('https://api.example.com/validate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ licenseKey, machineId })
-  })
+  });
 
-  return response.json()
+  return response.json();
 }
 ```
 
@@ -263,32 +255,32 @@ async function validateLicense(licenseKey: string) {
 // src/shared/types.ts
 
 export interface DeviceInfo {
-  platform: string
-  arch: string
-  cpuModel: string
-  totalMemory: number
-  osVersion: string
-  osVersionMetadata: Array<{ name: string; build: number }>
+  platform: string;
+  arch: string;
+  cpuModel: string;
+  totalMemory: number;
+  osVersion: string;
+  osVersionMetadata: Array<{ name: string; build: number }>;
 }
 
 export interface MemoryInfo {
-  total: number
-  free: number
-  used: number
+  total: number;
+  free: number;
+  used: number;
 }
 
 export interface DiskInfo {
-  total: number
-  free: number
-  used: number
+  total: number;
+  free: number;
+  used: number;
 }
 
 export interface HardwareSerialNumbers {
-  cpuId?: string
-  boardSerial?: string
-  machineUUID?: string
-  diskSerial?: string
-  platform: string
+  cpuId?: string;
+  boardSerial?: string;
+  machineUUID?: string;
+  diskSerial?: string;
+  platform: string;
 }
 ```
 
@@ -300,9 +292,9 @@ export interface HardwareSerialNumbers {
 
 ```typescript
 try {
-  const diskInfo = await getDiskSpace()
+  const diskInfo = await getDiskSpace();
 } catch (error) {
-  console.error('Failed to get disk space:', error)
+  console.error('Failed to get disk space:', error);
 }
 ```
 

@@ -1,40 +1,40 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import IconMdiMonitor from '~icons/mdi/monitor'
-import IconMdiWindowMaximize from '~icons/mdi/window-maximize'
-import IconMdiRefresh from '~icons/mdi/refresh'
-import IconMdiConsole from '~icons/mdi/console'
-import IconMdiClose from '~icons/mdi/close'
-import IconSvgSpinnersPulse from '~icons/svg-spinners/pulse'
+import { ref, onMounted, onBeforeUnmount } from 'vue';
+import IconMdiMonitor from '~icons/mdi/monitor';
+import IconMdiWindowMaximize from '~icons/mdi/window-maximize';
+import IconMdiRefresh from '~icons/mdi/refresh';
+import IconMdiConsole from '~icons/mdi/console';
+import IconMdiClose from '~icons/mdi/close';
+import IconSvgSpinnersPulse from '~icons/svg-spinners/pulse';
 
 // 窗口信息接口
 interface WindowInfo {
-  id: number
-  type: string
-  title: string
+  id: number;
+  type: string;
+  title: string;
   bounds: {
-    x: number
-    y: number
-    width: number
-    height: number
-  }
-  isVisible: boolean
-  isFocused: boolean
-  isMinimized: boolean
-  isMaximized: boolean
-  isFullScreen: boolean
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  isVisible: boolean;
+  isFocused: boolean;
+  isMinimized: boolean;
+  isMaximized: boolean;
+  isFullScreen: boolean;
 }
 
-const windows = ref<WindowInfo[]>([])
-const loading = ref(false)
-const autoRefresh = ref(true)
-const refreshInterval = ref(3000) // 3秒刷新一次
-let refreshTimer: number | null = null
+const windows = ref<WindowInfo[]>([]);
+const loading = ref(false);
+const autoRefresh = ref(true);
+const refreshInterval = ref(3000); // 3秒刷新一次
+let refreshTimer: number | null = null;
 
 // 刷新窗口列表
 async function refreshWindows(): Promise<void> {
   try {
-    loading.value = true
+    loading.value = true;
     // TODO: 等后端实现 window:getAllWindows IPC 接口后，使用真实数据
     // 目前使用模拟数据
     const result: WindowInfo[] = [
@@ -71,82 +71,80 @@ async function refreshWindows(): Promise<void> {
         isMaximized: false,
         isFullScreen: false
       }
-    ]
-    windows.value = result
+    ];
+    windows.value = result;
   } catch (error) {
-    console.error('[Console] 获取窗口列表失败:', error)
+    console.error('[Console] 获取窗口列表失败:', error);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 // 启动自动刷新
 function startAutoRefresh(): void {
-  if (refreshTimer) return
+  if (refreshTimer) return;
   refreshTimer = window.setInterval(() => {
     if (autoRefresh.value) {
-      refreshWindows()
+      refreshWindows();
     }
-  }, refreshInterval.value)
-  console.log('[Console] 自动刷新已启动')
+  }, refreshInterval.value);
+  console.log('[Console] 自动刷新已启动');
 }
 
 // 停止自动刷新
 function stopAutoRefresh(): void {
   if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
-    console.log('[Console] 自动刷新已停止')
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+    console.log('[Console] 自动刷新已停止');
   }
 }
 
 // 切换自动刷新
 function toggleAutoRefresh(): void {
-  autoRefresh.value = !autoRefresh.value
+  autoRefresh.value = !autoRefresh.value;
   if (autoRefresh.value) {
-    startAutoRefresh()
+    startAutoRefresh();
   } else {
-    stopAutoRefresh()
+    stopAutoRefresh();
   }
 }
 
 // 关闭窗口
 function closeWindow(): void {
-  window.close()
+  window.close();
 }
 
 // 获取窗口状态样式类
 function getWindowStatusClass(window: WindowInfo): string {
-  if (window.isFocused) return 'border-blue-400 bg-blue-50'
-  if (window.isMinimized) return 'border-gray-300 bg-gray-50'
-  return 'border-gray-200 bg-white'
+  if (window.isFocused) return 'border-blue-400 bg-blue-50';
+  if (window.isMinimized) return 'border-gray-300 bg-gray-50';
+  return 'border-gray-200 bg-white';
 }
 
 // 获取窗口状态文本
 function getWindowStatus(window: WindowInfo): string {
-  if (window.isFocused) return '已聚焦'
-  if (window.isMinimized) return '最小化'
-  if (window.isMaximized) return '最大化'
-  if (window.isFullScreen) return '全屏'
-  return '正常'
+  if (window.isFocused) return '已聚焦';
+  if (window.isMinimized) return '最小化';
+  if (window.isMaximized) return '最大化';
+  if (window.isFullScreen) return '全屏';
+  return '正常';
 }
 
 onMounted(async () => {
-  await refreshWindows()
+  await refreshWindows();
   if (autoRefresh.value) {
-    startAutoRefresh()
+    startAutoRefresh();
   }
-})
+});
 
 onBeforeUnmount(() => {
-  stopAutoRefresh()
-})
+  stopAutoRefresh();
+});
 </script>
 
 <template>
-  <div
-    class="flex h-screen w-screen flex-col overflow-hidden bg-gradient-to-b from-gray-50 to-gray-100"
-  >
+  <div class="flex h-screen w-screen flex-col overflow-hidden bg-gradient-to-b from-gray-50 to-gray-100">
     <!-- 自定义标题栏 - 可拖动 -->
     <header class="drag-region border-b border-gray-200 bg-white shadow-sm">
       <div class="flex items-center justify-between px-4 py-3">
@@ -159,8 +157,7 @@ onBeforeUnmount(() => {
         <!-- 右侧关闭按钮 -->
         <button
           class="no-drag group flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-red-500"
-          @click="closeWindow"
-        >
+          @click="closeWindow">
           <IconMdiClose class="text-lg text-gray-600 transition group-hover:text-white" />
         </button>
       </div>
@@ -173,12 +170,9 @@ onBeforeUnmount(() => {
         <button
           :class="[
             'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition',
-            autoRefresh
-              ? 'bg-green-50 text-green-700 hover:bg-green-100'
-              : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+            autoRefresh ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
           ]"
-          @click="toggleAutoRefresh"
-        >
+          @click="toggleAutoRefresh">
           <IconSvgSpinnersPulse v-if="autoRefresh" class="text-sm" />
           <span>{{ autoRefresh ? '自动' : '手动' }}</span>
         </button>
@@ -187,8 +181,7 @@ onBeforeUnmount(() => {
         <button
           :disabled="loading"
           class="flex items-center gap-1.5 rounded-md bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-50"
-          @click="refreshWindows"
-        >
+          @click="refreshWindows">
           <IconMdiRefresh :class="{ 'animate-spin': loading }" class="text-sm" />
           <span>刷新</span>
         </button>
@@ -232,10 +225,7 @@ onBeforeUnmount(() => {
       <div class="space-y-4">
         <h2 class="text-xl font-bold text-gray-800">窗口列表</h2>
 
-        <div
-          v-if="windows.length === 0"
-          class="rounded-lg border border-gray-200 bg-white p-8 text-center"
-        >
+        <div v-if="windows.length === 0" class="rounded-lg border border-gray-200 bg-white p-8 text-center">
           <p class="text-gray-600">暂无窗口信息</p>
         </div>
 
@@ -243,8 +233,7 @@ onBeforeUnmount(() => {
           <div
             v-for="window in windows"
             :key="window.id"
-            :class="['rounded-lg border p-3 transition', getWindowStatusClass(window)]"
-          >
+            :class="['rounded-lg border p-3 transition', getWindowStatusClass(window)]">
             <!-- 窗口标题和状态 -->
             <div class="mb-2 flex items-center justify-between">
               <div class="flex items-center gap-2">
@@ -256,8 +245,7 @@ onBeforeUnmount(() => {
                   :class="[
                     'rounded px-2 py-0.5 text-xs font-medium',
                     window.isFocused ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
-                  ]"
-                >
+                  ]">
                   {{ getWindowStatus(window) }}
                 </span>
               </div>
@@ -269,42 +257,26 @@ onBeforeUnmount(() => {
             <div class="mb-2 grid grid-cols-2 gap-2 text-xs">
               <div>
                 <span class="text-gray-600">位置: </span>
-                <span class="font-medium text-gray-800">
-                  {{ window.bounds.x }}, {{ window.bounds.y }}
-                </span>
+                <span class="font-medium text-gray-800"> {{ window.bounds.x }}, {{ window.bounds.y }} </span>
               </div>
               <div>
                 <span class="text-gray-600">尺寸: </span>
-                <span class="font-medium text-gray-800">
-                  {{ window.bounds.width }}×{{ window.bounds.height }}
-                </span>
+                <span class="font-medium text-gray-800"> {{ window.bounds.width }}×{{ window.bounds.height }} </span>
               </div>
             </div>
 
             <!-- 窗口状态标签 -->
             <div class="flex flex-wrap gap-1">
-              <span
-                v-if="window.isVisible"
-                class="rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-700"
-              >
+              <span v-if="window.isVisible" class="rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-700">
                 可见
               </span>
-              <span
-                v-if="window.isMinimized"
-                class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700"
-              >
+              <span v-if="window.isMinimized" class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700">
                 最小化
               </span>
-              <span
-                v-if="window.isMaximized"
-                class="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700"
-              >
+              <span v-if="window.isMaximized" class="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">
                 最大化
               </span>
-              <span
-                v-if="window.isFullScreen"
-                class="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700"
-              >
+              <span v-if="window.isFullScreen" class="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700">
                 全屏
               </span>
             </div>

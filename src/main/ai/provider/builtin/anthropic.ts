@@ -1,4 +1,4 @@
-import type { ProviderConfig } from '../types'
+import type { ProviderConfig } from '../types';
 
 export const anthropicProvider: ProviderConfig = {
   id: 'anthropic',
@@ -27,4 +27,4 @@ export const anthropicProvider: ProviderConfig = {
     }
   ],
   enabled: true
-}
+};

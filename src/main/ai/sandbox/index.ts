@@ -16,19 +16,15 @@ export type {
   SandboxDockerConfig,
   SandboxDockerInfo,
   ResolvedToolPolicy
-} from './types'
-export { DEFAULT_DOCKER_CONFIG, DEFAULT_SANDBOX_CONFIG } from './types'
+} from './types';
+export { DEFAULT_DOCKER_CONFIG, DEFAULT_SANDBOX_CONFIG } from './types';
 
 // 路径守卫
-export type { PathResolveResult, PathGuardError } from './path-guard'
-export {
-  resolveSandboxPath,
-  resolveWorkingDirectory,
-  pathGuardErrorToToolResult
-} from './path-guard'
+export type { PathResolveResult, PathGuardError } from './path-guard';
+export { resolveSandboxPath, resolveWorkingDirectory, pathGuardErrorToToolResult } from './path-guard';
 
 // 工具策略
-export { isToolAllowed, resolveToolPolicy, formatToolBlockedMessage } from './tool-policy'
+export { isToolAllowed, resolveToolPolicy, formatToolBlockedMessage } from './tool-policy';
 
 // Docker 容器管理
 export {
@@ -40,16 +36,11 @@ export {
   removeContainer,
   listContainers,
   removeAllContainers
-} from './docker'
+} from './docker';
 
 // 命令安全策略
-export type { PolicyDecision } from './exec-policy'
-export {
-  checkExecPolicy,
-  learnExecCommand,
-  getLearnedAllowlist,
-  clearLearnedAllowlist
-} from './exec-policy'
+export type { PolicyDecision } from './exec-policy';
+export { checkExecPolicy, learnExecCommand, getLearnedAllowlist, clearLearnedAllowlist } from './exec-policy';
 
 // 上下文构建
-export { resolveSandboxContext, createPathOnlyContext } from './context'
+export { resolveSandboxContext, createPathOnlyContext } from './context';

@@ -4,9 +4,9 @@
  * 检查代码库的架构质量问题
  */
 
-import { readdir, readFile } from 'fs/promises'
-import { join } from 'path'
-import { existsSync } from 'fs'
+import { readdir, readFile } from 'fs/promises';
+import { join } from 'path';
+import { existsSync } from 'fs';
 
 /**
  * 架构违规类型
@@ -18,59 +18,59 @@ type ViolationType =
   | 'resource_leak'
   | 'todo_violation'
   | 'naming_violation'
-  | 'doc_sync'
+  | 'doc_sync';
 
 /**
  * 违规严重程度
  */
-type Severity = 'error' | 'warning' | 'info'
+type Severity = 'error' | 'warning' | 'info';
 
 /**
  * 架构违规
  */
 interface ArchitectureViolation {
-  type: ViolationType
-  severity: Severity
-  message: string
-  file: string
-  line?: number
-  suggestion?: string
+  type: ViolationType;
+  severity: Severity;
+  message: string;
+  file: string;
+  line?: number;
+  suggestion?: string;
 }
 
 /**
  * 架构 Lint 工具
  */
 class ArchitectureLinter {
-  private violations: ArchitectureViolation[] = []
-  private aiModulePath = join(process.cwd(), 'src/main/ai')
+  private violations: ArchitectureViolation[] = [];
+  private aiModulePath = join(process.cwd(), 'src/main/ai');
 
   /**
    * 运行所有检查
    */
   async lint(): Promise<void> {
-    console.log('🔍 Running architecture checks...\n')
+    console.log('🔍 Running architecture checks...\n');
 
-    await this.checkTypeSafety()
-    await this.checkResourceLeaks()
-    await this.checkTODOs()
-    await this.checkNamingConventions()
-    await this.checkDocSync()
-    await this.checkExports()
+    await this.checkTypeSafety();
+    await this.checkResourceLeaks();
+    await this.checkTODOs();
+    await this.checkNamingConventions();
+    await this.checkDocSync();
+    await this.checkExports();
 
-    this.printResults()
+    this.printResults();
   }
 
   /**
    * 检查类型安全
    */
   private async checkTypeSafety(): Promise<void> {
-    console.log('📝 Checking type safety...')
+    console.log('📝 Checking type safety...');
 
-    const files = await this.getAllTsFiles()
+    const files = await this.getAllTsFiles();
 
     for (const file of files) {
-      const content = await readFile(file, 'utf-8')
-      const lines = content.split('\n')
+      const content = await readFile(file, 'utf-8');
+      const lines = content.split('\n');
 
       // 检查 any 使用
       lines.forEach((line, index) => {
@@ -83,7 +83,7 @@ class ArchitectureLinter {
               file,
               line: index + 1,
               suggestion: 'Use "unknown" with type guards instead'
-            })
+            });
           }
         }
 
@@ -96,7 +96,7 @@ class ArchitectureLinter {
             file,
             line: index + 1,
             suggestion: 'Provide proper type narrowing'
-          })
+          });
         }
 
         // 检查 @ts-ignore
@@ -108,9 +108,9 @@ class ArchitectureLinter {
             file,
             line: index + 1,
             suggestion: 'Fix the underlying type issue or use @ts-expect-error with comment'
-          })
+          });
         }
-      })
+      });
     }
   }
 
@@ -118,16 +118,16 @@ class ArchitectureLinter {
    * 检查资源泄漏
    */
   private async checkResourceLeaks(): Promise<void> {
-    console.log('🔧 Checking resource leaks...')
+    console.log('🔧 Checking resource leaks...');
 
-    const files = await this.getAllTsFiles()
+    const files = await this.getAllTsFiles();
 
     for (const file of files) {
-      const content = await readFile(file, 'utf-8')
+      const content = await readFile(file, 'utf-8');
 
       // 检查 setInterval 是否有对应的 clearInterval
-      const hasSetInterval = content.includes('setInterval')
-      const hasClearInterval = content.includes('clearInterval')
+      const hasSetInterval = content.includes('setInterval');
+      const hasClearInterval = content.includes('clearInterval');
 
       if (hasSetInterval && !hasClearInterval) {
         this.violations.push({
@@ -136,12 +136,12 @@ class ArchitectureLinter {
           message: 'setInterval without clearInterval',
           file,
           suggestion: 'Add cleanup() method with clearInterval()'
-        })
+        });
       }
 
       // 检查 EventBus.on 是否有对应的 off
-      const hasEventOn = content.includes('eventBus.on')
-      const hasEventOff = content.includes('eventBus.off')
+      const hasEventOn = content.includes('eventBus.on');
+      const hasEventOff = content.includes('eventBus.off');
 
       if (hasEventOn && !hasEventOff && !content.includes('cleanup')) {
         this.violations.push({
@@ -150,14 +150,14 @@ class ArchitectureLinter {
           message: 'EventBus.on without cleanup',
           file,
           suggestion: 'Consider adding cleanup() to remove listeners'
-        })
+        });
       }
 
       // 检查类是否有 cleanup/destroy 方法
       if (content.match(/class\s+\w+/)) {
-        const hasTimer = content.includes('setInterval') || content.includes('setTimeout')
-        const hasEventListener = hasEventOn
-        const hasCleanup = content.includes('cleanup()') || content.includes('destroy()')
+        const hasTimer = content.includes('setInterval') || content.includes('setTimeout');
+        const hasEventListener = hasEventOn;
+        const hasCleanup = content.includes('cleanup()') || content.includes('destroy()');
 
         if ((hasTimer || hasEventListener) && !hasCleanup) {
           this.violations.push({
@@ -166,7 +166,7 @@ class ArchitectureLinter {
             message: 'Class with resources lacks cleanup/destroy method',
             file,
             suggestion: 'Add cleanup() or destroy() method'
-          })
+          });
         }
       }
     }
@@ -176,13 +176,13 @@ class ArchitectureLinter {
    * 检查 TODO
    */
   private async checkTODOs(): Promise<void> {
-    console.log('📋 Checking TODOs...')
+    console.log('📋 Checking TODOs...');
 
-    const files = await this.getAllTsFiles()
+    const files = await this.getAllTsFiles();
 
     for (const file of files) {
-      const content = await readFile(file, 'utf-8')
-      const lines = content.split('\n')
+      const content = await readFile(file, 'utf-8');
+      const lines = content.split('\n');
 
       lines.forEach((line, index) => {
         if (line.includes('TODO') && !line.includes('TodoWrite')) {
@@ -193,9 +193,9 @@ class ArchitectureLinter {
             file,
             line: index + 1,
             suggestion: 'Create an issue or complete the TODO'
-          })
+          });
         }
-      })
+      });
     }
   }
 
@@ -203,17 +203,17 @@ class ArchitectureLinter {
    * 检查命名规范
    */
   private async checkNamingConventions(): Promise<void> {
-    console.log('✏️  Checking naming conventions...')
+    console.log('✏️  Checking naming conventions...');
 
-    const files = await this.getAllTsFiles()
+    const files = await this.getAllTsFiles();
 
     for (const file of files) {
-      const content = await readFile(file, 'utf-8')
-      const lines = content.split('\n')
+      const content = await readFile(file, 'utf-8');
+      const lines = content.split('\n');
 
       lines.forEach((line, index) => {
         // 检查类命名（应该是 PascalCase）
-        const classMatch = line.match(/class\s+([a-z][a-zA-Z0-9]*)/)
+        const classMatch = line.match(/class\s+([a-z][a-zA-Z0-9]*)/);
         if (classMatch) {
           this.violations.push({
             type: 'naming_violation',
@@ -222,11 +222,11 @@ class ArchitectureLinter {
             file,
             line: index + 1,
             suggestion: `Rename to ${classMatch[1].charAt(0).toUpperCase() + classMatch[1].slice(1)}`
-          })
+          });
         }
 
         // 检查接口命名（不应该用 I 前缀的除外）
-        const interfaceMatch = line.match(/interface\s+([a-z][a-zA-Z0-9]*)/)
+        const interfaceMatch = line.match(/interface\s+([a-z][a-zA-Z0-9]*)/);
         if (interfaceMatch) {
           this.violations.push({
             type: 'naming_violation',
@@ -234,9 +234,9 @@ class ArchitectureLinter {
             message: `Interface name should be PascalCase: ${interfaceMatch[1]}`,
             file,
             line: index + 1
-          })
+          });
         }
-      })
+      });
     }
   }
 
@@ -244,14 +244,14 @@ class ArchitectureLinter {
    * 检查文档同步
    */
   private async checkDocSync(): Promise<void> {
-    console.log('📚 Checking documentation sync...')
+    console.log('📚 Checking documentation sync...');
 
     // 检查每个模块是否有文档
-    const modules = ['agents', 'memory', 'orchestration', 'runtime', 'streaming', 'storage']
+    const modules = ['agents', 'memory', 'orchestration', 'runtime', 'streaming', 'storage'];
 
     for (const module of modules) {
-      const modulePath = join(this.aiModulePath, module)
-      const readmePath = join(modulePath, 'README.md')
+      const modulePath = join(this.aiModulePath, module);
+      const readmePath = join(modulePath, 'README.md');
 
       if (!existsSync(readmePath)) {
         this.violations.push({
@@ -260,7 +260,7 @@ class ArchitectureLinter {
           message: `Module ${module} missing README.md`,
           file: modulePath,
           suggestion: 'Create README.md documenting the module'
-        })
+        });
       }
     }
   }
@@ -269,12 +269,12 @@ class ArchitectureLinter {
    * 检查导出
    */
   private async checkExports(): Promise<void> {
-    console.log('📦 Checking exports...')
+    console.log('📦 Checking exports...');
 
-    const modules = ['agents', 'memory', 'orchestration', 'runtime', 'streaming', 'storage']
+    const modules = ['agents', 'memory', 'orchestration', 'runtime', 'streaming', 'storage'];
 
     for (const module of modules) {
-      const indexPath = join(this.aiModulePath, module, 'index.ts')
+      const indexPath = join(this.aiModulePath, module, 'index.ts');
 
       if (!existsSync(indexPath)) {
         this.violations.push({
@@ -283,7 +283,7 @@ class ArchitectureLinter {
           message: `Module ${module} missing index.ts`,
           file: join(this.aiModulePath, module),
           suggestion: 'Create index.ts to export public API'
-        })
+        });
       }
     }
   }
@@ -292,98 +292,96 @@ class ArchitectureLinter {
    * 获取所有 TypeScript 文件
    */
   private async getAllTsFiles(dir: string = this.aiModulePath): Promise<string[]> {
-    const files: string[] = []
+    const files: string[] = [];
 
     async function walk(currentDir: string): Promise<void> {
-      const entries = await readdir(currentDir, { withFileTypes: true })
+      const entries = await readdir(currentDir, { withFileTypes: true });
 
       for (const entry of entries) {
-        const fullPath = join(currentDir, entry.name)
+        const fullPath = join(currentDir, entry.name);
 
         if (entry.isDirectory()) {
           // 跳过特定目录
           if (!entry.name.startsWith('.') && !entry.name.includes('node_modules')) {
-            await walk(fullPath)
+            await walk(fullPath);
           }
         } else if (entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
-          files.push(fullPath)
+          files.push(fullPath);
         }
       }
     }
 
-    await walk(dir)
-    return files
+    await walk(dir);
+    return files;
   }
 
   /**
    * 打印结果
    */
   private printResults(): void {
-    console.log('\n' + '='.repeat(80))
-    console.log('Architecture Lint Results')
-    console.log('='.repeat(80) + '\n')
+    console.log('\n' + '='.repeat(80));
+    console.log('Architecture Lint Results');
+    console.log('='.repeat(80) + '\n');
 
     if (this.violations.length === 0) {
-      console.log('✅ No architecture violations found!\n')
-      return
+      console.log('✅ No architecture violations found!\n');
+      return;
     }
 
     // 按严重程度分组
-    const errors = this.violations.filter((v) => v.severity === 'error')
-    const warnings = this.violations.filter((v) => v.severity === 'warning')
-    const infos = this.violations.filter((v) => v.severity === 'info')
+    const errors = this.violations.filter((v) => v.severity === 'error');
+    const warnings = this.violations.filter((v) => v.severity === 'warning');
+    const infos = this.violations.filter((v) => v.severity === 'info');
 
     if (errors.length > 0) {
-      console.log(`❌ ${errors.length} Error(s):`)
+      console.log(`❌ ${errors.length} Error(s):`);
       errors.forEach((v) => {
-        console.log(`  ${v.file}${v.line ? `:${v.line}` : ''}`)
-        console.log(`    ${v.message}`)
+        console.log(`  ${v.file}${v.line ? `:${v.line}` : ''}`);
+        console.log(`    ${v.message}`);
         if (v.suggestion) {
-          console.log(`    💡 ${v.suggestion}`)
+          console.log(`    💡 ${v.suggestion}`);
         }
-        console.log()
-      })
+        console.log();
+      });
     }
 
     if (warnings.length > 0) {
-      console.log(`⚠️  ${warnings.length} Warning(s):`)
+      console.log(`⚠️  ${warnings.length} Warning(s):`);
       warnings.forEach((v) => {
-        console.log(`  ${v.file}${v.line ? `:${v.line}` : ''}`)
-        console.log(`    ${v.message}`)
+        console.log(`  ${v.file}${v.line ? `:${v.line}` : ''}`);
+        console.log(`    ${v.message}`);
         if (v.suggestion) {
-          console.log(`    💡 ${v.suggestion}`)
+          console.log(`    💡 ${v.suggestion}`);
         }
-        console.log()
-      })
+        console.log();
+      });
     }
 
     if (infos.length > 0) {
-      console.log(`ℹ️  ${infos.length} Info(s):`)
+      console.log(`ℹ️  ${infos.length} Info(s):`);
       infos.slice(0, 10).forEach((v) => {
-        console.log(`  ${v.file}${v.line ? `:${v.line}` : ''}`)
-        console.log(`    ${v.message}`)
-        console.log()
-      })
+        console.log(`  ${v.file}${v.line ? `:${v.line}` : ''}`);
+        console.log(`    ${v.message}`);
+        console.log();
+      });
       if (infos.length > 10) {
-        console.log(`  ... and ${infos.length - 10} more\n`)
+        console.log(`  ... and ${infos.length - 10} more\n`);
       }
     }
 
-    console.log('='.repeat(80))
-    console.log(
-      `Total: ${errors.length} errors, ${warnings.length} warnings, ${infos.length} infos\n`
-    )
+    console.log('='.repeat(80));
+    console.log(`Total: ${errors.length} errors, ${warnings.length} warnings, ${infos.length} infos\n`);
 
     // 如果有错误，退出码为 1
     if (errors.length > 0) {
-      process.exit(1)
+      process.exit(1);
     }
   }
 }
 
 // 运行 Lint
-const linter = new ArchitectureLinter()
+const linter = new ArchitectureLinter();
 linter.lint().catch((error) => {
-  console.error('Failed to run architecture lint:', error)
-  process.exit(1)
-})
+  console.error('Failed to run architecture lint:', error);
+  process.exit(1);
+});

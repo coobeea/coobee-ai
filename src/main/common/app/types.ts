@@ -2,7 +2,7 @@
  * 应用管理相关类型定义
  */
 
-import type { LifecycleManager } from '../lifecycle'
+import type { LifecycleManager } from '../lifecycle';
 
 // ==================== Electron App 事件定义 ====================
 
@@ -80,10 +80,10 @@ export interface IAppManager {
   /**
    * 初始化应用
    */
-  initialize(): Promise<void>
+  initialize(): Promise<void>;
 
   /**
    * 获取生命周期管理器
    */
-  getLifecycleManager(): LifecycleManager
+  getLifecycleManager(): LifecycleManager;
 }

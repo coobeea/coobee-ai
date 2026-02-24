@@ -26,15 +26,15 @@
 
 ```typescript
 interface AgentCacheEntry {
-  agent: Agent
-  lastAccess: number
-  createdAt: number
+  agent: Agent;
+  lastAccess: number;
+  createdAt: number;
 }
 
 class AgentFactory {
-  private agents = new Map<string, AgentCacheEntry>()
-  private readonly maxCacheSize = 100
-  private readonly cacheTimeout = 30 * 60 * 1000
+  private agents = new Map<string, AgentCacheEntry>();
+  private readonly maxCacheSize = 100;
+  private readonly cacheTimeout = 30 * 60 * 1000;
 
   // LRU 淘汰
   private evictLRU(): void {
@@ -49,7 +49,7 @@ class AgentFactory {
   // 统计信息
   getCacheStats(): {
     /* ... */
-  }
+  };
 }
 ```
 
@@ -68,20 +68,20 @@ class AgentFactory {
 
 ```typescript
 class StreamStore {
-  private messageQueue: StreamMessage[] = []
-  private flushInterval = 1000 // 1秒
-  private maxBatchSize = 100
+  private messageQueue: StreamMessage[] = [];
+  private flushInterval = 1000; // 1秒
+  private maxBatchSize = 100;
 
   // 入队
-  private enqueueMessage(message: StreamMessage): void
+  private enqueueMessage(message: StreamMessage): void;
 
   // 批量刷新
   private async flushQueue(): Promise<void> {
     await this.db.transaction(async () => {
       for (const msg of batch) {
-        await this.saveMessage(msg)
+        await this.saveMessage(msg);
       }
-    })
+    });
   }
 }
 ```
@@ -101,22 +101,22 @@ class StreamStore {
 
 ```typescript
 interface ClientInfo {
-  sessionIds: Set<string>
-  isAlive: boolean
-  heartbeatTimer: NodeJS.Timeout | null
+  sessionIds: Set<string>;
+  isAlive: boolean;
+  heartbeatTimer: NodeJS.Timeout | null;
 }
 
 class WebSocketBroadcaster {
   private startHeartbeat(ws: WebSocket, clientInfo: ClientInfo): void {
     clientInfo.heartbeatTimer = setInterval(() => {
       if (!clientInfo.isAlive) {
-        ws.terminate()
-        this.cleanupClient(ws)
-        return
+        ws.terminate();
+        this.cleanupClient(ws);
+        return;
       }
-      clientInfo.isAlive = false
-      ws.ping()
-    }, 30000)
+      clientInfo.isAlive = false;
+      ws.ping();
+    }, 30000);
   }
 
   private cleanupClient(ws: WebSocket): void {
@@ -141,22 +141,22 @@ class WebSocketBroadcaster {
 ```typescript
 class Orchestrator {
   private async executeSubTask(subTask: SubTask): Promise<unknown> {
-    let lastError: Error | null = null
-    const maxRetries = this.config.maxRetries || 0
+    let lastError: Error | null = null;
+    const maxRetries = this.config.maxRetries || 0;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         if (attempt > 0) {
-          const backoffTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
-          await this.delay(backoffTime)
+          const backoffTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+          await this.delay(backoffTime);
         }
 
-        const result = await this.workerCoordinator.executeSubTask(subTask, worker)
-        return result
+        const result = await this.workerCoordinator.executeSubTask(subTask, worker);
+        return result;
       } catch (error) {
-        lastError = error as Error
-        if (attempt < maxRetries) continue
-        throw lastError
+        lastError = error as Error;
+        if (attempt < maxRetries) continue;
+        throw lastError;
       }
     }
   }

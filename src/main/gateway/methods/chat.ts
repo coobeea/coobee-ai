@@ -141,9 +141,9 @@ function createBuilderFromDefinition(
   }
 
   // piMono() 已自动注入 Provider 配置 + thinkingLevel
-  // Agent 定义中的显式配置优先覆盖
+  // Agent 定义中的 model 支持三种格式：单模型、@group、auto
   if (def.model) {
-    builder.model(def.model);
+    agentExecutor.applyProviderConfig(builder, { modelOverride: def.model, agentId: def.id });
   }
   if (def.thinkingLevel) {
     builder.thinkingLevel(def.thinkingLevel);
@@ -316,10 +316,14 @@ export const chatMethods: MethodGroup = {
 
         const builder = agentDef ? createBuilderFromDefinition(agentDef, mode) : createBuilder(mode);
 
+        const modelSourceRef =
+          agentDef?.model && (agentDef.model.startsWith('@') || agentDef.model === 'auto') ? agentDef.model : undefined;
+
         const result = agentExecutor.submit({
           sessionId: sid,
           message,
-          builder
+          builder,
+          modelSourceRef
         });
 
         if (result.status === 'busy') {

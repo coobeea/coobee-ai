@@ -118,13 +118,13 @@ WindowManager (业务层)
 
 ```typescript
 // ✅ 发送事件
-eventBus.emit(EventTypes.TAB_CREATED, payload)
+eventBus.emit(EventTypes.TAB_CREATED, payload);
 
 // ✅ 监听事件
-eventBus.on(EventTypes.TAB_CREATED, handler)
+eventBus.on(EventTypes.TAB_CREATED, handler);
 
 // ❌ 避免硬编码字符串
-eventBus.emit('tab:created', payload)
+eventBus.emit('tab:created', payload);
 ```
 
 ### ✅ 完整信息
@@ -173,10 +173,10 @@ tabIds.forEach(tabId => {
 
 ```vue
 <script setup lang="ts">
-import { useEventBus } from '@/composables/useEventBus'
-import { EventTypes } from '@shared/ipc/events'
+import { useEventBus } from '@/composables/useEventBus';
+import { EventTypes } from '@shared/ipc/events';
 
-const { on } = useEventBus()
+const { on } = useEventBus();
 
 // 监听 Tab 创建，自动添加到列表
 on(EventTypes.TAB_CREATED, (payload) => {
@@ -184,22 +184,20 @@ on(EventTypes.TAB_CREATED, (payload) => {
     id: payload.tabId,
     title: payload.title,
     url: payload.url
-  })
-})
+  });
+});
 
 // 监听 Tab 关闭，自动从列表移除
 on(EventTypes.TAB_CLOSED, (payload) => {
-  tabs.value = tabs.value.filter((t) => t.id !== payload.tabId)
-})
+  tabs.value = tabs.value.filter((t) => t.id !== payload.tabId);
+});
 
 // 监听 Tabs 重排序，批量更新顺序
 on(EventTypes.TABS_REORDERED, (payload) => {
   // 根据新顺序重新排列
-  const orderedTabs = payload.tabIds
-    .map((id) => tabs.value.find((t) => t.id === id))
-    .filter(Boolean)
-  tabs.value = orderedTabs
-})
+  const orderedTabs = payload.tabIds.map((id) => tabs.value.find((t) => t.id === id)).filter(Boolean);
+  tabs.value = orderedTabs;
+});
 </script>
 ```
 
@@ -208,12 +206,12 @@ on(EventTypes.TABS_REORDERED, (payload) => {
 ```typescript
 // 监听 Tab 跨窗口移动
 on(EventTypes.TAB_MOVED_TO_WINDOW, (payload) => {
-  console.log(`Tab ${payload.tabId} 从窗口 ${payload.fromWindowId} 移到 ${payload.toWindowId}`)
+  console.log(`Tab ${payload.tabId} 从窗口 ${payload.fromWindowId} 移到 ${payload.toWindowId}`);
 
   // 更新源窗口和目标窗口的 TabStore
-  sourceWindowStore.removeTab(payload.tabId)
-  targetWindowStore.addTab(payload.tabId)
-})
+  sourceWindowStore.removeTab(payload.tabId);
+  targetWindowStore.addTab(payload.tabId);
+});
 ```
 
 ---

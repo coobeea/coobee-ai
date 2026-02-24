@@ -3,17 +3,17 @@
  * 跨会话的持久化知识库
  */
 
-import { readFile } from 'fs/promises'
-import { join } from 'path'
-import type { SQLiteConnection } from '@main/common/database'
-import { generateSnowflakeId } from '@main/utils'
-import type { LongTermMemoryEntry, LongTermMemoryType, MemoryQuery } from './types'
+import { readFile } from 'fs/promises';
+import { join } from 'path';
+import type { SQLiteConnection } from '@main/common/database';
+import { generateSnowflakeId } from '@main/utils';
+import type { LongTermMemoryEntry, LongTermMemoryType, MemoryQuery } from './types';
 
 /**
  * 长期记忆存储
  */
 export class LongTermMemoryStore {
-  private initialized = false
+  private initialized = false;
 
   constructor(private db: SQLiteConnection) {}
 
@@ -22,24 +22,24 @@ export class LongTermMemoryStore {
    */
   async initialize(): Promise<void> {
     if (this.initialized) {
-      return
+      return;
     }
 
-    await this.createSchema()
-    this.initialized = true
-    console.log('[LongTermMemoryStore] Initialized')
+    await this.createSchema();
+    this.initialized = true;
+    console.log('[LongTermMemoryStore] Initialized');
   }
 
   /**
    * 创建数据库 Schema
    */
   private async createSchema(): Promise<void> {
-    const schemaPath = join(__dirname, '../storage/schemas', 'long_term_memory.sql')
+    const schemaPath = join(__dirname, '../storage/schemas', 'long_term_memory.sql');
     try {
-      const schema = await readFile(schemaPath, 'utf-8')
-      await this.db.execute(schema)
+      const schema = await readFile(schemaPath, 'utf-8');
+      await this.db.execute(schema);
     } catch (_error) {
-      console.warn('[LongTermMemoryStore] Schema file not found, creating inline')
+      console.warn('[LongTermMemoryStore] Schema file not found, creating inline');
       await this.db.execute(`
         CREATE TABLE IF NOT EXISTS long_term_memory (
           id TEXT PRIMARY KEY,
@@ -64,7 +64,7 @@ export class LongTermMemoryStore {
 
         CREATE INDEX IF NOT EXISTS idx_ltm_created 
           ON long_term_memory(created_at DESC);
-      `)
+      `);
     }
   }
 
@@ -72,16 +72,16 @@ export class LongTermMemoryStore {
    * 保存记忆条目
    */
   async saveMemory(memory: {
-    type: LongTermMemoryType
-    content: string
-    context?: string
-    importance: number
-    userId?: string
-    sessionId?: string
-    embedding?: number[]
+    type: LongTermMemoryType;
+    content: string;
+    context?: string;
+    importance: number;
+    userId?: string;
+    sessionId?: string;
+    embedding?: number[];
   }): Promise<string> {
-    const id = generateSnowflakeId()
-    const now = Date.now()
+    const id = generateSnowflakeId();
+    const now = Date.now();
 
     await this.db.execute(
       `INSERT INTO long_term_memory 
@@ -100,66 +100,66 @@ export class LongTermMemoryStore {
         now,
         now
       ]
-    )
+    );
 
-    console.log(`[LongTermMemoryStore] Saved memory: ${id}`)
-    return id
+    console.log(`[LongTermMemoryStore] Saved memory: ${id}`);
+    return id;
   }
 
   /**
    * 检索记忆
    */
   async retrieveMemories(query: MemoryQuery): Promise<LongTermMemoryEntry[]> {
-    let sql = `SELECT * FROM long_term_memory WHERE 1=1`
-    const params: unknown[] = []
+    let sql = `SELECT * FROM long_term_memory WHERE 1=1`;
+    const params: unknown[] = [];
 
     if (query.userId) {
-      sql += ` AND user_id = ?`
-      params.push(query.userId)
+      sql += ` AND user_id = ?`;
+      params.push(query.userId);
     }
 
     if (query.type) {
-      sql += ` AND type = ?`
-      params.push(query.type)
+      sql += ` AND type = ?`;
+      params.push(query.type);
     }
 
     if (query.minImportance) {
-      sql += ` AND importance >= ?`
-      params.push(query.minImportance)
+      sql += ` AND importance >= ?`;
+      params.push(query.minImportance);
     }
 
     // 关键词搜索（简单实现，未来可用向量搜索）
     if (query.keywords && query.keywords.length > 0) {
-      const keywordConditions = query.keywords.map(() => `content LIKE ?`).join(' OR ')
-      sql += ` AND (${keywordConditions})`
+      const keywordConditions = query.keywords.map(() => `content LIKE ?`).join(' OR ');
+      sql += ` AND (${keywordConditions})`;
       for (const keyword of query.keywords) {
-        params.push(`%${keyword}%`)
+        params.push(`%${keyword}%`);
       }
     }
 
-    sql += ` ORDER BY importance DESC, created_at DESC`
+    sql += ` ORDER BY importance DESC, created_at DESC`;
 
     if (query.limit) {
-      sql += ` LIMIT ?`
-      params.push(query.limit)
+      sql += ` LIMIT ?`;
+      params.push(query.limit);
     }
 
-    const rows = (await this.db.query(sql, params)) as Record<string, unknown>[]
-    return rows.map((row) => this.rowToEntry(row))
+    const rows = (await this.db.query(sql, params)) as Record<string, unknown>[];
+    return rows.map((row) => this.rowToEntry(row));
   }
 
   /**
    * 更新记忆的访问信息
    */
   async markAccessed(memoryId: string): Promise<void> {
-    const now = Date.now()
+    const now = Date.now();
 
     await this.db.execute(
       `UPDATE long_term_memory 
        SET access_count = access_count + 1, accessed_at = ?, updated_at = ?
        WHERE id = ?`,
       [now, now, memoryId]
-    )
+    );
   }
 
   /**
@@ -168,83 +168,78 @@ export class LongTermMemoryStore {
   async updateMemory(
     memoryId: string,
     updates: {
-      content?: string
-      importance?: number
-      context?: string
+      content?: string;
+      importance?: number;
+      context?: string;
     }
   ): Promise<boolean> {
-    const sets: string[] = []
-    const params: unknown[] = []
+    const sets: string[] = [];
+    const params: unknown[] = [];
 
     if (updates.content !== undefined) {
-      sets.push('content = ?')
-      params.push(updates.content)
+      sets.push('content = ?');
+      params.push(updates.content);
     }
 
     if (updates.importance !== undefined) {
-      sets.push('importance = ?')
-      params.push(updates.importance)
+      sets.push('importance = ?');
+      params.push(updates.importance);
     }
 
     if (updates.context !== undefined) {
-      sets.push('context = ?')
-      params.push(updates.context)
+      sets.push('context = ?');
+      params.push(updates.context);
     }
 
     if (sets.length === 0) {
-      return false
+      return false;
     }
 
-    sets.push('updated_at = ?')
-    params.push(Date.now())
+    sets.push('updated_at = ?');
+    params.push(Date.now());
 
-    params.push(memoryId)
+    params.push(memoryId);
 
-    const changedRows = await this.db.execute(
-      `UPDATE long_term_memory SET ${sets.join(', ')} WHERE id = ?`,
-      params
-    )
+    const changedRows = await this.db.execute(`UPDATE long_term_memory SET ${sets.join(', ')} WHERE id = ?`, params);
 
-    return changedRows > 0
+    return changedRows > 0;
   }
 
   /**
    * 删除记忆
    */
   async deleteMemory(memoryId: string): Promise<boolean> {
-    const changedRows = await this.db.execute(`DELETE FROM long_term_memory WHERE id = ?`, [
-      memoryId
-    ])
+    const changedRows = await this.db.execute(`DELETE FROM long_term_memory WHERE id = ?`, [memoryId]);
 
-    return changedRows > 0
+    return changedRows > 0;
   }
 
   /**
    * 清理过期记忆
    */
   async cleanupOldMemories(daysToKeep: number = 90): Promise<number> {
-    const cutoffTime = Date.now() - daysToKeep * 24 * 60 * 60 * 1000
+    const cutoffTime = Date.now() - daysToKeep * 24 * 60 * 60 * 1000;
 
     // 只清理低重要性（<5）且过期的记忆
     const deletedCount = await this.db.execute(
       `DELETE FROM long_term_memory 
        WHERE created_at < ? AND importance < 5`,
       [cutoffTime]
-    )
+    );
 
-    console.log(`[LongTermMemoryStore] Cleaned up ${deletedCount} old memories`)
+    console.log(`[LongTermMemoryStore] Cleaned up ${deletedCount} old memories`);
 
-    return deletedCount
+    return deletedCount;
   }
 
   /**
    * 获取记忆统计
    */
   async getStats(): Promise<{
-    total: number
-    byType: Record<string, number>
-    byImportance: Record<string, number>
-    avgAccessCount: number
+    total: number;
+    byType: Record<string, number>;
+    byImportance: Record<string, number>;
+    avgAccessCount: number;
   }> {
     const rows = (await this.db.query(
       `SELECT 
@@ -254,27 +249,27 @@ export class LongTermMemoryStore {
          AVG(access_count) as avg_access
        FROM long_term_memory 
        GROUP BY type, importance`
-    )) as Array<Record<string, unknown>>
+    )) as Array<Record<string, unknown>>;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const total = (await this.db.queryOne(`SELECT COUNT(*) as total FROM long_term_memory`)) as any
+    const total = (await this.db.queryOne(`SELECT COUNT(*) as total FROM long_term_memory`)) as any;
 
-    const byType: Record<string, number> = {}
-    const byImportance: Record<string, number> = {}
-    let totalAccess = 0
-    let totalCount = 0
+    const byType: Record<string, number> = {};
+    const byImportance: Record<string, number> = {};
+    let totalAccess = 0;
+    let totalCount = 0;
 
     for (const row of rows) {
-      const type = row.type as string
-      const importance = row.importance as number
-      const count = row.count as number
-      const avgAccess = row.avg_access as number
+      const type = row.type as string;
+      const importance = row.importance as number;
+      const count = row.count as number;
+      const avgAccess = row.avg_access as number;
 
-      byType[type] = (byType[type] || 0) + count
-      byImportance[`${importance}`] = (byImportance[`${importance}`] || 0) + count
+      byType[type] = (byType[type] || 0) + count;
+      byImportance[`${importance}`] = (byImportance[`${importance}`] || 0) + count;
 
-      totalAccess += avgAccess * count
-      totalCount += count
+      totalAccess += avgAccess * count;
+      totalCount += count;
     }
 
     return {
@@ -282,7 +277,7 @@ export class LongTermMemoryStore {
       byType,
       byImportance,
       avgAccessCount: totalCount > 0 ? totalAccess / totalCount : 0
-    }
+    };
   }
 
   // ========== 私有方法 ==========
@@ -302,6 +297,6 @@ export class LongTermMemoryStore {
       accessCount: (row.access_count as number) || 0,
       createdAt: row.created_at as number,
       accessedAt: (row.accessed_at as number) || undefined
-    }
+    };
   }
 }

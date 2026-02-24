@@ -7,8 +7,8 @@
  * - 注册事件监听器到 EventBus
  */
 
-import { LifecyclePhase, LifecycleContext, LifecycleHook } from '@main/common/types'
-import { log } from '@main/common/logger'
+import { LifecyclePhase, LifecycleContext, LifecycleHook } from '@main/common/types';
+import { log } from '@main/common/logger';
 
 /**
  * 将驼峰命名转换为事件名
@@ -17,10 +17,10 @@ import { log } from '@main/common/logger'
  */
 function camelToEventName(camelCase: string): string {
   // 移除末尾的 Changed 后缀
-  const withoutChanged = camelCase.replace(/Changed$/, '')
+  const withoutChanged = camelCase.replace(/Changed$/, '');
 
   // 直接添加 :changed 后缀，保持原有的驼峰命名
-  return withoutChanged + ':changed'
+  return withoutChanged + ':changed';
 }
 
 /**
@@ -39,45 +39,41 @@ export const ReadyEventRegistrationHook: LifecycleHook = {
   critical: true,
 
   async execute(_context: LifecycleContext): Promise<void> {
-    log.info('[ReadyEventRegistrationHook] 开始注册事件处理器...')
+    log.info('[ReadyEventRegistrationHook] 开始注册事件处理器...');
 
     try {
       // 动态导入避免循环依赖
-      const { eventBus } = await import('@main/common/eventbus')
-      const { scanEventHandlers } = await import('@main/common/scan')
+      const { eventBus } = await import('@main/common/eventbus');
+      const { scanEventHandlers } = await import('@main/common/scan');
 
       // 扫描所有事件处理器文件
-      const discoveredModules = scanEventHandlers()
+      const discoveredModules = scanEventHandlers();
 
-      let totalRegisteredCount = 0
+      let totalRegisteredCount = 0;
 
       for (const discovered of discoveredModules) {
-        const moduleContent = discovered.module
+        const moduleContent = discovered.module;
 
         // 从路径中提取模块名 (例如: @main/events/themeChanged.ts -> themeChanged)
         const moduleName =
           discovered.path
             .split('/')
             .pop()
-            ?.replace(/\.(ts|js)$/, '') || ''
+            ?.replace(/\.(ts|js)$/, '') || '';
 
         try {
-          let registeredCount = 0
+          let registeredCount = 0;
 
           // 方式1: 支持默认导出 - 文件名以Changed结尾
-          if (
-            moduleName.endsWith('Changed') &&
-            moduleContent.default &&
-            typeof moduleContent.default === 'function'
-          ) {
+          if (moduleName.endsWith('Changed') && moduleContent.default && typeof moduleContent.default === 'function') {
             // 将文件名转换为事件名
-            const eventName = camelToEventName(moduleName)
+            const eventName = camelToEventName(moduleName);
 
             // 注册事件监听器
-            eventBus.on(eventName, moduleContent.default as (...args: unknown[]) => void)
+            eventBus.on(eventName, moduleContent.default as (...args: unknown[]) => void);
 
-            log.debug(`[ReadyEventRegistrationHook] 注册事件: ${eventName} -> ${moduleName}`)
-            registeredCount++
+            log.debug(`[ReadyEventRegistrationHook] 注册事件: ${eventName} -> ${moduleName}`);
+            registeredCount++;
           }
           // 方式2: 支持命名导出 - 方法名以Changed结尾
           else {
@@ -85,38 +81,34 @@ export const ReadyEventRegistrationHook: LifecycleHook = {
             for (const [methodName, method] of Object.entries(moduleContent)) {
               if (typeof method === 'function' && methodName.endsWith('Changed')) {
                 // 将方法名转换为事件名
-                const eventName = camelToEventName(methodName)
+                const eventName = camelToEventName(methodName);
 
                 // 注册事件监听器
-                eventBus.on(eventName, method as (...args: unknown[]) => void)
+                eventBus.on(eventName, method as (...args: unknown[]) => void);
 
-                log.debug(
-                  `[ReadyEventRegistrationHook] 注册事件: ${eventName} -> ${moduleName}.${methodName}`
-                )
-                registeredCount++
+                log.debug(`[ReadyEventRegistrationHook] 注册事件: ${eventName} -> ${moduleName}.${methodName}`);
+                registeredCount++;
               }
             }
           }
 
           if (registeredCount > 0) {
-            totalRegisteredCount += registeredCount
+            totalRegisteredCount += registeredCount;
           }
         } catch (error) {
-          log.error(`[ReadyEventRegistrationHook] 注册事件处理器 ${moduleName} 失败:`, error)
+          log.error(`[ReadyEventRegistrationHook] 注册事件处理器 ${moduleName} 失败:`, error);
         }
       }
 
       // 输出注册结果
       if (totalRegisteredCount > 0) {
-        log.info(
-          `[ReadyEventRegistrationHook] 事件处理器注册完成，共注册 ${totalRegisteredCount} 个事件处理器`
-        )
+        log.info(`[ReadyEventRegistrationHook] 事件处理器注册完成，共注册 ${totalRegisteredCount} 个事件处理器`);
       } else {
-        log.warn('[ReadyEventRegistrationHook] 没有注册任何事件处理器')
+        log.warn('[ReadyEventRegistrationHook] 没有注册任何事件处理器');
       }
     } catch (error) {
-      log.error('[ReadyEventRegistrationHook] 事件处理器注册失败:', error)
-      throw error
+      log.error('[ReadyEventRegistrationHook] 事件处理器注册失败:', error);
+      throw error;
     }
   }
-}
+};

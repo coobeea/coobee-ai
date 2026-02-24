@@ -53,16 +53,13 @@ copy runtime\win\* runtime\win\
 ### 3. 在代码中使用
 
 ```typescript
-import { getPlatformRuntimeDir } from '@main/common'
-import path from 'path'
+import { getPlatformRuntimeDir } from '@main/common';
+import path from 'path';
 
 // 获取工具路径
-const toolPath = path.join(
-  getPlatformRuntimeDir(),
-  process.platform === 'win32' ? 'my-tool.exe' : 'my-tool'
-)
+const toolPath = path.join(getPlatformRuntimeDir(), process.platform === 'win32' ? 'my-tool.exe' : 'my-tool');
 
-console.log(toolPath)
+console.log(toolPath);
 // 开发: /path/to/coobee-ai/runtime/macos/my-tool
 // 生产: /Applications/coobee-ai.app/Contents/Resources/runtime/macos/my-tool
 ```
@@ -104,7 +101,7 @@ import {
   getRuntimeDir, // 运行时根目录
   getPlatformRuntimeDir, // 当前平台运行时（最常用）
   getLogsDir // 日志目录
-} from '@main/common'
+} from '@main/common';
 ```
 
 ### 路径示例

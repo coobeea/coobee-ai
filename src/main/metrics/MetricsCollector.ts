@@ -291,6 +291,175 @@ export class MetricsCollector {
     };
   }
 
+  /** 记录查询选项 */
+  getCompressions(options?: { since?: Date; until?: Date; sessionId?: string }): CompressionMetric[] {
+    const { start, end } = this.parseTimeRange(options);
+    return this.filterByTime(this.compressions, start, end, options?.sessionId);
+  }
+
+  getMemoryTools(options?: { since?: Date; until?: Date; sessionId?: string }): MemoryToolMetric[] {
+    const { start, end } = this.parseTimeRange(options);
+    return this.filterByTime(this.memoryTools, start, end, options?.sessionId);
+  }
+
+  getTokenUsages(options?: { since?: Date; until?: Date; sessionId?: string }): TokenUsageMetric[] {
+    const { start, end } = this.parseTimeRange(options);
+    return this.filterByTime(this.tokenUsages, start, end, options?.sessionId);
+  }
+
+  getRequests(options?: { since?: Date; until?: Date; sessionId?: string }): RequestMetric[] {
+    const { start, end } = this.parseTimeRange(options);
+    return this.filterByTime(this.requests, start, end, options?.sessionId);
+  }
+
+  /**
+   * 获取压缩事件（分页）
+   */
+  getCompressionEvents(limit: number, offset: number): CompressionMetric[] {
+    return this.compressions.slice(offset, offset + limit);
+  }
+
+  /**
+   * 获取压缩事件总数
+   */
+  getCompressionEventsCount(): number {
+    return this.compressions.length;
+  }
+
+  /**
+   * 获取 Memory 工具统计（分页）
+   */
+  getMemoryStats(limit: number, offset: number): MemoryToolMetric[] {
+    return this.memoryTools.slice(offset, offset + limit);
+  }
+
+  /**
+   * 获取 Memory 工具统计总数
+   */
+  getMemoryStatsCount(): number {
+    return this.memoryTools.length;
+  }
+
+  /**
+   * 按 Agent 统计 Token 使用
+   */
+  getTokenStatsByAgent(
+    agentId?: string
+  ): Record<string, { total: number; prompt: number; completion: number; cost: number }> {
+    const filtered = agentId ? this.tokenUsages.filter((t) => t.agentId === agentId) : this.tokenUsages;
+
+    const stats: Record<string, { total: number; prompt: number; completion: number; cost: number }> = {};
+    for (const token of filtered) {
+      const key = token.agentId || 'unknown';
+      if (!stats[key]) {
+        stats[key] = { total: 0, prompt: 0, completion: 0, cost: 0 };
+      }
+      stats[key].total += token.totalTokens;
+      stats[key].prompt += token.promptTokens;
+      stats[key].completion += token.completionTokens;
+      stats[key].cost += token.cost || 0;
+    }
+    return stats;
+  }
+
+  /**
+   * 按 Session 统计 Token 使用
+   */
+  getTokenStatsBySession(
+    sessionId?: string
+  ): Record<string, { total: number; prompt: number; completion: number; cost: number }> {
+    const filtered = sessionId ? this.tokenUsages.filter((t) => t.sessionId === sessionId) : this.tokenUsages;
+
+    const stats: Record<string, { total: number; prompt: number; completion: number; cost: number }> = {};
+    for (const token of filtered) {
+      const key = token.sessionId;
+      if (!stats[key]) {
+        stats[key] = { total: 0, prompt: 0, completion: 0, cost: 0 };
+      }
+      stats[key].total += token.totalTokens;
+      stats[key].prompt += token.promptTokens;
+      stats[key].completion += token.completionTokens;
+      stats[key].cost += token.cost || 0;
+    }
+    return stats;
+  }
+
+  /**
+   * 获取 Token 使用概览
+   */
+  getTokenStatsOverview(): {
+    total: { total: number; prompt: number; completion: number; cost: number };
+    byModel: Record<string, { total: number; prompt: number; completion: number; cost: number }>;
+  } {
+    const total = { total: 0, prompt: 0, completion: 0, cost: 0 };
+    const byModel: Record<string, { total: number; prompt: number; completion: number; cost: number }> = {};
+
+    for (const token of this.tokenUsages) {
+      total.total += token.totalTokens;
+      total.prompt += token.promptTokens;
+      total.completion += token.completionTokens;
+      total.cost += token.cost || 0;
+
+      if (!byModel[token.model]) {
+        byModel[token.model] = { total: 0, prompt: 0, completion: 0, cost: 0 };
+      }
+      byModel[token.model].total += token.totalTokens;
+      byModel[token.model].prompt += token.promptTokens;
+      byModel[token.model].completion += token.completionTokens;
+      byModel[token.model].cost += token.cost || 0;
+    }
+
+    return { total, byModel };
+  }
+
+  /**
+   * 获取系统健康状态
+   */
+  getSystemHealth(): {
+    status: 'healthy' | 'warning' | 'critical';
+    uptime: number;
+    metrics: {
+      totalRequests: number;
+      successRate: number;
+      avgResponseTime: number;
+      errorRate: number;
+      memoryUsage: NodeJS.MemoryUsage;
+    };
+  } {
+    const recentRequests = this.requests.slice(-100);
+    const successCount = recentRequests.filter((r) => r.success).length;
+    const successRate = recentRequests.length > 0 ? successCount / recentRequests.length : 1;
+    const avgResponseTime =
+      recentRequests.length > 0 ? recentRequests.reduce((sum, r) => sum + r.duration, 0) / recentRequests.length : 0;
+
+    let status: 'healthy' | 'warning' | 'critical' = 'healthy';
+    if (successRate < 0.9 || avgResponseTime > 5000) {
+      status = 'warning';
+    }
+    if (successRate < 0.7 || avgResponseTime > 10000) {
+      status = 'critical';
+    }
+
+    return {
+      status,
+      uptime: process.uptime(),
+      metrics: {
+        totalRequests: this.requests.length,
+        successRate,
+        avgResponseTime,
+        errorRate: 1 - successRate,
+        memoryUsage: process.memoryUsage()
+      }
+    };
+  }
+
+  private parseTimeRange(options?: { since?: Date; until?: Date }): { start: Date; end: Date } {
+    const now = new Date();
+    const start = options?.since ?? new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const end = options?.until ?? now;
+    return { start, end };
+  }
+
   /**
    * 按时间过滤记录
    */

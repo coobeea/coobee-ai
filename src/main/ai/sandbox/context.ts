@@ -8,12 +8,12 @@
  *   3. 解析工具策略
  *   4. 返回 SandboxContext 供工具和 Runtime 使用
  */
-import type { SandboxConfig, SandboxContext, SandboxDockerInfo } from './types'
-import { resolveToolPolicy } from './tool-policy'
-import { isDockerAvailable, ensureContainer } from './docker'
-import { createLogger } from '@main/common/logger'
+import type { SandboxConfig, SandboxContext, SandboxDockerInfo } from './types';
+import { resolveToolPolicy } from './tool-policy';
+import { isDockerAvailable, ensureContainer } from './docker';
+import { createLogger } from '@main/common/logger';
 
-const log = createLogger('sandbox')
+const log = createLogger('sandbox');
 
 /**
  * 构建沙箱运行时上下文
@@ -29,11 +29,8 @@ const log = createLogger('sandbox')
  *   toolPolicy: { deny: ['exec'] }
  * }, 'session-123')
  */
-export async function resolveSandboxContext(
-  config: SandboxConfig,
-  sessionId?: string
-): Promise<SandboxContext> {
-  const toolPolicy = resolveToolPolicy(config.toolPolicy)
+export async function resolveSandboxContext(config: SandboxConfig, sessionId?: string): Promise<SandboxContext> {
+  const toolPolicy = resolveToolPolicy(config.toolPolicy);
 
   // off 模式：返回最小上下文
   if (config.mode === 'off') {
@@ -43,7 +40,7 @@ export async function resolveSandboxContext(
       sandboxRoot: config.sandboxRoot,
       toolPolicy,
       sessionId
-    }
+    };
   }
 
   // path-only 模式：路径守卫 + 工具策略，无 Docker
@@ -54,27 +51,27 @@ export async function resolveSandboxContext(
       sandboxRoot: config.sandboxRoot,
       toolPolicy,
       sessionId
-    }
+    };
   }
 
   // docker 模式：路径守卫 + 工具策略 + Docker 容器
-  let docker: SandboxDockerInfo | undefined
+  let docker: SandboxDockerInfo | undefined;
 
   if (config.mode === 'docker') {
-    const dockerAvailable = await isDockerAvailable()
+    const dockerAvailable = await isDockerAvailable();
     if (!dockerAvailable) {
       // Docker 不可用时降级为 path-only
       log.warn(
         '[Sandbox] Docker not available, falling back to path-only mode. ' +
           'Install Docker or switch to mode: "path-only".'
-      )
+      );
       return {
         mode: 'path-only',
         workspaceRoot: config.workspaceRoot,
         sandboxRoot: config.sandboxRoot,
         toolPolicy,
         sessionId
-      }
+      };
     }
 
     try {
@@ -82,17 +79,17 @@ export async function resolveSandboxContext(
         sessionId: sessionId || `default-${Date.now()}`,
         workspaceDir: config.workspaceRoot,
         config: config.docker
-      })
+      });
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      log.warn(`[Sandbox] Docker container creation failed, falling back to path-only: ${msg}`)
+      const msg = error instanceof Error ? error.message : String(error);
+      log.warn(`[Sandbox] Docker container creation failed, falling back to path-only: ${msg}`);
       return {
         mode: 'path-only',
         workspaceRoot: config.workspaceRoot,
         sandboxRoot: config.sandboxRoot,
         toolPolicy,
         sessionId
-      }
+      };
     }
   }
 
@@ -103,7 +100,7 @@ export async function resolveSandboxContext(
     toolPolicy,
     docker,
     sessionId
-  }
+  };
 }
 
 /**
@@ -115,10 +112,10 @@ export async function resolveSandboxContext(
 export function createPathOnlyContext(
   workspaceRoot: string,
   options?: {
-    sandboxRoot?: string
-    toolPolicy?: { allow?: string[]; deny?: string[] }
-    sessionId?: string
-    envVars?: Record<string, string>
+    sandboxRoot?: string;
+    toolPolicy?: { allow?: string[]; deny?: string[] };
+    sessionId?: string;
+    envVars?: Record<string, string>;
   }
 ): SandboxContext {
   return {
@@ -128,5 +125,5 @@ export function createPathOnlyContext(
     toolPolicy: resolveToolPolicy(options?.toolPolicy),
     sessionId: options?.sessionId,
     envVars: options?.envVars
-  }
+  };
 }

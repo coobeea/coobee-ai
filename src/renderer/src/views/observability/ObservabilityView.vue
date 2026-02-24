@@ -2,289 +2,381 @@
 /**
  * ObservabilityView — 系统可观测性仪表盘
  *
- * 功能：
- *   1. Token 使用统计
- *   2. 请求统计
- *   3. 对话压缩监控
- *   4. Memory 工具监控
- *   5. 按模型分组统计
+ * Tab 1: 压缩监控 - 压缩事件时间线、压缩前后 Token 对比
+ * Tab 2: Memory 工具统计 - 调用次数、类型分布、内容预览
+ * Tab 3: Token 使用 - 按 Agent/Session 统计
+ * Tab 4: 系统健康 - 运行时长、请求数、错误率
  */
 
 import { ref, onMounted, onUnmounted } from 'vue';
 import configManager from '@/config';
 
-interface AggregatedMetrics {
-  timeRange: {
-    start: string;
-    end: string;
-  };
-  tokens: {
-    total: number;
-    prompt: number;
-    completion: number;
-    totalCost: number;
-  };
-  requests: {
-    total: number;
-    success: number;
-    failed: number;
-    successRate: number;
-    avgDuration: number;
-  };
-  compressions: {
-    total: number;
-    avgCompressionRatio: number;
-    totalTokensSaved: number;
-  };
-  memoryTool: {
-    total: number;
-    byOperation: Record<'store' | 'retrieve' | 'search', number>;
-    successRate: number;
-  };
-  byModel: Record<
-    string,
-    {
-      requests: number;
-      tokens: number;
-      cost: number;
-    }
-  >;
+type TimeRange = '1h' | '6h' | '24h';
+type TabId = 'compression' | 'memory' | 'tokens' | 'system';
+
+interface CompressionRecord {
+  timestamp: string;
+  sessionId: string;
+  beforeTokens: number;
+  afterTokens: number;
+  compressionRatio: number;
+  duration: number;
 }
 
-const metrics = ref<AggregatedMetrics | null>(null);
+interface MemoryRecord {
+  timestamp: string;
+  sessionId: string;
+  agentId?: string;
+  operation: 'store' | 'retrieve' | 'search';
+  success: boolean;
+  duration: number;
+}
+
+interface TokenRecord {
+  timestamp: string;
+  sessionId: string;
+  agentId?: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cost?: number;
+}
+
+const activeTab = ref<TabId>('compression');
+const timeRange = ref<TimeRange>('24h');
 const loading = ref(false);
-const timeRange = ref<'1h' | '24h' | '7d'>('24h');
+const error = ref<string | null>(null);
+
+// 各 Tab 数据
+const compressionData = ref<{
+  records: CompressionRecord[];
+  summary: { total: number; avgCompressionRatio: number; totalTokensSaved: number };
+} | null>(null);
+const memoryData = ref<{
+  records: MemoryRecord[];
+  summary: { total: number; byOperation: Record<string, number>; successRate: number };
+} | null>(null);
+const tokenData = ref<{
+  records: TokenRecord[];
+  summary: { total: number; prompt: number; completion: number; totalCost: number };
+  byModel: Record<string, { requests: number; tokens: number; cost: number }>;
+} | null>(null);
+const systemData = ref<{
+  uptimeSeconds: number;
+  requests: { total: number; success: number; failed: number; successRate: number; avgDuration: number };
+  tokens: { total: number };
+  compressions: { total: number };
+  memoryTool: { total: number };
+} | null>(null);
+
+const BASE_URL = `${configManager.getBaseUrl()}/gateway/monitoring`;
 let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
-const BASE_URL = `${configManager.getBaseUrl()}/gateway/metrics`;
+const tabs: { id: TabId; label: string; icon: string }[] = [
+  { id: 'compression', label: '压缩监控', icon: 'i-carbon-deployment-pattern' },
+  { id: 'memory', label: 'Memory 工具', icon: 'i-carbon-data-base' },
+  { id: 'tokens', label: 'Token 使用', icon: 'i-carbon-model-alt' },
+  { id: 'system', label: '系统健康', icon: 'i-carbon-status-change' }
+];
 
-onMounted(() => {
-  loadMetrics();
-
-  // 每 30 秒自动刷新
-  refreshInterval = setInterval(() => {
-    loadMetrics();
-  }, 30000);
-});
-
-onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval);
+function getSinceTimestamp(): string {
+  const now = new Date();
+  let ms = 0;
+  switch (timeRange.value) {
+    case '1h':
+      ms = 60 * 60 * 1000;
+      break;
+    case '6h':
+      ms = 6 * 60 * 60 * 1000;
+      break;
+    case '24h':
+      ms = 24 * 60 * 60 * 1000;
+      break;
   }
-});
+  return new Date(now.getTime() - ms).toISOString();
+}
 
-/**
- * 加载指标数据
- */
-async function loadMetrics(): Promise<void> {
+async function fetchCompression(): Promise<void> {
+  const since = getSinceTimestamp();
+  const res = await fetch(`${BASE_URL}/compression?since=${since}`);
+  if (!res.ok) throw new Error('Failed to load compression');
+  const data = await res.json();
+  compressionData.value = { records: data.records, summary: data.summary };
+}
+
+async function fetchMemory(): Promise<void> {
+  const since = getSinceTimestamp();
+  const res = await fetch(`${BASE_URL}/memory?since=${since}`);
+  if (!res.ok) throw new Error('Failed to load memory');
+  const data = await res.json();
+  memoryData.value = { records: data.records, summary: data.summary };
+}
+
+async function fetchTokens(): Promise<void> {
+  const since = getSinceTimestamp();
+  const res = await fetch(`${BASE_URL}/tokens?since=${since}`);
+  if (!res.ok) throw new Error('Failed to load tokens');
+  const data = await res.json();
+  tokenData.value = { records: data.records, summary: data.summary, byModel: data.byModel || {} };
+}
+
+async function fetchSystem(): Promise<void> {
+  const since = getSinceTimestamp();
+  const res = await fetch(`${BASE_URL}/system?since=${since}`);
+  if (!res.ok) throw new Error('Failed to load system');
+  const data = await res.json();
+  systemData.value = data;
+}
+
+async function loadAll(): Promise<void> {
   loading.value = true;
+  error.value = null;
   try {
-    const since = getSinceTimestamp();
-    const url = `${BASE_URL}/aggregated?since=${since}`;
-
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to load metrics');
-
-    const data = await res.json();
-    metrics.value = data.metrics;
+    await Promise.all([fetchCompression(), fetchMemory(), fetchTokens(), fetchSystem()]);
   } catch (err) {
-    console.error('[ObservabilityView] 加载指标失败:', err);
+    error.value = err instanceof Error ? err.message : String(err);
+    console.error('[ObservabilityView] 加载失败:', err);
   } finally {
     loading.value = false;
   }
 }
 
-/**
- * 获取 since 时间戳
- */
-function getSinceTimestamp(): string {
-  const now = new Date();
-  let ms = 0;
-
-  switch (timeRange.value) {
-    case '1h':
-      ms = 60 * 60 * 1000;
-      break;
-    case '24h':
-      ms = 24 * 60 * 60 * 1000;
-      break;
-    case '7d':
-      ms = 7 * 24 * 60 * 60 * 1000;
-      break;
-  }
-
-  return new Date(now.getTime() - ms).toISOString();
-}
-
-/**
- * 格式化数字
- */
 function formatNumber(num: number): string {
   if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M`;
   if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
   return num.toString();
 }
 
-/**
- * 格式化成本
- */
 function formatCost(cost: number): string {
   return `$${cost.toFixed(4)}`;
 }
 
-/**
- * 格式化持续时间
- */
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 }
+
+function formatUptime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+}
+
+const operationLabels: Record<string, string> = {
+  store: '写入',
+  retrieve: '读取',
+  search: '搜索'
+};
+
+onMounted(() => {
+  loadAll();
+  refreshInterval = setInterval(loadAll, 5000);
+});
+
+onUnmounted(() => {
+  if (refreshInterval) clearInterval(refreshInterval);
+});
 </script>
 
 <template>
   <div class="observability-view">
-    <!-- 头部 -->
     <div class="view-header">
       <h1 class="view-title">系统可观测性</h1>
       <div class="header-actions">
-        <select v-model="timeRange" class="time-range-select" @change="loadMetrics">
+        <select v-model="timeRange" class="time-range-select" @change="loadAll">
           <option value="1h">过去 1 小时</option>
+          <option value="6h">过去 6 小时</option>
           <option value="24h">过去 24 小时</option>
-          <option value="7d">过去 7 天</option>
         </select>
-        <button class="btn-text" @click="loadMetrics">
-          <span class="i-carbon-renew inline-block h-4 w-4" />
+        <button class="btn-text" @click="loadAll">
+          <span class="i-carbon-renew inline-block h-4 w-4" :class="{ 'animate-spin': loading }" />
           刷新
         </button>
       </div>
     </div>
 
+    <!-- Tab 导航 -->
+    <div class="tab-nav">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        class="tab-btn"
+        :class="{ active: activeTab === tab.id }"
+        @click="activeTab = tab.id">
+        <span :class="tab.icon" class="icon-sm" />
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <!-- 错误提示 -->
+    <div v-if="error" class="error-banner">
+      <span class="i-carbon-warning inline-block h-4 w-4" />
+      {{ error }}
+    </div>
+
     <!-- 加载中 -->
-    <div v-if="loading && !metrics" class="loading-state">
+    <div v-else-if="loading && !compressionData" class="loading-state">
       <span class="i-carbon-circle-dash animate-spin inline-block h-8 w-8 text-blue-500" />
       <p>加载中...</p>
     </div>
 
-    <!-- 核心指标 -->
-    <div v-else-if="metrics" class="metrics-container">
-      <!-- Token 使用 -->
-      <div class="metric-section">
-        <h2 class="section-title">
-          <span class="i-carbon-model-alt inline-block h-5 w-5" />
-          Token 使用
-        </h2>
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-label">总 Token</div>
-            <div class="stat-value">{{ formatNumber(metrics.tokens.total) }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Prompt Token</div>
-            <div class="stat-value">{{ formatNumber(metrics.tokens.prompt) }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Completion Token</div>
-            <div class="stat-value">{{ formatNumber(metrics.tokens.completion) }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">总成本</div>
-            <div class="stat-value text-orange-600">{{ formatCost(metrics.tokens.totalCost) }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 请求统计 -->
-      <div class="metric-section">
-        <h2 class="section-title">
-          <span class="i-carbon-status-change inline-block h-5 w-5" />
-          请求统计
-        </h2>
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-label">总请求</div>
-            <div class="stat-value">{{ metrics.requests.total }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">成功</div>
-            <div class="stat-value text-green-600">{{ metrics.requests.success }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">失败</div>
-            <div class="stat-value text-red-600">{{ metrics.requests.failed }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">成功率</div>
-            <div class="stat-value">{{ (metrics.requests.successRate * 100).toFixed(1) }}%</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">平均响应时间</div>
-            <div class="stat-value">{{ formatDuration(metrics.requests.avgDuration) }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 对话压缩 -->
+    <!-- Tab 1: 压缩监控 -->
+    <div v-else-if="activeTab === 'compression'" class="tab-content">
       <div class="metric-section">
         <h2 class="section-title">
           <span class="i-carbon-deployment-pattern inline-block h-5 w-5" />
-          对话压缩
+          压缩统计
         </h2>
-        <div class="stats-grid">
+        <div v-if="compressionData" class="stats-grid">
           <div class="stat-card">
             <div class="stat-label">压缩次数</div>
-            <div class="stat-value">{{ metrics.compressions.total }}</div>
+            <div class="stat-value">{{ compressionData.summary.total }}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">平均压缩率</div>
-            <div class="stat-value">{{ (metrics.compressions.avgCompressionRatio * 100).toFixed(1) }}%</div>
+            <div class="stat-value">{{ (compressionData.summary.avgCompressionRatio * 100).toFixed(1) }}%</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">节省 Token</div>
-            <div class="stat-value text-green-600">
-              {{ formatNumber(metrics.compressions.totalTokensSaved) }}
-            </div>
+            <div class="stat-value text-green-600">{{ formatNumber(compressionData.summary.totalTokensSaved) }}</div>
           </div>
         </div>
       </div>
+      <div class="metric-section">
+        <h2 class="section-title">压缩事件时间线</h2>
+        <div v-if="compressionData?.records?.length" class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>会话</th>
+                <th>压缩前</th>
+                <th>压缩后</th>
+                <th>压缩率</th>
+                <th>耗时</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in compressionData.records" :key="i">
+                <td>{{ formatTime(r.timestamp) }}</td>
+                <td class="mono-cell">{{ r.sessionId.slice(-8) }}</td>
+                <td>{{ formatNumber(r.beforeTokens) }}</td>
+                <td>{{ formatNumber(r.afterTokens) }}</td>
+                <td>{{ (r.compressionRatio * 100).toFixed(1) }}%</td>
+                <td>{{ formatDuration(r.duration) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="empty-hint">暂无压缩事件</div>
+      </div>
+    </div>
 
-      <!-- Memory 工具 -->
+    <!-- Tab 2: Memory 工具 -->
+    <div v-else-if="activeTab === 'memory'" class="tab-content">
       <div class="metric-section">
         <h2 class="section-title">
           <span class="i-carbon-data-base inline-block h-5 w-5" />
-          Memory 工具
+          Memory 工具统计
         </h2>
-        <div class="stats-grid">
+        <div v-if="memoryData" class="stats-grid">
           <div class="stat-card">
             <div class="stat-label">总调用</div>
-            <div class="stat-value">{{ metrics.memoryTool.total }}</div>
+            <div class="stat-value">{{ memoryData.summary.total }}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Store</div>
-            <div class="stat-value">{{ metrics.memoryTool.byOperation.store }}</div>
+            <div class="stat-value">{{ memoryData.summary.byOperation?.store ?? 0 }}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Retrieve</div>
-            <div class="stat-value">{{ metrics.memoryTool.byOperation.retrieve }}</div>
+            <div class="stat-value">{{ memoryData.summary.byOperation?.retrieve ?? 0 }}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Search</div>
-            <div class="stat-value">{{ metrics.memoryTool.byOperation.search }}</div>
+            <div class="stat-value">{{ memoryData.summary.byOperation?.search ?? 0 }}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">成功率</div>
-            <div class="stat-value">{{ (metrics.memoryTool.successRate * 100).toFixed(1) }}%</div>
+            <div class="stat-value">{{ ((memoryData.summary.successRate ?? 0) * 100).toFixed(1) }}%</div>
           </div>
         </div>
       </div>
+      <div class="metric-section">
+        <h2 class="section-title">调用记录</h2>
+        <div v-if="memoryData?.records?.length" class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>操作</th>
+                <th>会话</th>
+                <th>Agent</th>
+                <th>状态</th>
+                <th>耗时</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in memoryData.records" :key="i">
+                <td>{{ formatTime(r.timestamp) }}</td>
+                <td>{{ operationLabels[r.operation] ?? r.operation }}</td>
+                <td class="mono-cell">{{ r.sessionId.slice(-8) }}</td>
+                <td>{{ r.agentId ?? '-' }}</td>
+                <td :class="r.success ? 'text-green-600' : 'text-red-600'">{{ r.success ? '成功' : '失败' }}</td>
+                <td>{{ formatDuration(r.duration) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="empty-hint">暂无 Memory 调用记录</div>
+      </div>
+    </div>
 
-      <!-- 按模型统计 -->
-      <div v-if="Object.keys(metrics.byModel).length > 0" class="metric-section">
+    <!-- Tab 3: Token 使用 -->
+    <div v-else-if="activeTab === 'tokens'" class="tab-content">
+      <div class="metric-section">
         <h2 class="section-title">
-          <span class="i-carbon-model-builder inline-block h-5 w-5" />
-          按模型统计
+          <span class="i-carbon-model-alt inline-block h-5 w-5" />
+          Token 统计
         </h2>
-        <div class="model-stats-table">
-          <table>
+        <div v-if="tokenData" class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">总 Token</div>
+            <div class="stat-value">{{ formatNumber(tokenData.summary.total) }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Prompt</div>
+            <div class="stat-value">{{ formatNumber(tokenData.summary.prompt) }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Completion</div>
+            <div class="stat-value">{{ formatNumber(tokenData.summary.completion) }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">总成本</div>
+            <div class="stat-value text-orange-600">{{ formatCost(tokenData.summary.totalCost) }}</div>
+          </div>
+        </div>
+      </div>
+      <div v-if="tokenData && Object.keys(tokenData.byModel).length" class="metric-section">
+        <h2 class="section-title">按模型统计</h2>
+        <div class="table-wrap">
+          <table class="data-table">
             <thead>
               <tr>
                 <th>模型</th>
@@ -294,8 +386,8 @@ function formatDuration(ms: number): string {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(stat, model) in metrics.byModel" :key="model">
-                <td class="model-cell">{{ model }}</td>
+              <tr v-for="(stat, model) in tokenData.byModel" :key="model">
+                <td class="mono-cell">{{ model }}</td>
                 <td>{{ stat.requests }}</td>
                 <td>{{ formatNumber(stat.tokens) }}</td>
                 <td>{{ formatCost(stat.cost) }}</td>
@@ -304,13 +396,89 @@ function formatDuration(ms: number): string {
           </table>
         </div>
       </div>
+      <div class="metric-section">
+        <h2 class="section-title">Token 使用记录（按 Agent/Session）</h2>
+        <div v-if="tokenData?.records?.length" class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>模型</th>
+                <th>会话</th>
+                <th>Agent</th>
+                <th>Prompt</th>
+                <th>Completion</th>
+                <th>总计</th>
+                <th>成本</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in tokenData.records" :key="i">
+                <td>{{ formatTime(r.timestamp) }}</td>
+                <td class="mono-cell">{{ r.model }}</td>
+                <td class="mono-cell">{{ r.sessionId.slice(-8) }}</td>
+                <td>{{ r.agentId ?? '-' }}</td>
+                <td>{{ formatNumber(r.promptTokens) }}</td>
+                <td>{{ formatNumber(r.completionTokens) }}</td>
+                <td>{{ formatNumber(r.totalTokens) }}</td>
+                <td>{{ r.cost != null ? formatCost(r.cost) : '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="empty-hint">暂无 Token 使用记录</div>
+      </div>
     </div>
 
-    <!-- 空状态 -->
-    <div v-else-if="!loading" class="empty-state">
-      <span class="i-carbon-chart-area inline-block h-16 w-16 text-gray-300" />
-      <p class="empty-text">暂无数据</p>
-      <p class="empty-hint">系统运行后，相关指标会显示在这里</p>
+    <!-- Tab 4: 系统健康 -->
+    <div v-else-if="activeTab === 'system'" class="tab-content">
+      <div v-if="systemData" class="metric-section">
+        <h2 class="section-title">
+          <span class="i-carbon-status-change inline-block h-5 w-5" />
+          系统健康
+        </h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">运行时长</div>
+            <div class="stat-value">{{ formatUptime(systemData.uptimeSeconds) }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">总请求数</div>
+            <div class="stat-value">{{ systemData.requests.total }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">成功</div>
+            <div class="stat-value text-green-600">{{ systemData.requests.success }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">失败</div>
+            <div class="stat-value text-red-600">{{ systemData.requests.failed }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">成功率</div>
+            <div class="stat-value">{{ (systemData.requests.successRate * 100).toFixed(1) }}%</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">平均响应</div>
+            <div class="stat-value">{{ formatDuration(systemData.requests.avgDuration) }}</div>
+          </div>
+        </div>
+        <div class="stats-grid mt-4">
+          <div class="stat-card">
+            <div class="stat-label">总 Token 消耗</div>
+            <div class="stat-value">{{ formatNumber(systemData.tokens.total) }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">压缩次数</div>
+            <div class="stat-value">{{ systemData.compressions.total }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Memory 调用</div>
+            <div class="stat-value">{{ systemData.memoryTool.total }}</div>
+          </div>
+        </div>
+      </div>
+      <div v-else class="empty-hint">暂无系统数据</div>
     </div>
   </div>
 </template>
@@ -319,8 +487,8 @@ function formatDuration(ms: number): string {
 .observability-view {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
-  padding: 2rem;
+  gap: 1.5rem;
+  padding: 1.5rem;
   max-width: 1400px;
   margin: 0 auto;
   height: 100%;
@@ -334,22 +502,22 @@ function formatDuration(ms: number): string {
 }
 
 .view-title {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  color: var(--text-primary);
+  color: hsl(var(--foreground));
 }
 
 .header-actions {
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
   align-items: center;
 }
 
 .time-range-select {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--border-color);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
-  background: white;
+  background: hsl(var(--background));
   font-size: 0.875rem;
   cursor: pointer;
 }
@@ -363,11 +531,64 @@ function formatDuration(ms: number): string {
   border: none;
   cursor: pointer;
   font-size: 0.875rem;
+  color: hsl(var(--foreground) / 0.8);
   transition: opacity 0.2s;
 }
 
 .btn-text:hover {
-  opacity: 0.7;
+  opacity: 0.8;
+}
+
+.tab-nav {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 0.5rem;
+  width: fit-content;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tab-btn:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--foreground) / 0.05);
+}
+
+.tab-btn.active {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-weight: 500;
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.05);
+}
+
+.icon-sm {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: hsl(0 84% 60% / 0.15);
+  color: hsl(0 84% 50%);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
 }
 
 .loading-state {
@@ -379,99 +600,86 @@ function formatDuration(ms: number): string {
   padding: 4rem;
 }
 
-.metrics-container {
+.tab-content {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1.5rem;
 }
 
 .metric-section {
-  background: white;
-  border: 1px solid var(--border-color);
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / 0.5);
   border-radius: 0.75rem;
-  padding: 1.5rem;
+  padding: 1.25rem;
 }
 
 .section-title {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: hsl(var(--foreground));
   margin-bottom: 1rem;
 }
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
 }
 
 .stat-card {
   padding: 1rem;
-  background: var(--bg-secondary);
+  background: hsl(var(--muted) / 0.3);
   border-radius: 0.5rem;
 }
 
 .stat-label {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 0.25rem;
 }
 
 .stat-value {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 700;
-  color: var(--text-primary);
+  color: hsl(var(--foreground));
 }
 
-.model-stats-table {
+.table-wrap {
   overflow-x: auto;
 }
 
-.model-stats-table table {
+.data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.model-stats-table th {
-  text-align: left;
-  padding: 0.75rem;
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  font-weight: 600;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.model-stats-table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.model-cell {
-  font-family: monospace;
   font-size: 0.8125rem;
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem;
-  gap: 1rem;
+.data-table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  background: hsl(var(--muted) / 0.4);
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+  border-bottom: 1px solid hsl(var(--border));
 }
 
-.empty-text {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--text-secondary);
+.data-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+}
+
+.mono-cell {
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
 }
 
 .empty-hint {
+  padding: 2rem;
+  text-align: center;
+  color: hsl(var(--muted-foreground) / 0.7);
   font-size: 0.875rem;
-  color: var(--text-tertiary);
 }
 </style>

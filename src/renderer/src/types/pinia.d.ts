@@ -1,4 +1,4 @@
-import 'pinia'
+import 'pinia';
 
 // 扩展 Pinia 的类型定义
 declare module 'pinia' {
@@ -10,7 +10,7 @@ declare module 'pinia' {
       /**
        * 需要同步的状态键名数组
        */
-      pick?: (keyof S)[]
-    }
+      pick?: (keyof S)[];
+    };
   }
 }

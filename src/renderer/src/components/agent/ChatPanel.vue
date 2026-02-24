@@ -129,9 +129,7 @@ defineExpose({
     </div>
 
     <!-- 待发送消息队列 -->
-    <div v-if="chatStore.messageQueue.length > 0" class="border-t border-gray-200/60 px-3 pt-3">
-      <MessageQueue :queue="chatStore.messageQueue" @remove="chatStore.removeFromQueue" />
-    </div>
+    <MessageQueue :queue="chatStore.messageQueue" @remove="chatStore.removeFromQueue" />
 
     <!-- 输入区域 -->
     <ChatInput

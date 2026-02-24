@@ -2,8 +2,8 @@
  * 窗口和 Tab 管理相关类型定义
  */
 
-import { join } from 'node:path'
-import type { BrowserWindow, BrowserWindowConstructorOptions, WebContentsView } from 'electron'
+import { join } from 'node:path';
+import type { BrowserWindow, BrowserWindowConstructorOptions, WebContentsView } from 'electron';
 
 // ==================== 窗口事件定义 ====================
 
@@ -115,34 +115,34 @@ export enum WebContentsEvents {
  * - browser: 浏览器窗口（用于网页浏览，支持 webpage Tab）
  * - console: 控制台窗口（用于监控和管理所有窗口状态）
  */
-export type WindowType = 'agent' | 'browser' | 'console'
+export type WindowType = 'agent' | 'browser' | 'console';
 
 /**
  * 窗口配置
  */
 export interface WindowConfig {
   /** 窗口类型 */
-  type: WindowType
+  type: WindowType;
   /** 窗口宽度 */
-  width?: number
+  width?: number;
   /** 窗口高度 */
-  height?: number
+  height?: number;
   /** 最小宽度 */
-  minWidth?: number
+  minWidth?: number;
   /** 最小高度 */
-  minHeight?: number
+  minHeight?: number;
   /** 是否显示边框 */
-  frame?: boolean
+  frame?: boolean;
   /** 是否透明 */
-  transparent?: boolean
+  transparent?: boolean;
   /** 初始加载的 URL */
-  initialUrl?: string
+  initialUrl?: string;
   /** 是否可调整大小 */
-  resizable?: boolean
+  resizable?: boolean;
   /** 是否始终置顶 */
-  alwaysOnTop?: boolean
+  alwaysOnTop?: boolean;
   /** 其他元数据 */
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -150,23 +150,23 @@ export interface WindowConfig {
  */
 export interface WindowInfo {
   /** 窗口 ID */
-  id: number
+  id: number;
   /** 窗口类型 */
-  type: WindowType
+  type: WindowType;
   /** BrowserWindow 实例 */
-  window: BrowserWindow
+  window: BrowserWindow;
   /** 是否为主窗口 */
-  isMain: boolean
+  isMain: boolean;
   /** 创建时间 */
-  createdAt: Date
+  createdAt: Date;
   /** 元数据 */
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
   /** 窗口状态 */
-  state: WindowState
+  state: WindowState;
   /** Tab 信息列表 */
-  tabs: Map<number, TabInfo>
+  tabs: Map<number, TabInfo>;
   /** TabView 实例列表 */
-  tabViews: Map<number, TabViewInfo>
+  tabViews: Map<number, TabViewInfo>;
 }
 
 /**
@@ -177,7 +177,7 @@ export interface WindowInfo {
  * - browser: 浏览器窗口（网页浏览）- 1024x768
  * - console: 控制台窗口（窗口管理）- 1400x900
  */
-export type WindowPresets = Record<WindowType, Partial<BrowserWindowConstructorOptions>>
+export type WindowPresets = Record<WindowType, Partial<BrowserWindowConstructorOptions>>;
 
 /**
  * 窗口预设配置
@@ -192,7 +192,7 @@ export function getWindowPresets(isDev: boolean): WindowPresets {
           titleBarStyle: 'hiddenInset' as const,
           trafficLightPosition: { x: 8, y: 10 }
         }
-      : {}
+      : {};
 
   // webPreferences 配置
   const webPreferences = {
@@ -203,7 +203,7 @@ export function getWindowPresets(isDev: boolean): WindowPresets {
     webSecurity: !isDev, // 开发环境禁用，支持热重载
     allowRunningInsecureContent: isDev, // 开发环境允许
     experimentalFeatures: isDev // 开发环境启用
-  }
+  };
 
   return {
     agent: {
@@ -243,7 +243,7 @@ export function getWindowPresets(isDev: boolean): WindowPresets {
       ...macOSConfig,
       webPreferences
     }
-  }
+  };
 }
 
 /**
@@ -251,25 +251,25 @@ export function getWindowPresets(isDev: boolean): WindowPresets {
  */
 export interface WindowState {
   /** 是否最小化 */
-  isMinimized: boolean
+  isMinimized: boolean;
   /** 是否最大化 */
-  isMaximized: boolean
+  isMaximized: boolean;
   /** 是否全屏 */
-  isFullScreen: boolean
+  isFullScreen: boolean;
   /** 是否聚焦 */
-  isFocused: boolean
+  isFocused: boolean;
   /** 是否可见 */
-  isVisible: boolean
+  isVisible: boolean;
 }
 
 /**
  * 窗口边界
  */
 export interface WindowBounds {
-  x: number
-  y: number
-  width: number
-  height: number
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 // ==================== Tab 类型定义 ====================
@@ -280,24 +280,24 @@ export interface WindowBounds {
  * 对应前端 AppBar 的 h-9 (36px)
  * 注意：如果未来需要动态调整高度（紧凑/舒适模式），可以改为变量
  */
-export const CHROME_HEIGHT = 36
+export const CHROME_HEIGHT = 36;
 
 /**
  * Tab 配置
  */
 export interface TabConfig {
   /** 初始 URL，默认 '/' */
-  url?: string
+  url?: string;
   /** Tab 标题 */
-  title?: string
+  title?: string;
   /** Tab 图标 */
-  icon?: string
+  icon?: string;
   /** 是否激活，默认 false */
-  active?: boolean
+  active?: boolean;
   /** 是否可关闭，默认 true */
-  closable?: boolean
+  closable?: boolean;
   /** 其他元数据 */
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -305,27 +305,27 @@ export interface TabConfig {
  */
 export interface TabInfo {
   /** Tab ID (使用 webContents.id) */
-  id: number
+  id: number;
   /** 所属窗口 ID */
-  windowId: number
+  windowId: number;
   /** WebContentsView 实例 */
-  view: WebContentsView
+  view: WebContentsView;
   /** 当前 URL */
-  url: string
+  url: string;
   /** Tab 标题 */
-  title: string
+  title: string;
   /** Tab 图标 */
-  icon?: string
+  icon?: string;
   /** 是否激活 */
-  isActive: boolean
+  isActive: boolean;
   /** 位置顺序 */
-  position: number
+  position: number;
   /** 是否可关闭 */
-  closable: boolean
+  closable: boolean;
   /** 创建时间 */
-  createdAt: Date
+  createdAt: Date;
   /** 元数据 */
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -333,19 +333,19 @@ export interface TabInfo {
  */
 export interface TabData {
   /** Tab ID */
-  id: number
+  id: number;
   /** Tab 标题 */
-  title: string
+  title: string;
   /** Tab 图标 */
-  icon?: string
+  icon?: string;
   /** 当前 URL */
-  url: string
+  url: string;
   /** 是否激活 */
-  isActive: boolean
+  isActive: boolean;
   /** 位置顺序 */
-  position: number
+  position: number;
   /** 是否可关闭 */
-  closable: boolean
+  closable: boolean;
 }
 
 /**
@@ -353,23 +353,23 @@ export interface TabData {
  */
 export interface TabViewInfo {
   /** TabView ID */
-  id: number
+  id: number;
   /** 所属窗口 ID */
-  windowId: number
+  windowId: number;
   /** Tab 信息 ID */
-  tabId: number
+  tabId: number;
   /** WebContentsView 实例 */
-  view: WebContentsView
+  view: WebContentsView;
 }
 
 /**
  * Tab 边界
  */
 export interface TabBounds {
-  x: number
-  y: number
-  width: number
-  height: number
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /**
@@ -377,9 +377,9 @@ export interface TabBounds {
  */
 export interface ChromeConfig {
   /** Chrome 高度 */
-  height: number
+  height: number;
   /** 是否可见 */
-  visible: boolean
+  visible: boolean;
 }
 
 // ==================== 管理器接口定义 ====================
@@ -397,13 +397,13 @@ export interface IWindowManager {
    * @param config 窗口配置
    * @returns BrowserWindow 实例，创建失败返回 null
    */
-  createWindow(config: WindowConfig): BrowserWindow | null
+  createWindow(config: WindowConfig): BrowserWindow | null;
 
   /**
    * 创建控制台窗口（独立方法）
    * @returns BrowserWindow 实例，创建失败返回 null
    */
-  createConsoleWindow(): BrowserWindow | null
+  createConsoleWindow(): BrowserWindow | null;
 
   // ==================== 窗口查询 ====================
 
@@ -412,45 +412,45 @@ export interface IWindowManager {
    * @param windowId 窗口 ID
    * @returns BrowserWindow 实例
    */
-  getWindow(windowId: number): BrowserWindow | undefined
+  getWindow(windowId: number): BrowserWindow | undefined;
 
   /**
    * 获取主窗口
    * @returns 主窗口实例
    */
-  getMainWindow(): BrowserWindow | undefined
+  getMainWindow(): BrowserWindow | undefined;
 
   /**
    * 获取当前聚焦的窗口
    * @returns 聚焦窗口实例
    */
-  getFocusedWindow(): BrowserWindow | undefined
+  getFocusedWindow(): BrowserWindow | undefined;
 
   /**
    * 获取所有窗口
    * @returns 所有窗口实例数组
    */
-  getAllWindows(): BrowserWindow[]
+  getAllWindows(): BrowserWindow[];
 
   /**
    * 根据类型获取窗口
    * @param type 窗口类型
    * @returns 该类型的所有窗口
    */
-  getWindowsByType(type: WindowType): BrowserWindow[]
+  getWindowsByType(type: WindowType): BrowserWindow[];
 
   /**
    * 获取窗口信息
    * @param windowId 窗口 ID
    * @returns 窗口信息
    */
-  getWindowInfo(windowId: number): WindowInfo | undefined
+  getWindowInfo(windowId: number): WindowInfo | undefined;
 
   /**
    * 获取窗口数量
    * @returns 窗口数量
    */
-  getWindowCount(): number
+  getWindowCount(): number;
 
   // ==================== 窗口操作 ====================
 
@@ -459,35 +459,35 @@ export interface IWindowManager {
    * @param windowId 窗口 ID
    * @returns 是否成功关闭
    */
-  closeWindow(windowId: number): Promise<boolean>
+  closeWindow(windowId: number): Promise<boolean>;
 
   /**
    * 聚焦窗口
    * @param windowId 窗口 ID
    * @returns 是否成功聚焦
    */
-  focusWindow(windowId: number): boolean
+  focusWindow(windowId: number): boolean;
 
   /**
    * 最小化窗口
    * @param windowId 窗口 ID
    * @returns 是否成功最小化
    */
-  minimizeWindow(windowId: number): boolean
+  minimizeWindow(windowId: number): boolean;
 
   /**
    * 最大化窗口
    * @param windowId 窗口 ID
    * @returns 是否成功最大化
    */
-  maximizeWindow(windowId: number): boolean
+  maximizeWindow(windowId: number): boolean;
 
   /**
    * 取消最大化窗口
    * @param windowId 窗口 ID
    * @returns 是否成功取消最大化
    */
-  unmaximizeWindow(windowId: number): boolean
+  unmaximizeWindow(windowId: number): boolean;
 
   /**
    * 全屏窗口
@@ -495,21 +495,21 @@ export interface IWindowManager {
    * @param fullscreen 是否全屏
    * @returns 是否成功设置全屏
    */
-  setFullScreen(windowId: number, fullscreen: boolean): boolean
+  setFullScreen(windowId: number, fullscreen: boolean): boolean;
 
   /**
    * 显示窗口
    * @param windowId 窗口 ID
    * @returns 是否成功显示
    */
-  showWindow(windowId: number): boolean
+  showWindow(windowId: number): boolean;
 
   /**
    * 隐藏窗口
    * @param windowId 窗口 ID
    * @returns 是否成功隐藏
    */
-  hideWindow(windowId: number): boolean
+  hideWindow(windowId: number): boolean;
 
   // ==================== 窗口状态 ====================
 
@@ -518,14 +518,14 @@ export interface IWindowManager {
    * @param windowId 窗口 ID
    * @returns 窗口状态
    */
-  getWindowState(windowId: number): WindowState | null
+  getWindowState(windowId: number): WindowState | null;
 
   /**
    * 获取窗口边界
    * @param windowId 窗口 ID
    * @returns 窗口边界
    */
-  getWindowBounds(windowId: number): WindowBounds | null
+  getWindowBounds(windowId: number): WindowBounds | null;
 
   /**
    * 设置窗口边界
@@ -533,7 +533,7 @@ export interface IWindowManager {
    * @param bounds 窗口边界
    * @returns 是否成功设置
    */
-  setWindowBounds(windowId: number, bounds: Partial<WindowBounds>): boolean
+  setWindowBounds(windowId: number, bounds: Partial<WindowBounds>): boolean;
 
   // ==================== 窗口通信 ====================
 
@@ -545,7 +545,7 @@ export interface IWindowManager {
    * @param config Tab 配置
    * @returns Tab ID，创建失败返回 null
    */
-  createTab(windowId: number, config: TabConfig): Promise<number | null>
+  createTab(windowId: number, config: TabConfig): Promise<number | null>;
 
   /**
    * 切换激活的 Tab
@@ -553,7 +553,7 @@ export interface IWindowManager {
    * @param tabId Tab ID
    * @returns 是否成功切换
    */
-  switchTab(windowId: number, tabId: number): Promise<boolean>
+  switchTab(windowId: number, tabId: number): Promise<boolean>;
 
   /**
    * 关闭 Tab
@@ -561,7 +561,7 @@ export interface IWindowManager {
    * @param tabId Tab ID
    * @returns 是否成功关闭
    */
-  closeTab(windowId: number, tabId: number): Promise<boolean>
+  closeTab(windowId: number, tabId: number): Promise<boolean>;
 
   /**
    * 重新排序 Tab
@@ -569,7 +569,7 @@ export interface IWindowManager {
    * @param tabIds 新的 Tab ID 顺序
    * @returns 是否成功重新排序
    */
-  reorderTabs(windowId: number, tabIds: number[]): Promise<boolean>
+  reorderTabs(windowId: number, tabIds: number[]): Promise<boolean>;
 
   /**
    * 将 Tab 移动到另一个窗口
@@ -578,7 +578,7 @@ export interface IWindowManager {
    * @param toWindowId 目标窗口 ID
    * @returns 是否成功移动
    */
-  moveTabToWindow(tabId: number, fromWindowId: number, toWindowId: number): Promise<boolean>
+  moveTabToWindow(tabId: number, fromWindowId: number, toWindowId: number): Promise<boolean>;
 
   /**
    * 复制 Tab
@@ -586,7 +586,7 @@ export interface IWindowManager {
    * @param tabId Tab ID
    * @returns 新 Tab 的 ID，失败返回 null
    */
-  duplicateTab(windowId: number, tabId: number): Promise<number | null>
+  duplicateTab(windowId: number, tabId: number): Promise<number | null>;
 
   /**
    * 刷新 Tab
@@ -594,7 +594,7 @@ export interface IWindowManager {
    * @param tabId Tab ID
    * @returns 是否成功刷新
    */
-  reloadTab(windowId: number, tabId: number): boolean
+  reloadTab(windowId: number, tabId: number): boolean;
 
   // ==================== Tab 查询 ====================
 
@@ -603,33 +603,33 @@ export interface IWindowManager {
    * @param tabId Tab ID
    * @returns Tab 信息
    */
-  getTabInfo(tabId: number): TabInfo | undefined
+  getTabInfo(tabId: number): TabInfo | undefined;
 
   /**
    * 获取窗口的所有 Tab
    * @param windowId 窗口 ID
    * @returns Tab 信息数组
    */
-  getWindowTabs(windowId: number): TabInfo[]
+  getWindowTabs(windowId: number): TabInfo[];
 
   /**
    * 获取窗口的激活 Tab
    * @param windowId 窗口 ID
    * @returns 激活的 Tab 信息
    */
-  getActiveTab(windowId: number): TabInfo | undefined
+  getActiveTab(windowId: number): TabInfo | undefined;
 
   /**
    * 获取窗口的 Tab 数量
    * @param windowId 窗口 ID
    * @returns Tab 数量
    */
-  getWindowTabCount(windowId: number): number
+  getWindowTabCount(windowId: number): number;
 
   /**
    * 根据 WebContents ID 获取 Tab ID
    * @param webContentsId WebContents ID
    * @returns Tab ID
    */
-  getTabIdByWebContentsId(webContentsId: number): number | undefined
+  getTabIdByWebContentsId(webContentsId: number): number | undefined;
 }

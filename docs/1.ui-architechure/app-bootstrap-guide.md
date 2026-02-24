@@ -46,25 +46,25 @@ resources/
 ### 托盘管理器 API
 
 ```typescript
-import { trayManager } from '@main/common'
+import { trayManager } from '@main/common';
 
 // 创建托盘
-trayManager.createTray()
+trayManager.createTray();
 
 // 更新托盘菜单
-trayManager.updateMenu()
+trayManager.updateMenu();
 
 // 销毁托盘
-trayManager.destroy()
+trayManager.destroy();
 
 // 重新创建托盘
-trayManager.recreate()
+trayManager.recreate();
 
 // 检查托盘是否已创建
-const isCreated = trayManager.isCreated()
+const isCreated = trayManager.isCreated();
 
 // 获取托盘实例
-const tray = trayManager.getTray()
+const tray = trayManager.getTray();
 ```
 
 ### 自定义托盘菜单
@@ -191,10 +191,10 @@ updateIcon(iconPath: string): void {
 
 ```typescript
 // 设置角标数字
-app.dock.setBadge('3')
+app.dock.setBadge('3');
 
 // 清除角标
-app.dock.setBadge('')
+app.dock.setBadge('');
 ```
 
 ## 常见问题
@@ -212,8 +212,8 @@ app.dock.setBadge('')
 **A**: 确保使用 Template 模式：
 
 ```typescript
-const trayIcon = nativeImage.createFromPath(iconPath)
-trayIcon.setTemplateImage(true) // 关键设置
+const trayIcon = nativeImage.createFromPath(iconPath);
+trayIcon.setTemplateImage(true); // 关键设置
 ```
 
 ### Q: 如何禁用托盘？
@@ -231,9 +231,9 @@ trayIcon.setTemplateImage(true) // 关键设置
 
 ```typescript
 click: async () => {
-  const { windowManager } = await import('./window')
+  const { windowManager } = await import('./window');
   // 使用 windowManager
-}
+};
 ```
 
 ## 相关文档

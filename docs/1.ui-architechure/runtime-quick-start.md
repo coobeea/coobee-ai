@@ -60,20 +60,17 @@ pnpm install
 下载完成后，在代码中使用：
 
 ```typescript
-import { Env } from '@main/common'
-import path from 'path'
-import { exec } from 'child_process'
+import { Env } from '@main/common';
+import path from 'path';
+import { exec } from 'child_process';
 
 // 获取 uv 路径
-const uvPath = path.join(
-  Env.getPlatformRuntimeDir(),
-  process.platform === 'win32' ? 'uv.exe' : 'uv'
-)
+const uvPath = path.join(Env.getPlatformRuntimeDir(), process.platform === 'win32' ? 'uv.exe' : 'uv');
 
 // 执行命令
 exec(`"${uvPath}" --version`, (error, stdout) => {
-  console.log(stdout) // uv 0.7.13
-})
+  console.log(stdout); // uv 0.7.13
+});
 ```
 
 ---

@@ -56,14 +56,14 @@ src/
 export const EventTypes = {
   // ... 已有事件
   MY_NEW_EVENT: 'my:new-event'
-} as const
+} as const;
 
 export interface EventPayloads {
   // ... 已有 Payload
   [EventTypes.MY_NEW_EVENT]: {
-    id: number
-    message: string
-  }
+    id: number;
+    message: string;
+  };
 }
 ```
 
@@ -72,37 +72,37 @@ export interface EventPayloads {
 #### 方式 1：通过主进程 EventBus（推荐）
 
 ```typescript
-import { eventBus } from '@main/common/eventbus'
+import { eventBus } from '@main/common/eventbus';
 
 // 触发事件，IpcEventBroadcaster 会自动广播到前端
 eventBus.emit('my:new-event', {
   id: 123,
   message: 'Hello from main process'
-})
+});
 ```
 
 #### 方式 2：直接使用 IpcEventBroadcaster
 
 ```typescript
-import { ipcEventBroadcaster } from '@main/common/ipc'
+import { ipcEventBroadcaster } from '@main/common/ipc';
 
 // 广播到所有窗口
 ipcEventBroadcaster.broadcast('my:new-event', {
   id: 123,
   message: 'Hello'
-})
+});
 
 // 发送到指定窗口
 ipcEventBroadcaster.sendToWindow(windowId, 'my:new-event', {
   id: 123,
   message: 'Hello'
-})
+});
 
 // 发送到指定窗口的所有 Tab
 ipcEventBroadcaster.sendToWindowTabs(windowId, 'my:new-event', {
   id: 123,
   message: 'Hello'
-})
+});
 ```
 
 ### 3. 前端监听事件
@@ -111,19 +111,19 @@ ipcEventBroadcaster.sendToWindowTabs(windowId, 'my:new-event', {
 
 ```vue
 <script setup lang="ts">
-import { useEventBus } from '@/composables/useEventBus'
-import { EventTypes } from '@shared/ipc/events'
+import { useEventBus } from '@/composables/useEventBus';
+import { EventTypes } from '@shared/ipc/events';
 
-const { on, emit } = useEventBus()
+const { on, emit } = useEventBus();
 
 // 监听主进程事件（组件卸载时自动取消订阅）
 on(EventTypes.TAB_CREATED, (payload) => {
-  console.log('Tab 创建:', payload.tabId, payload.title)
-})
+  console.log('Tab 创建:', payload.tabId, payload.title);
+});
 
 on(EventTypes.TAB_CLOSED, (payload) => {
-  console.log('Tab 关闭:', payload.tabId)
-})
+  console.log('Tab 关闭:', payload.tabId);
+});
 
 // 前端内部也可以触发事件
 function handleClick() {
@@ -131,7 +131,7 @@ function handleClick() {
     windowId: 1,
     tabId: 2,
     title: '新标题'
-  })
+  });
 }
 </script>
 ```
@@ -139,21 +139,21 @@ function handleClick() {
 #### 方式 2：直接使用 EventBus
 
 ```typescript
-import eventBus from '@/utils/eventBus'
-import { EventTypes } from '@shared/ipc/events'
+import eventBus from '@/utils/eventBus';
+import { EventTypes } from '@shared/ipc/events';
 
 // 订阅事件
 eventBus.on(EventTypes.TAB_CREATED, (payload) => {
-  console.log('Tab 创建:', payload)
-})
+  console.log('Tab 创建:', payload);
+});
 
 // 取消订阅（需手动管理）
-eventBus.off(EventTypes.TAB_CREATED, handler)
+eventBus.off(EventTypes.TAB_CREATED, handler);
 
 // 单次订阅
 eventBus.once(EventTypes.TAB_CREATED, (payload) => {
-  console.log('只触发一次')
-})
+  console.log('只触发一次');
+});
 
 // 发送事件
 eventBus.emit(EventTypes.TAB_CREATED, {
@@ -162,7 +162,7 @@ eventBus.emit(EventTypes.TAB_CREATED, {
   title: 'New Tab',
   url: 'local://chat',
   position: 0
-})
+});
 ```
 
 ### 4. 创建事件处理器模块
@@ -171,30 +171,30 @@ eventBus.emit(EventTypes.TAB_CREATED, {
 
 ```typescript
 // myEventsHandle.ts
-import { EventTypes } from '@shared/ipc/events'
-import eventBus from '@/utils/eventBus'
+import { EventTypes } from '@shared/ipc/events';
+import eventBus from '@/utils/eventBus';
 
 function handleMyEvent(payload: any): void {
-  console.log('[MyEvents] 处理事件:', payload)
+  console.log('[MyEvents] 处理事件:', payload);
   // 业务逻辑...
 }
 
 export function setup(): void {
-  eventBus.on(EventTypes.MY_NEW_EVENT, handleMyEvent)
-  console.log('[MyEvents] 事件处理器已注册')
+  eventBus.on(EventTypes.MY_NEW_EVENT, handleMyEvent);
+  console.log('[MyEvents] 事件处理器已注册');
 }
 ```
 
 然后在 `event_handles/index.ts` 中注册：
 
 ```typescript
-import { setup as setupMyEvents } from './myEventsHandle'
+import { setup as setupMyEvents } from './myEventsHandle';
 
 export function setupEventHandlers(): void {
-  setupTabEvents()
-  setupMyEvents() // 添加新处理器
+  setupTabEvents();
+  setupMyEvents(); // 添加新处理器
 
-  console.log('[EventHandlers] 所有事件处理器已注册')
+  console.log('[EventHandlers] 所有事件处理器已注册');
 }
 ```
 
@@ -203,20 +203,20 @@ export function setupEventHandlers(): void {
 在 `src/renderer/src/main.ts` 中注册：
 
 ```typescript
-import { createApp } from 'vue'
-import App from './App.vue'
-import { eventBus } from './utils/eventBus'
-import { setupEventHandlers } from './eventbus/event_handles'
+import { createApp } from 'vue';
+import App from './App.vue';
+import { eventBus } from './utils/eventBus';
+import { setupEventHandlers } from './eventbus/event_handles';
 
 // 1. 注册前端 EventBus 到 Preload
-window.api.registerEventBus(eventBus)
+window.api.registerEventBus(eventBus);
 
 // 2. 设置所有事件处理器
-setupEventHandlers()
+setupEventHandlers();
 
 // 3. 创建 Vue 应用
-const app = createApp(App)
-app.mount('#app')
+const app = createApp(App);
+app.mount('#app');
 ```
 
 ## 已定义的事件类型
@@ -250,10 +250,10 @@ app.mount('#app')
 
 ```typescript
 // ✅ 好
-on(EventTypes.TAB_CREATED, handler)
+on(EventTypes.TAB_CREATED, handler);
 
 // ❌ 差
-on('tab:created', handler)
+on('tab:created', handler);
 ```
 
 ### 2. 生命周期管理
@@ -262,14 +262,14 @@ on('tab:created', handler)
 
 ```typescript
 // ✅ 好 - 自动清理
-const { on } = useEventBus()
-on(EventTypes.TAB_CREATED, handler)
+const { on } = useEventBus();
+on(EventTypes.TAB_CREATED, handler);
 
 // ❌ 差 - 需要手动清理
-eventBus.on(EventTypes.TAB_CREATED, handler)
+eventBus.on(EventTypes.TAB_CREATED, handler);
 onUnmounted(() => {
-  eventBus.off(EventTypes.TAB_CREATED, handler)
-})
+  eventBus.off(EventTypes.TAB_CREATED, handler);
+});
 ```
 
 ### 3. 事件命名
@@ -278,14 +278,14 @@ onUnmounted(() => {
 
 ```typescript
 // ✅ 好
-'tab:created'
-'window:focused'
-'user:login'
+'tab:created';
+'window:focused';
+'user:login';
 
 // ❌ 差
-'created-tab'
-'focus'
-'userLogin'
+'created-tab';
+'focus';
+'userLogin';
 ```
 
 ### 4. Payload 设计
@@ -295,16 +295,16 @@ Payload 应包含所有必要信息，避免前端再次查询：
 ```typescript
 // ✅ 好
 interface TabCreatedPayload {
-  windowId: number
-  tabId: number
-  title: string
-  url: string
-  position: number
+  windowId: number;
+  tabId: number;
+  title: string;
+  url: string;
+  position: number;
 }
 
 // ❌ 差
 interface TabCreatedPayload {
-  tabId: number // 缺少上下文信息
+  tabId: number; // 缺少上下文信息
 }
 ```
 
@@ -339,8 +339,8 @@ A: 使用 `useEventBus` Composable，它会在组件卸载时自动清理订阅�
 
 ```typescript
 eventBus.on('your:event', (data: any) => {
-  this.broadcast('your:event', data)
-})
+  this.broadcast('your:event', data);
+});
 ```
 
 ### 条件广播
@@ -349,11 +349,11 @@ eventBus.on('your:event', (data: any) => {
 
 ```typescript
 // 广播到所有窗口
-ipcEventBroadcaster.broadcast('event', payload)
+ipcEventBroadcaster.broadcast('event', payload);
 
 // 只发送到特定窗口
 if (shouldNotifyWindow) {
-  ipcEventBroadcaster.sendToWindow(windowId, 'event', payload)
+  ipcEventBroadcaster.sendToWindow(windowId, 'event', payload);
 }
 ```
 

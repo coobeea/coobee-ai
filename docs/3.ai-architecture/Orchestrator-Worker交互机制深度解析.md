@@ -173,7 +173,7 @@ Tachikoma 的 Orchestrator-Worker 交互采用**三层架构**，每一层负责
 class Orchestrator {
   constructor(id: string, options: OrchestratorOptions) {
     // 创建 WorkerPool
-    this.workerPool = options.workerPool ?? new DefaultWorkerPool(orchestratorConfig.workerPool)
+    this.workerPool = options.workerPool ?? new DefaultWorkerPool(orchestratorConfig.workerPool);
   }
 }
 ```
@@ -184,23 +184,23 @@ class Orchestrator {
 // packages/core/src/orchestrator/runner/worker-manager.ts
 class WorkerManager {
   async findOrCreateWorkerForRole(roleId: string): Promise<string | null> {
-    const roleCap = `role:${roleId}`
+    const roleCap = `role:${roleId}`;
 
     // 1️⃣ 尝试找到空闲的 Worker（内存查找，O(n)）
-    const idleWorker = this.workerPool.findIdleByCapability(roleCap)
+    const idleWorker = this.workerPool.findIdleByCapability(roleCap);
     if (idleWorker) {
-      console.debug(`Reusing idle worker ${idleWorker.id}`)
-      return idleWorker.id // 直接返回 Worker ID
+      console.debug(`Reusing idle worker ${idleWorker.id}`);
+      return idleWorker.id; // 直接返回 Worker ID
     }
 
     // 2️⃣ 如果没有空闲 Worker，创建新的
-    const newWorkerId = await this.createWorkerForRole(roleId)
-    return newWorkerId
+    const newWorkerId = await this.createWorkerForRole(roleId);
+    return newWorkerId;
   }
 
   async createWorkerForRole(roleId: string): Promise<string | null> {
     // 3️⃣ 创建 Worker 实例
-    const agent = new WorkerAgent(workerId, agentConfig, options)
+    const agent = new WorkerAgent(workerId, agentConfig, options);
 
     // 4️⃣ 注册到 WorkerPool（内存操作）
     const ok = this.workerPool.register({
@@ -208,9 +208,9 @@ class WorkerManager {
       status: 'idle',
       agent,
       capabilities
-    })
+    });
 
-    return ok ? workerId : null
+    return ok ? workerId : null;
   }
 }
 ```
@@ -222,18 +222,18 @@ class WorkerManager {
 class ExecutionLoop {
   private async executeSubtask(subtask: SubTask, workerId: string): Promise<TaskResult> {
     // 1️⃣ 从 WorkerPool 获取 Worker 实例（内存引用）
-    const workerInfo = this.workerPool.getWorker(workerId)
+    const workerInfo = this.workerPool.getWorker(workerId);
     if (!workerInfo) {
-      throw new Error(`Worker ${workerId} not found`)
+      throw new Error(`Worker ${workerId} not found`);
     }
 
     // 2️⃣ 获取可用工具列表
-    const tools = await this.getAvailableTools()
+    const tools = await this.getAvailableTools();
 
     // 3️⃣ 直接调用 Worker 的 execute 方法（内存调用）
-    const result = await workerInfo.agent.execute(subtask, tools)
+    const result = await workerInfo.agent.execute(subtask, tools);
 
-    return result
+    return result;
   }
 }
 ```
@@ -376,35 +376,35 @@ class WorkerExecutor {
         },
         timeout: 30000,
         defaultDecision: 'approve'
-      })
+      });
 
       // 2️⃣ 等待审批响应（轮询）
-      const response = await this.waitForApproval(this.workerId, 30000)
+      const response = await this.waitForApproval(this.workerId, 30000);
 
       if (response.approved) {
         // 3️⃣ 批准，继续执行
-        await executeTool(toolCall)
+        await executeTool(toolCall);
       } else {
         // 3️⃣ 拒绝，跳过操作
-        throw new Error(`审批被拒绝: ${response.reason}`)
+        throw new Error(`审批被拒绝: ${response.reason}`);
       }
     }
   }
 
   // 轮询等待审批响应
   private async waitForApproval(workerId: string, timeout: number): Promise<ApprovalResponseFile> {
-    const startTime = Date.now()
-    const pollInterval = 500 // 500ms 轮询一次
+    const startTime = Date.now();
+    const pollInterval = 500; // 500ms 轮询一次
 
     while (Date.now() - startTime < timeout) {
-      const response = await this.sessionManager.readApprovalResponse(workerId)
+      const response = await this.sessionManager.readApprovalResponse(workerId);
       if (response) {
-        return response
+        return response;
       }
-      await sleep(pollInterval)
+      await sleep(pollInterval);
     }
 
-    throw new Error('审批超时')
+    throw new Error('审批超时');
   }
 }
 ```
@@ -415,11 +415,11 @@ class WorkerExecutor {
 // packages/core/src/orchestrator/services/approval-arbitration.ts
 class ApprovalArbitrationService {
   async handlePendingApproval(event: SessionFileEvent<PendingApprovalFile>): Promise<void> {
-    const approval = event.data
-    const workerId = event.workerId!
+    const approval = event.data;
+    const workerId = event.workerId!;
 
     // 1️⃣ 评估决策
-    const decision = await this.evaluateApproval(approval)
+    const decision = await this.evaluateApproval(approval);
 
     // 2️⃣ 写入审批响应
     await this.sessionManager.writeApprovalResponse(workerId, {
@@ -428,7 +428,7 @@ class ApprovalArbitrationService {
       approved: decision.approved,
       respondedBy: 'orchestrator',
       reason: decision.reason
-    })
+    });
 
     // 3️⃣ 记录决策日志
     await this.sessionManager.appendDecision({
@@ -438,35 +438,33 @@ class ApprovalArbitrationService {
         approved: decision.approved,
         reason: decision.reason
       }
-    })
+    });
   }
 
-  private async evaluateApproval(
-    approval: PendingApprovalFile
-  ): Promise<{ approved: boolean; reason: string }> {
+  private async evaluateApproval(approval: PendingApprovalFile): Promise<{ approved: boolean; reason: string }> {
     // 应用审批策略
-    const policy = this.config.approval
+    const policy = this.config.approval;
 
     // 1. 检查是否在自动批准列表
     if (policy.autoApproveTypes?.includes(approval.type)) {
-      return { approved: true, reason: '自动批准类型' }
+      return { approved: true, reason: '自动批准类型' };
     }
 
     // 2. 检查是否是低影响操作
     if (policy.lowImpactAutoApprove && approval.details.impactScope === 'low') {
-      return { approved: true, reason: '低影响操作' }
+      return { approved: true, reason: '低影响操作' };
     }
 
     // 3. 检查是否可逆
     if (policy.reversibleAutoApprove && approval.details.reversible === true) {
-      return { approved: true, reason: '可逆操作' }
+      return { approved: true, reason: '可逆操作' };
     }
 
     // 4. 默认决策
     return {
       approved: policy.defaultDecision === 'approve',
       reason: '应用默认策略'
-    }
+    };
   }
 }
 ```
@@ -477,26 +475,26 @@ class ApprovalArbitrationService {
 // packages/core/src/orchestrator/session/session-file-manager.watch.ts
 class SessionWatcher {
   async watchWorker(workerId: string): Promise<void> {
-    const workerDir = this.paths.workerDir(workerId)
+    const workerDir = this.paths.workerDir(workerId);
 
     // 使用 Node.js fs.watch 监控目录
     const watcher = watch(workerDir, { persistent: false }, (eventType, filename) => {
       if (filename === 'pending_approval.json') {
         // 检测到审批请求文件变化
-        void this.handleApprovalRequest(workerId)
+        void this.handleApprovalRequest(workerId);
       }
-    })
+    });
 
-    this.watchers.set(workerId, watcher)
+    this.watchers.set(workerId, watcher);
   }
 
   private async handleApprovalRequest(workerId: string): Promise<void> {
     // 读取审批请求
-    const approval = await this.readPendingApproval(workerId)
-    if (!approval) return
+    const approval = await this.readPendingApproval(workerId);
+    if (!approval) return;
 
     // 触发事件
-    this.emit('pending_approval_created', approval, workerId)
+    this.emit('pending_approval_created', approval, workerId);
   }
 }
 ```
@@ -560,13 +558,13 @@ class DeviationDetector {
     const thinkingLogs = await this.sessionManager.readThinkingLogs(
       workerId,
       20 // 最近20条
-    )
+    );
 
     // 2️⃣ 分析思考模式
-    const analysis = this.analyzeThinkingPattern(thinkingLogs)
+    const analysis = this.analyzeThinkingPattern(thinkingLogs);
 
     // 检测偏离的多种模式
-    const deviations: DeviationType[] = []
+    const deviations: DeviationType[] = [];
 
     // 模式1: 重复相同的思考
     if (analysis.repeatCount > 3) {
@@ -574,7 +572,7 @@ class DeviationDetector {
         type: 'repetition',
         severity: 'high',
         description: '重复相同的思考模式'
-      })
+      });
     }
 
     // 模式2: 思考内容与目标不相关
@@ -583,7 +581,7 @@ class DeviationDetector {
         type: 'off-topic',
         severity: 'high',
         description: '思考内容偏离任务目标'
-      })
+      });
     }
 
     // 模式3: 长时间无进展
@@ -592,28 +590,28 @@ class DeviationDetector {
         type: 'stuck',
         severity: 'medium',
         description: 'Worker似乎卡住了'
-      })
+      });
     }
 
     return {
       hasDeviation: deviations.length > 0,
       deviations,
       analysis
-    }
+    };
   }
 
   private analyzeThinkingPattern(logs: ThinkingRecord[]): Analysis {
     // 计算重复度
-    const contents = logs.map((l) => l.content)
-    const repeatCount = this.countRepeats(contents)
+    const contents = logs.map((l) => l.content);
+    const repeatCount = this.countRepeats(contents);
 
     // 计算相关性（与任务目标的相关度）
-    const relevanceScore = this.calculateRelevance(logs, this.taskObjective)
+    const relevanceScore = this.calculateRelevance(logs, this.taskObjective);
 
     // 计算进展度
-    const progressScore = this.calculateProgress(logs)
+    const progressScore = this.calculateProgress(logs);
 
-    return { repeatCount, relevanceScore, progressScore }
+    return { repeatCount, relevanceScore, progressScore };
   }
 }
 ```
@@ -625,11 +623,11 @@ class DeviationDetector {
 class Orchestrator {
   private async checkAndIntervene(workerId: string): Promise<void> {
     // 1️⃣ 检测偏离
-    const deviation = await this.deviationDetector.detectDeviation(workerId)
+    const deviation = await this.deviationDetector.detectDeviation(workerId);
 
-    if (!deviation.hasDeviation) return
+    if (!deviation.hasDeviation) return;
 
-    const severity = this.getMaxSeverity(deviation.deviations)
+    const severity = this.getMaxSeverity(deviation.deviations);
 
     // 2️⃣ 如果严重度足够高，发送干预
     if (severity === 'high' || severity === 'critical') {
@@ -644,20 +642,16 @@ class Orchestrator {
           severity
         },
         instructions: this.buildInterventionInstructions(deviation),
-        suggestedNextSteps: [
-          '重新阅读任务目标和约束',
-          '检查是否偏离了主要目标',
-          '考虑更直接的解决方案'
-        ],
+        suggestedNextSteps: ['重新阅读任务目标和约束', '检查是否偏离了主要目标', '考虑更直接的解决方案'],
         acknowledged: false
-      })
+      });
 
       // 3️⃣ 触发事件
       this.emit('deviation:intervention', {
         workerId,
         severity,
         reason: deviation.deviations[0].description
-      })
+      });
     }
   }
 }
@@ -669,18 +663,18 @@ class Orchestrator {
 // packages/core/src/worker/backends/generic-agent-backend.ts
 class GenericAgentBackend {
   async *execute(task: WorkerTask, tools: Tool[]): AsyncIterable<WorkerMessage> {
-    let round = 0
+    let round = 0;
 
     while (!done && round < maxThinkingRounds) {
       // 🚨 每轮思考前检查干预指令
-      const intervention = await this.checkIntervention()
+      const intervention = await this.checkIntervention();
       if (intervention && !intervention.acknowledged) {
         // 收到干预，立即处理
         yield {
           type: 'status',
           status: 'intervention_received',
           timestamp: Date.now()
-        }
+        };
 
         // 将干预指令注入到上下文
         this.context.addSystemMessage({
@@ -696,12 +690,12 @@ ${intervention.suggestedNextSteps?.map((s, i) => `${i + 1}. ${s}`).join('\n')}
 
 请立即停止当前方向，重新评估任务目标，调整策略。
           `
-        })
+        });
 
         // 确认干预
-        intervention.acknowledged = true
-        intervention.acknowledgedAt = Date.now()
-        await this.sessionManager.writeIntervention(this.workerId, intervention)
+        intervention.acknowledged = true;
+        intervention.acknowledgedAt = Date.now();
+        await this.sessionManager.writeIntervention(this.workerId, intervention);
 
         // 重置某些状态（如果需要）
         // this.resetState();
@@ -711,21 +705,21 @@ ${intervention.suggestedNextSteps?.map((s, i) => `${i + 1}. ${s}`).join('\n')}
       const response = await this.llm.complete({
         messages: this.context.getMessages(),
         tools: this.tools
-      })
+      });
 
       // ... 处理响应 ...
-      round++
+      round++;
     }
   }
 
   private async checkIntervention(): Promise<InterventionFile | null> {
-    if (!this.sessionManager) return null
+    if (!this.sessionManager) return null;
 
     try {
-      const intervention = await this.sessionManager.readIntervention(this.workerId)
-      return intervention
+      const intervention = await this.sessionManager.readIntervention(this.workerId);
+      return intervention;
     } catch {
-      return null
+      return null;
     }
   }
 }
@@ -784,34 +778,34 @@ class WorkerExecutor {
     // 检查是否有依赖其他 Worker 的任务
     if (subtask.dependencies?.length > 0) {
       // 1️⃣ 列出所有 Peer Workers
-      const peerWorkers = await this.sessionManager.listPeerWorkers()
-      console.log('可用的 Peer Workers:', peerWorkers)
+      const peerWorkers = await this.sessionManager.listPeerWorkers();
+      console.log('可用的 Peer Workers:', peerWorkers);
 
       // 2️⃣ 读取依赖 Worker 的状态
       for (const depId of subtask.dependencies) {
         const peerStatus = await this.sessionManager.readPeerStatus(depId, {
           retries: 3,
           backoffDelay: 100
-        })
+        });
 
         if (peerStatus) {
-          console.log(`Worker ${depId} 状态: ${peerStatus.status}`)
-          console.log(`进度: ${peerStatus.progress}%`)
+          console.log(`Worker ${depId} 状态: ${peerStatus.status}`);
+          console.log(`进度: ${peerStatus.progress}%`);
         }
 
         // 3️⃣ 读取 Peer 的产出物
-        const artifacts = await this.sessionManager.listPeerArtifacts(depId)
-        console.log(`Worker ${depId} 产出物:`, artifacts)
+        const artifacts = await this.sessionManager.listPeerArtifacts(depId);
+        console.log(`Worker ${depId} 产出物:`, artifacts);
 
         for (const artifact of artifacts) {
-          const content = await this.sessionManager.readPeerArtifact(depId, artifact)
+          const content = await this.sessionManager.readPeerArtifact(depId, artifact);
 
           // 4️⃣ 将产出物注入到当前任务上下文
           this.context.addKnowledge({
             source: `worker-${depId}`,
             type: 'artifact',
             content
-          })
+          });
         }
       }
     }
@@ -828,41 +822,34 @@ class WorkerExecutor {
 // packages/core/src/orchestrator/session/session-file-manager.peer.ts
 class SessionPeerReader {
   async listPeerWorkers(): Promise<string[]> {
-    const workersDir = this.paths.workersDir
-    const entries = await readdir(workersDir)
+    const workersDir = this.paths.workersDir;
+    const entries = await readdir(workersDir);
 
     // 过滤出所有 worker-* 目录
-    return entries.filter((name) => name.startsWith('worker-'))
+    return entries.filter((name) => name.startsWith('worker-'));
   }
 
-  async readPeerStatus(
-    workerId: string,
-    options?: PeerReadOptions
-  ): Promise<WorkerStatusFile | null> {
-    const statusFile = this.paths.workerStatusFile(workerId)
+  async readPeerStatus(workerId: string, options?: PeerReadOptions): Promise<WorkerStatusFile | null> {
+    const statusFile = this.paths.workerStatusFile(workerId);
 
     // 重试机制（处理原子写入的短暂窗口期）
-    return await safeReadJsonFileWithRetry(
-      statusFile,
-      options?.retries ?? 2,
-      options?.backoffDelay ?? 50
-    )
+    return await safeReadJsonFileWithRetry(statusFile, options?.retries ?? 2, options?.backoffDelay ?? 50);
   }
 
   async listPeerArtifacts(workerId: string): Promise<string[]> {
-    const artifactsDir = this.paths.workerArtifactsDir(workerId)
+    const artifactsDir = this.paths.workerArtifactsDir(workerId);
 
     if (!(await fileExists(artifactsDir))) {
-      return []
+      return [];
     }
 
-    return await readdir(artifactsDir)
+    return await readdir(artifactsDir);
   }
 
   async readPeerArtifact(workerId: string, filename: string): Promise<string> {
-    const filePath = path.join(this.paths.workerArtifactsDir(workerId), filename)
+    const filePath = path.join(this.paths.workerArtifactsDir(workerId), filename);
 
-    return await readFile(filePath, 'utf-8')
+    return await readFile(filePath, 'utf-8');
   }
 }
 ```
@@ -882,42 +869,42 @@ class SessionWatcher {
   async start(): Promise<void> {
     // 1️⃣ 启动 fs.watch 监控
     for (const workerId of this.registeredWorkers) {
-      await this.watchWorker(workerId)
+      await this.watchWorker(workerId);
     }
 
     // 2️⃣ 启动轮询检查（作为 fs.watch 的补充）
-    this.startPolling()
+    this.startPolling();
   }
 
   // fs.watch 监控
   async watchWorker(workerId: string): Promise<void> {
-    const workerDir = this.paths.workerDir(workerId)
+    const workerDir = this.paths.workerDir(workerId);
 
     const watcher = watch(workerDir, { persistent: false }, (eventType, filename) => {
       if (filename) {
-        void this.handleFileChange(workerId, filename, eventType)
+        void this.handleFileChange(workerId, filename, eventType);
       }
-    })
+    });
 
-    this.watchers.set(workerId, watcher)
+    this.watchers.set(workerId, watcher);
   }
 
   // 轮询检查（补充）
   private startPolling(): void {
-    const interval = this.config.watchPollInterval ?? 1000
+    const interval = this.config.watchPollInterval ?? 1000;
 
     this.pollTimer = setInterval(() => {
-      void this.pollCheck()
-    }, interval)
+      void this.pollCheck();
+    }, interval);
   }
 
   private async pollCheck(): Promise<void> {
     for (const workerId of this.registeredWorkers) {
       // 检查是否有新的审批请求
-      await this.checkPendingApproval(workerId)
+      await this.checkPendingApproval(workerId);
 
       // 检查 Worker 状态
-      await this.checkWorkerStatus(workerId)
+      await this.checkWorkerStatus(workerId);
     }
   }
 }
@@ -959,50 +946,50 @@ type WorkerMessage =
   | ToolCallMessage // 工具调用
   | ToolResultMessage // 工具结果
   | OutputMessage // 最终输出
-  | ErrorMessage // 错误信息
+  | ErrorMessage; // 错误信息
 
 interface StatusMessage {
-  type: 'status'
-  status: 'initializing' | 'thinking' | 'acting' | 'completed' | 'failed'
-  timestamp: number
+  type: 'status';
+  status: 'initializing' | 'thinking' | 'acting' | 'completed' | 'failed';
+  timestamp: number;
 }
 
 interface ThinkingMessage {
-  type: 'thinking'
-  content: string // LLM 的思考内容
-  timestamp: number
+  type: 'thinking';
+  content: string; // LLM 的思考内容
+  timestamp: number;
 }
 
 interface ToolCallMessage {
-  type: 'tool_call'
-  tool: string // 工具名称
-  input: unknown // 工具输入
-  callId: string // 调用 ID
-  timestamp: number
+  type: 'tool_call';
+  tool: string; // 工具名称
+  input: unknown; // 工具输入
+  callId: string; // 调用 ID
+  timestamp: number;
 }
 
 interface ToolResultMessage {
-  type: 'tool_result'
-  tool: string
-  callId: string
-  result: unknown // 工具输出
-  success: boolean // 是否成功
-  duration: number // 执行时长（毫秒）
-  timestamp: number
+  type: 'tool_result';
+  tool: string;
+  callId: string;
+  result: unknown; // 工具输出
+  success: boolean; // 是否成功
+  duration: number; // 执行时长（毫秒）
+  timestamp: number;
 }
 
 interface OutputMessage {
-  type: 'output'
-  content: string // 最终输出
-  timestamp: number
+  type: 'output';
+  content: string; // 最终输出
+  timestamp: number;
 }
 
 interface ErrorMessage {
-  type: 'error'
-  error: string
-  code: string
-  retryable: boolean
-  timestamp: number
+  type: 'error';
+  error: string;
+  code: string;
+  retryable: boolean;
+  timestamp: number;
 }
 ```
 
@@ -1014,21 +1001,21 @@ interface ErrorMessage {
 // packages/core/src/orchestrator/runner/execution-loop.ts
 class ExecutionLoop {
   private async executeSubtask(subtask: SubTask, workerId: string): Promise<TaskResult> {
-    const worker = this.workerPool.getWorker(workerId)
-    const tools = await this.getAvailableTools()
+    const worker = this.workerPool.getWorker(workerId);
+    const tools = await this.getAvailableTools();
 
-    const messages: WorkerMessage[] = []
-    let output = ''
-    let error: string | undefined
+    const messages: WorkerMessage[] = [];
+    let output = '';
+    let error: string | undefined;
 
     // 消费消息流
     for await (const msg of worker.agent.execute(subtask, tools)) {
-      messages.push(msg)
+      messages.push(msg);
 
       // 根据消息类型处理
       switch (msg.type) {
         case 'status':
-          console.log(`[${workerId}] 状态: ${msg.status}`)
+          console.log(`[${workerId}] 状态: ${msg.status}`);
 
           // 更新 Worker 状态到文件
           await this.sessionManager?.writeWorkerStatus(workerId, {
@@ -1041,11 +1028,11 @@ class ExecutionLoop {
             },
             progress: this.calculateProgress(messages),
             lastHeartbeat: Date.now()
-          })
-          break
+          });
+          break;
 
         case 'thinking':
-          console.log(`[${workerId}] 思考: ${msg.content.slice(0, 100)}...`)
+          console.log(`[${workerId}] 思考: ${msg.content.slice(0, 100)}...`);
 
           // 写入思考日志
           await this.sessionManager?.appendThinking(workerId, {
@@ -1054,11 +1041,11 @@ class ExecutionLoop {
             subtaskId: subtask.id,
             content: msg.content,
             stage: 'analysis'
-          })
-          break
+          });
+          break;
 
         case 'tool_call':
-          console.log(`[${workerId}] 调用工具: ${msg.tool}`)
+          console.log(`[${workerId}] 调用工具: ${msg.tool}`);
 
           // 写入行动日志
           await this.sessionManager?.appendAction(workerId, {
@@ -1068,29 +1055,29 @@ class ExecutionLoop {
             type: 'tool_call',
             description: `调用 ${msg.tool}`,
             params: msg.input
-          })
-          break
+          });
+          break;
 
         case 'tool_result':
-          console.log(`[${workerId}] 工具结果: ${msg.success ? '成功' : '失败'}`)
+          console.log(`[${workerId}] 工具结果: ${msg.success ? '成功' : '失败'}`);
 
           // 更新行动日志（添加结果）
           await this.sessionManager?.updateActionResult(workerId, msg.callId, {
             success: msg.success,
             output: msg.result,
             duration: msg.duration
-          })
-          break
+          });
+          break;
 
         case 'output':
-          output = msg.content
-          console.log(`[${workerId}] 完成: ${output.slice(0, 100)}...`)
-          break
+          output = msg.content;
+          console.log(`[${workerId}] 完成: ${output.slice(0, 100)}...`);
+          break;
 
         case 'error':
-          error = msg.error
-          console.error(`[${workerId}] 错误: ${error}`)
-          break
+          error = msg.error;
+          console.error(`[${workerId}] 错误: ${error}`);
+          break;
       }
 
       // 触发事件（供外部监听）
@@ -1098,14 +1085,14 @@ class ExecutionLoop {
         workerId,
         subtaskId: subtask.id,
         message: msg
-      })
+      });
     }
 
     return {
       success: !error,
       output: output || error || '',
       messages
-    }
+    };
   }
 }
 ```
@@ -1121,29 +1108,29 @@ class GenericAgentBackend {
       type: 'status',
       status: 'initializing',
       timestamp: Date.now()
-    }
+    };
 
     // 构建上下文
-    const context = new ContextManager()
-    context.addSystemMessage(this.buildSystemPrompt())
-    context.addUserMessage(this.buildTaskPrompt(task))
+    const context = new ContextManager();
+    context.addSystemMessage(this.buildSystemPrompt());
+    context.addUserMessage(this.buildTaskPrompt(task));
 
-    let done = false
-    let round = 0
+    let done = false;
+    let round = 0;
 
     // 发送思考状态
     yield {
       type: 'status',
       status: 'thinking',
       timestamp: Date.now()
-    }
+    };
 
     while (!done && round < this.maxThinkingRounds) {
       // 调用 LLM
       const response = await this.llm.complete({
         messages: context.getMessages(),
         tools: this.convertTools(tools)
-      })
+      });
 
       // 发送思考消息
       if (response.content) {
@@ -1151,7 +1138,7 @@ class GenericAgentBackend {
           type: 'thinking',
           content: response.content,
           timestamp: Date.now()
-        }
+        };
       }
 
       // 处理工具调用
@@ -1161,7 +1148,7 @@ class GenericAgentBackend {
           type: 'status',
           status: 'acting',
           timestamp: Date.now()
-        }
+        };
 
         for (const toolCall of response.toolCalls) {
           // 发送工具调用消息
@@ -1171,12 +1158,12 @@ class GenericAgentBackend {
             input: toolCall.arguments,
             callId: toolCall.id,
             timestamp: Date.now()
-          }
+          };
 
           // 执行工具
-          const startTime = Date.now()
-          const result = await this.executeTool(toolCall.name, toolCall.arguments)
-          const duration = Date.now() - startTime
+          const startTime = Date.now();
+          const result = await this.executeTool(toolCall.name, toolCall.arguments);
+          const duration = Date.now() - startTime;
 
           // 发送工具结果消息
           yield {
@@ -1187,10 +1174,10 @@ class GenericAgentBackend {
             success: result.success,
             duration,
             timestamp: Date.now()
-          }
+          };
 
           // 将结果加入上下文
-          context.addToolResult(toolCall.id, result.output)
+          context.addToolResult(toolCall.id, result.output);
         }
 
         // 回到思考状态
@@ -1198,13 +1185,13 @@ class GenericAgentBackend {
           type: 'status',
           status: 'thinking',
           timestamp: Date.now()
-        }
+        };
       } else {
         // 没有工具调用，任务完成
-        done = true
+        done = true;
       }
 
-      round++
+      round++;
     }
 
     // 发送完成状态
@@ -1212,14 +1199,14 @@ class GenericAgentBackend {
       type: 'status',
       status: 'completed',
       timestamp: Date.now()
-    }
+    };
 
     // 发送最终输出
     yield {
       type: 'output',
       content: this.extractFinalOutput(context),
       timestamp: Date.now()
-    }
+    };
   }
 }
 ```
@@ -1254,16 +1241,16 @@ const orchestrator = new Orchestrator('orch-001', {
       enableWatch: true
     }
   }
-})
+});
 
 const task: Task = {
   id: 'task-001',
   type: 'development',
   objective: '创建一个 React + Flask 的 TODO 应用',
   constraints: ['使用 React 18 + TypeScript', '使用 Flask + SQLAlchemy', '实现 CRUD 功能']
-}
+};
 
-const result = await orchestrator.run(task)
+const result = await orchestrator.run(task);
 ```
 
 #### 步骤 2: Planner 分解任务
@@ -1298,16 +1285,16 @@ for (const phase of executionPlan.phases) {
   if (phase.parallel) {
     // 并行分配
     const promises = phase.subtaskIds.map(async (subtaskId) => {
-      const subtask = subtasks.find((s) => s.id === subtaskId)
+      const subtask = subtasks.find((s) => s.id === subtaskId);
 
       // 1️⃣ 找到或创建 Worker（内存操作）
-      const workerId = await workerManager.findOrCreateWorkerForRole(subtask.roleId)
+      const workerId = await workerManager.findOrCreateWorkerForRole(subtask.roleId);
 
       // 2️⃣ 直接调用 Worker（内存调用）
-      return await this.executeSubtask(subtask, workerId)
-    })
+      return await this.executeSubtask(subtask, workerId);
+    });
 
-    await Promise.all(promises)
+    await Promise.all(promises);
   }
 }
 ```
@@ -1479,18 +1466,18 @@ workers/worker-backend-developer/
 ```typescript
 // SessionWatcher 触发事件
 sessionManager.on('pending_approval_created', async (event) => {
-  const approval = event.data
+  const approval = event.data;
 
   // ApprovalArbitrationService 处理
-  const decision = await approvalService.evaluate(approval)
+  const decision = await approvalService.evaluate(approval);
 
   // 写入审批响应
   await sessionManager.writeApprovalResponse(workerId, {
     requestId: approval.requestId,
     approved: true,
     reason: '可逆操作，自动批准'
-  })
-})
+  });
+});
 ```
 
 **文件系统变化**：
@@ -1510,11 +1497,11 @@ workers/worker-backend-developer/
 
 ```typescript
 // Worker 轮询检测到响应
-const response = await waitForApproval(workerId, 30000)
+const response = await waitForApproval(workerId, 30000);
 
 if (response.approved) {
   // 执行 pip install
-  await executeTool(toolCall)
+  await executeTool(toolCall);
 }
 ```
 
@@ -1524,7 +1511,7 @@ if (response.approved) {
 
 ```typescript
 // Orchestrator 定期检测偏离
-const deviation = await deviationDetector.detectDeviation('worker-frontend-developer')
+const deviation = await deviationDetector.detectDeviation('worker-frontend-developer');
 
 if (deviation.hasDeviation && deviation.severity === 'high') {
   // 写入干预指令
@@ -1538,7 +1525,7 @@ if (deviation.hasDeviation && deviation.severity === 'high') {
     },
     instructions: '请专注于核心 CRUD 功能，暂时忽略动画',
     acknowledged: false
-  })
+  });
 }
 ```
 
@@ -1563,17 +1550,17 @@ workers/worker-frontend-developer/
 
 ```typescript
 // Worker 在下一轮思考前检查干预
-const intervention = await sessionManager.readIntervention(workerId)
+const intervention = await sessionManager.readIntervention(workerId);
 
 if (intervention && !intervention.acknowledged) {
   // 将干预注入到上下文
   context.addSystemMessage(`
     🚨 统筹者干预：${intervention.instructions}
-  `)
+  `);
 
   // 确认干预
-  intervention.acknowledged = true
-  await sessionManager.writeIntervention(workerId, intervention)
+  intervention.acknowledged = true;
+  await sessionManager.writeIntervention(workerId, intervention);
 }
 ```
 
@@ -1587,20 +1574,20 @@ const subtask3 = {
   id: 'subtask-3',
   objective: '集成前后端并测试',
   dependencies: ['subtask-1', 'subtask-2']
-}
+};
 
 // 1️⃣ 列出 Peer Workers
-const peerWorkers = await sessionManager.listPeerWorkers()
+const peerWorkers = await sessionManager.listPeerWorkers();
 // 返回: ['worker-backend-developer', 'worker-frontend-developer']
 
 // 2️⃣ 读取后端 Worker 的产出物
-const backendArtifacts = await sessionManager.listPeerArtifacts('worker-backend-developer')
+const backendArtifacts = await sessionManager.listPeerArtifacts('worker-backend-developer');
 // 返回: ['app.py', 'models.py', 'requirements.txt']
 
-const appPy = await sessionManager.readPeerArtifact('worker-backend-developer', 'app.py')
+const appPy = await sessionManager.readPeerArtifact('worker-backend-developer', 'app.py');
 
 // 3️⃣ 读取前端 Worker 的产出物
-const frontendArtifacts = await sessionManager.listPeerArtifacts('worker-frontend-developer')
+const frontendArtifacts = await sessionManager.listPeerArtifacts('worker-frontend-developer');
 // 返回: ['App.tsx', 'TodoList.tsx', 'package.json']
 
 // 4️⃣ 基于这些产出物进行集成
@@ -1624,12 +1611,12 @@ const results = {
     success: true,
     output: '已集成前后端，测试通过'
   }
-}
+};
 
 // 聚合策略：合并所有输出
 const finalResult = aggregationEngine.aggregate(results, {
   strategy: 'merge'
-})
+});
 
 return {
   success: true,
@@ -1639,7 +1626,7 @@ return {
 - 前端：React + TypeScript，实现用户界面
 - 集成：前后端已连接，功能正常
   `
-}
+};
 ```
 
 **最终文件系统状态**：
@@ -1977,7 +1964,7 @@ ${task.constraints.map((c) => `- ${c}`).join('\n')}
 Available tools:
 ${formatToolDescriptions(tools)}
 
-Please accomplish this task step by step.`
+Please accomplish this task step by step.`;
 }
 ```
 
@@ -1998,7 +1985,7 @@ const systemPromptWithSkills = await this.skillsManager.renderSystemPromptSectio
     autoActivate: true,
     parentObjective: task.parentObjective // ← 父任务目标！
   }
-)
+);
 ```
 
 #### 2. parentObjective 的妙用
@@ -2012,7 +1999,7 @@ const matchContext = [
   taskDescription // ← "实现JWT token生成"
 ]
   .filter((s) => typeof s === 'string' && s.length > 0)
-  .join(' | ')
+  .join(' | ');
 // 结果: "实现用户登录功能 | 实现JWT token生成"
 
 // 使用合并后的上下文激活技能
@@ -2020,7 +2007,7 @@ const { section, activated } = renderSkillsSectionWithActivation(
   this.skills,
   matchContext, // ← 用合并的上下文匹配技能！
   renderOptions
-)
+);
 ```
 
 **效果对比**：
@@ -2074,7 +2061,7 @@ const workerTask: WorkerTask = {
   parentObjective: '实现用户登录系统', // ← 父任务目标
   constraints: ['使用jsonwebtoken库', 'token有效期设置为24小时', '只能修改 backend/ 目录'],
   parentTaskId: '1'
-}
+};
 ```
 
 #### 输出1：User Prompt（发送给 Worker LLM）
@@ -2258,17 +2245,17 @@ Orchestrator（协调）:
 
 ```typescript
 export interface SubTask {
-  id: string // 子任务ID，如 "1.2"
-  parentId: string // 父任务ID，如 "1"
-  objective: string // 子任务目标
-  parentObjective?: string // 父任务目标（用于上下文传递）
-  constraints: string[] // 约束条件
-  roleId?: string // 期望的执行角色
-  requiredCapabilities?: string[] // 需要的能力标签
-  dependencies?: string[] // 依赖的其他子任务ID
-  status: SubTaskStatus // 执行状态
-  assignedWorkerId?: string // 分配给的 Worker ID
-  result?: TaskResult // 执行结果
+  id: string; // 子任务ID，如 "1.2"
+  parentId: string; // 父任务ID，如 "1"
+  objective: string; // 子任务目标
+  parentObjective?: string; // 父任务目标（用于上下文传递）
+  constraints: string[]; // 约束条件
+  roleId?: string; // 期望的执行角色
+  requiredCapabilities?: string[]; // 需要的能力标签
+  dependencies?: string[]; // 依赖的其他子任务ID
+  status: SubTaskStatus; // 执行状态
+  assignedWorkerId?: string; // 分配给的 Worker ID
+  result?: TaskResult; // 执行结果
 }
 ```
 
@@ -2428,8 +2415,8 @@ if (this.verificationGateService && !isParallelStep) {
 
 ```typescript
 export interface VerificationLayerResult {
-  layer: 'deps' | 'type' | 'build' | 'test' | 'lint' | 'e2e' | 'smoke'
-  passed: boolean
+  layer: 'deps' | 'type' | 'build' | 'test' | 'lint' | 'e2e' | 'smoke';
+  passed: boolean;
   // ...
 }
 ```
@@ -2453,8 +2440,8 @@ export interface VerificationLayerResult {
 ```typescript
 // Sequential execution: each subtask gets its own build gate check
 for (const id of step.subtaskIds) {
-  if (signal.aborted) break
-  await this.executeSubtask(taskId, id, subtaskMap, timeout, retryPolicy, signal, false)
+  if (signal.aborted) break;
+  await this.executeSubtask(taskId, id, subtaskMap, timeout, retryPolicy, signal, false);
   // ↑ 每个子任务执行完后，内部立即进行验证（第644行）
 }
 ```
@@ -2503,20 +2490,20 @@ if (step.parallel) {
       (id) => this.executeSubtask(taskId, id, subtaskMap, timeout, retryPolicy, signal, true)
       // ↑ isParallelStep=true，子任务内部跳过验证！
     )
-  )
+  );
 
   // 2️⃣ 所有子任务完成后，执行一次统一验证（第325-403行）
   if (this.verificationGateService) {
     // 收集所有并行子任务修改的文件
     const changedFiles = this.collectModifiedFiles(
       step.subtaskIds.map((id) => this.state.executionState?.completedSubtasks.get(id))
-    )
+    );
 
     // 统一验证
     const verifyResult = await this.verificationGateService.verify(
       effectiveWorkDir,
       { preset: 'fast', changedFiles } // ← 验证所有修改的文件
-    )
+    );
   }
 }
 ```
@@ -2836,25 +2823,25 @@ private async *runWithOrchestrator(session: SessionState, objective: string, ...
 
 ```typescript
 export interface SessionState {
-  sessionId: string
-  createdAt: number
-  lastActiveAt: number
-  workDir: string
+  sessionId: string;
+  createdAt: number;
+  lastActiveAt: number;
+  workDir: string;
 
   // 对话历史（追加式）
-  messages: ConversationMessage[] // ← 所有轮次的消息
-  compressedHistory?: string
+  messages: ConversationMessage[]; // ← 所有轮次的消息
+  compressedHistory?: string;
 
   // 当前执行状态（覆盖式）
   currentPlan?: {
-    subtasks: SubTask[]
-    executionOrder: string[]
-  }
-  completedSubtasks: string[] // ← 累积
-  pendingSubtasks: string[] // ← 动态更新
+    subtasks: SubTask[];
+    executionOrder: string[];
+  };
+  completedSubtasks: string[]; // ← 累积
+  pendingSubtasks: string[]; // ← 动态更新
 
   // 检查点（追加式）
-  checkpoints: Checkpoint[]
+  checkpoints: Checkpoint[];
 }
 ```
 
@@ -2913,35 +2900,33 @@ Worker 日志 = 工作日记
 class Orchestrator {
   async run(task: Task): Promise<TaskResult> {
     // 1️⃣ 启动会话（创建文件系统）
-    await this.session.start(task)
+    await this.session.start(task);
 
     // 2️⃣ 启动文件监控（后台线程）
-    await this.session.getManager()?.startWatching()
+    await this.session.getManager()?.startWatching();
 
     try {
       // 3️⃣ 主循环（阻塞等待）
-      const plan = await this.planner.plan(task)
+      const plan = await this.planner.plan(task);
 
       // 4️⃣ 执行所有子任务（同步等待）
       for (const phase of plan.executionPlan.phases) {
         if (phase.parallel) {
           // 并行执行
-          await Promise.all(
-            phase.subtaskIds.map((id) => this.executeSubtask(subtasks.find((s) => s.id === id)))
-          )
+          await Promise.all(phase.subtaskIds.map((id) => this.executeSubtask(subtasks.find((s) => s.id === id))));
         } else {
           // 顺序执行
           for (const id of phase.subtaskIds) {
-            await this.executeSubtask(subtasks.find((s) => s.id === id))
+            await this.executeSubtask(subtasks.find((s) => s.id === id));
           }
         }
       }
 
       // 5️⃣ 聚合结果
-      return await this.aggregationEngine.aggregate(results)
+      return await this.aggregationEngine.aggregate(results);
     } finally {
       // 6️⃣ 关闭会话（停止监控）
-      await this.session.stop()
+      await this.session.stop();
     }
   }
 }
@@ -3030,52 +3015,52 @@ class StatelessOrchestrator {
   async patrol(sessionId: string): Promise<void> {
     while (true) {
       // 1️⃣ 从文件加载状态
-      const state = await this.loadStateFromFiles(sessionId)
+      const state = await this.loadStateFromFiles(sessionId);
 
       // 2️⃣ 检查是否有待分配的子任务
       if (state.pendingSubtasks.length > 0) {
-        const subtask = state.pendingSubtasks[0]
+        const subtask = state.pendingSubtasks[0];
 
         // 找到可用的 Worker（通过读取 worker/*/status.json）
-        const workerId = await this.findIdleWorker(sessionId)
+        const workerId = await this.findIdleWorker(sessionId);
 
         if (workerId) {
           // 写入任务分配文件
-          await this.assignTaskToWorker(sessionId, workerId, subtask)
+          await this.assignTaskToWorker(sessionId, workerId, subtask);
         }
       }
 
       // 3️⃣ 检查是否有待处理的审批
-      const approvals = await this.findPendingApprovals(sessionId)
+      const approvals = await this.findPendingApprovals(sessionId);
       for (const approval of approvals) {
-        const decision = await this.evaluateApproval(approval)
-        await this.writeApprovalResponse(sessionId, approval.workerId, decision)
+        const decision = await this.evaluateApproval(approval);
+        await this.writeApprovalResponse(sessionId, approval.workerId, decision);
       }
 
       // 4️⃣ 检查是否需要干预
       for (const workerId of state.activeWorkers) {
-        const deviation = await this.detectDeviation(sessionId, workerId)
+        const deviation = await this.detectDeviation(sessionId, workerId);
         if (deviation.needsIntervention) {
-          await this.sendIntervention(sessionId, workerId, deviation)
+          await this.sendIntervention(sessionId, workerId, deviation);
         }
       }
 
       // 5️⃣ 检查是否全部完成
       if (state.completedSubtasks.length === state.totalSubtasks) {
-        await this.aggregateAndFinish(sessionId)
-        break
+        await this.aggregateAndFinish(sessionId);
+        break;
       }
 
       // 6️⃣ 睡眠
-      await sleep(5000)
+      await sleep(5000);
     }
   }
 
   private async loadStateFromFiles(sessionId: string): Promise<SessionState> {
     // 读取 runtime.json、progress.json、所有 worker/*/status.json
-    const runtime = await readJson(`sessions/${sessionId}/orchestrator/runtime.json`)
-    const progress = await readJson(`sessions/${sessionId}/orchestrator/progress.json`)
-    const workerStates = await this.readAllWorkerStates(sessionId)
+    const runtime = await readJson(`sessions/${sessionId}/orchestrator/runtime.json`);
+    const progress = await readJson(`sessions/${sessionId}/orchestrator/progress.json`);
+    const workerStates = await this.readAllWorkerStates(sessionId);
 
     return {
       taskId: runtime.taskId,
@@ -3083,7 +3068,7 @@ class StatelessOrchestrator {
       completedSubtasks: progress.completedSubtasks,
       pendingSubtasks: this.findPendingSubtasks(runtime, progress),
       activeWorkers: workerStates.filter((w) => w.status !== 'idle').map((w) => w.workerId)
-    }
+    };
   }
 }
 
@@ -3092,27 +3077,27 @@ class AutonomousWorker {
   async patrol(sessionId: string, workerId: string): Promise<void> {
     while (true) {
       // 1️⃣ 检查是否有分配给我的任务
-      const assignment = await this.readMyAssignment(sessionId, workerId)
+      const assignment = await this.readMyAssignment(sessionId, workerId);
 
       if (assignment) {
         // 2️⃣ 更新状态为忙碌
-        await this.updateStatus(sessionId, workerId, 'busy')
+        await this.updateStatus(sessionId, workerId, 'busy');
 
         // 3️⃣ 执行任务
-        const result = await this.executeTask(assignment.subtask)
+        const result = await this.executeTask(assignment.subtask);
 
         // 4️⃣ 写入结果
-        await this.writeResult(sessionId, workerId, result)
+        await this.writeResult(sessionId, workerId, result);
 
         // 5️⃣ 删除任务分配文件
-        await this.deleteAssignment(sessionId, workerId)
+        await this.deleteAssignment(sessionId, workerId);
 
         // 6️⃣ 更新状态为空闲
-        await this.updateStatus(sessionId, workerId, 'idle')
+        await this.updateStatus(sessionId, workerId, 'idle');
       }
 
       // 7️⃣ 睡眠
-      await sleep(1000)
+      await sleep(1000);
     }
   }
 }
@@ -3207,29 +3192,29 @@ Phase 3: 完全被动（远期）
 
 ```typescript
 interface RuntimeFile {
-  kind: 'tachikoma'
-  sessionId: string
-  taskId: string
-  createdAt: number
-  updatedAt: number
-  version: number
+  kind: 'tachikoma';
+  sessionId: string;
+  taskId: string;
+  createdAt: number;
+  updatedAt: number;
+  version: number;
   plannerOutput: {
-    taskId: string
-    subtasks: SubTask[]
+    taskId: string;
+    subtasks: SubTask[];
     executionPlan: {
-      isParallel: boolean
+      isParallel: boolean;
       phases: Array<{
-        name: string
-        subtaskIds: string[]
-        parallel: boolean
-      }>
-    }
+        name: string;
+        subtaskIds: string[];
+        parallel: boolean;
+      }>;
+    };
     delegation: {
-      mode: 'parallel' | 'sequential'
-      workerCount: number
-      timeout: number
-    }
-  }
+      mode: 'parallel' | 'sequential';
+      workerCount: number;
+      timeout: number;
+    };
+  };
 }
 ```
 
@@ -3237,20 +3222,20 @@ interface RuntimeFile {
 
 ```typescript
 interface WorkerStatusFile {
-  workerId: string
-  status: 'idle' | 'thinking' | 'acting' | 'waiting_approval' | 'error'
+  workerId: string;
+  status: 'idle' | 'thinking' | 'acting' | 'waiting_approval' | 'error';
   currentSubtask?: {
-    id: string
-    objective: string
-    startedAt: number
-  }
-  progress: number // 0-100
-  lastHeartbeat: number
+    id: string;
+    objective: string;
+    startedAt: number;
+  };
+  progress: number; // 0-100
+  lastHeartbeat: number;
   error?: {
-    code: string
-    message: string
-    timestamp: number
-  }
+    code: string;
+    message: string;
+    timestamp: number;
+  };
 }
 ```
 
@@ -3258,25 +3243,20 @@ interface WorkerStatusFile {
 
 ```typescript
 interface PendingApprovalFile {
-  requestId: string
-  workerId: string
-  subtaskId: string
-  requestedAt: number
-  type:
-    | 'file_deletion'
-    | 'multi_file_refactor'
-    | 'external_api_call'
-    | 'dangerous_operation'
-    | 'resource_intensive'
-  description: string
+  requestId: string;
+  workerId: string;
+  subtaskId: string;
+  requestedAt: number;
+  type: 'file_deletion' | 'multi_file_refactor' | 'external_api_call' | 'dangerous_operation' | 'resource_intensive';
+  description: string;
   details: {
-    affectedFiles?: string[]
-    impactScope?: 'low' | 'medium' | 'high'
-    reversible?: boolean
-    metadata?: Record<string, unknown>
-  }
-  timeout: number // 毫秒
-  defaultDecision: 'approve' | 'reject'
+    affectedFiles?: string[];
+    impactScope?: 'low' | 'medium' | 'high';
+    reversible?: boolean;
+    metadata?: Record<string, unknown>;
+  };
+  timeout: number; // 毫秒
+  defaultDecision: 'approve' | 'reject';
 }
 ```
 
@@ -3284,13 +3264,13 @@ interface PendingApprovalFile {
 
 ```typescript
 interface ApprovalResponseFile {
-  requestId: string
-  respondedAt: number
-  approved: boolean
-  respondedBy: 'orchestrator' | 'human'
-  reason?: string
-  instructions?: string
-  modifiedParams?: Record<string, unknown>
+  requestId: string;
+  respondedAt: number;
+  approved: boolean;
+  respondedBy: 'orchestrator' | 'human';
+  reason?: string;
+  instructions?: string;
+  modifiedParams?: Record<string, unknown>;
 }
 ```
 
@@ -3298,19 +3278,19 @@ interface ApprovalResponseFile {
 
 ```typescript
 interface InterventionFile {
-  interventionId: string
-  createdAt: number
-  type: 'redirect' | 'pause' | 'resume' | 'abort' | 'guidance'
-  reason: string
+  interventionId: string;
+  createdAt: number;
+  type: 'redirect' | 'pause' | 'resume' | 'abort' | 'guidance';
+  reason: string;
   detectedIssue?: {
-    type: 'deviation' | 'inefficiency' | 'error' | 'stuck'
-    description: string
-    severity: 'low' | 'medium' | 'high' | 'critical'
-  }
-  instructions: string
-  suggestedNextSteps?: string[]
-  acknowledged: boolean
-  acknowledgedAt?: number
+    type: 'deviation' | 'inefficiency' | 'error' | 'stuck';
+    description: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+  };
+  instructions: string;
+  suggestedNextSteps?: string[];
+  acknowledged: boolean;
+  acknowledgedAt?: number;
 }
 ```
 
@@ -3321,11 +3301,11 @@ interface InterventionFile {
 ```typescript
 async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
   // 1️⃣ 写入临时文件
-  const tempPath = `${filePath}.tmp.${Date.now()}`
-  await writeFile(tempPath, JSON.stringify(data, null, 2))
+  const tempPath = `${filePath}.tmp.${Date.now()}`;
+  await writeFile(tempPath, JSON.stringify(data, null, 2));
 
   // 2️⃣ 原子性重命名（操作系统保证原子性）
-  await rename(tempPath, filePath)
+  await rename(tempPath, filePath);
 
   // 3️⃣ 如果重命名失败，清理临时文件
   // (rename 会自动覆盖目标文件，所以不需要手动删除)
@@ -3340,7 +3320,7 @@ async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
 // ❌ 错误的写入方式
 async function badWrite(filePath: string, data: unknown): Promise<void> {
   // 直接覆盖文件
-  await writeFile(filePath, JSON.stringify(data))
+  await writeFile(filePath, JSON.stringify(data));
 
   // 问题：如果写入到一半进程崩溃，文件会损坏！
   // 读取方会得到不完整的 JSON，导致解析失败
@@ -3368,20 +3348,20 @@ async function safeReadJsonFileWithRetry<T>(
 ): Promise<T | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const content = await readFile(filePath, 'utf-8')
-      return JSON.parse(content) as T
+      const content = await readFile(filePath, 'utf-8');
+      return JSON.parse(content) as T;
     } catch (error) {
       if (attempt === retries) {
         // 最后一次尝试失败，返回 null
-        return null
+        return null;
       }
 
       // 等待后重试
-      await sleep(backoffDelay * (attempt + 1))
+      await sleep(backoffDelay * (attempt + 1));
     }
   }
 
-  return null
+  return null;
 }
 ```
 
@@ -3405,10 +3385,10 @@ JSONL (JSON Lines) 用于追加式日志文件：
 
 ```typescript
 async function appendJsonlRecord(filePath: string, record: unknown): Promise<void> {
-  const line = JSON.stringify(record) + '\n'
+  const line = JSON.stringify(record) + '\n';
 
   // 追加模式打开文件
-  await appendFile(filePath, line)
+  await appendFile(filePath, line);
 }
 ```
 
@@ -3416,13 +3396,13 @@ async function appendJsonlRecord(filePath: string, record: unknown): Promise<voi
 
 ```typescript
 async function readJsonlRecords<T>(filePath: string, limit?: number): Promise<T[]> {
-  const content = await readFile(filePath, 'utf-8')
-  const lines = content.trim().split('\n')
+  const content = await readFile(filePath, 'utf-8');
+  const lines = content.trim().split('\n');
 
   // 取最后 limit 条（如果指定）
-  const targetLines = limit ? lines.slice(-limit) : lines
+  const targetLines = limit ? lines.slice(-limit) : lines;
 
-  return targetLines.filter((line) => line.trim()).map((line) => JSON.parse(line) as T)
+  return targetLines.filter((line) => line.trim()).map((line) => JSON.parse(line) as T);
 }
 ```
 
@@ -3498,7 +3478,7 @@ async function readJsonlRecords<T>(filePath: string, limit?: number): Promise<T[
 ```typescript
 // Sequential execution: each subtask gets its own build gate check
 for (const id of step.subtaskIds) {
-  await this.executeSubtask(taskId, id, subtaskMap, timeout, retryPolicy, signal, false)
+  await this.executeSubtask(taskId, id, subtaskMap, timeout, retryPolicy, signal, false);
   // ↑ 顺序执行，一个接一个
 }
 ```
@@ -3589,14 +3569,14 @@ for (const step of executionPlan.steps) {
 
 ```typescript
 export interface PlannerRole {
-  id: string // 角色ID
-  name: string // 角色名称（如 "backend-dev"）
-  responsibilities: string // 角色职责
-  capabilities: string[] // 能力标签
+  id: string; // 角色ID
+  name: string; // 角色名称（如 "backend-dev"）
+  responsibilities: string; // 角色职责
+  capabilities: string[]; // 能力标签
 }
 
 // Planner 根据任务特征分配角色
-subtask.roleId = 'backend-dev' // ← 路由到后端开发 Worker
+subtask.roleId = 'backend-dev'; // ← 路由到后端开发 Worker
 ```
 
 **2. Worker 选择路由**
@@ -3696,10 +3676,8 @@ if (step.parallel) {
 if (step.parallel) {
   // Parallel execution: run all subtasks then do ONE verification gate check
   await Promise.all(
-    step.subtaskIds.map((id) =>
-      this.executeSubtask(taskId, id, subtaskMap, timeout, retryPolicy, signal, true)
-    )
-  )
+    step.subtaskIds.map((id) => this.executeSubtask(taskId, id, subtaskMap, timeout, retryPolicy, signal, true))
+  );
 }
 ```
 
@@ -3711,9 +3689,9 @@ if (step.parallel) {
 if (subtask.dependencies && execState) {
   for (const depId of subtask.dependencies) {
     if (!execState.completedSubtasks.has(depId)) {
-      console.warn(`DEPENDENCY VIOLATION: Subtask ${subtaskId} requires ${depId}`)
-      this.state.markSubtaskFailed(subtaskId, `Dependency ${depId} not completed`)
-      return // ← 阻止执行
+      console.warn(`DEPENDENCY VIOLATION: Subtask ${subtaskId} requires ${depId}`);
+      this.state.markSubtaskFailed(subtaskId, `Dependency ${depId} not completed`);
+      return; // ← 阻止执行
     }
   }
 }
@@ -4122,7 +4100,7 @@ async plan(input: PlannerInput): Promise<PlanResult> {
 
 ```typescript
 // 验证失败超过最大尝试次数
-throw new ReplanNeededError(subtaskId, failureMessage, errorSummary)
+throw new ReplanNeededError(subtaskId, failureMessage, errorSummary);
 
 // Orchestrator 捕获后触发重新规划
 // 调用 Planner 生成新的 executionPlan
@@ -4351,7 +4329,7 @@ const request: LLMRequest = {
   systemPrompt: effectiveSystemPrompt,
   messages: contextToLLMMessages(context.getContext()), // ← 短期记忆
   tools: nativeToolSet
-}
+};
 ```
 
 **2. 状态管理：Session Variables**
@@ -4426,7 +4404,7 @@ await this.memoryRetriever.retrieve({
 ```typescript
 class FailureMemory {
   // 记录失败模式
-  recordFailure(tool: string, input: unknown, error: string): void
+  recordFailure(tool: string, input: unknown, error: string): void;
 
   // 生成警告（注入到 System Prompt）
   generateWarnings(): string {
@@ -4435,7 +4413,7 @@ class FailureMemory {
 - Avoid calling npm install without sudo (failed 3 times)
 - Remember to check file permissions before editing
 - Token expiration must be set explicitly
-    `
+    `;
   }
 }
 ```
@@ -4528,13 +4506,13 @@ T - Time-bound（有时限的）
 
 ```typescript
 export interface SubTask {
-  id: string
-  objective: string // ← 明确的目标
-  parentObjective?: string // ← 父目标（上下文）
-  constraints: string[] // ← 约束条件（成功标准）
-  dependencies?: string[] // ← 依赖关系
-  estimatedDuration?: number // ← 预估时间
-  outputSchema?: JSONSchema // ← 期望输出格式
+  id: string;
+  objective: string; // ← 明确的目标
+  parentObjective?: string; // ← 父目标（上下文）
+  constraints: string[]; // ← 约束条件（成功标准）
+  dependencies?: string[]; // ← 依赖关系
+  estimatedDuration?: number; // ← 预估时间
+  outputSchema?: JSONSchema; // ← 期望输出格式
 }
 ```
 
@@ -4544,17 +4522,17 @@ export interface SubTask {
 
 ```typescript
 export interface ProgressFile {
-  sessionId: string
-  taskId: string
-  status: 'planning' | 'executing' | 'paused' | 'completed' | 'failed'
-  currentStep: number // ← 当前步骤
-  totalSteps: number // ← 总步骤数
-  completedSubtasks: string[] // ← 已完成
-  failedSubtasks: string[] // ← 失败的
-  runningSubtasks: string[] // ← 进行中
-  startTime: number
-  lastUpdateTime: number
-  progress: number // ← 进度百分比
+  sessionId: string;
+  taskId: string;
+  status: 'planning' | 'executing' | 'paused' | 'completed' | 'failed';
+  currentStep: number; // ← 当前步骤
+  totalSteps: number; // ← 总步骤数
+  completedSubtasks: string[]; // ← 已完成
+  failedSubtasks: string[]; // ← 失败的
+  runningSubtasks: string[]; // ← 进行中
+  startTime: number;
+  lastUpdateTime: number;
+  progress: number; // ← 进度百分比
 }
 ```
 
@@ -4564,20 +4542,20 @@ export interface ProgressFile {
 
 ```typescript
 export interface WorkerStatusFile {
-  workerId: string
-  status: 'idle' | 'thinking' | 'acting' | 'waiting' | 'error'
-  progress: number // ← 0-100
+  workerId: string;
+  status: 'idle' | 'thinking' | 'acting' | 'waiting' | 'error';
+  progress: number; // ← 0-100
   currentSubtask?: {
-    id: string
-    objective: string
-    startedAt: number
-  }
-  lastHeartbeat: number // ← 心跳检测
+    id: string;
+    objective: string;
+    startedAt: number;
+  };
+  lastHeartbeat: number; // ← 心跳检测
   error?: {
-    code: string
-    message: string
-    timestamp: number
-  }
+    code: string;
+    message: string;
+    timestamp: number;
+  };
 }
 ```
 
@@ -4679,31 +4657,31 @@ ExecutionLoop 监控流程:
 
 ```typescript
 // 指标收集
-const startTime = Date.now()
-let toolCallCount = 0
-let thinkingRounds = 0
-let tokensUsed = 0
+const startTime = Date.now();
+let toolCallCount = 0;
+let thinkingRounds = 0;
+let tokensUsed = 0;
 
 for await (const msg of this.backend.execute(workerTask, tools, execOptions)) {
   switch (msg.type) {
     case 'thinking':
-      thinkingRounds++
-      this.metrics.increment(WORKER_METRICS.THINKING_ROUNDS, 1, { workerId })
-      break
+      thinkingRounds++;
+      this.metrics.increment(WORKER_METRICS.THINKING_ROUNDS, 1, { workerId });
+      break;
     case 'tool_call':
-      toolCallCount++
-      break
+      toolCallCount++;
+      break;
     case 'status':
       if (typeof msg.tokensUsed === 'number') {
-        tokensUsed = msg.tokensUsed
-        this.metrics.gauge(WORKER_METRICS.TOKENS_USED, tokensUsed, { workerId })
+        tokensUsed = msg.tokensUsed;
+        this.metrics.gauge(WORKER_METRICS.TOKENS_USED, tokensUsed, { workerId });
       }
-      break
+      break;
   }
 }
 
-const duration = Date.now() - startTime
-this.metrics.timing(WORKER_METRICS.EXECUTION_DURATION, duration, { workerId })
+const duration = Date.now() - startTime;
+this.metrics.timing(WORKER_METRICS.EXECUTION_DURATION, duration, { workerId });
 ```
 
 **2. 质量评估：Verification Gate**
@@ -4712,19 +4690,19 @@ this.metrics.timing(WORKER_METRICS.EXECUTION_DURATION, duration, { workerId })
 
 ```typescript
 export interface VerificationResult {
-  passed: boolean // ← 总体是否通过
-  summary: string // ← 摘要信息
-  layers: VerificationLayerResult[] // ← 各层结果
-  totalDuration: number // ← 总耗时
+  passed: boolean; // ← 总体是否通过
+  summary: string; // ← 摘要信息
+  layers: VerificationLayerResult[]; // ← 各层结果
+  totalDuration: number; // ← 总耗时
 }
 
 export interface VerificationLayerResult {
-  layer: 'deps' | 'type' | 'build' | 'test' | 'lint' | 'e2e' | 'smoke'
-  passed: boolean
-  errors: string[] // ← 具体错误
-  warnings: string[] // ← 警告信息
-  command?: string // ← 验证命令
-  duration: number // ← 该层耗时
+  layer: 'deps' | 'type' | 'build' | 'test' | 'lint' | 'e2e' | 'smoke';
+  passed: boolean;
+  errors: string[]; // ← 具体错误
+  warnings: string[]; // ← 警告信息
+  command?: string; // ← 验证命令
+  duration: number; // ← 该层耗时
 }
 ```
 
@@ -4735,27 +4713,27 @@ export interface VerificationLayerResult {
 ```typescript
 // Worker 的思考记录
 export interface ThinkingRecord {
-  workerId: string
-  subtaskId: string
-  taskId: string
-  round: number // ← 第几轮思考
-  content: string // ← 思考内容
-  timestamp: number
+  workerId: string;
+  subtaskId: string;
+  taskId: string;
+  round: number; // ← 第几轮思考
+  content: string; // ← 思考内容
+  timestamp: number;
 }
 
 // Worker 的动作记录
 export interface ActionRecord {
-  workerId: string
-  subtaskId: string
-  taskId: string
-  actionId: string
-  description: string
-  tool: string // ← 调用的工具
-  input: unknown // ← 工具输入
-  output?: unknown // ← 工具输出
-  success: boolean // ← 是否成功
-  duration: number // ← 执行耗时
-  timestamp: number
+  workerId: string;
+  subtaskId: string;
+  taskId: string;
+  actionId: string;
+  description: string;
+  tool: string; // ← 调用的工具
+  input: unknown; // ← 工具输入
+  output?: unknown; // ← 工具输出
+  success: boolean; // ← 是否成功
+  duration: number; // ← 执行耗时
+  timestamp: number;
 }
 ```
 
@@ -4766,7 +4744,7 @@ export interface ActionRecord {
 ```typescript
 // 持久化消息到审计日志
 if (sessionManager) {
-  await this.persistMessage(sessionManager, workerId, subtask.id, msg)
+  await this.persistMessage(sessionManager, workerId, subtask.id, msg);
 }
 
 // 写入: workers/worker-001/thinking.jsonl
@@ -4873,7 +4851,7 @@ roles: [
       model: 'claude-3-5-sonnet-20241022' // ← 强大模型做审查
     }
   }
-]
+];
 ```
 
 **2. Token 使用监控**
@@ -4903,7 +4881,7 @@ export const DEFAULT_RESOURCE_LIMITS = {
   maxTokensPerRound: 4096, // ← 每轮最大 Token
   maxTotalTokens: 100000, // ← 总 Token 上限
   timeoutMs: 300000 // ← 超时时间（5分钟）
-}
+};
 ```
 
 #### 资源监控流程
@@ -5173,26 +5151,26 @@ Level 4: 人工干预
 
 ```typescript
 export interface PendingApprovalFile {
-  requestId: string
-  workerId: string
-  subtaskId: string
-  type: 'key_decision' | 'high_risk' | 'unknown_tool'
-  description: string // ← 需要审批的原因
+  requestId: string;
+  workerId: string;
+  subtaskId: string;
+  type: 'key_decision' | 'high_risk' | 'unknown_tool';
+  description: string; // ← 需要审批的原因
   details: {
-    action: string // ← 工具名称
-    input: unknown // ← 工具参数
-    estimatedRisk?: string
-  }
-  requestedAt: number
-  timeout: number
-  defaultDecision: 'approve' | 'reject'
+    action: string; // ← 工具名称
+    input: unknown; // ← 工具参数
+    estimatedRisk?: string;
+  };
+  requestedAt: number;
+  timeout: number;
+  defaultDecision: 'approve' | 'reject';
 }
 
 export interface ApprovalResponseFile {
-  requestId: string
-  approved: boolean // ← 人类的决策
-  reason?: string
-  respondedAt: number
+  requestId: string;
+  approved: boolean; // ← 人类的决策
+  reason?: string;
+  respondedAt: number;
 }
 ```
 
@@ -5231,12 +5209,12 @@ Worker 读取响应
 
 ```typescript
 export interface InterventionFile {
-  workerId: string
-  command: 'pause' | 'resume' | 'abort' | 'redirect'
-  reason: string
-  instructions?: string // ← 人类的具体指示
-  createdAt: number
-  acknowledged?: boolean
+  workerId: string;
+  command: 'pause' | 'resume' | 'abort' | 'redirect';
+  reason: string;
+  instructions?: string; // ← 人类的具体指示
+  createdAt: number;
+  acknowledged?: boolean;
 }
 ```
 
@@ -5432,7 +5410,7 @@ const matchContext = [
   taskDescription // ← "实现JWT token生成"
 ]
   .filter((s) => typeof s === 'string' && s.length > 0)
-  .join(' | ')
+  .join(' | ');
 
 // matchContext = "实现用户登录功能 | 实现JWT token生成"
 
@@ -5441,7 +5419,7 @@ const { section, activated } = renderSkillsSectionWithActivation(
   this.skills,
   matchContext, // ← 父+子目标合并
   renderOptions
-)
+);
 ```
 
 **效果对比**：

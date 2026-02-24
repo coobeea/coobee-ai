@@ -118,18 +118,18 @@ Turn 2:（由下一个 response_started 触发关闭上一轮）
 // 当前代码：手动推断 turn 边界
 if (rawType === 'response_started') {
   if (turnOpen) {
-    onChunk({ type: 'turn:done', content: '', data: { turnIndex } }) // ← 关闭上一轮
+    onChunk({ type: 'turn:done', content: '', data: { turnIndex } }); // ← 关闭上一轮
   }
-  turnIndex++
-  turnOpen = true
-  textStartEmitted = false
-  onChunk({ type: 'turn:start', content: '', data: { turnIndex } }) // ← 开新一轮
-  onChunk({ type: 'llm:start', content: '' })
+  turnIndex++;
+  turnOpen = true;
+  textStartEmitted = false;
+  onChunk({ type: 'turn:start', content: '', data: { turnIndex } }); // ← 开新一轮
+  onChunk({ type: 'llm:start', content: '' });
 }
 
 // 流结束后还需要手动关闭最后一轮
 if (turnOpen) {
-  onChunk({ type: 'turn:done', content: '', data: { turnIndex } })
+  onChunk({ type: 'turn:done', content: '', data: { turnIndex } });
 }
 ```
 
@@ -588,7 +588,7 @@ export type StreamChunkType =
   | 'tool:done'
   // ⑦ compression: 压缩（SDK 内置！）
   | 'compression:start'
-  | 'compression:done'
+  | 'compression:done';
 ```
 
 **删除的类型（8 个 → 0 个）**：

@@ -15,31 +15,31 @@
  *     → stream()/run() 完成后调用 saveContextSnapshot()
  */
 
-import fs from 'fs'
-import path from 'path'
-import type { AgentRuntimeOptions, ExecutionResult } from './types'
+import fs from 'fs';
+import path from 'path';
+import type { AgentRuntimeOptions, ExecutionResult } from './types';
 
 // ==================== Logger ====================
 
 interface SnapshotLogger {
-  info(message: string, ...args: unknown[]): void
-  warn(message: string, ...args: unknown[]): void
+  info(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
 }
 
 const createSnapshotLogger = (): SnapshotLogger => {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createLogger } = require('@main/common/logger')
-    return createLogger('context-snapshot') as SnapshotLogger
+    const { createLogger } = require('@main/common/logger');
+    return createLogger('context-snapshot') as SnapshotLogger;
   } catch {
     return {
       info: (msg: string, ...args: unknown[]) => console.log(`[ContextSnapshot] ${msg}`, ...args),
       warn: (msg: string, ...args: unknown[]) => console.warn(`[ContextSnapshot] ${msg}`, ...args)
-    }
+    };
   }
-}
+};
 
-const log = createSnapshotLogger()
+const log = createSnapshotLogger();
 
 // ==================== 类型定义 ====================
 
@@ -48,40 +48,40 @@ const log = createSnapshotLogger()
  */
 export interface ContextSnapshot {
   /** 写入时间 */
-  timestamp: string
+  timestamp: string;
   /** 会话 ID */
-  sessionId: string
+  sessionId: string;
   /** Runtime 类型 */
-  runtime: string
+  runtime: string;
   /** 配置快照（不含敏感信息） */
   config: {
     /** Agent 名称 */
-    name: string
+    name: string;
     /** 模型名称 */
-    model: string
+    model: string;
     /** 系统指令 */
-    instructions: string
+    instructions: string;
     /** 追加指令片段 */
-    appendInstructions?: string[]
+    appendInstructions?: string[];
     /** 技能列表（仅名称和描述） */
-    skills?: Array<{ name: string; description: string }>
+    skills?: Array<{ name: string; description: string }>;
     /** 工具列表（仅名称和描述） */
-    tools?: Array<{ name: string; description: string }>
-  }
+    tools?: Array<{ name: string; description: string }>;
+  };
   /** 用户消息 */
-  userMessage: string
+  userMessage: string;
   /** LLM 输出 */
-  output: string
+  output: string;
   /** API 错误信息（仅在出错时有值） */
-  error?: string
+  error?: string;
   /** 工具调用记录 */
   toolCalls?: Array<{
-    toolName: string
-    arguments: Record<string, unknown>
-    result?: unknown
-  }>
+    toolName: string;
+    arguments: Record<string, unknown>;
+    result?: unknown;
+  }>;
   /** 执行耗时（ms） */
-  duration?: number
+  duration?: number;
 }
 
 // ==================== 写入函数 ====================
@@ -99,8 +99,8 @@ function generateFilename(): string {
     .toISOString()
     .replace(/:/g, '-') // 冒号 → 短横线（Windows 兼容）
     .replace('.', '-') // 小数点 → 短横线
-    .replace('Z', '') // 去掉尾部 Z
-  return `${ts}.json`
+    .replace('Z', ''); // 去掉尾部 Z
+  return `${ts}.json`;
 }
 
 /**
@@ -111,24 +111,21 @@ function generateFilename(): string {
  * @param contextDir 上下文快照目录（{workspace}/contexts/）
  * @param snapshot   上下文快照数据
  */
-export async function writeContextSnapshot(
-  contextDir: string,
-  snapshot: ContextSnapshot
-): Promise<void> {
+export async function writeContextSnapshot(contextDir: string, snapshot: ContextSnapshot): Promise<void> {
   try {
     // 确保目录存在（正常情况已由 getAgentWorkspaceDir 创建，这里做兜底）
     if (!fs.existsSync(contextDir)) {
-      fs.mkdirSync(contextDir, { recursive: true })
+      fs.mkdirSync(contextDir, { recursive: true });
     }
 
-    const filename = generateFilename()
-    const filepath = path.join(contextDir, filename)
+    const filename = generateFilename();
+    const filepath = path.join(contextDir, filename);
 
-    await fs.promises.writeFile(filepath, JSON.stringify(snapshot, null, 2), 'utf-8')
-    log.info(`Written: ${filename}`)
+    await fs.promises.writeFile(filepath, JSON.stringify(snapshot, null, 2), 'utf-8');
+    log.info(`Written: ${filename}`);
   } catch (error) {
     // 写入失败不阻断执行
-    log.warn(`Write failed:`, error)
+    log.warn(`Write failed:`, error);
   }
 }
 
@@ -151,8 +148,8 @@ export async function saveContextSnapshot(
   input: string,
   result: ExecutionResult
 ): Promise<void> {
-  const contextDir = options.contextDir
-  if (!contextDir) return
+  const contextDir = options.contextDir;
+  if (!contextDir) return;
 
   const snapshot: ContextSnapshot = {
     timestamp: new Date().toISOString(),
@@ -171,7 +168,7 @@ export async function saveContextSnapshot(
     ...(result.error ? { error: result.error } : {}),
     toolCalls: result.toolCalls,
     duration: result.duration
-  }
+  };
 
-  await writeContextSnapshot(contextDir, snapshot)
+  await writeContextSnapshot(contextDir, snapshot);
 }

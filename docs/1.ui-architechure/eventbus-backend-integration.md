@@ -20,7 +20,7 @@ eventBus.emit('tab:created', {
   title: tab.title,
   url: tab.url,
   position: tab.position
-})
+});
 ```
 
 #### Tab Closed 事件
@@ -30,21 +30,21 @@ eventBus.emit('tab:created', {
 eventBus.emit('tab:closed', {
   windowId,
   tabId: req.tabId
-})
+});
 ```
 
 #### Tab Activated 事件
 
 ```typescript
 // 在 TabChannels.SWITCH 处理器中
-const previousTab = windowManager.getActiveTab(windowId)
-const previousTabId = previousTab ? previousTab.id : null
+const previousTab = windowManager.getActiveTab(windowId);
+const previousTabId = previousTab ? previousTab.id : null;
 
 eventBus.emit('tab:activated', {
   windowId,
   tabId: req.tabId,
   previousTabId
-})
+});
 ```
 
 #### Tab Updated 事件
@@ -56,7 +56,7 @@ eventBus.emit('tab:updated', {
   tabId: req.tabId,
   title: req.title,
   url: req.url
-})
+});
 ```
 
 ---
@@ -72,7 +72,7 @@ eventBus.emit('tab:updated', {
 eventBus.emit('window:created', {
   windowId: window.id,
   type: config.type
-})
+});
 ```
 
 #### Window Closed 事件
@@ -82,9 +82,9 @@ eventBus.emit('window:created', {
 window.on(BrowserWindowEvents.CLOSED, () => {
   eventBus.emit('window:closed', {
     windowId
-  })
-  this.cleanupWindow(windowId)
-})
+  });
+  this.cleanupWindow(windowId);
+});
 ```
 
 #### Window Focused 事件
@@ -92,13 +92,13 @@ window.on(BrowserWindowEvents.CLOSED, () => {
 ```typescript
 // 在 setupWindowEvents() 的 'focus' 监听器中
 window.on(BrowserWindowEvents.FOCUS, () => {
-  windowInfo.state.isFocused = true
-  this.focusedWindowId = windowId
+  windowInfo.state.isFocused = true;
+  this.focusedWindowId = windowId;
 
   eventBus.emit('window:focused', {
     windowId
-  })
-})
+  });
+});
 ```
 
 #### Window Blurred 事件
@@ -106,15 +106,15 @@ window.on(BrowserWindowEvents.FOCUS, () => {
 ```typescript
 // 在 setupWindowEvents() 的 'blur' 监听器中
 window.on(BrowserWindowEvents.BLUR, () => {
-  windowInfo.state.isFocused = false
+  windowInfo.state.isFocused = false;
   if (this.focusedWindowId === windowId) {
-    this.focusedWindowId = null
+    this.focusedWindowId = null;
   }
 
   eventBus.emit('window:blurred', {
     windowId
-  })
-})
+  });
+});
 ```
 
 ---
@@ -190,18 +190,18 @@ Preload 层
 
    ```vue
    <script setup lang="ts">
-   import { useEventBus } from '@/composables/useEventBus'
-   import { EventTypes } from '@shared/ipc/events'
+   import { useEventBus } from '@/composables/useEventBus';
+   import { EventTypes } from '@shared/ipc/events';
 
-   const { on } = useEventBus()
+   const { on } = useEventBus();
 
    on(EventTypes.TAB_CREATED, (payload) => {
-     console.log('收到 Tab 创建事件:', payload)
-   })
+     console.log('收到 Tab 创建事件:', payload);
+   });
 
    on(EventTypes.TAB_CLOSED, (payload) => {
-     console.log('收到 Tab 关闭事件:', payload)
-   })
+     console.log('收到 Tab 关闭事件:', payload);
+   });
    </script>
    ```
 

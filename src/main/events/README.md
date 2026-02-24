@@ -63,7 +63,7 @@ showTrayIconChanged.ts → config:showTrayIcon:changed
 每个事件处理器文件应该包含：
 
 ```typescript
-import { log } from '@main/common/logger'
+import { log } from '@main/common/logger';
 
 /**
  * [功能] 事件处理器
@@ -71,10 +71,10 @@ import { log } from '@main/common/logger'
  * 对应事件: EventTypes.CONFIG_[EVENT_NAME]_CHANGED
  */
 export default (payload: { [key]: [type] }): void => {
-  log.info('[Event] 处理 [功能] 事件:', payload)
+  log.info('[Event] 处理 [功能] 事件:', payload);
 
   // 实现具体逻辑
-}
+};
 ```
 
 ### 4. 导出规范
@@ -91,11 +91,11 @@ export default (payload: { [key]: [type] }): void => {
 ```typescript
 export interface EventPayloads {
   [EventTypes.CONFIG_THEME_CHANGED]: {
-    theme: 'light' | 'dark' | 'auto'
-  }
+    theme: 'light' | 'dark' | 'auto';
+  };
   [EventTypes.CONFIG_AUTO_START_CHANGED]: {
-    value: boolean
-  }
+    value: boolean;
+  };
   // ... 其他事件类型
 }
 ```
@@ -185,9 +185,9 @@ setTheme(theme: ThemeMode): void {
 
 ```typescript
 export default async (payload): Promise<void> => {
-  const { trayManager } = await import('@main/common/tray')
+  const { trayManager } = await import('@main/common/tray');
   // 使用 trayManager
-}
+};
 ```
 
 ### 2. 错误处理
@@ -199,9 +199,9 @@ export default (payload): void => {
   try {
     // 业务逻辑
   } catch (error) {
-    log.error('[Event] 处理事件失败:', error)
+    log.error('[Event] 处理事件失败:', error);
   }
-}
+};
 ```
 
 ### 3. 日志记录

@@ -24,6 +24,7 @@ import { registerTavernRoutes } from './http/tavern';
 import { registerCronJobRoutes } from './http/cron-jobs';
 import { registerBrainMetricsRoutes } from './http/brain-metrics';
 import { registerMetricsRoutes } from './http/metrics';
+import { registerMonitoringRoutes } from './http/monitoring';
 import { GatewayErrorCode, GatewayMethodError } from './protocol/errors';
 import type {
   GatewayRequest,
@@ -94,7 +95,49 @@ export class Gateway implements GatewayApi {
     // 启动网络层
     this.server.start();
 
+    // 初始化并启动 Cron 调度器（不阻塞 Gateway 启动，失败不影响主流程）
+    void this.startCronSystem().catch((err) => {
+      log.error('[Gateway] Cron system start failed', err);
+    });
+
     log.info(`[Gateway] Started with ${this.methods.size} method(s)`);
+  }
+
+  /**
+   * 初始化 Cron 子系统并加载所有 active 状态的定时任务
+   */
+  private async startCronSystem(): Promise<void> {
+    try {
+      const { initializeCronSystem, getCronScheduler, getCronJobExecutor } = await import('@main/ai/cron');
+      await initializeCronSystem();
+
+      const executor = getCronJobExecutor();
+      const { agentExecutor } = await import('@main/ai/AgentExecutor');
+      executor.setAgentExecutor(agentExecutor);
+
+      const scheduler = getCronScheduler();
+      await scheduler.start();
+
+      log.info('[Gateway] Cron scheduler started');
+    } catch (error) {
+      log.error('[Gateway] Cron system initialization failed', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 停止 Cron 调度器
+   */
+  private async stopCronSystem(): Promise<void> {
+    try {
+      const { getCronScheduler } = await import('@main/ai/cron');
+      const scheduler = getCronScheduler();
+      await scheduler.stop();
+      log.info('[Gateway] Cron scheduler stopped');
+    } catch (error) {
+      log.error('[Gateway] Cron system stop failed', error);
+      // 不抛出，避免阻塞关闭流程
+    }
   }
 
   // ==================== 方法发现（类比 WsHub.discoverChannels） ====================
@@ -193,6 +236,7 @@ export class Gateway implements GatewayApi {
     registerCronJobRoutes(router);
     registerBrainMetricsRoutes(router);
     registerMetricsRoutes(router);
+    registerMonitoringRoutes(router);
 
     // 动态挂载 Extension 注册的 HTTP 路由
     this.mountExtensionHttpRoutes(router);
@@ -380,6 +424,9 @@ export class Gateway implements GatewayApi {
 
   /** 关闭 Gateway */
   async close(): Promise<void> {
+    // 停止 Cron 调度器
+    await this.stopCronSystem();
+
     // 清理所有 EventBridge 监听器
     for (const cleanup of this.eventBridgeCleanups) {
       try {

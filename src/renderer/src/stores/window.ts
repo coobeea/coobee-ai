@@ -7,19 +7,19 @@
  *
  * 注意：事件监听由 eventbus/event_handles 处理
  */
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { useIpc } from '@/composables/useIpc'
-import type { WindowInfoResponse } from '@shared/ipc'
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
+import { useIpc } from '@/composables/useIpc';
+import type { WindowInfoResponse } from '@shared/ipc';
 
 export const useWindowStore = defineStore('window', () => {
   // ==================== State ====================
-  const windowInfo = ref<WindowInfoResponse | null>(null)
-  const windowId = ref<number | null>(null)
-  const currentTabId = ref<number | null>(null)
+  const windowInfo = ref<WindowInfoResponse | null>(null);
+  const windowId = ref<number | null>(null);
+  const currentTabId = ref<number | null>(null);
 
   // ==================== Getters ====================
-  const isReady = computed(() => windowId.value !== null)
+  const isReady = computed(() => windowId.value !== null);
 
   // ==================== Actions ====================
 
@@ -28,15 +28,15 @@ export const useWindowStore = defineStore('window', () => {
    */
   async function refreshWindowInfo(): Promise<void> {
     try {
-      const ipc = useIpc()
-      const info = await ipc.getWindowInfo()
+      const ipc = useIpc();
+      const info = await ipc.getWindowInfo();
       if (info) {
-        windowInfo.value = info
-        windowId.value = info.windowId
-        currentTabId.value = info.currentTabId || null
+        windowInfo.value = info;
+        windowId.value = info.windowId;
+        currentTabId.value = info.currentTabId || null;
       }
     } catch (error) {
-      console.error('[WindowStore] Failed to initialize:', error)
+      console.error('[WindowStore] Failed to initialize:', error);
     }
   }
 
@@ -51,5 +51,5 @@ export const useWindowStore = defineStore('window', () => {
 
     // Actions
     refreshWindowInfo
-  }
-})
+  };
+});

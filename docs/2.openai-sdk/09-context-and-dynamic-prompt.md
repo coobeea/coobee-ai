@@ -11,20 +11,20 @@ SDK 提供了多种方式在运行时定制 Agent 的行为：自定义上下文
 通过泛型为 Agent 定义自定义上下文类型，在运行时传入业务数据：
 
 ```typescript
-import { Agent, RunContext, run } from '@openai/agents'
+import { Agent, RunContext, run } from '@openai/agents';
 
 // 定义上下文类型
 interface AppContext {
-  userId: string
-  locale: string
-  isPremium: boolean
+  userId: string;
+  locale: string;
+  isPremium: boolean;
 }
 
 // Agent 使用泛型指定上下文类型
 const agent = new Agent<AppContext>({
   name: 'Personalized Agent',
   instructions: 'You are a helpful assistant.'
-})
+});
 
 // 运行时传入上下文
 const result = await run(agent, 'Hello', {
@@ -33,7 +33,7 @@ const result = await run(agent, 'Hello', {
     locale: 'zh-CN',
     isPremium: true
   }
-})
+});
 ```
 
 ## 动态指令函数
@@ -41,52 +41,46 @@ const result = await run(agent, 'Hello', {
 `instructions` 可以是一个函数，根据上下文动态生成系统指令：
 
 ```typescript
-import { Agent, RunContext, run } from '@openai/agents'
+import { Agent, RunContext, run } from '@openai/agents';
 
-type Style = 'haiku' | 'pirate' | 'robot'
+type Style = 'haiku' | 'pirate' | 'robot';
 
 interface CustomContext {
-  style: Style
+  style: Style;
 }
 
 // 指令函数：接收 RunContext 和 Agent，返回指令字符串
-function customInstructions(
-  runContext: RunContext<CustomContext>,
-  _agent: Agent<CustomContext>
-): string {
-  const context = runContext.context
+function customInstructions(runContext: RunContext<CustomContext>, _agent: Agent<CustomContext>): string {
+  const context = runContext.context;
 
   if (context.style === 'haiku') {
-    return 'Only respond in haikus.'
+    return 'Only respond in haikus.';
   } else if (context.style === 'pirate') {
-    return 'Respond as a pirate. Use lots of pirate slang.'
+    return 'Respond as a pirate. Use lots of pirate slang.';
   } else {
-    return "Respond as a robot and say 'beep boop' a lot."
+    return "Respond as a robot and say 'beep boop' a lot.";
   }
 }
 
 const agent = new Agent<CustomContext>({
   name: 'Dynamic Agent',
   instructions: customInstructions // 传入函数而非字符串
-})
+});
 
 // 不同上下文产生不同行为
 const result1 = await run(agent, 'Tell me about the ocean', {
   context: { style: 'pirate' }
-})
+});
 
 const result2 = await run(agent, 'Tell me about the ocean', {
   context: { style: 'haiku' }
-})
+});
 ```
 
 ### 指令函数签名
 
 ```typescript
-type InstructionsFn<TContext> = (
-  runContext: RunContext<TContext>,
-  agent: Agent<TContext>
-) => string | Promise<string>
+type InstructionsFn<TContext> = (runContext: RunContext<TContext>, agent: Agent<TContext>) => string | Promise<string>;
 ```
 
 - `runContext.context` — 用户传入的自定义上下文
@@ -98,7 +92,7 @@ type InstructionsFn<TContext> = (
 使用 OpenAI Platform 的 Prompt 管理功能，通过 ID 引用 Prompt：
 
 ```typescript
-import { Agent, run } from '@openai/agents'
+import { Agent, run } from '@openai/agents';
 
 const agent = new Agent({
   name: 'Assistant',
@@ -110,17 +104,17 @@ const agent = new Agent({
       poem_style: 'sonnet'
     }
   }
-})
+});
 
-const result = await run(agent, 'Write me a poem about nature.')
+const result = await run(agent, 'Write me a poem about nature.');
 ```
 
 ### 动态变量
 
 ```typescript
 function pickPoemStyle(): string {
-  const styles = ['haiku', 'sonnet', 'limerick', 'free verse']
-  return styles[Math.floor(Math.random() * styles.length)]
+  const styles = ['haiku', 'sonnet', 'limerick', 'free verse'];
+  return styles[Math.floor(Math.random() * styles.length)];
 }
 
 const agent = new Agent({
@@ -132,7 +126,7 @@ const agent = new Agent({
       poem_style: pickPoemStyle() // 运行时动态选择
     }
   }
-})
+});
 ```
 
 ### Prompt ID vs Instructions
@@ -150,42 +144,42 @@ const agent = new Agent({
 使用 `previousResponseId` 在多次运行间保持对话上下文，无需管理 history：
 
 ```typescript
-import { Agent, run } from '@openai/agents'
+import { Agent, run } from '@openai/agents';
 
 const agent = new Agent({
   name: 'Chat Agent',
   instructions: 'You are a knowledgeable assistant.'
-})
+});
 
 // 第一轮
-let result = await run(agent, 'What is the largest country in South America?')
-console.log(result.finalOutput) // "Brazil..."
+let result = await run(agent, 'What is the largest country in South America?');
+console.log(result.finalOutput); // "Brazil..."
 
 // 第二轮 — 引用上一轮的上下文
 result = await run(agent, 'What is the capital of that country?', {
   previousResponseId: result.lastResponseId
-})
-console.log(result.finalOutput) // "Brasilia..."
+});
+console.log(result.finalOutput); // "Brasilia..."
 
 // 第三轮
 result = await run(agent, 'What is the weather there today?', {
   previousResponseId: result.lastResponseId
-})
+});
 ```
 
 ### 流式模式也支持
 
 ```typescript
-let stream = await run(agent, 'Tell me about Brazil', { stream: true })
+let stream = await run(agent, 'Tell me about Brazil', { stream: true });
 for await (const event of stream.toTextStream()) {
-  process.stdout.write(event)
+  process.stdout.write(event);
 }
 
 // 延续对话
 stream = await run(agent, 'What about its culture?', {
   stream: true,
   previousResponseId: stream.lastResponseId
-})
+});
 ```
 
 ## Conversations API
@@ -193,33 +187,33 @@ stream = await run(agent, 'What about its culture?', {
 使用 OpenAI Conversations API 在服务端管理对话：
 
 ```typescript
-import { Agent, run } from '@openai/agents'
-import OpenAI from 'openai'
+import { Agent, run } from '@openai/agents';
+import OpenAI from 'openai';
 
-const client = new OpenAI()
+const client = new OpenAI();
 
 // 创建对话
-const newConvo = await client.conversations.create({})
-const conversationId = newConvo.id
+const newConvo = await client.conversations.create({});
+const conversationId = newConvo.id;
 
 const agent = new Agent({
   name: 'Assistant',
   instructions: 'You are helpful.',
   tools: [getWeather]
-})
+});
 
-const options = { conversationId }
+const options = { conversationId };
 
 // 多轮对话自动保持上下文
-let result = await run(agent, 'What is the largest country in South America?', options)
-result = await run(agent, 'What is the capital of that country?', options)
-result = await run(agent, 'What is the weather in the city today?', options)
+let result = await run(agent, 'What is the largest country in South America?', options);
+result = await run(agent, 'What is the capital of that country?', options);
+result = await run(agent, 'What is the weather in the city today?', options);
 
 // 获取完整对话历史
-const convo = await client.conversations.items.list(conversationId)
+const convo = await client.conversations.items.list(conversationId);
 for await (const page of convo.iterPages()) {
   for (const item of page.getPaginatedItems()) {
-    console.log(JSON.stringify(item, null, 2))
+    console.log(JSON.stringify(item, null, 2));
   }
 }
 ```

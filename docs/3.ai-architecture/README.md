@@ -168,40 +168,40 @@ pnpm run review
 ### 错误处理
 
 ```typescript
-import { ExecutionError, logError } from '@main/ai/common/errors'
+import { ExecutionError, logError } from '@main/ai/common/errors';
 
 try {
   // 你的代码
 } catch (error) {
-  logError('moduleName', 'operation', error)
-  throw new ExecutionError('Operation failed', error)
+  logError('moduleName', 'operation', error);
+  throw new ExecutionError('Operation failed', error);
 }
 ```
 
 ### 性能监控
 
 ```typescript
-import { performanceMonitor } from '@main/ai/monitoring'
+import { performanceMonitor } from '@main/ai/monitoring';
 
 // 自动追踪性能
 const result = await performanceMonitor.measure('moduleName', 'operationName', async () => {
   // 你的操作
-})
+});
 ```
 
 ### Agent 缓存
 
 ```typescript
-import { agentFactory } from '@main/ai/agents'
+import { agentFactory } from '@main/ai/agents';
 
 // 获取或创建 Agent
 const agent = await agentFactory.getOrCreateAgent(sessionId, {
   preset: 'chat',
   tools: ['web_research']
-})
+});
 
 // 查看缓存统计
-const stats = agentFactory.getCacheStats()
+const stats = agentFactory.getCacheStats();
 ```
 
 ---
@@ -332,17 +332,17 @@ pnpm run review
 
 ```typescript
 // Agent
-import { agentFactory } from '@main/ai/agents'
-import { AgentRuntime, TeamRuntime } from '@main/ai/runtime'
+import { agentFactory } from '@main/ai/agents';
+import { AgentRuntime, TeamRuntime } from '@main/ai/runtime';
 
 // Memory
-import { sessionMemoryStore, shortTermMemory } from '@main/ai/memory'
+import { sessionMemoryStore, shortTermMemory } from '@main/ai/memory';
 
 // Monitoring
-import { performanceMonitor } from '@main/ai/monitoring'
+import { performanceMonitor } from '@main/ai/monitoring';
 
 // Errors
-import { ExecutionError, logError } from '@main/ai/common/errors'
+import { ExecutionError, logError } from '@main/ai/common/errors';
 ```
 
 ---

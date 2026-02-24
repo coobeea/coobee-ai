@@ -142,27 +142,27 @@ pnpm lint:architecture   # 架构检查
 
 ```typescript
 // 1. Agent LRU 缓存
-import { agentFactory } from '@main/ai/agents'
-const stats = agentFactory.getCacheStats()
+import { agentFactory } from '@main/ai/agents';
+const stats = agentFactory.getCacheStats();
 
 // 2. 性能监控
-import { performanceMonitor } from '@main/ai/monitoring'
+import { performanceMonitor } from '@main/ai/monitoring';
 await performanceMonitor.measure('module', 'op', async () => {
   // 你的代码
-})
+});
 
 // 3. 文件读取工具
 const agent = await agentFactory.createAgent(sessionId, {
   tools: ['read_file']
-})
+});
 
 // 4. 代码生成技能
-import { codeGenerationSkill } from '@main/ai/skills/builtin'
+import { codeGenerationSkill } from '@main/ai/skills/builtin';
 const result = await codeGenerationSkill.execute({
   sessionId,
   agent,
   userInput: '生成TypeScript函数'
-})
+});
 ```
 
 ---

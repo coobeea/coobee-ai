@@ -6,8 +6,8 @@
 
 ```vue
 <script setup lang="ts">
-import IconMdiHome from '~icons/mdi/home'
-import IconMdiAccount from '~icons/mdi/account'
+import IconMdiHome from '~icons/mdi/home';
+import IconMdiAccount from '~icons/mdi/account';
 </script>
 
 <template>
@@ -148,7 +148,7 @@ import IconMdiAccount from '~icons/mdi/account'
 
 ```vue
 <script setup>
-const isLiked = ref(false)
+const isLiked = ref(false);
 </script>
 
 <template>
@@ -156,10 +156,7 @@ const isLiked = ref(false)
   <component :is="isLiked ? IconMdiHeart : IconMdiHeartOutline" @click="isLiked = !isLiked" />
 
   <!-- 方式 3：CSS 类方式（更简洁） -->
-  <span
-    :class="`i-mdi-heart${isLiked ? '' : '-outline'} cursor-pointer`"
-    @click="isLiked = !isLiked"
-  ></span>
+  <span :class="`i-mdi-heart${isLiked ? '' : '-outline'} cursor-pointer`" @click="isLiked = !isLiked"></span>
 </template>
 ```
 
@@ -171,7 +168,7 @@ const features = [
   { icon: 'rocket', title: '快速', color: 'text-blue-600' },
   { icon: 'shield', title: '安全', color: 'text-green-600' },
   { icon: 'lightning-bolt', title: '高效', color: 'text-yellow-600' }
-]
+];
 </script>
 
 <template>

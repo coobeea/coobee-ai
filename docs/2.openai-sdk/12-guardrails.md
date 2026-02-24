@@ -36,8 +36,8 @@ graph LR
 在 Agent 执行前检查用户输入，阻止不合适的请求：
 
 ```typescript
-import { Agent, run, withTrace } from '@openai/agents'
-import { z } from 'zod'
+import { Agent, run, withTrace } from '@openai/agents';
+import { z } from 'zod';
 
 // 专门用于判断输入的护栏 Agent
 const guardrailAgent = new Agent({
@@ -46,7 +46,7 @@ const guardrailAgent = new Agent({
   outputType: z.object({
     isMathHomework: z.boolean()
   })
-})
+});
 
 // 主 Agent，配置输入护栏
 const agent = new Agent({
@@ -57,15 +57,15 @@ const agent = new Agent({
       name: 'Math Homework Guardrail',
       execute: async ({ input, context }) => {
         // 使用护栏 Agent 评估输入
-        const result = await run(guardrailAgent, input, { context })
+        const result = await run(guardrailAgent, input, { context });
         return {
           tripwireTriggered: result.finalOutput?.isMathHomework ?? false,
           outputInfo: result.finalOutput
-        }
+        };
       }
     }
   ]
-})
+});
 ```
 
 ### 处理护栏触发
@@ -74,11 +74,11 @@ const agent = new Agent({
 
 ```typescript
 try {
-  const result = await run(agent, 'Can you solve 2x + 5 = 15?')
-  console.log(result.finalOutput)
+  const result = await run(agent, 'Can you solve 2x + 5 = 15?');
+  console.log(result.finalOutput);
 } catch (e: unknown) {
   // 输入护栏被触发
-  console.log("Sorry, I can't help you with your math homework.")
+  console.log("Sorry, I can't help you with your math homework.");
 }
 ```
 
@@ -86,8 +86,8 @@ try {
 
 ```typescript
 interface GuardrailResult {
-  tripwireTriggered: boolean // 是否触发护栏
-  outputInfo?: unknown // 额外信息（用于日志或调试）
+  tripwireTriggered: boolean; // 是否触发护栏
+  outputInfo?: unknown; // 额外信息（用于日志或调试）
 }
 ```
 
@@ -106,15 +106,15 @@ const agent = new Agent({
       name: 'Phone Number Guardrail',
       execute: async ({ agentOutput }) => {
         // 检查输出中是否包含电话号码
-        const hasPhoneNumber = agentOutput.includes('650')
+        const hasPhoneNumber = agentOutput.includes('650');
         return {
           tripwireTriggered: hasPhoneNumber,
           outputInfo: 'Phone number found in output'
-        }
+        };
       }
     }
   ]
-})
+});
 ```
 
 ### 结构化输出护栏
@@ -126,7 +126,7 @@ const messageOutput = z.object({
   reasoning: z.string(),
   response: z.string(),
   userName: z.string().nullable()
-})
+});
 
 const agent = new Agent({
   name: 'Assistant',
@@ -136,19 +136,19 @@ const agent = new Agent({
       name: 'Phone Number Guardrail',
       execute: async ({ agentOutput }) => {
         // agentOutput 是结构化对象
-        const phoneInResponse = agentOutput.response.includes('650')
-        const phoneInReasoning = agentOutput.reasoning.includes('650')
+        const phoneInResponse = agentOutput.response.includes('650');
+        const phoneInReasoning = agentOutput.reasoning.includes('650');
         return {
           tripwireTriggered: phoneInResponse || phoneInReasoning,
           outputInfo: {
             phone_number_in_response: phoneInResponse,
             phone_number_in_reasoning: phoneInReasoning
           }
-        }
+        };
       }
     }
   ]
-})
+});
 ```
 
 ## 工具级护栏
@@ -156,8 +156,8 @@ const agent = new Agent({
 工具可以独立配置输入和输出护栏：
 
 ```typescript
-import { tool } from '@openai/agents'
-import { z } from 'zod'
+import { tool } from '@openai/agents';
+import { z } from 'zod';
 
 const getWeather = tool({
   name: 'get_weather',
@@ -170,16 +170,16 @@ const getWeather = tool({
     {
       name: 'city_validation',
       run: async ({ toolCall }) => {
-        const args = JSON.parse(toolCall.arguments)
+        const args = JSON.parse(toolCall.arguments);
         if (args.city.toLowerCase() !== 'tokyo') {
           return {
             behavior: {
               type: 'rejectContent',
               message: 'I can only check weather for cities in Japan.'
             }
-          }
+          };
         }
-        return { behavior: { type: 'allow' } }
+        return { behavior: { type: 'allow' } };
       }
     }
   ],
@@ -189,11 +189,11 @@ const getWeather = tool({
     {
       name: 'output_check',
       run: async ({ output }) => {
-        return { behavior: { type: 'allow' } }
+        return { behavior: { type: 'allow' } };
       }
     }
   ]
-})
+});
 ```
 
 ### 工具护栏行为
@@ -213,53 +213,53 @@ const getWeather = tool({
 在流式输出过程中实时检查内容，必要时提前终止：
 
 ```typescript
-import { Agent, run } from '@openai/agents'
-import { z } from 'zod'
+import { Agent, run } from '@openai/agents';
+import { z } from 'zod';
 
 // 护栏检查 Agent
 const GuardrailOutput = z.object({
   reasoning: z.string(),
   isReadableByTenYearOld: z.boolean()
-})
+});
 
 const guardrailAgent = new Agent({
   name: 'Readability Checker',
   instructions: 'Judge whether the response is simple enough for a 10-year-old.',
   outputType: GuardrailOutput
-})
+});
 
 async function runGuardrail(text: string) {
-  const result = await run(guardrailAgent, text)
-  return result.finalOutput
+  const result = await run(guardrailAgent, text);
+  return result.finalOutput;
 }
 
 // 流式输出 + 定期检查
 const agent = new Agent({
   name: 'Science Agent',
   instructions: 'Explain scientific concepts.'
-})
+});
 
-let currentText = ''
-let nextCheckAt = 300 // 每 300 字符检查一次
+let currentText = '';
+let nextCheckAt = 300; // 每 300 字符检查一次
 
-const result = await run(agent, 'What is a black hole?', { stream: true })
+const result = await run(agent, 'What is a black hole?', { stream: true });
 
 for await (const event of result) {
   if (event.type === 'raw_model_stream_event' && event.data.type === 'output_text_delta') {
     // 输出文本
-    process.stdout.write(event.data.delta)
-    currentText += event.data.delta
+    process.stdout.write(event.data.delta);
+    currentText += event.data.delta;
 
     // 达到阈值时检查
     if (currentText.length > nextCheckAt) {
-      const check = await runGuardrail(currentText)
+      const check = await runGuardrail(currentText);
 
       if (check && !check.isReadableByTenYearOld) {
-        console.log(`\n\nGuardrail tripped! Reason: ${check.reasoning}`)
-        return // 提前终止流式输出
+        console.log(`\n\nGuardrail tripped! Reason: ${check.reasoning}`);
+        return; // 提前终止流式输出
       }
 
-      nextCheckAt += 300 // 下次检查点
+      nextCheckAt += 300; // 下次检查点
     }
   }
 }
@@ -302,7 +302,7 @@ const agent = new Agent({
 
   // 工具带有自己的护栏
   tools: [getWeatherWithGuardrails]
-})
+});
 ```
 
 ## 三层护栏对比

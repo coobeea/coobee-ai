@@ -1,5 +1,5 @@
-import { log } from '../common/logger'
-import { LifecycleHook, LifecyclePhase, LifecycleContext } from '../common/types'
+import { log } from '../common/logger';
+import { LifecycleHook, LifecyclePhase, LifecycleContext } from '../common/types';
 
 /**
  * 后台进程清理 Hook
@@ -15,18 +15,18 @@ export const BeforeQuitProcessHook: LifecycleHook = {
   async execute(_context: LifecycleContext): Promise<void> {
     try {
       // 延迟导入避免循环依赖
-      const { ProcessRegistry } = await import('../ai/process/ProcessRegistry')
-      const registry = ProcessRegistry.getInstance()
+      const { ProcessRegistry } = await import('../ai/process/ProcessRegistry');
+      const registry = ProcessRegistry.getInstance();
 
-      const runningCount = registry.runningCount
+      const runningCount = registry.runningCount;
       if (runningCount > 0) {
-        log.info(`[BeforeQuitProcessHook] 正在清理 ${runningCount} 个运行中的后台进程...`)
+        log.info(`[BeforeQuitProcessHook] 正在清理 ${runningCount} 个运行中的后台进程...`);
       }
 
-      registry.cleanup()
-      log.info('[BeforeQuitProcessHook] 后台进程清理完成')
+      registry.cleanup();
+      log.info('[BeforeQuitProcessHook] 后台进程清理完成');
     } catch (error) {
-      log.error('[BeforeQuitProcessHook] 后台进程清理失败:', error)
+      log.error('[BeforeQuitProcessHook] 后台进程清理失败:', error);
     }
   }
-}
+};

@@ -23,15 +23,15 @@ Preload 在渲染进程加载前执行，通过 `contextBridge` 向渲染进程�
 
 ```typescript
 // 平台检测（可与 usePlatform 的 navigator 方案二选一）
-const platform = window.api.getPlatform() // 'darwin' | 'win32' | 'linux'
+const platform = window.api.getPlatform(); // 'darwin' | 'win32' | 'linux'
 
 // 窗口 ID（向主进程拉取，用于 IPC 时标识当前窗口）
-const windowId = await window.api.getWindowId()
+const windowId = await window.api.getWindowId();
 
 // 窗口控制
-window.electron.ipcRenderer.send('window:minimize')
-window.electron.ipcRenderer.send('window:maximize')
-window.electron.ipcRenderer.send('window:close')
+window.electron.ipcRenderer.send('window:minimize');
+window.electron.ipcRenderer.send('window:maximize');
+window.electron.ipcRenderer.send('window:close');
 ```
 
 ## 类型声明

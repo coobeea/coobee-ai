@@ -11,25 +11,25 @@
 使用 Zod 定义输出类型，享受完整的 TypeScript 类型推断：
 
 ```typescript
-import { Agent, run } from '@openai/agents'
-import { z } from 'zod'
+import { Agent, run } from '@openai/agents';
+import { z } from 'zod';
 
 const output = z.object({
   title: z.string(),
   description: z.string()
-})
+});
 
 const agent = new Agent({
   name: 'Structured Agent',
   instructions: "You're a helpful assistant.",
   outputType: output
-})
+});
 
-const result = await run(agent, 'Describe TypeScript in one sentence.')
+const result = await run(agent, 'Describe TypeScript in one sentence.');
 
 // result.finalOutput 类型自动推断为 { title: string; description: string }
-console.log(result.finalOutput.title)
-console.log(result.finalOutput.description)
+console.log(result.finalOutput.title);
+console.log(result.finalOutput.description);
 ```
 
 ### 复杂 Schema 示例
@@ -39,13 +39,13 @@ const Weather = z.object({
   city: z.string().describe('City name'),
   temperatureRange: z.string().describe('Temperature range like 14-20C'),
   conditions: z.string().describe('Weather conditions description')
-})
+});
 
 const agent = new Agent({
   name: 'Weather Reporter',
   instructions: 'Report the weather in the requested city.',
   outputType: Weather
-})
+});
 ```
 
 ## 方式二：JSON Schema
@@ -53,7 +53,7 @@ const agent = new Agent({
 使用纯 JSON Schema 定义，不依赖 Zod：
 
 ```typescript
-import { Agent, run, JsonSchemaDefinition } from '@openai/agents'
+import { Agent, run, JsonSchemaDefinition } from '@openai/agents';
 
 const WeatherSchema: JsonSchemaDefinition = {
   type: 'json_schema',
@@ -68,17 +68,17 @@ const WeatherSchema: JsonSchemaDefinition = {
     required: ['city', 'forecast'],
     additionalProperties: false
   }
-}
+};
 
 const agent = new Agent({
   name: 'Weather Reporter',
   instructions: 'Return the city and a short weather forecast.',
   outputType: WeatherSchema
-})
+});
 
-const result = await run(agent, 'Weather in Paris?')
+const result = await run(agent, 'Weather in Paris?');
 // result.finalOutput 类型为 unknown，需要手动断言
-const output = result.finalOutput as { city: string; forecast: string }
+const output = result.finalOutput as { city: string; forecast: string };
 ```
 
 ### JSON Schema 关键参数
@@ -110,20 +110,20 @@ const output = result.finalOutput as { city: string; forecast: string }
 const EvaluationResult = z.object({
   good_quality: z.boolean(),
   is_scifi: z.boolean()
-})
+});
 
 const checker = new Agent({
   name: 'Outline Checker',
   instructions: 'Judge the quality of the story outline.',
   outputType: EvaluationResult
-})
+});
 
-const result = await run(checker, outlineText)
+const result = await run(checker, outlineText);
 
 // 基于结构化结果进行门控
 if (!result.finalOutput.good_quality) {
-  console.log('Quality check failed')
-  return
+  console.log('Quality check failed');
+  return;
 }
 ```
 

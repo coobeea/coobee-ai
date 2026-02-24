@@ -11,7 +11,7 @@ let messageCounterMutex = Promise.resolve();
 async function generateMessageId(): Promise<string> {
   await messageCounterMutex;
   let release: () => void;
-   
+
   messageCounterMutex = new Promise<void>((resolve) => {
     release = resolve;
   });

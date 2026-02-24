@@ -92,9 +92,9 @@
 ### 1. Tiptap 富文本编辑器
 
 ```typescript
-import { Editor } from '@tiptap/core'
-import StarterKit from '@tiptap/starter-kit'
-import { VueNodeViewRenderer } from '@tiptap/vue-3'
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import { VueNodeViewRenderer } from '@tiptap/vue-3';
 
 const editor = new Editor({
   extensions: [
@@ -102,45 +102,45 @@ const editor = new Editor({
     // 添加更多扩展...
   ],
   content: '<p>Hello World!</p>'
-})
+});
 ```
 
 ### 2. OpenAI SDK
 
 ```typescript
-import OpenAI from 'openai'
+import OpenAI from 'openai';
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
-})
+});
 
 const response = await client.chat.completions.create({
   model: 'gpt-4',
   messages: [{ role: 'user', content: 'Hello!' }]
-})
+});
 ```
 
 ### 3. Model Context Protocol
 
 ```typescript
-import { Client } from '@modelcontextprotocol/sdk'
+import { Client } from '@modelcontextprotocol/sdk';
 
 const client = new Client({
   // 配置...
-})
+});
 ```
 
 ### 4. Better SQLite3
 
 ```typescript
-import Database from 'better-sqlite3-multiple-ciphers'
+import Database from 'better-sqlite3-multiple-ciphers';
 
 const db = new Database('mydb.db', {
   // cipher: 'sqlcipher', // 可选加密
-})
+});
 
-const stmt = db.prepare('SELECT * FROM users')
-const users = stmt.all()
+const stmt = db.prepare('SELECT * FROM users');
+const users = stmt.all();
 ```
 
 ### 5. Monaco Editor (Vite 配置)
@@ -148,13 +148,13 @@ const users = stmt.all()
 在 `electron.vite.config.ts` 中添加：
 
 ```typescript
-import monacoEditorPlugin from 'vite-plugin-monaco-editor-esm'
+import monacoEditorPlugin from 'vite-plugin-monaco-editor-esm';
 
 export default defineConfig({
   renderer: {
     plugins: [monacoEditorPlugin()]
   }
-})
+});
 ```
 
 ---
@@ -228,7 +228,7 @@ export default defineConfig({
 
 ```typescript
 // src/router/index.ts
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router';
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -239,44 +239,44 @@ const router = createRouter({
       component: () => import('@/views/Home.vue')
     }
   ]
-})
+});
 
-export default router
+export default router;
 ```
 
 #### 2. Pinia 状态管理
 
 ```typescript
 // src/stores/counter.ts
-import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 
 export const useCounterStore = defineStore(
   'counter',
   () => {
-    const count = ref(0)
+    const count = ref(0);
 
     function increment() {
-      count.value++
+      count.value++;
     }
 
-    return { count, increment }
+    return { count, increment };
   },
   {
     persist: true // 启用持久化
   }
-)
+);
 ```
 
 #### 3. VueUse 工具集
 
 ```vue
 <script setup lang="ts">
-import { useMouse, useLocalStorage, useToggle } from '@vueuse/core'
+import { useMouse, useLocalStorage, useToggle } from '@vueuse/core';
 
-const { x, y } = useMouse()
-const [isDark, toggle] = useToggle()
-const settings = useLocalStorage('settings', { theme: 'light' })
+const { x, y } = useMouse();
+const [isDark, toggle] = useToggle();
+const settings = useLocalStorage('settings', { theme: 'light' });
 </script>
 ```
 
@@ -284,10 +284,10 @@ const settings = useLocalStorage('settings', { theme: 'light' })
 
 ```vue
 <script setup lang="ts">
-import { RecycleScroller } from 'vue-virtual-scroller'
-import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
+import { RecycleScroller } from 'vue-virtual-scroller';
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 
-const items = ref(Array.from({ length: 10000 }, (_, i) => ({ id: i })))
+const items = ref(Array.from({ length: 10000 }, (_, i) => ({ id: i })));
 </script>
 
 <template>
@@ -383,7 +383,7 @@ const items = ref(Array.from({ length: 10000 }, (_, i) => ({ id: i })))
 
 ```vue
 <script setup lang="ts">
-import { Icon } from '@iconify/vue'
+import { Icon } from '@iconify/vue';
 </script>
 
 <template>

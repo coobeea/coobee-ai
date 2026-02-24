@@ -189,21 +189,21 @@ PiMono 的 `tool_execution_end` 处理需要解包 pi-SDK 的 `AgentToolResult`�
 
 ```typescript
 // 改动前
-const result = evt.result
+const result = evt.result;
 onChunk({
   type: 'tool:done',
   content: typeof result === 'string' ? result : JSON.stringify(result),
   data: { toolName, callId, output: result, isError }
-})
+});
 
 // 改动后
-const rawResult = evt.result
-const output = this.extractToolOutput(rawResult) // 新增: 从 AgentToolResult 提取纯文本
+const rawResult = evt.result;
+const output = this.extractToolOutput(rawResult); // 新增: 从 AgentToolResult 提取纯文本
 onChunk({
   type: 'tool:done',
   content: output,
   data: { toolName, callId, output, isError }
-})
+});
 ```
 
 ### D5: llm:done data 缺少 responseId (中)

@@ -34,12 +34,7 @@
   - `SummarizingSession`: 自动调用 LLM 压缩旧对话为摘要
 - **API**:
   ```typescript
-  ;-addSystemMessage() -
-    addUserMessage() -
-    addAssistantMessage() -
-    getMessages() -
-    clearHistory() -
-    reset()
+  -addSystemMessage() - addUserMessage() - addAssistantMessage() - getMessages() - clearHistory() - reset();
   ```
 
 #### 2.2 Orchestrator 集成到 TeamRuntime ✅
@@ -237,17 +232,17 @@
 
 ```typescript
 export class TrimmingSession {
-  private messages: Message[] = [] // 自己维护
+  private messages: Message[] = []; // 自己维护
 
   async addUserMessage(content: string) {
-    this.messages.push({ role: 'user', content, timestamp: Date.now() })
-    await this.trimHistory() // 自动修剪
+    this.messages.push({ role: 'user', content, timestamp: Date.now() });
+    await this.trimHistory(); // 自动修剪
   }
 
   private async trimHistory() {
     if (this.messages.length > this.maxTurns * 2) {
-      const trimmed = this.messages.slice(-this.maxTurns * 2)
-      this.messages = [...this.systemMessages, ...trimmed]
+      const trimmed = this.messages.slice(-this.maxTurns * 2);
+      this.messages = [...this.systemMessages, ...trimmed];
     }
   }
 }
@@ -262,17 +257,17 @@ export class TrimmingSession {
 ```typescript
 // 修复前
 interface SubTask {
-  objective?: string
-  name: string
-  workerId?: string
-  assignedWorker?: string
+  objective?: string;
+  name: string;
+  workerId?: string;
+  assignedWorker?: string;
 }
 
 // 修复后
 interface SubTask {
-  name: string // 统一使用
-  assignedWorker: string // 统一使用
-  status: SubTaskStatus
+  name: string; // 统一使用
+  assignedWorker: string; // 统一使用
+  status: SubTaskStatus;
 }
 ```
 
@@ -284,12 +279,12 @@ interface SubTask {
 
 ```typescript
 // 修复前
-const result = await this.db.execute(sql, params)
-return result.changes > 0 // ❌ 错误
+const result = await this.db.execute(sql, params);
+return result.changes > 0; // ❌ 错误
 
 // 修复后
-const changedRows = await this.db.execute(sql, params)
-return changedRows > 0 // ✅ 正确
+const changedRows = await this.db.execute(sql, params);
+return changedRows > 0; // ✅ 正确
 ```
 
 ---

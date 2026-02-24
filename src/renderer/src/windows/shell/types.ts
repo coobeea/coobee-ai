@@ -5,22 +5,22 @@
 /**
  * 消息角色
  */
-export type MessageRole = 'user' | 'assistant' | 'system'
+export type MessageRole = 'user' | 'assistant' | 'system';
 
 /**
  * 消息接口
  */
 export interface Message {
   /** 消息 ID */
-  id: string
+  id: string;
   /** 角色 */
-  role: MessageRole
+  role: MessageRole;
   /** 内容 */
-  content: string
+  content: string;
   /** 创建时间 */
-  createdAt: Date
+  createdAt: Date;
   /** 是否正在生成 */
-  isGenerating?: boolean
+  isGenerating?: boolean;
 }
 
 /**
@@ -28,15 +28,15 @@ export interface Message {
  */
 export interface Conversation {
   /** 对话 ID */
-  id: string
+  id: string;
   /** 标题 */
-  title: string
+  title: string;
   /** 消息列表 */
-  messages: Message[]
+  messages: Message[];
   /** 创建时间 */
-  createdAt: Date
+  createdAt: Date;
   /** 更新时间 */
-  updatedAt: Date
+  updatedAt: Date;
 }
 
 /**
@@ -44,9 +44,9 @@ export interface Conversation {
  */
 export interface ShellConfig {
   /** 是否显示侧边栏 */
-  showSidebar: boolean
+  showSidebar: boolean;
   /** 主题 */
-  theme: 'light' | 'dark' | 'auto'
+  theme: 'light' | 'dark' | 'auto';
   /** 字体大小 */
-  fontSize: 'small' | 'medium' | 'large'
+  fontSize: 'small' | 'medium' | 'large';
 }

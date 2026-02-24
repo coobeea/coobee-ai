@@ -148,9 +148,9 @@ Skill 来源按优先级：内置 → Extension 贡献 → 用户 → Agent 自�
 ## 添加新工具
 
 ```typescript
-import { z } from 'zod'
-import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types'
-import { ToolCategory } from '../types'
+import { z } from 'zod';
+import type { ToolDefinition, ToolStreamUpdate, ToolResult } from '../types';
+import { ToolCategory } from '../types';
 
 export const myTool: ToolDefinition = {
   name: 'my_tool',
@@ -166,10 +166,10 @@ export const myTool: ToolDefinition = {
     signal?: AbortSignal,
     context?: ToolExecutionContext
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
-    yield { type: 'progress', content: 'Processing...' }
-    return { success: true, llmContent: 'Done.' }
+    yield { type: 'progress', content: 'Processing...' };
+    return { success: true, llmContent: 'Done.' };
   }
-}
+};
 ```
 
 然后在 `builtin/index.ts` 中导入并加入 `builtinTools` 数组。

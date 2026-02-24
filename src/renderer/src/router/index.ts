@@ -47,6 +47,11 @@ const router = createRouter({
           path: 'settings',
           name: 'settings',
           component: () => import('@/views/SettingsView.vue')
+        },
+        {
+          path: 'observability',
+          name: 'observability',
+          component: () => import('@/views/observability/ObservabilityView.vue')
         }
       ]
     }

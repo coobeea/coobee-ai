@@ -98,9 +98,9 @@ pnpm typecheck
 ```typescript
 // ❌ 静默失败
 try {
-  await operation()
+  await operation();
 } catch (error) {
-  return null
+  return null;
 }
 ```
 
@@ -109,10 +109,10 @@ try {
 ```typescript
 // ✅ 显式错误处理
 try {
-  await operation()
+  await operation();
 } catch (error) {
-  console.error('[Module] Operation failed:', { context, error })
-  throw new ModuleError('Operation failed', { originalError: error })
+  console.error('[Module] Operation failed:', { context, error });
+  throw new ModuleError('Operation failed', { originalError: error });
 }
 ```
 
@@ -131,12 +131,12 @@ try {
 ```typescript
 class ResourceManager {
   // ✅ 必需
-  async initialize(): Promise<void>
-  async cleanup(): Promise<void>
+  async initialize(): Promise<void>;
+  async cleanup(): Promise<void>;
 
   // ✅ 推荐
-  private initialized: boolean
-  private checkInitialized(): void
+  private initialized: boolean;
+  private checkInitialized(): void;
 }
 ```
 
@@ -182,16 +182,16 @@ pnpm test --coverage
 ```typescript
 // ❌ 不一致
 interface SubTask {
-  objective: string // 与 name 重复
-  name: string
-  workerId?: string // 与 assignedWorker 重复
-  assignedWorker?: string
+  objective: string; // 与 name 重复
+  name: string;
+  workerId?: string; // 与 assignedWorker 重复
+  assignedWorker?: string;
 }
 
 // ✅ 一致
 interface SubTask {
-  name: string
-  assignedWorker: string
+  name: string;
+  assignedWorker: string;
 }
 ```
 

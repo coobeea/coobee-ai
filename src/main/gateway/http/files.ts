@@ -26,6 +26,23 @@ const MAX_DEPTH = 5;
 const DEFAULT_DEPTH = 3;
 const MAX_CHILDREN_PER_DIR = 200;
 
+/** 支持预览的二进制文件扩展名 */
+const PREVIEWABLE_BINARY_EXTS = [
+  '.pdf',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.svg',
+  '.mp4',
+  '.webm',
+  '.ogg',
+  '.mp3',
+  '.wav'
+];
+
 export interface FileTreeNode {
   name: string;
   path: string;
@@ -175,7 +192,21 @@ export function registerFileRoutes(router: Router): void {
 
       const ext = path.extname(filePath).slice(1).toLowerCase();
 
-      // 检查是否是二进制文件（简单判断）
+      // 可预览的二进制文件：返回 200，content 为空，前端使用 /files/serve 加载
+      if (PREVIEWABLE_BINARY_EXTS.includes(ext)) {
+        ctx.body = {
+          path: filePath,
+          name: path.basename(filePath),
+          size: stat.size,
+          language: 'plaintext',
+          content: '',
+          chunked: false,
+          previewable: true
+        };
+        return;
+      }
+
+      // 其他二进制文件：不支持
       if (isBinaryFile(ext)) {
         ctx.status = 415;
         ctx.body = { error: 'Binary files are not supported for preview' };
@@ -243,6 +274,77 @@ export function registerFileRoutes(router: Router): void {
         return;
       }
       log.error('[files.content] Error:', err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // ==================== SERVE (Binary) ====================
+  // 用于预览二进制文件（PDF、图片、视频等）
+  // GET /gateway/files/serve?path=<file>
+
+  const MIME_MAP: Record<string, string> = {
+    pdf: 'application/pdf',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    bmp: 'image/bmp',
+    ico: 'image/x-icon',
+    svg: 'image/svg+xml',
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    ogg: 'video/ogg',
+    mov: 'video/quicktime',
+    avi: 'video/x-msvideo',
+    mkv: 'video/x-matroska'
+  };
+
+  router.get('/files/serve', async (ctx) => {
+    const filePath = ctx.query.path as string | undefined;
+
+    if (!filePath) {
+      ctx.status = 400;
+      ctx.body = { error: 'path query parameter is required' };
+      return;
+    }
+
+    const { Env } = await import('@main/common/env');
+    const workspacesDir = Env.paths.workspacesDir;
+
+    if (!isPathSafe(filePath, workspacesDir)) {
+      ctx.status = 400;
+      ctx.body = { error: 'Invalid path: directory traversal not allowed' };
+      return;
+    }
+
+    try {
+      const stat = await fs.promises.stat(filePath);
+
+      if (stat.isDirectory()) {
+        ctx.status = 400;
+        ctx.body = { error: 'Path is a directory, not a file' };
+        return;
+      }
+
+      const ext = path.extname(filePath).slice(1).toLowerCase();
+      if (!PREVIEWABLE_BINARY_EXTS.includes(ext)) {
+        ctx.status = 415;
+        ctx.body = { error: 'File type not supported for preview' };
+        return;
+      }
+
+      const mimeType = MIME_MAP[ext] || 'application/octet-stream';
+      ctx.type = mimeType;
+      ctx.body = fs.createReadStream(filePath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        ctx.status = 404;
+        ctx.body = { error: 'File not found' };
+        return;
+      }
+      log.error('[files.serve] Error:', err);
       ctx.status = 500;
       ctx.body = { error: err instanceof Error ? err.message : String(err) };
     }

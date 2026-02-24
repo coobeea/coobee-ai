@@ -31,28 +31,28 @@ better-sqlite3
 ### 使用方式
 
 ```typescript
-import { SQLiteService } from '@main/common/database'
+import { SQLiteService } from '@main/common/database';
 
 // 获取单例实例（无需手动初始化）
-const sqlite = SQLiteService.getInstance()
+const sqlite = SQLiteService.getInstance();
 
 // 查询
-const users = await sqlite.query('SELECT * FROM users WHERE age > ?', [18])
+const users = await sqlite.query('SELECT * FROM users WHERE age > ?', [18]);
 
 // 插入
-await sqlite.insert('INSERT INTO users (id, name) VALUES (?, ?)', [sqlite.generateId(), 'John'])
+await sqlite.insert('INSERT INTO users (id, name) VALUES (?, ?)', [sqlite.generateId(), 'John']);
 
 // 更新
-await sqlite.update('UPDATE users SET name = ? WHERE id = ?', ['Jane', '123'])
+await sqlite.update('UPDATE users SET name = ? WHERE id = ?', ['Jane', '123']);
 
 // 删除
-await sqlite.delete('DELETE FROM users WHERE id = ?', ['123'])
+await sqlite.delete('DELETE FROM users WHERE id = ?', ['123']);
 
 // 事务
 await sqlite.transaction(async (tx) => {
-  await tx.insert('INSERT INTO users VALUES (?, ?)', [id, 'John'])
-  await tx.insert('INSERT INTO logs VALUES (?, ?)', [logId, 'Created user'])
-})
+  await tx.insert('INSERT INTO users VALUES (?, ?)', [id, 'John']);
+  await tx.insert('INSERT INTO logs VALUES (?, ?)', [logId, 'Created user']);
+});
 ```
 
 ### API 参考
@@ -95,10 +95,10 @@ await sqlite.transaction(async (tx) => {
 ### 使用方式
 
 ```typescript
-import { DuckDBService } from '@main/common/database'
+import { DuckDBService } from '@main/common/database';
 
 // 获取已初始化的单例实例（无需传参）
-const duckdb = DuckDBService.getInstance()
+const duckdb = DuckDBService.getInstance();
 
 // 日志分析
 const stats = await duckdb.query(`
@@ -109,13 +109,13 @@ const stats = await duckdb.query(`
   FROM app_logs
   WHERE timestamp >= NOW() - INTERVAL '24 hours'
   GROUP BY hour, level
-`)
+`);
 
 // 导出为 Parquet
-await duckdb.writeParquet('SELECT * FROM logs', '/path/to/logs.parquet')
+await duckdb.writeParquet('SELECT * FROM logs', '/path/to/logs.parquet');
 
 // 关闭连接
-duckdb.close()
+duckdb.close();
 ```
 
 ### API 参考
@@ -158,43 +158,43 @@ duckdb.close()
 
 ```typescript
 // ✅ SQLite: 用户配置、应用设置、实时 CRUD
-const sqlite = SQLiteService.getInstance()
-await sqlite.insert('INSERT INTO user_settings ...')
+const sqlite = SQLiteService.getInstance();
+await sqlite.insert('INSERT INTO user_settings ...');
 
 // ✅ DuckDB: 日志分析、数据统计、复杂查询
-const duckdb = DuckDBService.getInstance()
-const stats = await duckdb.query('SELECT ... GROUP BY ...')
+const duckdb = DuckDBService.getInstance();
+const stats = await duckdb.query('SELECT ... GROUP BY ...');
 ```
 
 ### 2. 参数化查询（防止 SQL 注入）
 
 ```typescript
 // ✅ 好的
-await sqlite.query('SELECT * FROM users WHERE id = ?', [userId])
+await sqlite.query('SELECT * FROM users WHERE id = ?', [userId]);
 
 // ❌ 不好的
-await sqlite.query(`SELECT * FROM users WHERE id = '${userId}'`)
+await sqlite.query(`SELECT * FROM users WHERE id = '${userId}'`);
 ```
 
 ### 3. 使用事务
 
 ```typescript
 await sqlite.transaction(async (tx) => {
-  await tx.insert('INSERT INTO users ...')
-  await tx.insert('INSERT INTO logs ...')
-})
+  await tx.insert('INSERT INTO users ...');
+  await tx.insert('INSERT INTO logs ...');
+});
 ```
 
 ### 4. 资源管理
 
 ```typescript
 // SQLite: 无需手动管理，自动清理
-const sqlite = SQLiteService.getInstance()
+const sqlite = SQLiteService.getInstance();
 
 // DuckDB: 需要手动关闭
-const duckdb = new DuckDBService(dataPath)
+const duckdb = new DuckDBService(dataPath);
 // ... 使用完毕后
-duckdb.close()
+duckdb.close();
 ```
 
 ## 生命周期 Hooks

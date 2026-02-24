@@ -161,10 +161,10 @@ OpenClaw 构建在三个 `@mariozechner/pi-*` 包之上，形成清晰的三层�
 // src/process/command-queue.ts
 // 基于内存队列的命令串行化，每个 lane 独立
 type LaneState = {
-  queue: QueueEntry[]
-  active: number
-  maxConcurrent: number // 默认 1
-}
+  queue: QueueEntry[];
+  active: number;
+  maxConcurrent: number; // 默认 1
+};
 ```
 
 **同一个 session 的多条消息会排队串行执行**。Lane 以 `session:<sessionKey>` 为 key，确保不会并发写同一个 session file。
@@ -185,7 +185,7 @@ CommandLane.Cron     → maxConcurrent: 1  (定时任务)
 ```typescript
 // src/agents/session-write-lock.ts
 // 基于 fs.open(lockPath, 'wx') 的排他文件锁
-acquireSessionWriteLock({ sessionFile })
+acquireSessionWriteLock({ sessionFile });
 ```
 
 - 基于 `.lock` 文件实现互斥

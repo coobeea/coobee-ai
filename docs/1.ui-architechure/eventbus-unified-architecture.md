@@ -51,7 +51,7 @@ eventBus.emit('tab:created', {
   title: tabInfo.title,
   url: tabInfo.url,
   position: tabInfo.position
-})
+});
 ```
 
 #### closeTab() - Tab 关闭
@@ -61,7 +61,7 @@ eventBus.emit('tab:created', {
 eventBus.emit('tab:closed', {
   windowId,
   tabId
-})
+});
 ```
 
 #### switchTab() - Tab 激活
@@ -69,8 +69,8 @@ eventBus.emit('tab:closed', {
 ```typescript
 // 在 Tab 切换成功后
 // 记录 previousTabId
-const previousTab = Array.from(windowInfo.tabs.values()).find((t) => t.isActive)
-const previousTabId = previousTab ? previousTab.id : null
+const previousTab = Array.from(windowInfo.tabs.values()).find((t) => t.isActive);
+const previousTabId = previousTab ? previousTab.id : null;
 
 // ... 切换逻辑 ...
 
@@ -78,7 +78,7 @@ eventBus.emit('tab:activated', {
   windowId,
   tabId,
   previousTabId
-})
+});
 ```
 
 #### updateTab() - Tab 更新（新增方法）
@@ -115,16 +115,16 @@ updateTab(
 ```typescript
 // 在 Tab 重新排序成功后
 tabIds.forEach((tabId, toPosition) => {
-  const tab = windowInfo.tabs.get(tabId)
+  const tab = windowInfo.tabs.get(tabId);
   if (tab && tab.position !== toPosition) {
     eventBus.emit('tab:moved', {
       windowId,
       tabId,
       fromPosition: tab.position,
       toPosition
-    })
+    });
   }
-})
+});
 ```
 
 #### Window 事件（已有）
@@ -230,12 +230,12 @@ IPC Handlers
 
 ```typescript
 // 1. 前端调用 IPC
-await window.api.tab.create({ title: 'New Tab', url: 'local://chat' })
+await window.api.tab.create({ title: 'New Tab', url: 'local://chat' });
 
 // 2. IPC Handler 接收（tabHandlers.ts）
 ipcMain.handle(TabChannels.CREATE, async (event, req) => {
   // 3. 调用 WindowManager
-  const tabId = await windowManager.createTab(windowId, config)
+  const tabId = await windowManager.createTab(windowId, config);
 
   // 4. WindowManager 执行 + 发送事件
   //    ├─ 创建 Tab
@@ -243,8 +243,8 @@ ipcMain.handle(TabChannels.CREATE, async (event, req) => {
   //    └─ return tabId
 
   // 5. IPC Handler 返回结果
-  return { success: true, data: { tabId } }
-})
+  return { success: true, data: { tabId } };
+});
 
 // 6. 事件流转
 // EventBus → IpcEventBroadcaster → Preload → 前端 EventBus → 组件

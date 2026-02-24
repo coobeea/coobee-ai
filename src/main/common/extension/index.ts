@@ -2,11 +2,11 @@
  * Extension 系统统一导出
  */
 
-export { ExtensionRegistry } from './ExtensionRegistry'
-export { ExtensionHookRunner } from './ExtensionHookRunner'
-export { ExtensionManager } from './ExtensionManager'
-export { ExtensionLoader } from './ExtensionLoader'
-export { createExtensionApi } from './ExtensionApi'
+export { ExtensionRegistry } from './ExtensionRegistry';
+export { ExtensionHookRunner } from './ExtensionHookRunner';
+export { ExtensionManager } from './ExtensionManager';
+export { ExtensionLoader } from './ExtensionLoader';
+export { createExtensionApi } from './ExtensionApi';
 
 // 类型
 export type {
@@ -34,6 +34,6 @@ export type {
   AfterToolCallEvent,
   MessageReceivedEvent,
   SessionEvent
-} from './types'
+} from './types';
 
-export { EXTENSION_HOOK_MODE } from './types'
+export { EXTENSION_HOOK_MODE } from './types';

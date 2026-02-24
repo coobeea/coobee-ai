@@ -85,6 +85,21 @@ export class ModelSelector {
   }
 
   /**
+   * 获取模型组的所有候选模型（用于故障转移重试）
+   *
+   * @param modelRef 模型引用，如 "@high-performance" 或 "openai/gpt-4o"
+   * @returns 组内模型列表（"provider/model" 格式），非组引用返回 null
+   */
+  getGroupCandidates(modelRef: string): string[] | null {
+    if (!modelRef.startsWith('@')) {
+      return null;
+    }
+    const groupName = modelRef.substring(1);
+    const candidates = this.groupResolver.getGroupCandidates(groupName);
+    return candidates.length > 0 ? candidates : null;
+  }
+
+  /**
    * 🆕 自动选择模型（根据 auto 配置）
    */
   resolveAuto(context?: ModelSelectionContext): string | null {

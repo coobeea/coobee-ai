@@ -44,7 +44,7 @@ const ERROR_MESSAGES: Record<GatewayErrorCode, string> = {
   [GatewayErrorCode.INTERNAL_ERROR]: 'Internal error',
   [GatewayErrorCode.UNAUTHORIZED]: 'Unauthorized',
   [GatewayErrorCode.FORBIDDEN]: 'Forbidden'
-}
+};
 
 // ==================== 错误类 ====================
 
@@ -55,12 +55,12 @@ const ERROR_MESSAGES: Record<GatewayErrorCode, string> = {
  * 构建结构化的 GatewayResponse 返回给客户端。
  */
 export class GatewayMethodError extends Error {
-  readonly code: GatewayErrorCode
+  readonly code: GatewayErrorCode;
 
   constructor(code: GatewayErrorCode, message?: string) {
-    super(message ?? ERROR_MESSAGES[code])
-    this.code = code
-    this.name = 'GatewayMethodError'
+    super(message ?? ERROR_MESSAGES[code]);
+    this.code = code;
+    this.name = 'GatewayMethodError';
   }
 }
 
@@ -68,5 +68,5 @@ export class GatewayMethodError extends Error {
  * 获取错误码的默认消息
  */
 export function getErrorMessage(code: GatewayErrorCode): string {
-  return ERROR_MESSAGES[code]
+  return ERROR_MESSAGES[code];
 }

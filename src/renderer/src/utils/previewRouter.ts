@@ -2,11 +2,20 @@
  * PreviewRouter - 根据文件类型选择合适的预览组件
  */
 
-export type PreviewMode = 'pdf' | 'image' | 'video' | 'html' | 'markdown' | 'code';
+import type { PreviewMode } from '@/types/preview';
+
+export type { PreviewMode };
 
 export interface PreviewRouterResult {
   mode: PreviewMode;
   mimeType?: string;
+}
+
+/**
+ * 根据文件路径确定预览模式（便捷方法）
+ */
+export function determinePreviewMode(filePath: string): PreviewMode {
+  return routePreview(filePath).mode;
 }
 
 /**

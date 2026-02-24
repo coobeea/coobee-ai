@@ -74,32 +74,32 @@
 // 使用 @openai/agents 框架（统一）
 // 但通过 Model Provider 机制支持多模型
 
-import { Agent, ModelProvider } from '@openai/agents'
+import { Agent, ModelProvider } from '@openai/agents';
 
 // 1. 默认使用 OpenAI
 const defaultAgent = new Agent({
   name: 'Chat Agent',
   model: 'gpt-4-turbo', // OpenAI 模型
   instructions: '...'
-})
+});
 
 // 2. 可选支持 Claude（通过自定义 Provider）
 const customProvider: ModelProvider = {
   async chat(messages, options) {
     // 适配 Claude API
-    const anthropic = new Anthropic()
+    const anthropic = new Anthropic();
     return await anthropic.messages.create({
       model: 'claude-3-5-sonnet-20241022',
       messages
-    })
+    });
   }
-}
+};
 
 const claudeAgent = new Agent({
   name: 'Claude Agent',
   modelProvider: customProvider,
   instructions: '...'
-})
+});
 ```
 
 **结论**：
@@ -290,14 +290,14 @@ class MessageStore {
 // 扩展现有 IPC 系统
 // src/main/common/ipc/handlers/index.ts
 
-import { registerShellHandlers } from './shellHandlers'
-import { registerTabHandlers } from './tabHandlers'
-import { registerAIHandlers } from '@main/ai/ipc/AIHandlers' // 新增
+import { registerShellHandlers } from './shellHandlers';
+import { registerTabHandlers } from './tabHandlers';
+import { registerAIHandlers } from '@main/ai/ipc/AIHandlers'; // 新增
 
 export function registerAllHandlers(): void {
-  registerShellHandlers()
-  registerTabHandlers()
-  registerAIHandlers() // ✅ 统一注册
+  registerShellHandlers();
+  registerTabHandlers();
+  registerAIHandlers(); // ✅ 统一注册
 }
 ```
 
@@ -323,8 +323,8 @@ export function registerAllHandlers(): void {
 
 ```typescript
 // 复用现有 EventBus
-import { eventBus } from '@main/common/eventbus'
-import { AIEventTypes } from '@shared/events'
+import { eventBus } from '@main/common/eventbus';
+import { AIEventTypes } from '@shared/events';
 
 class AgentRuntime {
   async execute() {
@@ -332,7 +332,7 @@ class AgentRuntime {
     eventBus.emit(AIEventTypes.MESSAGE_RECEIVED, {
       sessionId,
       message
-    })
+    });
   }
 }
 
@@ -405,18 +405,18 @@ CREATE TABLE ai_sessions (
 
 ```typescript
 export class AppManager {
-  private agentRuntime!: AgentRuntimeManager
+  private agentRuntime!: AgentRuntimeManager;
 
   async initialize() {
     // ... 现有逻辑
 
     // 新增：初始化 AI 运行时
-    this.agentRuntime = new AgentRuntimeManager()
-    await this.agentRuntime.initialize()
+    this.agentRuntime = new AgentRuntimeManager();
+    await this.agentRuntime.initialize();
   }
 
   getAgentRuntime() {
-    return this.agentRuntime
+    return this.agentRuntime;
   }
 }
 ```
@@ -492,12 +492,12 @@ services/llm/
 ```typescript
 // 简化的 LLM Client
 class OpenAIClient {
-  private client: OpenAI
+  private client: OpenAI;
 
   constructor() {
     this.client = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY
-    })
+    });
   }
 
   async chat(messages: Message[], options?: ChatOptions) {
@@ -505,7 +505,7 @@ class OpenAIClient {
       model: options?.model || 'gpt-4-turbo',
       messages,
       stream: options?.stream || false
-    })
+    });
   }
 }
 ```
@@ -520,19 +520,19 @@ const agent = AgentFactory.create({
   config: {
     /* 复杂配置 */
   }
-})
+});
 ```
 
 #### 优化后（直接使用 OpenAI Agents）
 
 ```typescript
-import { Agent } from '@openai/agents'
+import { Agent } from '@openai/agents';
 
 const chatAgent = new Agent({
   name: 'Chat Agent',
   model: 'gpt-4-turbo',
   instructions: 'You are a helpful assistant.'
-})
+});
 ```
 
 ---
@@ -639,33 +639,33 @@ src/main/
 ```typescript
 // 1. AppManager 集成（src/main/common/app/index.ts）
 export class AppManager {
-  private agentRuntime!: AgentRuntimeManager
+  private agentRuntime!: AgentRuntimeManager;
 
   async initialize() {
     // ... 现有初始化
 
     // 初始化 AI 运行时
-    const { AgentRuntimeManager } = await import('@main/ai')
-    this.agentRuntime = new AgentRuntimeManager()
-    await this.agentRuntime.initialize()
+    const { AgentRuntimeManager } = await import('@main/ai');
+    this.agentRuntime = new AgentRuntimeManager();
+    await this.agentRuntime.initialize();
   }
 }
 
 // 2. WindowManager 映射（src/main/common/window/WindowManager.ts）
 export class WindowManager {
   async createTab(windowId: number, config: TabConfig) {
-    const tab = await this.createTabInternal(windowId, config)
+    const tab = await this.createTabInternal(windowId, config);
 
     // 如果是 AI 对话 Tab，创建关联的 AI Session
     if (config.type === 'chat') {
-      const { sessionManager } = await import('@main/ai')
+      const { sessionManager } = await import('@main/ai');
       await sessionManager.createSession({
         tabId: tab.id,
         agentType: 'chat'
-      })
+      });
     }
 
-    return tab
+    return tab;
   }
 }
 
@@ -676,16 +676,16 @@ export async function migration_006_ai_tables(db: Database) {
     CREATE TABLE ai_sessions (...);
     CREATE TABLE ai_conversations (...);
     CREATE TABLE ai_tool_executions (...);
-  `)
+  `);
 }
 
 // 4. IPC 注册（src/main/common/ipc/handlers/index.ts）
-import { registerAIHandlers } from '@main/ai/ipc'
+import { registerAIHandlers } from '@main/ai/ipc';
 
 export function registerAllHandlers() {
-  registerShellHandlers()
-  registerTabHandlers()
-  registerAIHandlers() // ✅ 新增
+  registerShellHandlers();
+  registerTabHandlers();
+  registerAIHandlers(); // ✅ 新增
 }
 
 // 5. EventBus 扩展（src/shared/events.ts）
@@ -781,29 +781,29 @@ export enum EventTypes {
 
 ```typescript
 // src/main/ai/core/AgentRuntime.ts
-import { sqliteService } from '@main/common/database'
-import { eventBus } from '@main/common/eventbus'
-import { log } from '@main/common/logger'
-import { Agent } from '@openai/agents'
-import OpenAI from 'openai'
+import { sqliteService } from '@main/common/database';
+import { eventBus } from '@main/common/eventbus';
+import { log } from '@main/common/logger';
+import { Agent } from '@openai/agents';
+import OpenAI from 'openai';
 
 export class AgentRuntimeManager {
-  private openai: OpenAI
-  private agents: Map<string, Agent> = new Map()
-  private sessions: Map<string, AISession> = new Map()
+  private openai: OpenAI;
+  private agents: Map<string, Agent> = new Map();
+  private sessions: Map<string, AISession> = new Map();
 
   async initialize(): Promise<void> {
-    log.info('[AgentRuntime] 初始化 AI 运行时...')
+    log.info('[AgentRuntime] 初始化 AI 运行时...');
 
     // 初始化 OpenAI 客户端
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY
-    })
+    });
 
     // 初始化内置智能体
-    await this.initializeBuiltinAgents()
+    await this.initializeBuiltinAgents();
 
-    log.info('[AgentRuntime] AI 运行时初始化完成')
+    log.info('[AgentRuntime] AI 运行时初始化完成');
   }
 
   private async initializeBuiltinAgents(): Promise<void> {
@@ -812,13 +812,13 @@ export class AgentRuntimeManager {
       name: 'Chat Agent',
       model: 'gpt-4-turbo',
       instructions: 'You are a helpful AI assistant.'
-    })
+    });
 
-    this.agents.set('chat', chatAgent)
+    this.agents.set('chat', chatAgent);
   }
 
   async createSession(config: CreateSessionConfig): Promise<string> {
-    const sessionId = generateId()
+    const sessionId = generateId();
 
     // 存储到数据库
     await sqliteService.execute(
@@ -827,7 +827,7 @@ export class AgentRuntimeManager {
       VALUES (?, ?, ?, ?, ?)
     `,
       [sessionId, config.tabId, config.agentType, Date.now(), Date.now()]
-    )
+    );
 
     // 创建内存会话对象
     const session: AISession = {
@@ -835,14 +835,14 @@ export class AgentRuntimeManager {
       tabId: config.tabId,
       agentType: config.agentType,
       history: []
-    }
+    };
 
-    this.sessions.set(sessionId, session)
+    this.sessions.set(sessionId, session);
 
     // 发送事件
-    eventBus.emit('ai:session-created', { sessionId, tabId: config.tabId })
+    eventBus.emit('ai:session-created', { sessionId, tabId: config.tabId });
 
-    return sessionId
+    return sessionId;
   }
 }
 ```
@@ -851,28 +851,28 @@ export class AgentRuntimeManager {
 
 ```typescript
 // src/main/common/app/index.ts（扩展现有文件）
-import type { AgentRuntimeManager } from '@main/ai'
+import type { AgentRuntimeManager } from '@main/ai';
 
 export class AppManager {
   // ... 现有属性
-  private agentRuntime?: AgentRuntimeManager
+  private agentRuntime?: AgentRuntimeManager;
 
   async initialize(): Promise<void> {
     // ... 现有初始化逻辑
 
     // 初始化 AI 运行时
     try {
-      const { AgentRuntimeManager } = await import('@main/ai')
-      this.agentRuntime = new AgentRuntimeManager()
-      await this.agentRuntime.initialize()
-      log.info('[App] AI 运行时初始化成功')
+      const { AgentRuntimeManager } = await import('@main/ai');
+      this.agentRuntime = new AgentRuntimeManager();
+      await this.agentRuntime.initialize();
+      log.info('[App] AI 运行时初始化成功');
     } catch (error) {
-      log.error('[App] AI 运行时初始化失败:', error)
+      log.error('[App] AI 运行时初始化失败:', error);
     }
   }
 
   getAgentRuntime(): AgentRuntimeManager | undefined {
-    return this.agentRuntime
+    return this.agentRuntime;
   }
 }
 ```

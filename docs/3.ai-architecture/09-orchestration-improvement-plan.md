@@ -181,36 +181,36 @@
  * 验证规则
  */
 export interface VerificationRule {
-  id: string
-  name: string
-  type: 'format' | 'content' | 'structure' | 'logic' | 'custom'
-  execute: (output: unknown) => Promise<VerificationResult>
+  id: string;
+  name: string;
+  type: 'format' | 'content' | 'structure' | 'logic' | 'custom';
+  execute: (output: unknown) => Promise<VerificationResult>;
 }
 
 /**
  * 验证结果
  */
 export interface VerificationResult {
-  passed: boolean
-  ruleId: string
-  ruleName: string
-  message?: string
-  issues?: VerificationIssue[]
-  suggestions?: string[]
+  passed: boolean;
+  ruleId: string;
+  ruleName: string;
+  message?: string;
+  issues?: VerificationIssue[];
+  suggestions?: string[];
 }
 
 /**
  * 验证问题
  */
 export interface VerificationIssue {
-  severity: 'error' | 'warning' | 'info'
-  code: string
-  message: string
+  severity: 'error' | 'warning' | 'info';
+  code: string;
+  message: string;
   location?: {
-    line?: number
-    column?: number
-    file?: string
-  }
+    line?: number;
+    column?: number;
+    file?: string;
+  };
 }
 
 /**
@@ -225,14 +225,14 @@ export interface IVerificationGate {
     output: unknown,
     rules?: VerificationRule[]
   ): Promise<{
-    passed: boolean
-    results: VerificationResult[]
-  }>
+    passed: boolean;
+    results: VerificationResult[];
+  }>;
 
   /**
    * 生成修复建议
    */
-  generateFixSuggestions(issues: VerificationIssue[]): Promise<string>
+  generateFixSuggestions(issues: VerificationIssue[]): Promise<string>;
 }
 
 /**
@@ -249,39 +249,39 @@ export class VerificationGate implements IVerificationGate {
     output: unknown,
     rules: VerificationRule[] = []
   ): Promise<{ passed: boolean; results: VerificationResult[] }> {
-    console.log(`[VerificationGate] Verifying subtask: ${subTaskId}`)
+    console.log(`[VerificationGate] Verifying subtask: ${subTaskId}`);
 
-    const results: VerificationResult[] = []
+    const results: VerificationResult[] = [];
 
     // 执行所有验证规则
     for (const rule of rules) {
-      const result = await rule.execute(output)
-      results.push(result)
+      const result = await rule.execute(output);
+      results.push(result);
 
       // 写入验证记录
-      await this.sessionManager.writeVerificationCheck(subTaskId, rule.id, result)
+      await this.sessionManager.writeVerificationCheck(subTaskId, rule.id, result);
     }
 
-    const passed = results.every((r) => r.passed)
+    const passed = results.every((r) => r.passed);
 
     if (!passed) {
       // 收集所有问题
-      const allIssues = results.flatMap((r) => r.issues || [])
-      await this.sessionManager.writeVerificationIssues(subTaskId, allIssues)
+      const allIssues = results.flatMap((r) => r.issues || []);
+      await this.sessionManager.writeVerificationIssues(subTaskId, allIssues);
     }
 
-    console.log(`[VerificationGate] Verification ${passed ? 'passed' : 'failed'}: ${subTaskId}`)
+    console.log(`[VerificationGate] Verification ${passed ? 'passed' : 'failed'}: ${subTaskId}`);
 
-    return { passed, results }
+    return { passed, results };
   }
 
   async generateFixSuggestions(issues: VerificationIssue[]): Promise<string> {
     // 根据问题生成修复建议
     const suggestions = issues.map((issue) => {
-      return `- ${issue.severity.toUpperCase()}: ${issue.message}`
-    })
+      return `- ${issue.severity.toUpperCase()}: ${issue.message}`;
+    });
 
-    return `发现以下问题，需要修复：\n${suggestions.join('\n')}`
+    return `发现以下问题，需要修复：\n${suggestions.join('\n')}`;
   }
 }
 ```
@@ -301,9 +301,9 @@ export const formatValidationRule: VerificationRule = {
   execute: async (output) => {
     try {
       if (typeof output === 'string') {
-        JSON.parse(output)
+        JSON.parse(output);
       }
-      return { passed: true, ruleId: 'format-json', ruleName: 'JSON格式验证' }
+      return { passed: true, ruleId: 'format-json', ruleName: 'JSON格式验证' };
     } catch (error) {
       return {
         passed: false,
@@ -317,10 +317,10 @@ export const formatValidationRule: VerificationRule = {
             message: error instanceof Error ? error.message : String(error)
           }
         ]
-      }
+      };
     }
   }
-}
+};
 
 /**
  * 内容完整性验证
@@ -344,16 +344,16 @@ export const contentCompletenessRule: VerificationRule = {
             message: '任务输出不能为空'
           }
         ]
-      }
+      };
     }
 
     return {
       passed: true,
       ruleId: 'content-completeness',
       ruleName: '内容完整性验证'
-    }
+    };
   }
-}
+};
 
 /**
  * 自定义验证规则工厂
@@ -369,7 +369,7 @@ export function createCustomRule(
     name,
     type: 'custom',
     execute: async (output) => {
-      const passed = validate(output)
+      const passed = validate(output);
       return {
         passed,
         ruleId: id,
@@ -384,9 +384,9 @@ export function createCustomRule(
                 message: errorMessage
               }
             ]
-      }
+      };
     }
-  }
+  };
 }
 ```
 
@@ -395,20 +395,20 @@ export function createCustomRule(
 ```typescript
 // src/main/ai/orchestration/SessionFileManager.ts
 
-import { mkdir, writeFile, readFile } from 'fs/promises'
-import { join } from 'path'
-import { app } from 'electron'
+import { mkdir, writeFile, readFile } from 'fs/promises';
+import { join } from 'path';
+import { app } from 'electron';
 
 /**
  * 会话文件管理器
  * 负责管理会话目录和文件读写
  */
 export class SessionFileManager {
-  private readonly basePath: string
+  private readonly basePath: string;
 
   constructor(private readonly sessionId: string) {
     // ~/.coobee-ai/sessions/{sessionId}/
-    this.basePath = join(app.getPath('userData'), 'sessions', sessionId)
+    this.basePath = join(app.getPath('userData'), 'sessions', sessionId);
   }
 
   /**
@@ -426,13 +426,13 @@ export class SessionFileManager {
       'verification/checks',
       'verification/fixes',
       'shared'
-    ]
+    ];
 
     for (const dir of dirs) {
-      await mkdir(join(this.basePath, dir), { recursive: true })
+      await mkdir(join(this.basePath, dir), { recursive: true });
     }
 
-    console.log(`[SessionFileManager] Initialized session directory: ${this.basePath}`)
+    console.log(`[SessionFileManager] Initialized session directory: ${this.basePath}`);
   }
 
   // ========== Planner 文件操作 ==========
@@ -441,24 +441,24 @@ export class SessionFileManager {
    * 写入原始任务
    */
   async writeOriginalTask(task: Task): Promise<void> {
-    const path = join(this.basePath, 'planner', 'original_task.json')
-    await writeFile(path, JSON.stringify(task, null, 2))
+    const path = join(this.basePath, 'planner', 'original_task.json');
+    await writeFile(path, JSON.stringify(task, null, 2));
   }
 
   /**
    * 写入执行计划
    */
   async writeExecutionPlan(plan: ExecutionPlan): Promise<void> {
-    const path = join(this.basePath, 'planner', 'execution_plan.json')
-    await writeFile(path, JSON.stringify(plan, null, 2))
+    const path = join(this.basePath, 'planner', 'execution_plan.json');
+    await writeFile(path, JSON.stringify(plan, null, 2));
   }
 
   /**
    * 写入重新规划
    */
   async writeReplan(replanId: string, plan: ExecutionPlan): Promise<void> {
-    const path = join(this.basePath, 'planner', 'replans', `${replanId}.json`)
-    await writeFile(path, JSON.stringify(plan, null, 2))
+    const path = join(this.basePath, 'planner', 'replans', `${replanId}.json`);
+    await writeFile(path, JSON.stringify(plan, null, 2));
   }
 
   /**
@@ -466,11 +466,11 @@ export class SessionFileManager {
    */
   async readExecutionPlan(): Promise<ExecutionPlan | null> {
     try {
-      const path = join(this.basePath, 'planner', 'execution_plan.json')
-      const content = await readFile(path, 'utf-8')
-      return JSON.parse(content)
+      const path = join(this.basePath, 'planner', 'execution_plan.json');
+      const content = await readFile(path, 'utf-8');
+      return JSON.parse(content);
     } catch {
-      return null
+      return null;
     }
   }
 
@@ -480,34 +480,34 @@ export class SessionFileManager {
    * 写入运行时快照
    */
   async writeRuntimeSnapshot(snapshot: Record<string, unknown>): Promise<void> {
-    const path = join(this.basePath, 'orchestrator', 'runtime.json')
-    await writeFile(path, JSON.stringify(snapshot, null, 2))
+    const path = join(this.basePath, 'orchestrator', 'runtime.json');
+    await writeFile(path, JSON.stringify(snapshot, null, 2));
   }
 
   /**
    * 写入执行进度
    */
   async writeProgress(progress: {
-    totalSubTasks: number
-    completedSubTasks: number
-    failedSubTasks: number
-    currentStage: number
+    totalSubTasks: number;
+    completedSubTasks: number;
+    failedSubTasks: number;
+    currentStage: number;
   }): Promise<void> {
-    const path = join(this.basePath, 'orchestrator', 'progress.json')
-    await writeFile(path, JSON.stringify(progress, null, 2))
+    const path = join(this.basePath, 'orchestrator', 'progress.json');
+    await writeFile(path, JSON.stringify(progress, null, 2));
   }
 
   /**
    * 追加决策日志
    */
   async appendDecision(decision: {
-    timestamp: number
-    type: string
-    description: string
-    data?: unknown
+    timestamp: number;
+    type: string;
+    description: string;
+    data?: unknown;
   }): Promise<void> {
-    const path = join(this.basePath, 'orchestrator', 'decisions.jsonl')
-    await writeFile(path, JSON.stringify(decision) + '\n', { flag: 'a' })
+    const path = join(this.basePath, 'orchestrator', 'decisions.jsonl');
+    await writeFile(path, JSON.stringify(decision) + '\n', { flag: 'a' });
   }
 
   // ========== Worker 文件操作 ==========
@@ -515,30 +515,27 @@ export class SessionFileManager {
   /**
    * 写入 Worker 状态
    */
-  async writeWorkerStatus(
-    workerId: string,
-    status: { state: string; currentTask?: string }
-  ): Promise<void> {
-    const path = join(this.basePath, 'workers', workerId, 'status.json')
-    await mkdir(join(this.basePath, 'workers', workerId), { recursive: true })
-    await writeFile(path, JSON.stringify(status, null, 2))
+  async writeWorkerStatus(workerId: string, status: { state: string; currentTask?: string }): Promise<void> {
+    const path = join(this.basePath, 'workers', workerId, 'status.json');
+    await mkdir(join(this.basePath, 'workers', workerId), { recursive: true });
+    await writeFile(path, JSON.stringify(status, null, 2));
   }
 
   /**
    * 追加 Worker 思考日志
    */
   async appendWorkerThinking(workerId: string, thinking: string): Promise<void> {
-    const path = join(this.basePath, 'workers', workerId, 'thinking.jsonl')
-    const entry = { timestamp: Date.now(), content: thinking }
-    await writeFile(path, JSON.stringify(entry) + '\n', { flag: 'a' })
+    const path = join(this.basePath, 'workers', workerId, 'thinking.jsonl');
+    const entry = { timestamp: Date.now(), content: thinking };
+    await writeFile(path, JSON.stringify(entry) + '\n', { flag: 'a' });
   }
 
   /**
    * 写入 Worker 输出
    */
   async writeWorkerOutput(workerId: string, output: unknown): Promise<void> {
-    const path = join(this.basePath, 'workers', workerId, 'output.json')
-    await writeFile(path, JSON.stringify(output, null, 2))
+    const path = join(this.basePath, 'workers', workerId, 'output.json');
+    await writeFile(path, JSON.stringify(output, null, 2));
   }
 
   // ========== Verification 文件操作 ==========
@@ -546,26 +543,22 @@ export class SessionFileManager {
   /**
    * 写入验证检查记录
    */
-  async writeVerificationCheck(
-    subTaskId: string,
-    ruleId: string,
-    result: VerificationResult
-  ): Promise<void> {
-    const path = join(this.basePath, 'verification', 'checks', `${subTaskId}-${ruleId}.json`)
-    await writeFile(path, JSON.stringify(result, null, 2))
+  async writeVerificationCheck(subTaskId: string, ruleId: string, result: VerificationResult): Promise<void> {
+    const path = join(this.basePath, 'verification', 'checks', `${subTaskId}-${ruleId}.json`);
+    await writeFile(path, JSON.stringify(result, null, 2));
   }
 
   /**
    * 追加验证问题
    */
   async writeVerificationIssues(subTaskId: string, issues: VerificationIssue[]): Promise<void> {
-    const path = join(this.basePath, 'verification', 'issues.jsonl')
+    const path = join(this.basePath, 'verification', 'issues.jsonl');
     const entry = {
       timestamp: Date.now(),
       subTaskId,
       issues
-    }
-    await writeFile(path, JSON.stringify(entry) + '\n', { flag: 'a' })
+    };
+    await writeFile(path, JSON.stringify(entry) + '\n', { flag: 'a' });
   }
 
   /**
@@ -574,15 +567,15 @@ export class SessionFileManager {
   async writeFixRecord(
     fixId: string,
     record: {
-      subTaskId: string
-      attempt: number
-      method: 'auto' | 'llm'
-      success: boolean
-      details?: unknown
+      subTaskId: string;
+      attempt: number;
+      method: 'auto' | 'llm';
+      success: boolean;
+      details?: unknown;
     }
   ): Promise<void> {
-    const path = join(this.basePath, 'verification', 'fixes', `${fixId}.json`)
-    await writeFile(path, JSON.stringify(record, null, 2))
+    const path = join(this.basePath, 'verification', 'fixes', `${fixId}.json`);
+    await writeFile(path, JSON.stringify(record, null, 2));
   }
 
   // ========== Shared 文件操作 ==========
@@ -591,22 +584,17 @@ export class SessionFileManager {
    * 写入共享上下文
    */
   async writeSharedContext(context: Record<string, unknown>): Promise<void> {
-    const path = join(this.basePath, 'shared', 'context.json')
-    await writeFile(path, JSON.stringify(context, null, 2))
+    const path = join(this.basePath, 'shared', 'context.json');
+    await writeFile(path, JSON.stringify(context, null, 2));
   }
 
   /**
    * 追加消息日志
    */
-  async appendMessage(message: {
-    from: string
-    to: string
-    type: string
-    content: unknown
-  }): Promise<void> {
-    const path = join(this.basePath, 'shared', 'messages.jsonl')
-    const entry = { timestamp: Date.now(), ...message }
-    await writeFile(path, JSON.stringify(entry) + '\n', { flag: 'a' })
+  async appendMessage(message: { from: string; to: string; type: string; content: unknown }): Promise<void> {
+    const path = join(this.basePath, 'shared', 'messages.jsonl');
+    const entry = { timestamp: Date.now(), ...message };
+    await writeFile(path, JSON.stringify(entry) + '\n', { flag: 'a' });
   }
 }
 ```
@@ -619,8 +607,8 @@ export class SessionFileManager {
 // src/main/ai/orchestration/Orchestrator.ts (改进版)
 
 export class Orchestrator implements IOrchestrator {
-  private sessionManager!: SessionFileManager
-  private verificationGate!: VerificationGate
+  private sessionManager!: SessionFileManager;
+  private verificationGate!: VerificationGate;
 
   constructor(
     private readonly planner: IPlanner,
@@ -632,37 +620,37 @@ export class Orchestrator implements IOrchestrator {
 
   async initialize(sessionId: string): Promise<void> {
     // 初始化文件管理器
-    this.sessionManager = new SessionFileManager(sessionId)
-    await this.sessionManager.initialize()
+    this.sessionManager = new SessionFileManager(sessionId);
+    await this.sessionManager.initialize();
 
     // 初始化评审者
-    this.verificationGate = new VerificationGate(this.sessionManager, sessionId)
+    this.verificationGate = new VerificationGate(this.sessionManager, sessionId);
 
-    console.log(`[Orchestrator] Initialized with session: ${sessionId}`)
+    console.log(`[Orchestrator] Initialized with session: ${sessionId}`);
   }
 
   async executeTask(task: Task): Promise<TaskExecutionResult> {
-    const startTime = Date.now()
+    const startTime = Date.now();
 
     // 写入原始任务
-    await this.sessionManager.writeOriginalTask(task)
+    await this.sessionManager.writeOriginalTask(task);
 
     try {
       // 1️⃣ 规划阶段
-      const plan = await this.planner.plan(task)
-      await this.sessionManager.writeExecutionPlan(plan)
+      const plan = await this.planner.plan(task);
+      await this.sessionManager.writeExecutionPlan(plan);
       await this.sessionManager.appendDecision({
         timestamp: Date.now(),
         type: 'plan_created',
         description: '任务规划完成',
         data: { subTasksCount: plan.subTasks.length }
-      })
+      });
 
       // 2️⃣ 执行阶段
-      const subTaskResults = await this.executePlan(plan)
+      const subTaskResults = await this.executePlan(plan);
 
       // 3️⃣ 聚合阶段
-      const finalOutput = this.aggregateResults(subTaskResults)
+      const finalOutput = this.aggregateResults(subTaskResults);
 
       return {
         taskId: task.id,
@@ -672,7 +660,7 @@ export class Orchestrator implements IOrchestrator {
         stats: {
           /* ... */
         }
-      }
+      };
     } catch (error) {
       // 记录失败
       await this.sessionManager.appendDecision({
@@ -680,9 +668,9 @@ export class Orchestrator implements IOrchestrator {
         type: 'task_failed',
         description: '任务执行失败',
         data: { error: error instanceof Error ? error.message : String(error) }
-      })
+      });
 
-      throw error
+      throw error;
     }
   }
 
@@ -690,12 +678,12 @@ export class Orchestrator implements IOrchestrator {
    * 执行计划（带验证和修复循环）
    */
   private async executePlan(plan: ExecutionPlan): Promise<SubTaskExecutionResult[]> {
-    const results: SubTaskExecutionResult[] = []
+    const results: SubTaskExecutionResult[] = [];
 
     for (const subTask of plan.subTasks) {
       // 执行子任务（带修复循环）
-      const result = await this.executeSubTaskWithVerification(subTask)
-      results.push(result)
+      const result = await this.executeSubTaskWithVerification(subTask);
+      results.push(result);
 
       // 更新进度
       await this.sessionManager.writeProgress({
@@ -703,31 +691,31 @@ export class Orchestrator implements IOrchestrator {
         completedSubTasks: results.filter((r) => r.status === 'completed').length,
         failedSubTasks: results.filter((r) => r.status === 'failed').length,
         currentStage: 0 // TODO: 实现阶段管理
-      })
+      });
     }
 
-    return results
+    return results;
   }
 
   /**
    * 执行子任务（带验证和修复循环）← 新增
    */
   private async executeSubTaskWithVerification(subTask: SubTask): Promise<SubTaskExecutionResult> {
-    const MAX_FIX_ATTEMPTS = 3
-    let attempt = 0
+    const MAX_FIX_ATTEMPTS = 3;
+    let attempt = 0;
 
     while (attempt <= MAX_FIX_ATTEMPTS) {
       // 执行子任务
-      const output = await this.workerCoordinator.executeSubTask(subTask)
+      const output = await this.workerCoordinator.executeSubTask(subTask);
 
       // 写入输出
-      await this.sessionManager.writeWorkerOutput(subTask.workerId || 'default', output)
+      await this.sessionManager.writeWorkerOutput(subTask.workerId || 'default', output);
 
       // 验证输出
       const verification = await this.verificationGate.verify(subTask.id, output, [
         formatValidationRule,
         contentCompletenessRule
-      ])
+      ]);
 
       if (verification.passed) {
         // 验证通过
@@ -735,11 +723,11 @@ export class Orchestrator implements IOrchestrator {
           subTaskId: subTask.id,
           status: 'completed',
           result: output
-        }
+        };
       }
 
       // 验证失败
-      attempt++
+      attempt++;
 
       if (attempt > MAX_FIX_ATTEMPTS) {
         // 超过重试次数
@@ -748,18 +736,18 @@ export class Orchestrator implements IOrchestrator {
           type: 'subtask_failed',
           description: `子任务失败，已达最大重试次数: ${subTask.id}`,
           data: { attempts: attempt }
-        })
+        });
 
         return {
           subTaskId: subTask.id,
           status: 'failed',
           error: '超过最大修复尝试次数'
-        }
+        };
       }
 
       // 生成修复建议
-      const allIssues = verification.results.flatMap((r) => r.issues || [])
-      const fixSuggestion = await this.verificationGate.generateFixSuggestions(allIssues)
+      const allIssues = verification.results.flatMap((r) => r.issues || []);
+      const fixSuggestion = await this.verificationGate.generateFixSuggestions(allIssues);
 
       // 记录修复尝试
       await this.sessionManager.writeFixRecord(`fix-${subTask.id}-${attempt}`, {
@@ -767,19 +755,19 @@ export class Orchestrator implements IOrchestrator {
         attempt,
         method: 'llm',
         success: false
-      })
+      });
 
       // 创建修复任务
       const fixTask: SubTask = {
         ...subTask,
         description: `修复任务: ${subTask.description}\n\n问题:\n${fixSuggestion}`
-      }
+      };
 
       // 继续循环，重新执行
     }
 
     // 不应该到达这里
-    throw new Error('Unexpected execution path')
+    throw new Error('Unexpected execution path');
   }
 }
 ```

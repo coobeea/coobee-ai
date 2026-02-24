@@ -2,7 +2,7 @@
  * 内置验证规则
  */
 
-import type { VerificationRule } from './types'
+import type { VerificationRule } from './types';
 
 /**
  * JSON 格式验证
@@ -14,13 +14,13 @@ export const formatValidationRule: VerificationRule = {
   execute: async (output) => {
     try {
       if (typeof output === 'string') {
-        JSON.parse(output)
+        JSON.parse(output);
       }
       return {
         passed: true,
         ruleId: 'format-json',
         ruleName: 'JSON格式验证'
-      }
+      };
     } catch (error) {
       return {
         passed: false,
@@ -34,10 +34,10 @@ export const formatValidationRule: VerificationRule = {
             message: error instanceof Error ? error.message : String(error)
           }
         ]
-      }
+      };
     }
   }
-}
+};
 
 /**
  * 内容完整性验证
@@ -61,16 +61,16 @@ export const contentCompletenessRule: VerificationRule = {
             message: '任务输出不能为空'
           }
         ]
-      }
+      };
     }
 
     return {
       passed: true,
       ruleId: 'content-completeness',
       ruleName: '内容完整性验证'
-    }
+    };
   }
-}
+};
 
 /**
  * 字符串长度验证
@@ -81,8 +81,8 @@ export function createMinLengthRule(minLength: number): VerificationRule {
     name: `最小长度验证(${minLength})`,
     type: 'content',
     execute: async (output) => {
-      const content = typeof output === 'string' ? output : JSON.stringify(output)
-      const passed = content.length >= minLength
+      const content = typeof output === 'string' ? output : JSON.stringify(output);
+      const passed = content.length >= minLength;
 
       return {
         passed,
@@ -98,9 +98,9 @@ export function createMinLengthRule(minLength: number): VerificationRule {
                 message: `输出内容长度不足，当前${content.length}字符，要求至少${minLength}字符`
               }
             ]
-      }
+      };
     }
-  }
+  };
 }
 
 /**
@@ -117,7 +117,7 @@ export function createCustomRule(
     name,
     type: 'custom',
     execute: async (output) => {
-      const passed = await validate(output)
+      const passed = await validate(output);
       return {
         passed,
         ruleId: id,
@@ -132,9 +132,9 @@ export function createCustomRule(
                 message: errorMessage
               }
             ]
-      }
+      };
     }
-  }
+  };
 }
 
 /**
@@ -159,13 +159,13 @@ export function createRequiredFieldsRule(fields: string[]): VerificationRule {
               message: '期望输出为对象类型'
             }
           ]
-        }
+        };
       }
 
-      const missingFields: string[] = []
+      const missingFields: string[] = [];
       for (const field of fields) {
         if (!(field in (output as Record<string, unknown>))) {
-          missingFields.push(field)
+          missingFields.push(field);
         }
       }
 
@@ -180,22 +180,19 @@ export function createRequiredFieldsRule(fields: string[]): VerificationRule {
             code: 'MISSING_FIELD',
             message: `缺少必需字段: ${field}`
           }))
-        }
+        };
       }
 
       return {
         passed: true,
         ruleId: `required-fields-${fields.join('-')}`,
         ruleName: '必需字段验证'
-      }
+      };
     }
-  }
+  };
 }
 
 /**
  * 默认验证规则集合
  */
-export const defaultVerificationRules: VerificationRule[] = [
-  contentCompletenessRule,
-  createMinLengthRule(10)
-]
+export const defaultVerificationRules: VerificationRule[] = [contentCompletenessRule, createMinLengthRule(10)];

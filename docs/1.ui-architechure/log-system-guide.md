@@ -21,44 +21,44 @@ Pinia store，负责日志的收集、存储和管理。
 #### 日志级别
 
 ```typescript
-type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 ```
 
 #### 日志分类
 
 ```typescript
-type LogCategory = 'event' | 'ipc' | 'window' | 'tab' | 'app' | 'system' | 'user'
+type LogCategory = 'event' | 'ipc' | 'window' | 'tab' | 'app' | 'system' | 'user';
 ```
 
 #### 使用方法
 
 ```typescript
-import { useLogStore } from '@/stores/log'
+import { useLogStore } from '@/stores/log';
 
-const logStore = useLogStore()
+const logStore = useLogStore();
 
 // 添加不同级别的日志
-logStore.debug('system', '调试信息', { data: 'value' })
-logStore.info('user', '用户操作', { action: 'click' })
-logStore.warn('window', '警告信息', { reason: 'low memory' })
-logStore.error('app', '错误信息', { error: 'connection failed' })
+logStore.debug('system', '调试信息', { data: 'value' });
+logStore.info('user', '用户操作', { action: 'click' });
+logStore.warn('window', '警告信息', { reason: 'low memory' });
+logStore.error('app', '错误信息', { error: 'connection failed' });
 
 // 过滤日志
-logStore.setLevelFilter('error') // 只显示错误日志
-logStore.setCategoryFilter('tab') // 只显示 Tab 相关日志
-logStore.setSearchText('创建') // 搜索包含"创建"的日志
+logStore.setLevelFilter('error'); // 只显示错误日志
+logStore.setCategoryFilter('tab'); // 只显示 Tab 相关日志
+logStore.setSearchText('创建'); // 搜索包含"创建"的日志
 
 // 重置过滤器
-logStore.resetFilters()
+logStore.resetFilters();
 
 // 清除日志
-logStore.clearLogs() // 清除所有日志
-logStore.clearByLevel('debug') // 清除指定级别
-logStore.clearByCategory('system') // 清除指定分类
+logStore.clearLogs(); // 清除所有日志
+logStore.clearByLevel('debug'); // 清除指定级别
+logStore.clearByCategory('system'); // 清除指定分类
 
 // 导出日志
-const jsonLogs = logStore.exportLogs() // JSON 格式
-const textLogs = logStore.exportLogsAsText() // 文本格式
+const jsonLogs = logStore.exportLogs(); // JSON 格式
+const textLogs = logStore.exportLogsAsText(); // 文本格式
 ```
 
 ### 2. Log Viewer 组件 (`src/renderer/src/components/LogViewer.vue`)
@@ -96,7 +96,7 @@ const textLogs = logStore.exportLogsAsText() // 文本格式
 </template>
 
 <script setup lang="ts">
-import LogViewer from './components/LogViewer.vue'
+import LogViewer from './components/LogViewer.vue';
 </script>
 ```
 
@@ -122,21 +122,21 @@ import LogViewer from './components/LogViewer.vue'
 
 ```typescript
 // 自动记录所有 Window 事件
-;-窗口创建 -
+-窗口创建 -
   窗口准备就绪 -
   窗口显示 / 隐藏 -
   窗口关闭 -
   窗口聚焦 / 失焦 -
   窗口最小化 / 最大化 / 恢复 -
   窗口全屏进入 / 退出 -
-  窗口大小变化
+  窗口大小变化;
 ```
 
 #### App 事件（`appEventsHandle.ts`）
 
 ```typescript
 // 自动记录所有 App 事件
-;-应用激活 - 应用获得焦点 - 应用即将退出(warn) - 第二个实例启动 - 子进程崩溃(error)
+-应用激活 - 应用获得焦点 - 应用即将退出(warn) - 第二个实例启动 - 子进程崩溃(error);
 ```
 
 ## 自定义日志
@@ -144,22 +144,22 @@ import LogViewer from './components/LogViewer.vue'
 ### 在业务代码中添加日志
 
 ```typescript
-import { useLogStore } from '@/stores/log'
+import { useLogStore } from '@/stores/log';
 
 function handleUserAction() {
-  const logStore = useLogStore()
+  const logStore = useLogStore();
 
   try {
     // 你的业务逻辑
     logStore.info('user', '用户完成操作', {
       action: 'submit',
       timestamp: Date.now()
-    })
+    });
   } catch (error) {
     logStore.error('user', '操作失败', {
       action: 'submit',
       error: String(error)
-    })
+    });
   }
 }
 ```
@@ -167,15 +167,15 @@ function handleUserAction() {
 ### 在新的事件处理器中集成
 
 ```typescript
-import { useLogStore } from '@/stores/log'
+import { useLogStore } from '@/stores/log';
 
 function logEvent(message: string, data?: unknown): void {
-  const logStore = useLogStore()
-  logStore.info('your-category', message, data)
+  const logStore = useLogStore();
+  logStore.info('your-category', message, data);
 }
 
 function handleYourEvent(payload: any): void {
-  logEvent('你的事件描述', payload)
+  logEvent('你的事件描述', payload);
   // 处理事件...
 }
 ```
@@ -185,16 +185,16 @@ function handleYourEvent(payload: any): void {
 ### 修改最大日志数量
 
 ```typescript
-const logStore = useLogStore()
-logStore.maxLogs = 2000 // 默认 1000
+const logStore = useLogStore();
+logStore.maxLogs = 2000; // 默认 1000
 ```
 
 ### 启用/禁用日志收集
 
 ```typescript
-const logStore = useLogStore()
-logStore.isEnabled = false // 禁用日志收集
-logStore.isEnabled = true // 启用日志收集
+const logStore = useLogStore();
+logStore.isEnabled = false; // 禁用日志收集
+logStore.isEnabled = true; // 启用日志收集
 ```
 
 ## 最佳实践
@@ -210,14 +210,14 @@ logStore.isEnabled = true // 启用日志收集
 
 ```typescript
 // ❌ 不好的日志
-logStore.info('event', '事件触发')
+logStore.info('event', '事件触发');
 
 // ✅ 好的日志
 logStore.info('tab', 'Tab 创建成功', {
   tabId: 123,
   windowId: 456,
   url: 'https://example.com'
-})
+});
 ```
 
 ### 3. 合理使用分类
@@ -243,9 +243,9 @@ logStore.info('tab', 'Tab 创建成功', {
 ```typescript
 // 每小时清理一次
 setInterval(() => {
-  const logStore = useLogStore()
-  logStore.clearLogs()
-}, 3600000)
+  const logStore = useLogStore();
+  logStore.clearLogs();
+}, 3600000);
 ```
 
 ## 故障排查
@@ -269,16 +269,16 @@ setInterval(() => {
 ### 完整的使用示例
 
 ```typescript
-import { useLogStore } from '@/stores/log'
+import { useLogStore } from '@/stores/log';
 
 export function setupMonitoring() {
-  const logStore = useLogStore()
+  const logStore = useLogStore();
 
   // 记录应用启动
   logStore.info('app', '应用启动', {
     version: '1.0.0',
     platform: process.platform
-  })
+  });
 
   // 监听错误
   window.addEventListener('error', (event) => {
@@ -287,15 +287,15 @@ export function setupMonitoring() {
       filename: event.filename,
       lineno: event.lineno,
       colno: event.colno
-    })
-  })
+    });
+  });
 
   // 监听未处理的 Promise 拒绝
   window.addEventListener('unhandledrejection', (event) => {
     logStore.error('system', '未处理的 Promise 拒绝', {
       reason: String(event.reason)
-    })
-  })
+    });
+  });
 }
 ```
 

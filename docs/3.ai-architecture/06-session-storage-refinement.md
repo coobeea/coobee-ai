@@ -184,18 +184,18 @@ CREATE INDEX IF NOT EXISTS idx_tool_executions_task ON ai_tool_executions(task_i
 
 ```typescript
 // packages/ai-core/src/storage/stores/SessionStore.ts
-import { DatabaseService } from '@main/common/database'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { DatabaseService } from '@main/common/database';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 export class SessionStore {
-  private sessionsDir: string
+  private sessionsDir: string;
 
   constructor(
     private db: DatabaseService,
     dataDir: string
   ) {
-    this.sessionsDir = path.join(dataDir, 'sessions')
+    this.sessionsDir = path.join(dataDir, 'sessions');
   }
 
   // ===== Session 管理 =====
@@ -203,38 +203,26 @@ export class SessionStore {
   /**
    * 创建新会话
    */
-  async createSession(session: {
-    id: string
-    agentType: string
-    model: string
-    config: any
-  }): Promise<string> {
+  async createSession(session: { id: string; agentType: string; model: string; config: any }): Promise<string> {
     // 1. 保存元数据到数据库
     await this.db.execute(
       `INSERT INTO ai_sessions (id, agent_type, model, config, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'active', ?, ?)`,
-      [
-        session.id,
-        session.agentType,
-        session.model,
-        JSON.stringify(session.config),
-        Date.now(),
-        Date.now()
-      ]
-    )
+      [session.id, session.agentType, session.model, JSON.stringify(session.config), Date.now(), Date.now()]
+    );
 
     // 2. 创建文件目录结构
-    const sessionDir = path.join(this.sessionsDir, session.id)
-    await fs.mkdir(path.join(sessionDir, 'tasks'), { recursive: true })
-    await fs.mkdir(path.join(sessionDir, 'artifacts/code'), { recursive: true })
-    await fs.mkdir(path.join(sessionDir, 'artifacts/documents'), { recursive: true })
-    await fs.mkdir(path.join(sessionDir, 'artifacts/images'), { recursive: true })
-    await fs.mkdir(path.join(sessionDir, 'logs'), { recursive: true })
+    const sessionDir = path.join(this.sessionsDir, session.id);
+    await fs.mkdir(path.join(sessionDir, 'tasks'), { recursive: true });
+    await fs.mkdir(path.join(sessionDir, 'artifacts/code'), { recursive: true });
+    await fs.mkdir(path.join(sessionDir, 'artifacts/documents'), { recursive: true });
+    await fs.mkdir(path.join(sessionDir, 'artifacts/images'), { recursive: true });
+    await fs.mkdir(path.join(sessionDir, 'logs'), { recursive: true });
 
     // 3. 创建空的 session.jsonl
-    await fs.writeFile(path.join(sessionDir, 'session.jsonl'), '', 'utf-8')
+    await fs.writeFile(path.join(sessionDir, 'session.jsonl'), '', 'utf-8');
 
-    return session.id
+    return session.id;
   }
 
   /**
@@ -243,19 +231,19 @@ export class SessionStore {
   async appendMessage(
     sessionId: string,
     message: {
-      role: 'user' | 'assistant' | 'system'
-      content: string
-      taskId?: string // assistant 消息关联的 taskId
+      role: 'user' | 'assistant' | 'system';
+      content: string;
+      taskId?: string; // assistant 消息关联的 taskId
     }
   ): Promise<void> {
-    const sessionFile = path.join(this.sessionsDir, sessionId, 'session.jsonl')
+    const sessionFile = path.join(this.sessionsDir, sessionId, 'session.jsonl');
     const line =
       JSON.stringify({
         ...message,
         timestamp: Date.now()
-      }) + '\n'
+      }) + '\n';
 
-    await fs.appendFile(sessionFile, line, 'utf-8')
+    await fs.appendFile(sessionFile, line, 'utf-8');
 
     // 更新数据库的消息计数和时间
     await this.db.execute(
@@ -263,7 +251,7 @@ export class SessionStore {
        SET message_count = message_count + 1, updated_at = ? 
        WHERE id = ?`,
       [Date.now(), sessionId]
-    )
+    );
   }
 
   /**
@@ -271,19 +259,19 @@ export class SessionStore {
    */
   async getMessages(sessionId: string): Promise<
     Array<{
-      role: string
-      content: string
-      taskId?: string
-      timestamp: number
+      role: string;
+      content: string;
+      taskId?: string;
+      timestamp: number;
     }>
   > {
-    const sessionFile = path.join(this.sessionsDir, sessionId, 'session.jsonl')
-    const content = await fs.readFile(sessionFile, 'utf-8')
+    const sessionFile = path.join(this.sessionsDir, sessionId, 'session.jsonl');
+    const content = await fs.readFile(sessionFile, 'utf-8');
 
     return content
       .split('\n')
       .filter((line) => line.trim())
-      .map((line) => JSON.parse(line))
+      .map((line) => JSON.parse(line));
   }
 
   // ===== Task 管理 ===== ⭐ 新增
@@ -292,22 +280,22 @@ export class SessionStore {
    * 创建新任务
    */
   async createTask(task: {
-    id: string
-    sessionId: string
-    objective: string
-    agentType: string
-    model: string
+    id: string;
+    sessionId: string;
+    objective: string;
+    agentType: string;
+    model: string;
   }): Promise<string> {
     // 1. 保存元数据到数据库
     await this.db.execute(
       `INSERT INTO ai_tasks (id, session_id, objective, agent_type, model, status, started_at)
        VALUES (?, ?, ?, ?, ?, 'running', ?)`,
       [task.id, task.sessionId, task.objective, task.agentType, task.model, Date.now()]
-    )
+    );
 
     // 2. 创建任务目录
-    const taskDir = path.join(this.sessionsDir, task.sessionId, 'tasks', task.id)
-    await fs.mkdir(taskDir, { recursive: true })
+    const taskDir = path.join(this.sessionsDir, task.sessionId, 'tasks', task.id);
+    await fs.mkdir(taskDir, { recursive: true });
 
     // 3. 写入任务元数据文件
     await fs.writeFile(
@@ -326,17 +314,15 @@ export class SessionStore {
         2
       ),
       'utf-8'
-    )
+    );
 
     // 4. 创建空的执行日志
-    await fs.writeFile(path.join(taskDir, 'execution.jsonl'), '', 'utf-8')
+    await fs.writeFile(path.join(taskDir, 'execution.jsonl'), '', 'utf-8');
 
     // 5. 更新 Session 的任务计数
-    await this.db.execute('UPDATE ai_sessions SET task_count = task_count + 1 WHERE id = ?', [
-      task.sessionId
-    ])
+    await this.db.execute('UPDATE ai_sessions SET task_count = task_count + 1 WHERE id = ?', [task.sessionId]);
 
-    return task.id
+    return task.id;
   }
 
   /**
@@ -346,22 +332,22 @@ export class SessionStore {
     sessionId: string,
     taskId: string,
     log: {
-      type: 'thinking' | 'tool_call' | 'tool_result' | 'status'
-      content?: string
-      tool?: string
-      params?: any
-      result?: any
-      success?: boolean
+      type: 'thinking' | 'tool_call' | 'tool_result' | 'status';
+      content?: string;
+      tool?: string;
+      params?: any;
+      result?: any;
+      success?: boolean;
     }
   ): Promise<void> {
-    const logFile = path.join(this.sessionsDir, sessionId, 'tasks', taskId, 'execution.jsonl')
+    const logFile = path.join(this.sessionsDir, sessionId, 'tasks', taskId, 'execution.jsonl');
     const line =
       JSON.stringify({
         ...log,
         timestamp: Date.now()
-      }) + '\n'
+      }) + '\n';
 
-    await fs.appendFile(logFile, line, 'utf-8')
+    await fs.appendFile(logFile, line, 'utf-8');
   }
 
   /**
@@ -371,37 +357,37 @@ export class SessionStore {
     sessionId: string,
     taskId: string,
     result: {
-      status: 'completed' | 'failed'
-      error?: string
-      summary?: string
+      status: 'completed' | 'failed';
+      error?: string;
+      summary?: string;
     }
   ): Promise<void> {
-    const completedAt = Date.now()
+    const completedAt = Date.now();
 
     // 1. 更新数据库
-    const taskRow = await this.db.get('SELECT started_at FROM ai_tasks WHERE id = ?', [taskId])
-    const duration = completedAt - taskRow.started_at
+    const taskRow = await this.db.get('SELECT started_at FROM ai_tasks WHERE id = ?', [taskId]);
+    const duration = completedAt - taskRow.started_at;
 
     await this.db.execute(
       `UPDATE ai_tasks 
        SET status = ?, completed_at = ?, duration_ms = ? 
        WHERE id = ?`,
       [result.status, completedAt, duration, taskId]
-    )
+    );
 
     // 2. 更新任务元数据文件
-    const metadataFile = path.join(this.sessionsDir, sessionId, 'tasks', taskId, 'metadata.json')
-    const metadata = JSON.parse(await fs.readFile(metadataFile, 'utf-8'))
-    metadata.status = result.status
-    metadata.completedAt = completedAt
-    metadata.durationMs = duration
-    if (result.error) metadata.error = result.error
-    await fs.writeFile(metadataFile, JSON.stringify(metadata, null, 2), 'utf-8')
+    const metadataFile = path.join(this.sessionsDir, sessionId, 'tasks', taskId, 'metadata.json');
+    const metadata = JSON.parse(await fs.readFile(metadataFile, 'utf-8'));
+    metadata.status = result.status;
+    metadata.completedAt = completedAt;
+    metadata.durationMs = duration;
+    if (result.error) metadata.error = result.error;
+    await fs.writeFile(metadataFile, JSON.stringify(metadata, null, 2), 'utf-8');
 
     // 3. 如果有总结，保存 summary.md
     if (result.summary) {
-      const summaryFile = path.join(this.sessionsDir, sessionId, 'tasks', taskId, 'summary.md')
-      await fs.writeFile(summaryFile, result.summary, 'utf-8')
+      const summaryFile = path.join(this.sessionsDir, sessionId, 'tasks', taskId, 'summary.md');
+      await fs.writeFile(summaryFile, result.summary, 'utf-8');
     }
   }
 
@@ -410,12 +396,12 @@ export class SessionStore {
    */
   async getTasks(sessionId: string): Promise<
     Array<{
-      id: string
-      objective: string
-      status: string
-      startedAt: number
-      completedAt?: number
-      durationMs?: number
+      id: string;
+      objective: string;
+      status: string;
+      startedAt: number;
+      completedAt?: number;
+      durationMs?: number;
     }>
   > {
     const rows = await this.db.all(
@@ -424,7 +410,7 @@ export class SessionStore {
        WHERE session_id = ? 
        ORDER BY started_at ASC`,
       [sessionId]
-    )
+    );
 
     return rows.map((row) => ({
       id: row.id,
@@ -433,7 +419,7 @@ export class SessionStore {
       startedAt: row.started_at,
       completedAt: row.completed_at,
       durationMs: row.duration_ms
-    }))
+    }));
   }
 
   // ===== 工具执行记录 =====
@@ -442,15 +428,15 @@ export class SessionStore {
    * 记录工具执行
    */
   async recordToolExecution(execution: {
-    id: string
-    sessionId: string
-    taskId?: string
-    toolName: string
-    parameters: any
-    result?: any
-    status: 'success' | 'failed' | 'pending'
-    error?: string
-    executionTimeMs?: number
+    id: string;
+    sessionId: string;
+    taskId?: string;
+    toolName: string;
+    parameters: any;
+    result?: any;
+    status: 'success' | 'failed' | 'pending';
+    error?: string;
+    executionTimeMs?: number;
   }): Promise<void> {
     await this.db.execute(
       `INSERT INTO ai_tool_executions 
@@ -468,7 +454,7 @@ export class SessionStore {
         execution.executionTimeMs || null,
         Date.now()
       ]
-    )
+    );
   }
 
   // ===== 产物管理 ===== ⭐ 新增
@@ -477,50 +463,46 @@ export class SessionStore {
    * 保存代码产物
    */
   async saveCodeArtifact(sessionId: string, filename: string, content: string): Promise<string> {
-    const artifactPath = path.join(this.sessionsDir, sessionId, 'artifacts/code', filename)
-    await fs.mkdir(path.dirname(artifactPath), { recursive: true })
-    await fs.writeFile(artifactPath, content, 'utf-8')
-    return artifactPath
+    const artifactPath = path.join(this.sessionsDir, sessionId, 'artifacts/code', filename);
+    await fs.mkdir(path.dirname(artifactPath), { recursive: true });
+    await fs.writeFile(artifactPath, content, 'utf-8');
+    return artifactPath;
   }
 
   /**
    * 保存文档产物
    */
-  async saveDocumentArtifact(
-    sessionId: string,
-    filename: string,
-    content: string
-  ): Promise<string> {
-    const artifactPath = path.join(this.sessionsDir, sessionId, 'artifacts/documents', filename)
-    await fs.mkdir(path.dirname(artifactPath), { recursive: true })
-    await fs.writeFile(artifactPath, content, 'utf-8')
-    return artifactPath
+  async saveDocumentArtifact(sessionId: string, filename: string, content: string): Promise<string> {
+    const artifactPath = path.join(this.sessionsDir, sessionId, 'artifacts/documents', filename);
+    await fs.mkdir(path.dirname(artifactPath), { recursive: true });
+    await fs.writeFile(artifactPath, content, 'utf-8');
+    return artifactPath;
   }
 
   /**
    * 列出所有产物
    */
   async listArtifacts(sessionId: string): Promise<{
-    code: string[]
-    documents: string[]
-    images: string[]
+    code: string[];
+    documents: string[];
+    images: string[];
   }> {
-    const artifactsDir = path.join(this.sessionsDir, sessionId, 'artifacts')
+    const artifactsDir = path.join(this.sessionsDir, sessionId, 'artifacts');
 
     const listFiles = async (subdir: string): Promise<string[]> => {
-      const dir = path.join(artifactsDir, subdir)
+      const dir = path.join(artifactsDir, subdir);
       try {
-        return await fs.readdir(dir)
+        return await fs.readdir(dir);
       } catch {
-        return []
+        return [];
       }
-    }
+    };
 
     return {
       code: await listFiles('code'),
       documents: await listFiles('documents'),
       images: await listFiles('images')
-    }
+    };
   }
 }
 ```
@@ -609,37 +591,37 @@ packages/ai-core/src/storage/stores/SessionStore.ts
 ```typescript
 // packages/ai-gateway/src/AgentGateway.ts
 export class AgentGateway {
-  private sessionStore: SessionStore
+  private sessionStore: SessionStore;
 
   private async handleMessage(message: any): Promise<any> {
-    const { type, payload } = message
+    const { type, payload } = message;
 
     switch (type) {
       case 'create-session':
-        return await this.createSession(payload)
+        return await this.createSession(payload);
 
       case 'send-message': {
-        const { sessionId, message } = payload
+        const { sessionId, message } = payload;
 
         // 1. 记录用户消息
         await this.sessionStore.appendMessage(sessionId, {
           role: 'user',
           content: message
-        })
+        });
 
         // 2. 创建新任务
-        const taskId = `task-${Date.now()}`
+        const taskId = `task-${Date.now()}`;
         await this.sessionStore.createTask({
           id: taskId,
           sessionId,
           objective: message,
           agentType: 'chat',
           model: 'gpt-4'
-        })
+        });
 
         // 3. 执行 Agent
-        const agent = this.agents.get(sessionId)
-        let response = ''
+        const agent = this.agents.get(sessionId);
+        let response = '';
 
         for await (const event of agent.execute(message)) {
           switch (event.type) {
@@ -648,8 +630,8 @@ export class AgentGateway {
               await this.sessionStore.appendTaskLog(sessionId, taskId, {
                 type: 'thinking',
                 content: event.content
-              })
-              break
+              });
+              break;
 
             case 'tool_call':
               // 记录工具调用
@@ -657,8 +639,8 @@ export class AgentGateway {
                 type: 'tool_call',
                 tool: event.tool,
                 params: event.input
-              })
-              break
+              });
+              break;
 
             case 'tool_result':
               // 记录工具结果
@@ -667,12 +649,12 @@ export class AgentGateway {
                 tool: event.tool,
                 result: event.result,
                 success: event.success
-              })
-              break
+              });
+              break;
 
             case 'output':
-              response = event.content
-              break
+              response = event.content;
+              break;
           }
         }
 
@@ -680,16 +662,16 @@ export class AgentGateway {
         await this.sessionStore.completeTask(sessionId, taskId, {
           status: 'completed',
           summary: response
-        })
+        });
 
         // 5. 记录 Agent 响应
         await this.sessionStore.appendMessage(sessionId, {
           role: 'assistant',
           content: response,
           taskId
-        })
+        });
 
-        return { response, taskId }
+        return { response, taskId };
       }
     }
   }
@@ -708,21 +690,21 @@ export class AIClient {
    */
   async getTasks(sessionId: string): Promise<Task[]> {
     // 通过 WebSocket 或 IPC 请求
-    return this.request('get-tasks', { sessionId })
+    return this.request('get-tasks', { sessionId });
   }
 
   /**
    * 获取任务执行日志
    */
   async getTaskLogs(sessionId: string, taskId: string): Promise<LogEntry[]> {
-    return this.request('get-task-logs', { sessionId, taskId })
+    return this.request('get-task-logs', { sessionId, taskId });
   }
 
   /**
    * 获取产物列表
    */
   async getArtifacts(sessionId: string): Promise<Artifacts> {
-    return this.request('get-artifacts', { sessionId })
+    return this.request('get-artifacts', { sessionId });
   }
 }
 ```

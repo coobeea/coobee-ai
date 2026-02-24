@@ -290,16 +290,19 @@ function getFileIcon(name: string): string {
       <div
         v-show="activeFile && !activeFile.loading && !activeFile.error"
         class="relative flex min-h-0 flex-1 flex-col">
-        <!-- 特殊格式预览 -->
-        <component
-          :is="previewComponent"
-          v-if="previewComponent"
-          :file-path="activeFile!.path"
-          :content="activeFile!.content"
-          class="min-h-0 flex-1" />
+        <!-- 特殊格式预览（根据文件类型自动切换） -->
+        <Transition name="preview-fade" mode="out-in">
+          <component
+            :is="previewComponent"
+            v-if="previewComponent"
+            :key="activeFile!.path"
+            :file-path="activeFile!.path"
+            :content="activeFile!.content"
+            class="min-h-0 flex-1" />
+        </Transition>
 
         <!-- Monaco Editor（代码文件） -->
-        <div v-else ref="editorContainer" class="min-h-0 flex-1 bg-white"></div>
+        <div v-if="!previewComponent" ref="editorContainer" class="min-h-0 flex-1 bg-white"></div>
 
         <!-- 大文件加载提示（底部浮动） -->
         <div

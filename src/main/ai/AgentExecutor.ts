@@ -60,6 +60,11 @@ export interface ExecuteRequest {
   onChunk?: (chunk: StreamChunk) => void;
   /** 中止信号（Pipeline 传入，用于提前终止流式消费） */
   signal?: AbortSignal;
+  /**
+   * 模型源引用（用于故障转移重试）
+   * 当 Agent 使用 @group-name 或 auto 时传入，失败后可切换到组内下一个模型
+   */
+  modelSourceRef?: string;
 }
 
 /** 执行状态 */
@@ -123,13 +128,24 @@ class AgentExecutor {
    * 注入 Provider 配置到 Builder（API Key + 模型 + baseURL）
    *
    * 供 chat.ts、Orchestrator Worker、Swarm Role 等所有创建 Agent 的地方使用。
+   * 支持 @group-name 和 auto 格式，通过 ModelGroupResolver 解析为具体模型。
    * 如果 Provider 系统未就绪或无可用配置，静默回退。
+   *
+   * @param builder Builder 实例
+   * @param opts 可选：modelOverride（Agent 的 model 字段）、sessionId、agentId
    */
-  applyProviderConfig(builder: PiMonoBuilder): void {
+  applyProviderConfig(
+    builder: PiMonoBuilder,
+    opts?: { modelOverride?: string; sessionId?: string; agentId?: string }
+  ): void {
     try {
       if (!this.providerSystem) return;
       const { selector, registry } = this.providerSystem;
-      const ref = selector.resolve();
+      const ref = selector.resolve({
+        modelOverride: opts?.modelOverride,
+        sessionId: opts?.sessionId,
+        agentId: opts?.agentId
+      });
       const provider = registry.get(ref.provider);
       if (!provider) return;
 
@@ -405,7 +421,7 @@ class AgentExecutor {
    * 每个 chunk 同时通过 StreamEmitter.forward() 广播到 EventBus。
    */
   async *stream(request: Omit<ExecuteRequest, 'onChunk'>): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
-    const { sessionId, message, builder, signal } = request;
+    const { sessionId, message, builder, signal, modelSourceRef } = request;
 
     if (!builder) {
       throw new Error('stream() requires a builder. Use submit() with runtime for pre-built runtimes.');
@@ -456,20 +472,50 @@ class AgentExecutor {
         eventWriter.register(sessionId);
       }
 
-      // 1. 创建 Runtime
-      runtime = await builder.sessionId(sessionId).build();
+      // 模型组故障转移：获取候选模型列表
+      const candidates =
+        modelSourceRef && this.providerSystem ? this.providerSystem.selector.getGroupCandidates(modelSourceRef) : null;
+      const failedModels: string[] = [];
+      let yieldedCount = 0;
 
-      // 1.5 注册统一分发器（非轻量模式）
-      if (eventWriter && !isLightweight) {
-        eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
+      // 1. 创建 Runtime（带重试循环）
+      let gen: AsyncGenerator<StreamChunk, ExecutionResult, unknown>;
+      let r: IteratorResult<StreamChunk, ExecutionResult>;
+
+      for (;;) {
+        runtime = await builder.sessionId(sessionId).build();
+
+        // 1.5 注册统一分发器（非轻量模式）
+        if (eventWriter && !isLightweight) {
+          eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
+        }
+
+        gen = runtime.stream(message, { signal });
+        r = await gen.next();
+
+        // 模型组重试：仅当 run:error 为第一个 chunk 且未 yield 时重试
+        if (!r.done && r.value.type === 'run:error' && yieldedCount === 0 && candidates && candidates.length > 0) {
+          const piBuilder = builder as PiMonoBuilder;
+          const currentModel = piBuilder.getResolvedModelRef?.();
+          if (currentModel) failedModels.push(currentModel);
+
+          const nextModel = candidates.find((m) => !failedModels.includes(m));
+          if (nextModel) {
+            log.warn(`[AgentExecutor] Model ${currentModel} failed, retrying with next in group: ${nextModel}`);
+            await this.destroyRuntime(runtime);
+            runtime = null;
+            this.applyProviderConfig(piBuilder, { modelOverride: nextModel });
+            continue;
+          }
+        }
+
+        break;
       }
 
       // 2. 透传 stream()（同步触发 Extension Hook），传入 signal
-      const gen = runtime.stream(message, { signal });
       let turnStartTime = 0;
       let turnToolCallCount = 0;
 
-      let r = await gen.next();
       while (!r.done) {
         const chunk = r.value;
 
@@ -498,6 +544,7 @@ class AgentExecutor {
         }
 
         yield chunk;
+        yieldedCount++;
         r = await gen.next();
       }
 

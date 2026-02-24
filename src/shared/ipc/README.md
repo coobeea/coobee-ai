@@ -51,35 +51,34 @@ src/shared/ipc/
 
 ```typescript
 // 导入通道常量
-import { ShellChannels, WindowChannels } from '@shared/ipc'
+import { ShellChannels, WindowChannels } from '@shared/ipc';
 // 导入类型
-import type { WindowInfoResponse, CreateTabRequest } from '@shared/ipc'
+import type { WindowInfoResponse, CreateTabRequest } from '@shared/ipc';
 
 // 注册 IPC 处理器
 ipcMain.handle(ShellChannels.GET_WINDOW_INFO, (event): WindowInfoResponse => {
   // ...
-})
+});
 ```
 
 ### 在预加载脚本中使用
 
 ```typescript
-import { ShellChannels } from '@shared/ipc'
-import type { WindowInfoResponse } from '@shared/ipc'
+import { ShellChannels } from '@shared/ipc';
+import type { WindowInfoResponse } from '@shared/ipc';
 
 const api = {
-  getWindowInfo: (): Promise<WindowInfoResponse | null> =>
-    ipcRenderer.invoke(ShellChannels.GET_WINDOW_INFO)
-}
+  getWindowInfo: (): Promise<WindowInfoResponse | null> => ipcRenderer.invoke(ShellChannels.GET_WINDOW_INFO)
+};
 ```
 
 ### 在渲染进程中使用
 
 ```typescript
-import { WindowChannels } from '@shared/ipc'
+import { WindowChannels } from '@shared/ipc';
 
 // 发送窗口控制命令
-window.electron.ipcRenderer.send(WindowChannels.MINIMIZE)
+window.electron.ipcRenderer.send(WindowChannels.MINIMIZE);
 ```
 
 ## ✅ 优势
@@ -99,7 +98,7 @@ export const TabChannels = {
   CREATE: 'tab:create',
   // 添加新通道
   RENAME: 'tab:rename'
-} as const
+} as const;
 ```
 
 ### 2. 在 `types.ts` 中添加类型定义
@@ -109,9 +108,9 @@ export const TabChannels = {
  * 重命名 Tab 请求
  */
 export interface RenameTabRequest {
-  windowId?: number
-  tabId: number
-  newTitle: string
+  windowId?: number;
+  tabId: number;
+  newTitle: string;
 }
 ```
 
@@ -121,18 +120,18 @@ export interface RenameTabRequest {
 export type {
   // ...
   RenameTabRequest
-} from './types'
+} from './types';
 ```
 
 ### 4. 在主进程中实现处理器
 
 ```typescript
-import { TabChannels } from '@shared/ipc'
-import type { RenameTabRequest } from '@shared/ipc'
+import { TabChannels } from '@shared/ipc';
+import type { RenameTabRequest } from '@shared/ipc';
 
 ipcMain.handle(TabChannels.RENAME, (event, req: RenameTabRequest) => {
   // 实现逻辑
-})
+});
 ```
 
 ## 🔄 IPC 通信模式

@@ -85,6 +85,13 @@ export class PiMonoBuilder {
     return this._lightweight;
   }
 
+  /** 获取已解析的模型引用（"provider/model" 格式，供故障转移重试使用） */
+  getResolvedModelRef(): string | undefined {
+    const modelId = this._providerModelId || this._model;
+    if (!modelId || !this._providerConfig) return undefined;
+    return `${this._providerConfig.id}/${modelId}`;
+  }
+
   /** 系统指令 */
   instructions(text: string): this {
     this._instructions = text;

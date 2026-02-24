@@ -27,6 +27,10 @@ function handleLogs(): void {
   router.push('/logs');
 }
 
+function handleObservability(): void {
+  router.push('/observability');
+}
+
 /** 获取状态颜色 */
 function getStatusColor(status: string): string {
   switch (status) {
@@ -115,6 +119,14 @@ function handleWorkerClick(worker: { name: string; status: string }): void {
 
     <!-- 右侧快捷按钮 -->
     <div class="actions-section">
+      <button
+        class="action-btn"
+        :class="{ active: activeMenuId === 'observability' }"
+        title="监控"
+        @click="handleObservability">
+        <span class="i-carbon-chart-line inline-block h-3.5 w-3.5" />
+        <span>监控</span>
+      </button>
       <button class="action-btn" :class="{ active: activeMenuId === 'logs' }" title="日志" @click="handleLogs">
         <span class="i-carbon-report inline-block h-3.5 w-3.5" />
         <span>日志</span>

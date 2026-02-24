@@ -1,69 +1,69 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
-import { useWindowStore } from '@/stores/window'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
+import { useWindowStore } from '@/stores/window';
 // 方式 1：手动导入图标（推荐用于常用图标）
-import IconMdiPalette from '~icons/mdi/palette'
-import IconMdiHome from '~icons/mdi/home'
-import IconMdiAccount from '~icons/mdi/account'
-import IconMdiHeart from '~icons/mdi/heart'
-import IconMdiCog from '~icons/mdi/cog'
-import IconMdiStar from '~icons/mdi/star'
-import IconMdiRocket from '~icons/mdi/rocket'
-import IconMdiLightningBolt from '~icons/mdi/lightning-bolt'
-import IconMdiCheckCircle from '~icons/mdi/check-circle'
-import IconMdiInformation from '~icons/mdi/information'
-import IconMdiBookOpenVariant from '~icons/mdi/book-open-variant'
-import IconSvgSpinners3DotsFade from '~icons/svg-spinners/3-dots-fade'
-import IconSvgSpinnersBarsRotateFade from '~icons/svg-spinners/bars-rotate-fade'
-import IconSvgSpinnersRingResize from '~icons/svg-spinners/ring-resize'
-import IconSvgSpinnersPulse from '~icons/svg-spinners/pulse'
-import IconMdiWindowMaximize from '~icons/mdi/window-maximize'
+import IconMdiPalette from '~icons/mdi/palette';
+import IconMdiHome from '~icons/mdi/home';
+import IconMdiAccount from '~icons/mdi/account';
+import IconMdiHeart from '~icons/mdi/heart';
+import IconMdiCog from '~icons/mdi/cog';
+import IconMdiStar from '~icons/mdi/star';
+import IconMdiRocket from '~icons/mdi/rocket';
+import IconMdiLightningBolt from '~icons/mdi/lightning-bolt';
+import IconMdiCheckCircle from '~icons/mdi/check-circle';
+import IconMdiInformation from '~icons/mdi/information';
+import IconMdiBookOpenVariant from '~icons/mdi/book-open-variant';
+import IconSvgSpinners3DotsFade from '~icons/svg-spinners/3-dots-fade';
+import IconSvgSpinnersBarsRotateFade from '~icons/svg-spinners/bars-rotate-fade';
+import IconSvgSpinnersRingResize from '~icons/svg-spinners/ring-resize';
+import IconSvgSpinnersPulse from '~icons/svg-spinners/pulse';
+import IconMdiWindowMaximize from '~icons/mdi/window-maximize';
 
-import Versions from '@/components/Versions.vue'
-import LogViewer from '@/components/LogViewer.vue'
+import Versions from '@/components/Versions.vue';
+import LogViewer from '@/components/LogViewer.vue';
 
 // 使用 Window Store
-const windowStore = useWindowStore()
+const windowStore = useWindowStore();
 
 // 定时器 ID
-let refreshTimer: number | null = null
+let refreshTimer: number | null = null;
 
 // 刷新计数器
-const refreshCount = ref(0)
+const refreshCount = ref(0);
 
 // 计算窗口信息（用于模板）
 const windowInfo = computed(() => {
-  if (!windowStore.isReady) return null
+  if (!windowStore.isReady) return null;
 
   return {
     info: windowStore.windowInfo,
     windowId: windowStore.windowId,
     currentTabId: windowStore.currentTabId
-  }
-})
+  };
+});
 
 onMounted(async () => {
   // 初始化窗口信息
-  await windowStore.refreshWindowInfo()
+  await windowStore.refreshWindowInfo();
 
   // 🔄 启动定时刷新任务（每 5 秒刷新一次）
   refreshTimer = window.setInterval(async () => {
-    refreshCount.value++
-    console.log(`[App] 定时刷新窗口信息 #${refreshCount.value}`)
-    await windowStore.refreshWindowInfo()
-  }, 5000)
+    refreshCount.value++;
+    console.log(`[App] 定时刷新窗口信息 #${refreshCount.value}`);
+    await windowStore.refreshWindowInfo();
+  }, 5000);
 
-  console.log('[App] 定时刷新任务已启动，每 5 秒刷新一次')
-})
+  console.log('[App] 定时刷新任务已启动，每 5 秒刷新一次');
+});
 
 onBeforeUnmount(() => {
   // ✅ 清理定时器
   if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
-    console.log('[App] 定时刷新任务已停止')
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+    console.log('[App] 定时刷新任务已停止');
   }
-})
+});
 </script>
 
 <template>
@@ -171,9 +171,7 @@ onBeforeUnmount(() => {
 
         <!-- 自动导入测试 -->
         <div class="mt-6">
-          <h3 class="mb-3 text-lg font-semibold text-gray-700">
-            方式 2：自动导入组件（无需手动 import）
-          </h3>
+          <h3 class="mb-3 text-lg font-semibold text-gray-700"> 方式 2：自动导入组件（无需手动 import） </h3>
           <div class="flex flex-wrap gap-4">
             <div class="flex flex-col items-center gap-1">
               <icon-mdi-fire class="text-4xl text-red-600" />
@@ -198,9 +196,7 @@ onBeforeUnmount(() => {
 
           <!-- 动态选择器 -->
           <div class="mb-4">
-            <p class="mb-2 text-sm text-gray-600">
-              CSS 类方式（最灵活，支持动态拼接，格式：i-{图标集}-{图标名}）
-            </p>
+            <p class="mb-2 text-sm text-gray-600"> CSS 类方式（最灵活，支持动态拼接，格式：i-{图标集}-{图标名}） </p>
             <div class="flex flex-wrap gap-4">
               <div class="flex flex-col items-center gap-1">
                 <span class="i-mdi-home text-4xl text-blue-600"></span>
@@ -246,18 +242,15 @@ onBeforeUnmount(() => {
         <!-- Buttons -->
         <div class="mb-4 flex flex-wrap gap-3">
           <button
-            class="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition hover:bg-blue-700 active:scale-95"
-          >
+            class="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition hover:bg-blue-700 active:scale-95">
             Primary Button
           </button>
           <button
-            class="rounded-lg bg-green-600 px-4 py-2 font-semibold text-white transition hover:bg-green-700 active:scale-95"
-          >
+            class="rounded-lg bg-green-600 px-4 py-2 font-semibold text-white transition hover:bg-green-700 active:scale-95">
             Success Button
           </button>
           <button
-            class="rounded-lg border-2 border-gray-300 px-4 py-2 font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 active:scale-95"
-          >
+            class="rounded-lg border-2 border-gray-300 px-4 py-2 font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 active:scale-95">
             Outline Button
           </button>
         </div>
@@ -299,8 +292,7 @@ onBeforeUnmount(() => {
           href="https://electron-vite.org/"
           target="_blank"
           rel="noreferrer"
-          class="flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 font-semibold text-white transition hover:bg-indigo-700"
-        >
+          class="flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 font-semibold text-white transition hover:bg-indigo-700">
           <IconMdiBookOpenVariant class="text-xl" />
           查看文档
         </a>

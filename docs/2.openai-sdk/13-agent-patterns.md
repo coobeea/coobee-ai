@@ -34,17 +34,17 @@ graph TD
 ### 基础用法
 
 ```typescript
-import { Agent, run, withTrace } from '@openai/agents'
+import { Agent, run, withTrace } from '@openai/agents';
 
 const spanishAgent = new Agent({
   name: 'Spanish Translator',
   instructions: "You translate the user's message to Spanish."
-})
+});
 
 const frenchAgent = new Agent({
   name: 'French Translator',
   instructions: "You translate the user's message to French."
-})
+});
 
 const orchestrator = new Agent({
   name: 'Orchestrator',
@@ -69,9 +69,9 @@ const orchestrator = new Agent({
       toolDescription: "Translate the user's message to French."
     })
   ]
-})
+});
 
-const result = await run(orchestrator, 'Say "Hello, how are you?" in both languages')
+const result = await run(orchestrator, 'Say "Hello, how are you?" in both languages');
 ```
 
 ### 结构化工具输入
@@ -79,12 +79,12 @@ const result = await run(orchestrator, 'Say "Hello, how are you?" in both langua
 使用 Zod Schema 定义工具参数，模型自动填充：
 
 ```typescript
-import { z } from 'zod'
+import { z } from 'zod';
 
 const translator = new Agent({
   name: 'Translator',
   instructions: 'You translate text between languages.'
-})
+});
 
 const orchestrator = new Agent({
   tools: [
@@ -99,7 +99,7 @@ const orchestrator = new Agent({
     })
   ],
   modelSettings: { toolChoice: 'required' }
-})
+});
 ```
 
 ### 流式 Agent-as-Tool
@@ -111,9 +111,9 @@ const billingTool = billingAgent.asTool({
   toolName: 'billing_agent',
   toolDescription: 'Handle billing queries.',
   onStream: (event) => {
-    console.log(`Event from ${event.agent.name}:`, event)
+    console.log(`Event from ${event.agent.name}:`, event);
   }
-})
+});
 ```
 
 ### Agents as Tools vs Handoff
@@ -130,10 +130,10 @@ const billingTool = billingAgent.asTool({
 根据运行时上下文动态控制工具可见性：
 
 ```typescript
-import { Agent, RunContext, run } from '@openai/agents'
+import { Agent, RunContext, run } from '@openai/agents';
 
-type LanguagePreference = 'spanish_only' | 'french_spanish' | 'european'
-type AppContext = { languagePreference: LanguagePreference }
+type LanguagePreference = 'spanish_only' | 'french_spanish' | 'european';
+type AppContext = { languagePreference: LanguagePreference };
 
 const orchestrator = new Agent<AppContext>({
   tools: [
@@ -144,28 +144,28 @@ const orchestrator = new Agent<AppContext>({
     frenchAgent.asTool({
       toolName: 'respond_french',
       isEnabled: ({ runContext }: { runContext: RunContext<AppContext> }) => {
-        const pref = runContext.context.languagePreference
-        return pref === 'french_spanish' || pref === 'european'
+        const pref = runContext.context.languagePreference;
+        return pref === 'french_spanish' || pref === 'european';
       }
     }),
     italianAgent.asTool({
       toolName: 'respond_italian',
       isEnabled: ({ runContext }: { runContext: RunContext<AppContext> }) => {
-        return runContext.context.languagePreference === 'european'
+        return runContext.context.languagePreference === 'european';
       }
     })
   ]
-})
+});
 
 // spanish_only: 只看到 spanish 工具
 await run(orchestrator, 'Hello', {
   context: { languagePreference: 'spanish_only' }
-})
+});
 
 // european: 看到全部三个工具
 await run(orchestrator, 'Hello', {
   context: { languagePreference: 'european' }
-})
+});
 ```
 
 ## 模式 3：确定性流程
@@ -173,13 +173,13 @@ await run(orchestrator, 'Hello', {
 固定步骤顺序执行，使用结构化输出做门控判断：
 
 ```typescript
-import { Agent, run, withTrace } from '@openai/agents'
-import { z } from 'zod'
+import { Agent, run, withTrace } from '@openai/agents';
+import { z } from 'zod';
 
 const outlineAgent = new Agent({
   name: 'Outline Generator',
   instructions: 'Generate a very short story outline.'
-})
+});
 
 const checker = new Agent({
   name: 'Outline Checker',
@@ -188,34 +188,34 @@ const checker = new Agent({
     good_quality: z.boolean(),
     is_scifi: z.boolean()
   })
-})
+});
 
 const storyAgent = new Agent({
   name: 'Story Writer',
   instructions: 'Write a story based on the outline.'
-})
+});
 
 await withTrace('Deterministic story flow', async () => {
   // Step 1: 生成大纲
-  const outlineResult = await run(outlineAgent, 'Write a sci-fi story outline')
+  const outlineResult = await run(outlineAgent, 'Write a sci-fi story outline');
 
   // Step 2: 质量检查
-  const checkResult = await run(checker, outlineResult.finalOutput)
+  const checkResult = await run(checker, outlineResult.finalOutput);
 
   // Step 3: 门控判断
   if (!checkResult.finalOutput.good_quality) {
-    console.log('Quality check failed. Stopping.')
-    return
+    console.log('Quality check failed. Stopping.');
+    return;
   }
   if (!checkResult.finalOutput.is_scifi) {
-    console.log('Not a sci-fi story. Stopping.')
-    return
+    console.log('Not a sci-fi story. Stopping.');
+    return;
   }
 
   // Step 4: 写完整故事
-  const storyResult = await run(storyAgent, outlineResult.finalOutput)
-  console.log(storyResult.finalOutput)
-})
+  const storyResult = await run(storyAgent, outlineResult.finalOutput);
+  console.log(storyResult.finalOutput);
+});
 ```
 
 ## 模式 4：LLM as a Judge
@@ -223,55 +223,55 @@ await withTrace('Deterministic story flow', async () => {
 使用独立的评估 Agent 评判输出质量，迭代改进：
 
 ```typescript
-import { Agent, run } from '@openai/agents'
-import type { AgentInputItem } from '@openai/agents'
-import { z } from 'zod'
+import { Agent, run } from '@openai/agents';
+import type { AgentInputItem } from '@openai/agents';
+import { z } from 'zod';
 
 const generator = new Agent({
   name: 'Story Outline Generator',
   instructions: 'Generate a story outline based on feedback if provided.'
-})
+});
 
 const EvaluationFeedback = z.object({
   feedback: z.string(),
   score: z.enum(['pass', 'needs_improvement', 'fail'])
-})
+});
 
 const evaluator = new Agent({
   name: 'Evaluator',
   instructions: 'Evaluate the story outline. Be critical but constructive.',
   outputType: EvaluationFeedback
-})
+});
 
-let inputItems: AgentInputItem[] = [{ content: 'Write a sci-fi story outline', role: 'user' }]
-let latestOutline = ''
-let turns = 0
-const maxTurns = 5
+let inputItems: AgentInputItem[] = [{ content: 'Write a sci-fi story outline', role: 'user' }];
+let latestOutline = '';
+let turns = 0;
+const maxTurns = 5;
 
 while (turns < maxTurns) {
-  const genResult = await run(generator, inputItems)
-  inputItems = genResult.history
-  latestOutline = genResult.finalOutput
+  const genResult = await run(generator, inputItems);
+  inputItems = genResult.history;
+  latestOutline = genResult.finalOutput;
 
-  const evalResult = await run(evaluator, inputItems)
-  const evaluation = evalResult.finalOutput
+  const evalResult = await run(evaluator, inputItems);
+  const evaluation = evalResult.finalOutput;
 
-  console.log(`Turn ${turns + 1}: Score = ${evaluation?.score}`)
+  console.log(`Turn ${turns + 1}: Score = ${evaluation?.score}`);
 
   if (evaluation?.score === 'pass') {
-    console.log('Approved!')
-    break
+    console.log('Approved!');
+    break;
   }
 
   inputItems.push({
     content: `Feedback: ${evaluation?.feedback}. Please improve the outline.`,
     role: 'user'
-  })
+  });
 
-  turns++
+  turns++;
 }
 
-console.log('Final outline:', latestOutline)
+console.log('Final outline:', latestOutline);
 ```
 
 ### LLM as a Judge 流程
@@ -289,39 +289,35 @@ flowchart LR
 使用 `Promise.all` 并行执行多个 Agent，然后汇总结果：
 
 ```typescript
-import { Agent, run, withTrace, extractAllTextOutput } from '@openai/agents'
+import { Agent, run, withTrace, extractAllTextOutput } from '@openai/agents';
 
 const translator = new Agent({
   name: 'Spanish Translator',
   instructions: 'Translate to Spanish. Be creative and natural.'
-})
+});
 
 const picker = new Agent({
   name: 'Translation Picker',
   instructions: 'Pick the best Spanish translation from the options.'
-})
+});
 
 await withTrace('Parallel translation', async () => {
-  const msg = 'Hello, how are you today?'
+  const msg = 'Hello, how are you today?';
 
-  const [res1, res2, res3] = await Promise.all([
-    run(translator, msg),
-    run(translator, msg),
-    run(translator, msg)
-  ])
+  const [res1, res2, res3] = await Promise.all([run(translator, msg), run(translator, msg), run(translator, msg)]);
 
   const outputs = [
     extractAllTextOutput(res1.newItems),
     extractAllTextOutput(res2.newItems),
     extractAllTextOutput(res3.newItems)
-  ]
+  ];
 
-  const translations = outputs.join('\n\n---\n\n')
+  const translations = outputs.join('\n\n---\n\n');
 
-  const best = await run(picker, `Original: ${msg}\n\nTranslations:\n${translations}`)
+  const best = await run(picker, `Original: ${msg}\n\nTranslations:\n${translations}`);
 
-  console.log('Best translation:', best.finalOutput)
-})
+  console.log('Best translation:', best.finalOutput);
+});
 ```
 
 ### 并行化适用场景
@@ -338,28 +334,25 @@ await withTrace('Parallel translation', async () => {
 确保 Agent 必须调用工具，控制工具结果的处理方式：
 
 ```typescript
-import { Agent, tool, run } from '@openai/agents'
-import type { ToolToFinalOutputFunction, FunctionToolResult, RunContext } from '@openai/agents'
+import { Agent, tool, run } from '@openai/agents';
+import type { ToolToFinalOutputFunction, FunctionToolResult, RunContext } from '@openai/agents';
 
-const customBehavior: ToolToFinalOutputFunction = async (
-  _context: RunContext,
-  results: FunctionToolResult[]
-) => {
-  const output = results.find((r) => r.type === 'function_output')
+const customBehavior: ToolToFinalOutputFunction = async (_context: RunContext, results: FunctionToolResult[]) => {
+  const output = results.find((r) => r.type === 'function_output');
   if (!output) {
-    return { isFinalOutput: false, isInterrupted: undefined }
+    return { isFinalOutput: false, isInterrupted: undefined };
   }
   return {
     isFinalOutput: true,
     finalOutput: `Processed: ${JSON.stringify(output.output)}`
-  }
-}
+  };
+};
 
 const agent = new Agent({
   tools: [getWeather],
   modelSettings: { toolChoice: 'required' },
   toolUseBehavior: customBehavior
-})
+});
 ```
 
 ### 三种 toolUseBehavior
@@ -395,15 +388,15 @@ const triageAgent = new Agent({
   instructions: 'Route to the appropriate specialist.',
   handoffs: [codeAgent, researchAgent],
   inputGuardrails: [topicGuardrail]
-})
+});
 
 // Agents as Tools + 并行化 + LLM 评估
 const orchestrator = new Agent({
   tools: [writer.asTool({ toolName: 'write' }), reviewer.asTool({ toolName: 'review' })]
-})
+});
 
-const [draft1, draft2] = await Promise.all([run(writer, prompt), run(writer, prompt)])
-const best = await run(evaluator, `Compare:\n${draft1.finalOutput}\n---\n${draft2.finalOutput}`)
+const [draft1, draft2] = await Promise.all([run(writer, prompt), run(writer, prompt)]);
+const best = await run(evaluator, `Compare:\n${draft1.finalOutput}\n---\n${draft2.finalOutput}`);
 ```
 
 ## 最佳实践

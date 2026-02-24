@@ -158,16 +158,16 @@ src/
 
 ```typescript
 // src/main/index.ts
-import { someUtil } from '@/utils/helper' // @ = src/main/
-import { SharedType } from '@shared/types' // @shared = src/shared
+import { someUtil } from '@/utils/helper'; // @ = src/main/
+import { SharedType } from '@shared/types'; // @shared = src/shared
 ```
 
 ### Renderer 进程
 
 ```typescript
 // src/renderer/src/App.vue
-import { MyComponent } from '@/components/MyComponent.vue' // @ = src/renderer/src
-import { SharedConst } from '@shared/constants' // @shared = src/shared
+import { MyComponent } from '@/components/MyComponent.vue'; // @ = src/renderer/src
+import { SharedConst } from '@shared/constants'; // @shared = src/shared
 ```
 
 ### TypeScript 配置
@@ -201,9 +201,9 @@ monacoEditorPlugin({
     'json' // JSON 支持
   ],
   customDistPath(_root, buildOutDir, _base) {
-    return path.resolve(buildOutDir, 'monacoeditorwork')
+    return path.resolve(buildOutDir, 'monacoeditorwork');
   }
-})
+});
 ```
 
 **说明：**
@@ -224,7 +224,7 @@ optimizeDeps: {
     'axios', // 网络请求库
     'dayjs', // 日期库
     'lodash' // 工具库
-  ]
+  ];
 }
 ```
 
@@ -235,7 +235,7 @@ optimizeDeps: {
 ```typescript
 build: {
   rollupOptions: {
-    external: ['better-sqlite3-multiple-ciphers', 'fs-ext']
+    external: ['better-sqlite3-multiple-ciphers', 'fs-ext'];
   }
 }
 ```
@@ -246,7 +246,7 @@ build: {
 
 ```typescript
 build: {
-  cssCodeSplit: false
+  cssCodeSplit: false;
 }
 ```
 
@@ -258,7 +258,7 @@ build: {
 
 ```typescript
 server: {
-  host: '0.0.0.0' // 监听所有网络接口
+  host: '0.0.0.0'; // 监听所有网络接口
 }
 ```
 
@@ -310,7 +310,7 @@ vue({
       isCustomElement: (tag) => tag.startsWith('custom-')
     }
   }
-})
+});
 ```
 
 **作用：** 告诉 Vue 编译器哪些标签是自定义元素，不要当作 Vue 组件处理。
@@ -329,7 +329,7 @@ vue({
 
 ```typescript
 worker: {
-  format: 'es'
+  format: 'es';
 }
 ```
 
@@ -370,7 +370,7 @@ optimizeDeps: {
     '@tiptap/core',
     '@tiptap/vue-3',
     '@tiptap/starter-kit'
-  ]
+  ];
 }
 ```
 

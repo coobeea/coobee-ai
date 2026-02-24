@@ -41,8 +41,8 @@ Need event binding or Vue features?
 
 ```vue
 <script setup lang="ts">
-import IconMdiHome from '~icons/mdi/home'
-import IconCarbonSettings from '~icons/carbon/settings'
+import IconMdiHome from '~icons/mdi/home';
+import IconCarbonSettings from '~icons/carbon/settings';
 </script>
 
 <template>
@@ -99,8 +99,8 @@ import IconCarbonSettings from '~icons/carbon/settings'
 </template>
 
 <script setup>
-const iconName = ref('home')
-const icons = ['settings', 'user', 'logout']
+const iconName = ref('home');
+const icons = ['settings', 'user', 'logout'];
 </script>
 ```
 
@@ -159,7 +159,7 @@ const statusIcons = {
   success: 'check-circle',
   error: 'alert-circle',
   warning: 'alert'
-}
+};
 </script>
 
 <template>
@@ -172,8 +172,8 @@ const statusIcons = {
 
 ```vue
 <script setup>
-import IconMdiHome from '~icons/mdi/home' // Method 1
-const dynamicIcon = ref('settings')
+import IconMdiHome from '~icons/mdi/home'; // Method 1
+const dynamicIcon = ref('settings');
 </script>
 
 <template>
@@ -241,9 +241,9 @@ Ensure `tsconfig.web.json` includes:
 ### electron.vite.config.ts
 
 ```typescript
-import Icons from 'unplugin-icons/vite'
-import IconsResolver from 'unplugin-icons/resolver'
-import Components from 'unplugin-vue-components/vite'
+import Icons from 'unplugin-icons/vite';
+import IconsResolver from 'unplugin-icons/resolver';
+import Components from 'unplugin-vue-components/vite';
 
 plugins: [
   Components({
@@ -253,7 +253,7 @@ plugins: [
     compiler: 'vue3',
     autoInstall: true
   })
-]
+];
 ```
 
 ### tailwind.css

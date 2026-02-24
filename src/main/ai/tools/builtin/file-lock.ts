@@ -8,7 +8,7 @@
  * 不同文件的操作互不阻塞。
  */
 
-const fileLocks = new Map<string, Promise<void>>()
+const fileLocks = new Map<string, Promise<void>>();
 
 /**
  * 获取文件锁，执行操作后自动释放
@@ -19,23 +19,23 @@ const fileLocks = new Map<string, Promise<void>>()
  */
 export async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
   // 等待当前锁释放
-  const existing = fileLocks.get(filePath) || Promise.resolve()
+  const existing = fileLocks.get(filePath) || Promise.resolve();
 
-  let releaseLock: () => void
+  let releaseLock: () => void;
   const newLock = new Promise<void>((resolve) => {
-    releaseLock = resolve
-  })
+    releaseLock = resolve;
+  });
 
-  fileLocks.set(filePath, newLock)
+  fileLocks.set(filePath, newLock);
 
   try {
-    await existing
-    return await fn()
+    await existing;
+    return await fn();
   } finally {
-    releaseLock!()
+    releaseLock!();
     // 如果当前锁就是最新的，清理 Map
     if (fileLocks.get(filePath) === newLock) {
-      fileLocks.delete(filePath)
+      fileLocks.delete(filePath);
     }
   }
 }

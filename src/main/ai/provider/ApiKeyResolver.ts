@@ -9,7 +9,7 @@
  */
 
 /** ${VAR_NAME} 匹配正则 */
-const ENV_TEMPLATE_RE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)}$/
+const ENV_TEMPLATE_RE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)}$/;
 
 /** 常见 Provider ID → 环境变量名映射 */
 const PROVIDER_ENV_MAP: Record<string, string> = {
@@ -18,7 +18,7 @@ const PROVIDER_ENV_MAP: Record<string, string> = {
   google: 'GOOGLE_API_KEY',
   aliyun: 'DASHSCOPE_API_KEY',
   minimax: 'MINIMAX_API_KEY'
-}
+};
 
 /**
  * 解析 API Key
@@ -35,30 +35,30 @@ export function resolveApiKey(
 ): string | undefined {
   // 1. 如果有配置值，尝试解析模板
   if (apiKey) {
-    const match = apiKey.match(ENV_TEMPLATE_RE)
+    const match = apiKey.match(ENV_TEMPLATE_RE);
     if (match) {
       // 是 ${VAR} 模板
-      const envValue = env[match[1]]
-      if (envValue) return envValue
+      const envValue = env[match[1]];
+      if (envValue) return envValue;
       // 模板未解析成功，继续尝试其他来源
     } else {
       // 不是模板，直接使用
-      return apiKey
+      return apiKey;
     }
   }
 
   // 2. 按 Provider ID 查找已知环境变量
-  const knownEnvVar = PROVIDER_ENV_MAP[providerId.toLowerCase()]
+  const knownEnvVar = PROVIDER_ENV_MAP[providerId.toLowerCase()];
   if (knownEnvVar) {
-    const envValue = env[knownEnvVar]
-    if (envValue) return envValue
+    const envValue = env[knownEnvVar];
+    if (envValue) return envValue;
   }
 
   // 3. 尝试通用格式 {PROVIDER_ID}_API_KEY
-  const genericEnvVar = `${providerId.toUpperCase()}_API_KEY`
-  const genericValue = env[genericEnvVar]
-  if (genericValue) return genericValue
+  const genericEnvVar = `${providerId.toUpperCase()}_API_KEY`;
+  const genericValue = env[genericEnvVar];
+  if (genericValue) return genericValue;
 
   // 未找到
-  return undefined
+  return undefined;
 }

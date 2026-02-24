@@ -50,7 +50,7 @@ export const Spinner = {
   WIFI: 'wifi', // Wifi信号
   WIFI_FADE: 'wifi-fade', // Wifi信号渐隐
   WIND_TOY: 'wind-toy' // 风车玩具
-} as const
+} as const;
 
 // 从常量的值动态生成 SpinnerType 类型
-export type SpinnerType = (typeof Spinner)[keyof typeof Spinner]
+export type SpinnerType = (typeof Spinner)[keyof typeof Spinner];

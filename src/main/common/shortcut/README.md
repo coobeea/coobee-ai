@@ -77,7 +77,7 @@ DEFAULT_SHORTCUTS = [
     enabled: true,
     editable: true
   }
-]
+];
 ```
 
 ## 使用方法
@@ -85,29 +85,29 @@ DEFAULT_SHORTCUTS = [
 ### 注册快捷键
 
 ```typescript
-import { shortcutManager } from '@main/common/shortcut'
+import { shortcutManager } from '@main/common/shortcut';
 
 // 注册所有快捷键
-shortcutManager.registerShortcuts()
+shortcutManager.registerShortcuts();
 
 // 刷新快捷键（从配置重新加载）
-await shortcutManager.refreshShortcuts()
+await shortcutManager.refreshShortcuts();
 ```
 
 ### 注销快捷键
 
 ```typescript
 // 注销所有快捷键
-shortcutManager.unregisterShortcuts()
+shortcutManager.unregisterShortcuts();
 
 // 销毁快捷键管理器（在应用退出时）
-shortcutManager.destroy()
+shortcutManager.destroy();
 ```
 
 ### 获取快捷键配置
 
 ```typescript
-const shortcuts = shortcutManager.getShortcuts()
+const shortcuts = shortcutManager.getShortcuts();
 ```
 
 ## 快捷键加速器格式
@@ -130,34 +130,34 @@ const shortcuts = shortcutManager.getShortcuts()
 用于注册应用内本地快捷键：
 
 ```typescript
-import LocalShortcut from '@main/common/shortcut/LocalShortcut'
-import { BrowserWindow } from 'electron'
+import LocalShortcut from '@main/common/shortcut/LocalShortcut';
+import { BrowserWindow } from 'electron';
 
 // 在所有窗口注册快捷键
 LocalShortcut.register('CommandOrControl+K', () => {
-  console.log('快捷键触发')
-})
+  console.log('快捷键触发');
+});
 
 // 在特定窗口注册快捷键
-const win = BrowserWindow.getFocusedWindow()
+const win = BrowserWindow.getFocusedWindow();
 LocalShortcut.register(win, 'CommandOrControl+L', () => {
-  console.log('窗口快捷键触发')
-})
+  console.log('窗口快捷键触发');
+});
 
 // 注销快捷键
-LocalShortcut.unregister('CommandOrControl+K')
+LocalShortcut.unregister('CommandOrControl+K');
 
 // 注销所有快捷键
-LocalShortcut.unregisterAll()
+LocalShortcut.unregisterAll();
 
 // 检查快捷键是否已注册
-const isRegistered = LocalShortcut.isRegistered('CommandOrControl+K')
+const isRegistered = LocalShortcut.isRegistered('CommandOrControl+K');
 
 // 禁用窗口的所有快捷键
-LocalShortcut.disableAll(win)
+LocalShortcut.disableAll(win);
 
 // 启用窗口的所有快捷键
-LocalShortcut.enableAll(win)
+LocalShortcut.enableAll(win);
 ```
 
 ## 生命周期集成
@@ -173,12 +173,12 @@ LocalShortcut.enableAll(win)
 快捷键触发通过 EventBus 发送事件：
 
 ```typescript
-eventBus.emit('quit:changed') // 退出应用
-eventBus.emit('goSettings:changed') // 跳转设置
-eventBus.emit('showHideWindow:changed') // 显示/隐藏窗口
-eventBus.emit('newWindow:changed') // 创建新窗口
-eventBus.emit('newTab:changed') // 创建新标签页
-eventBus.emit('refresh:changed') // 刷新当前页面
+eventBus.emit('quit:changed'); // 退出应用
+eventBus.emit('goSettings:changed'); // 跳转设置
+eventBus.emit('showHideWindow:changed'); // 显示/隐藏窗口
+eventBus.emit('newWindow:changed'); // 创建新窗口
+eventBus.emit('newTab:changed'); // 创建新标签页
+eventBus.emit('refresh:changed'); // 刷新当前页面
 ```
 
 对应的事件处理器位于 `src/main/events/`:
@@ -197,9 +197,9 @@ eventBus.emit('refresh:changed') // 刷新当前页面
 ```typescript
 // 事件处理器：src/main/events/shortcutsChanged.ts
 export default async (): Promise<void> => {
-  const { shortcutManager } = await import('@main/common/shortcut')
-  await shortcutManager.refreshShortcuts()
-}
+  const { shortcutManager } = await import('@main/common/shortcut');
+  await shortcutManager.refreshShortcuts();
+};
 ```
 
 ## 注意事项
@@ -257,7 +257,7 @@ export default async (): Promise<void> => {
 启用日志级别为 `debug` 可查看快捷键注册详情：
 
 ```typescript
-log.setLevel('debug')
+log.setLevel('debug');
 
 // 日志输出：
 // [ShortcutManager] 开始注册应用快捷键...

@@ -1,33 +1,33 @@
-import { nativeTheme } from 'electron'
+import { nativeTheme } from 'electron';
 
-import { log } from './logger'
-import { ThemeMode } from './types'
+import { log } from './logger';
+import { ThemeMode } from './types';
 
 export class ThemeManager {
   public setTheme(theme: ThemeMode): void {
     try {
-      log.info('Setting theme to', theme)
+      log.info('Setting theme to', theme);
 
-      const validThemes: ThemeMode[] = ['light', 'dark', 'auto']
+      const validThemes: ThemeMode[] = ['light', 'dark', 'auto'];
       if (!validThemes.includes(theme)) {
-        theme = 'light'
+        theme = 'light';
       }
 
       if (theme === 'auto') {
-        nativeTheme.themeSource = 'system'
+        nativeTheme.themeSource = 'system';
       } else {
-        nativeTheme.themeSource = theme
+        nativeTheme.themeSource = theme;
       }
     } catch (error) {
-      log.error('Failed to set theme', error)
+      log.error('Failed to set theme', error);
     }
   }
 
   public getTheme(): ThemeMode {
-    log.info('Getting theme')
-    return nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+    log.info('Getting theme');
+    return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
   }
 }
 
-const themeManager = new ThemeManager()
-export default themeManager
+const themeManager = new ThemeManager();
+export default themeManager;

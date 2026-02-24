@@ -426,116 +426,103 @@ packages/ai-core/src/
 
 ```typescript
 // packages/ai-core/src/index.ts
-export { Agent, AgentConfig } from './agents'
-export { Tool, ToolRegistry } from './tools'
-export { Skill, SkillManager } from './skills'
-export { BaseAgent, ChatAgent } from './agents'
-export { ToolRegistry } from './tools'
-export { SessionStore } from './storage'
-export type * from './types'
+export { Agent, AgentConfig } from './agents';
+export { Tool, ToolRegistry } from './tools';
+export { Skill, SkillManager } from './skills';
+export { BaseAgent, ChatAgent } from './agents';
+export { ToolRegistry } from './tools';
+export { SessionStore } from './storage';
+export type * from './types';
 ```
 
 **存储层示例（混合存储 - 简化实用版）**:
 
 ```typescript
 // packages/ai-core/src/storage/SessionStore.ts
-import { DatabaseService } from '@main/common/database'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { DatabaseService } from '@main/common/database';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 export interface Session {
-  id: string
-  agentType: string
-  model: string
-  config: any
-  status: 'active' | 'completed' | 'error'
-  messageCount: number
-  createdAt: number
-  updatedAt: number
+  id: string;
+  agentType: string;
+  model: string;
+  config: any;
+  status: 'active' | 'completed' | 'error';
+  messageCount: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface SessionMessage {
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  timestamp: number
-  metadata?: any // 可选：工具调用、思考过程等
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: number;
+  metadata?: any; // 可选：工具调用、思考过程等
 }
 
 export class SessionStore {
-  private sessionsDir: string
+  private sessionsDir: string;
 
   constructor(
     private db: DatabaseService,
     dataDir: string
   ) {
-    this.sessionsDir = path.join(dataDir, 'sessions')
+    this.sessionsDir = path.join(dataDir, 'sessions');
   }
 
   /**
    * 创建新会话
    */
-  async create(
-    session: Omit<Session, 'messageCount' | 'createdAt' | 'updatedAt'>
-  ): Promise<string> {
-    const now = Date.now()
+  async create(session: Omit<Session, 'messageCount' | 'createdAt' | 'updatedAt'>): Promise<string> {
+    const now = Date.now();
 
     // 1. 保存元数据到数据库
     await this.db.execute(
       `INSERT INTO ai_sessions 
        (id, agent_type, model, config, status, message_count, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
-      [
-        session.id,
-        session.agentType,
-        session.model,
-        JSON.stringify(session.config),
-        session.status,
-        now,
-        now
-      ]
-    )
+      [session.id, session.agentType, session.model, JSON.stringify(session.config), session.status, now, now]
+    );
 
     // 2. 创建对话历史文件
-    const sessionFile = path.join(this.sessionsDir, `${session.id}.jsonl`)
-    await fs.mkdir(this.sessionsDir, { recursive: true })
-    await fs.writeFile(sessionFile, '', 'utf-8')
+    const sessionFile = path.join(this.sessionsDir, `${session.id}.jsonl`);
+    await fs.mkdir(this.sessionsDir, { recursive: true });
+    await fs.writeFile(sessionFile, '', 'utf-8');
 
-    return session.id
+    return session.id;
   }
 
   /**
    * 添加消息到会话
    */
-  async appendMessage(
-    sessionId: string,
-    message: Omit<SessionMessage, 'timestamp'>
-  ): Promise<void> {
-    const sessionFile = path.join(this.sessionsDir, `${sessionId}.jsonl`)
-    const line = JSON.stringify({ ...message, timestamp: Date.now() }) + '\n'
+  async appendMessage(sessionId: string, message: Omit<SessionMessage, 'timestamp'>): Promise<void> {
+    const sessionFile = path.join(this.sessionsDir, `${sessionId}.jsonl`);
+    const line = JSON.stringify({ ...message, timestamp: Date.now() }) + '\n';
 
-    await fs.appendFile(sessionFile, line, 'utf-8')
+    await fs.appendFile(sessionFile, line, 'utf-8');
 
     // 更新数据库的消息计数和更新时间
-    await this.db.execute(
-      'UPDATE ai_sessions SET message_count = message_count + 1, updated_at = ? WHERE id = ?',
-      [Date.now(), sessionId]
-    )
+    await this.db.execute('UPDATE ai_sessions SET message_count = message_count + 1, updated_at = ? WHERE id = ?', [
+      Date.now(),
+      sessionId
+    ]);
   }
 
   /**
    * 获取会话完整历史（从文件读取）
    */
   async getMessages(sessionId: string): Promise<SessionMessage[]> {
-    const sessionFile = path.join(this.sessionsDir, `${sessionId}.jsonl`)
+    const sessionFile = path.join(this.sessionsDir, `${sessionId}.jsonl`);
 
     try {
-      const content = await fs.readFile(sessionFile, 'utf-8')
+      const content = await fs.readFile(sessionFile, 'utf-8');
       return content
         .split('\n')
         .filter((line) => line.trim())
-        .map((line) => JSON.parse(line))
+        .map((line) => JSON.parse(line));
     } catch {
-      return []
+      return [];
     }
   }
 
@@ -543,9 +530,9 @@ export class SessionStore {
    * 获取会话元数据（从数据库读取）
    */
   async get(sessionId: string): Promise<Session | null> {
-    const row = await this.db.get('SELECT * FROM ai_sessions WHERE id = ?', [sessionId])
+    const row = await this.db.get('SELECT * FROM ai_sessions WHERE id = ?', [sessionId]);
 
-    if (!row) return null
+    if (!row) return null;
 
     return {
       id: row.id,
@@ -556,27 +543,27 @@ export class SessionStore {
       messageCount: row.message_count,
       createdAt: row.created_at,
       updatedAt: row.updated_at
-    }
+    };
   }
 
   /**
    * 获取会话列表（用于显示列表）
    */
   async list(options?: { status?: string; limit?: number; offset?: number }): Promise<Session[]> {
-    const { status, limit = 50, offset = 0 } = options || {}
+    const { status, limit = 50, offset = 0 } = options || {};
 
-    let sql = 'SELECT * FROM ai_sessions'
-    const params: any[] = []
+    let sql = 'SELECT * FROM ai_sessions';
+    const params: any[] = [];
 
     if (status) {
-      sql += ' WHERE status = ?'
-      params.push(status)
+      sql += ' WHERE status = ?';
+      params.push(status);
     }
 
-    sql += ' ORDER BY updated_at DESC LIMIT ? OFFSET ?'
-    params.push(limit, offset)
+    sql += ' ORDER BY updated_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
 
-    const rows = await this.db.all(sql, params)
+    const rows = await this.db.all(sql, params);
 
     return rows.map((row) => ({
       id: row.id,
@@ -587,7 +574,7 @@ export class SessionStore {
       messageCount: row.message_count,
       createdAt: row.created_at,
       updatedAt: row.updated_at
-    }))
+    }));
   }
 
   /**
@@ -598,18 +585,18 @@ export class SessionStore {
       status,
       Date.now(),
       sessionId
-    ])
+    ]);
   }
 
   /**
    * 删除会话
    */
   async delete(sessionId: string): Promise<void> {
-    await this.db.execute('DELETE FROM ai_sessions WHERE id = ?', [sessionId])
+    await this.db.execute('DELETE FROM ai_sessions WHERE id = ?', [sessionId]);
 
-    const sessionFile = path.join(this.sessionsDir, `${sessionId}.jsonl`)
+    const sessionFile = path.join(this.sessionsDir, `${sessionId}.jsonl`);
     try {
-      await fs.unlink(sessionFile)
+      await fs.unlink(sessionFile);
     } catch {
       // 文件可能不存在，忽略错误
     }
@@ -675,57 +662,57 @@ CREATE INDEX IF NOT EXISTS idx_sessions_updated ON ai_sessions(updated_at DESC);
 
 ```typescript
 // packages/ai-gateway/src/AgentGateway.ts
-import { Agent, SessionStore } from '@coobee/ai-core'
-import { WebSocketServer, WebSocket } from 'ws'
-import { logger } from '@main/common/logger'
-import { eventBus } from '@main/common/eventbus'
+import { Agent, SessionStore } from '@coobee/ai-core';
+import { WebSocketServer, WebSocket } from 'ws';
+import { logger } from '@main/common/logger';
+import { eventBus } from '@main/common/eventbus';
 
 export class AgentGateway {
-  private wss: WebSocketServer
-  private sessionStore: SessionStore
-  private agents: Map<string, Agent> = new Map()
+  private wss: WebSocketServer;
+  private sessionStore: SessionStore;
+  private agents: Map<string, Agent> = new Map();
 
   async initialize(port: number = 9000): Promise<void> {
-    logger.info(`[AI Gateway] 初始化 WebSocket 服务器，端口：${port}`)
+    logger.info(`[AI Gateway] 初始化 WebSocket 服务器，端口：${port}`);
 
-    this.sessionStore = new SessionStore()
+    this.sessionStore = new SessionStore();
 
-    this.wss = new WebSocketServer({ port })
+    this.wss = new WebSocketServer({ port });
     this.wss.on('connection', (ws: WebSocket) => {
-      this.handleConnection(ws)
-    })
+      this.handleConnection(ws);
+    });
 
-    logger.info('[AI Gateway] WebSocket 服务器启动成功')
+    logger.info('[AI Gateway] WebSocket 服务器启动成功');
   }
 
   private handleConnection(ws: WebSocket): void {
     ws.on('message', async (data: Buffer) => {
-      const message = JSON.parse(data.toString())
-      const response = await this.handleMessage(message)
-      ws.send(JSON.stringify(response))
-    })
+      const message = JSON.parse(data.toString());
+      const response = await this.handleMessage(message);
+      ws.send(JSON.stringify(response));
+    });
   }
 
   private async handleMessage(message: any): Promise<any> {
-    const { type, payload } = message
+    const { type, payload } = message;
 
     switch (type) {
       case 'create-session':
-        return await this.createSession(payload)
+        return await this.createSession(payload);
       case 'send-message':
-        return await this.sendMessage(payload)
+        return await this.sendMessage(payload);
       default:
-        throw new Error(`未知的消息类型: ${type}`)
+        throw new Error(`未知的消息类型: ${type}`);
     }
   }
 
   private async createSession(config: any): Promise<{ sessionId: string }> {
-    const agent = new Agent(config)
-    const sessionId = await this.sessionStore.create(config)
-    this.agents.set(sessionId, agent)
+    const agent = new Agent(config);
+    const sessionId = await this.sessionStore.create(config);
+    this.agents.set(sessionId, agent);
 
-    eventBus.emit('ai:session-created', { sessionId })
-    return { sessionId }
+    eventBus.emit('ai:session-created', { sessionId });
+    return { sessionId };
   }
 
   private async sendMessage(payload: { sessionId: string; message: string }): Promise<any> {
@@ -739,9 +726,9 @@ export class AgentGateway {
 
 ```typescript
 // packages/ai-gateway/src/index.ts
-export { AgentGateway } from './AgentGateway'
-export { WebSocketMessageHandler } from './protocol/handlers'
-export { initializeGateway } from './lifecycle'
+export { AgentGateway } from './AgentGateway';
+export { WebSocketMessageHandler } from './protocol/handlers';
+export { initializeGateway } from './lifecycle';
 ```
 
 ---
@@ -850,20 +837,20 @@ mkdir -p src/{agents,tools,skills,planning,monitoring,recovery,storage/stores,st
 
 ```typescript
 // packages/ai-core/src/index.ts
-export * from './agents'
-export * from './tools'
-export * from './skills'
-export * from './planning'
-export * from './monitoring'
-export * from './recovery'
-export * from './storage' // ⭐ 导出存储层
-export type * from './types'
+export * from './agents';
+export * from './tools';
+export * from './skills';
+export * from './planning';
+export * from './monitoring';
+export * from './recovery';
+export * from './storage'; // ⭐ 导出存储层
+export type * from './types';
 ```
 
 ```typescript
 // packages/ai-core/src/storage/index.ts
-export { SessionStore } from './SessionStore'
-export type { Session, SessionMessage } from './SessionStore'
+export { SessionStore } from './SessionStore';
+export type { Session, SessionMessage } from './SessionStore';
 ```
 
 **产出**:
@@ -936,93 +923,93 @@ EOF
 
 ```typescript
 // packages/ai-gateway/src/AgentGateway.ts
-import { Agent, SessionStore } from '@coobee/ai-core'
-import { WebSocketServer, WebSocket } from 'ws'
-import { logger } from '@main/common/logger'
-import { eventBus } from '@main/common/eventbus'
+import { Agent, SessionStore } from '@coobee/ai-core';
+import { WebSocketServer, WebSocket } from 'ws';
+import { logger } from '@main/common/logger';
+import { eventBus } from '@main/common/eventbus';
 
 export class AgentGateway {
-  private wss: WebSocketServer
-  private sessionStore: SessionStore
-  private agents: Map<string, Agent> = new Map()
+  private wss: WebSocketServer;
+  private sessionStore: SessionStore;
+  private agents: Map<string, Agent> = new Map();
 
   async initialize(port: number = 9000): Promise<void> {
-    logger.info(`[AI Gateway] 初始化 WebSocket 服务器，端口：${port}`)
+    logger.info(`[AI Gateway] 初始化 WebSocket 服务器，端口：${port}`);
 
-    this.sessionStore = new SessionStore()
+    this.sessionStore = new SessionStore();
 
     // 创建 WebSocket 服务器
-    this.wss = new WebSocketServer({ port })
+    this.wss = new WebSocketServer({ port });
 
     // 监听连接
     this.wss.on('connection', (ws: WebSocket) => {
-      this.handleConnection(ws)
-    })
+      this.handleConnection(ws);
+    });
 
-    logger.info('[AI Gateway] WebSocket 服务器启动成功')
+    logger.info('[AI Gateway] WebSocket 服务器启动成功');
   }
 
   private handleConnection(ws: WebSocket): void {
-    logger.info('[AI Gateway] 新客户端连接')
+    logger.info('[AI Gateway] 新客户端连接');
 
     ws.on('message', async (data: Buffer) => {
       try {
-        const message = JSON.parse(data.toString())
-        const response = await this.handleMessage(message)
-        ws.send(JSON.stringify(response))
+        const message = JSON.parse(data.toString());
+        const response = await this.handleMessage(message);
+        ws.send(JSON.stringify(response));
       } catch (error) {
-        logger.error('[AI Gateway] 处理消息失败:', error)
-        ws.send(JSON.stringify({ error: error.message }))
+        logger.error('[AI Gateway] 处理消息失败:', error);
+        ws.send(JSON.stringify({ error: error.message }));
       }
-    })
+    });
   }
 
   private async handleMessage(message: any): Promise<any> {
-    const { type, payload } = message
+    const { type, payload } = message;
 
     switch (type) {
       case 'create-session':
-        return await this.createSession(payload)
+        return await this.createSession(payload);
       case 'send-message':
-        return await this.sendMessage(payload)
+        return await this.sendMessage(payload);
       default:
-        throw new Error(`未知的消息类型: ${type}`)
+        throw new Error(`未知的消息类型: ${type}`);
     }
   }
 
   private async createSession(config: any): Promise<{ sessionId: string }> {
-    const agent = new Agent(config)
-    const sessionId = await this.sessionStore.create(config)
-    this.agents.set(sessionId, agent)
+    const agent = new Agent(config);
+    const sessionId = await this.sessionStore.create(config);
+    this.agents.set(sessionId, agent);
 
-    eventBus.emit('ai:session-created', { sessionId })
-    return { sessionId }
+    eventBus.emit('ai:session-created', { sessionId });
+    return { sessionId };
   }
 
   private async sendMessage(payload: { sessionId: string; message: string }): Promise<any> {
-    const { sessionId, message } = payload
-    const agent = this.agents.get(sessionId)
+    const { sessionId, message } = payload;
+    const agent = this.agents.get(sessionId);
 
     if (!agent) {
-      throw new Error('Session not found')
+      throw new Error('Session not found');
     }
 
     // 追加用户消息到文件
     await this.sessionStore.appendMessage(sessionId, {
       role: 'user',
       content: message
-    })
+    });
 
     // 调用 AI Agent
-    const response = await agent.chat(message)
+    const response = await agent.chat(message);
 
     // 追加 AI 回复到文件
     await this.sessionStore.appendMessage(sessionId, {
       role: 'assistant',
       content: response
-    })
+    });
 
-    return { response }
+    return { response };
   }
 }
 ```
@@ -1047,23 +1034,23 @@ export class AgentGateway {
 
 ```typescript
 // src/main/common/app/index.ts
-import { AgentGateway } from '@coobee/ai-gateway'
+import { AgentGateway } from '@coobee/ai-gateway';
 
 export class AppManager {
-  private agentGateway!: AgentGateway
+  private agentGateway!: AgentGateway;
 
   async initialize(): Promise<void> {
     // ... 现有初始化逻辑
 
     // 新增：初始化 AI 网关（WebSocket 服务器）
-    this.agentGateway = new AgentGateway()
-    await this.agentGateway.initialize(9000) // 端口 9000
+    this.agentGateway = new AgentGateway();
+    await this.agentGateway.initialize(9000); // 端口 9000
 
-    log.info('[AppManager] AI 网关初始化完成')
+    log.info('[AppManager] AI 网关初始化完成');
   }
 
   getAgentGateway(): AgentGateway {
-    return this.agentGateway
+    return this.agentGateway;
   }
 }
 ```
@@ -1073,55 +1060,55 @@ export class AppManager {
 ```typescript
 // src/renderer/src/services/aiClient.ts
 export class AIClient {
-  private ws: WebSocket | null = null
+  private ws: WebSocket | null = null;
 
   connect(): void {
-    this.ws = new WebSocket('ws://localhost:9000')
+    this.ws = new WebSocket('ws://localhost:9000');
 
     this.ws.onopen = () => {
-      console.log('[AI Client] WebSocket 连接成功')
-    }
+      console.log('[AI Client] WebSocket 连接成功');
+    };
 
     this.ws.onmessage = (event) => {
-      const response = JSON.parse(event.data)
-      console.log('[AI Client] 收到消息:', response)
-    }
+      const response = JSON.parse(event.data);
+      console.log('[AI Client] 收到消息:', response);
+    };
   }
 
   async createSession(config: any): Promise<string> {
     return new Promise((resolve) => {
       const handler = (event: MessageEvent) => {
-        const { sessionId } = JSON.parse(event.data)
-        this.ws!.removeEventListener('message', handler)
-        resolve(sessionId)
-      }
+        const { sessionId } = JSON.parse(event.data);
+        this.ws!.removeEventListener('message', handler);
+        resolve(sessionId);
+      };
 
-      this.ws!.addEventListener('message', handler)
+      this.ws!.addEventListener('message', handler);
       this.ws!.send(
         JSON.stringify({
           type: 'create-session',
           payload: config
         })
-      )
-    })
+      );
+    });
   }
 
   async sendMessage(sessionId: string, message: string): Promise<any> {
     return new Promise((resolve) => {
       const handler = (event: MessageEvent) => {
-        const response = JSON.parse(event.data)
-        this.ws!.removeEventListener('message', handler)
-        resolve(response)
-      }
+        const response = JSON.parse(event.data);
+        this.ws!.removeEventListener('message', handler);
+        resolve(response);
+      };
 
-      this.ws!.addEventListener('message', handler)
+      this.ws!.addEventListener('message', handler);
       this.ws!.send(
         JSON.stringify({
           type: 'send-message',
           payload: { sessionId, message }
         })
-      )
-    })
+      );
+    });
   }
 }
 ```
@@ -1141,7 +1128,7 @@ export default defineConfig({
       }
     }
   }
-})
+});
 ```
 
 **说明**:
@@ -1239,12 +1226,12 @@ pnpm dev
 // packages/ai-core/src/storage/stores/SessionStore.ts
 
 // ✅ 正确：使用 alias 引用
-import { logger } from '@main/common/logger'
-import { DatabaseService } from '@main/common/database'
-import type { Session } from '@shared/types'
+import { logger } from '@main/common/logger';
+import { DatabaseService } from '@main/common/database';
+import type { Session } from '@shared/types';
 
 // ❌ 错误：使用相对路径
-import { logger } from '../../../../src/main/common/logger'
+import { logger } from '../../../../src/main/common/logger';
 ```
 
 **配置 alias**（在 `packages/ai-core/tsconfig.json` 中）:
@@ -1264,15 +1251,15 @@ import { logger } from '../../../../src/main/common/logger'
 
 ```typescript
 // packages/ai-core/src/__tests__/Agent.test.ts
-import { describe, it, expect } from 'vitest'
-import { Agent } from '../agents'
+import { describe, it, expect } from 'vitest';
+import { Agent } from '../agents';
 
 describe('Agent', () => {
   it('should create agent correctly', () => {
-    const agent = new Agent({ name: 'test' })
-    expect(agent.name).toBe('test')
-  })
-})
+    const agent = new Agent({ name: 'test' });
+    expect(agent.name).toBe('test');
+  });
+});
 ```
 
 ```bash
@@ -1335,8 +1322,8 @@ pnpm --filter @coobee/ai-core test
 示例：
 
 ```typescript
-import { logger } from '@main/common/logger'
-import { DatabaseService } from '@main/common/database'
+import { logger } from '@main/common/logger';
+import { DatabaseService } from '@main/common/database';
 ```
 
 ### Q2: 为什么不把 common/ 和 shared/ 也拆分成包？

@@ -3,17 +3,17 @@
  * 主进程和渲染进程都可以使用
  */
 
-export const APP_NAME = 'Coobee AI'
-export const APP_VERSION = '1.0.0'
+export const APP_NAME = 'Coobee AI';
+export const APP_VERSION = '1.0.0';
 
-export const DEFAULT_WINDOW_WIDTH = 1200
-export const DEFAULT_WINDOW_HEIGHT = 800
+export const DEFAULT_WINDOW_WIDTH = 1200;
+export const DEFAULT_WINDOW_HEIGHT = 800;
 
 export const THEME = {
   LIGHT: 'light',
   DARK: 'dark',
   AUTO: 'auto'
-} as const
+} as const;
 
 export const IPC_CHANNELS = {
   // 日志
@@ -31,4 +31,4 @@ export const IPC_CHANNELS = {
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',
   WINDOW_CLOSE: 'window:close'
-} as const
+} as const;

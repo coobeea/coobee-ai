@@ -49,7 +49,18 @@ export interface AgentDefinition {
    */
   skills?: string[];
 
-  /** 指定模型（可选，默认用全局配置） */
+  /**
+   * 模型配置（支持三种格式）:
+   *
+   * 1. 单个模型（现有格式，兼容）
+   *    "openai/gpt-4o"
+   *
+   * 2. 模型组引用（新增）
+   *    "@high-performance"  → 引用配置中的 models.groups.high-performance
+   *
+   * 3. Auto 模式（新增）
+   *    "auto"  → 系统自动选择最佳模型
+   */
   model?: string;
 
   /** 思维链级别（可选，默认用全局配置） */

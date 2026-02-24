@@ -186,11 +186,11 @@ Task.objective → SubTask.parentObjective → WorkerTask.parentObjective
 ```typescript
 // Worker 内部
 while (!done && round < maxRounds) {
-  const response = await llm.chat(context)
-  const toolCalls = parseToolCalls(response)
+  const response = await llm.chat(context);
+  const toolCalls = parseToolCalls(response);
 
   if (toolCalls.length === 0) {
-    done = true // ✅ 没有工具调用 = 任务完成
+    done = true; // ✅ 没有工具调用 = 任务完成
   } else {
     // 执行工具，继续循环
   }
@@ -205,7 +205,7 @@ setInterval(() => {
   // 1. 子任务是否超时
   // 2. Worker 是否无响应
   // 3. 资源消耗是否异常
-}, deviationCheckInterval)
+}, deviationCheckInterval);
 ```
 
 ---
@@ -235,34 +235,34 @@ Phase (阶段) → Deliverable (交付物) → Work Package (工作包)
 interface TaskDecomposition {
   // 应用 MECE 原则 (Mutually Exclusive, Collectively Exhaustive)
   checklist: {
-    mutuallyExclusive: boolean // 子任务互不重叠
-    collectivelyExhaustive: boolean // 覆盖完整
-    noBoundaryCases: boolean // 无遗漏边界
-    noCrossDependencies: boolean // 无隐含依赖
-  }
+    mutuallyExclusive: boolean; // 子任务互不重叠
+    collectivelyExhaustive: boolean; // 覆盖完整
+    noBoundaryCases: boolean; // 无遗漏边界
+    noCrossDependencies: boolean; // 无隐含依赖
+  };
 
   // 依赖类型
   dependencies: {
-    type: 'finish-to-start' | 'start-to-start' | 'finish-to-finish'
-    from: string
-    to: string
-  }[]
+    type: 'finish-to-start' | 'start-to-start' | 'finish-to-finish';
+    from: string;
+    to: string;
+  }[];
 
   // 关键路径
-  criticalPath: string[] // 最长依赖链
+  criticalPath: string[]; // 最长依赖链
 }
 
 // 复杂度评估
 interface ComplexityEstimation {
   dimensions: {
-    codeSize: 'small' | 'medium' | 'large' // <100 / 100-500 / >500 lines
-    dependencies: number // 0-1 / 2-3 / >3
-    uncertainty: 'clear' | 'partial' | 'high'
-    techRisk: 'familiar' | 'learning' | 'new'
-  }
+    codeSize: 'small' | 'medium' | 'large'; // <100 / 100-500 / >500 lines
+    dependencies: number; // 0-1 / 2-3 / >3
+    uncertainty: 'clear' | 'partial' | 'high';
+    techRisk: 'familiar' | 'learning' | 'new';
+  };
 
   // 估时公式
-  estimatedTime: number // 基准时间 × (1 + 复杂度系数 × 0.2) × 风险因子
+  estimatedTime: number; // 基准时间 × (1 + 复杂度系数 × 0.2) × 风险因子
 }
 ```
 
@@ -375,21 +375,21 @@ const BUGFIX_ARCHETYPE: ProjectArchetype = {
 // src/main/ai/agents/roles.ts
 
 interface AgentRole {
-  id: string
-  name: string
-  description: string
+  id: string;
+  name: string;
+  description: string;
 
   // 能力领域
-  capabilities: string[]
+  capabilities: string[];
 
   // 关键词匹配
-  keywords: string[]
+  keywords: string[];
 
   // 工具集
-  tools: string[]
+  tools: string[];
 
   // 推荐的 System Prompt
-  instructions: string
+  instructions: string;
 }
 
 const PREDEFINED_ROLES: AgentRole[] = [
@@ -417,30 +417,30 @@ const PREDEFINED_ROLES: AgentRole[] = [
     tools: ['shell_execute', 'file_read', 'file_write'],
     instructions: '你是一个测试专家，擅长...'
   }
-]
+];
 
 // 角色匹配算法
 function matchRole(subtask: SubTask): RoleMatch[] {
-  const objective = subtask.objective.toLowerCase()
-  const matches: RoleMatch[] = []
+  const objective = subtask.objective.toLowerCase();
+  const matches: RoleMatch[] = [];
 
   for (const role of PREDEFINED_ROLES) {
-    let score = 0
-    const reasons: string[] = []
+    let score = 0;
+    const reasons: string[] = [];
 
     for (const keyword of role.keywords) {
       if (objective.includes(keyword)) {
-        score += keyword.length // 长关键词权重更高
-        reasons.push(`匹配关键词: ${keyword}`)
+        score += keyword.length; // 长关键词权重更高
+        reasons.push(`匹配关键词: ${keyword}`);
       }
     }
 
     if (score > 0) {
-      matches.push({ roleId: role.id, score, reasons })
+      matches.push({ roleId: role.id, score, reasons });
     }
   }
 
-  return matches.sort((a, b) => b.score - a.score)
+  return matches.sort((a, b) => b.score - a.score);
 }
 ```
 
@@ -458,7 +458,7 @@ const CONTEXT_THRESHOLDS = {
   SUMMARIZATION_TRIGGER: 150_000, // 强制摘要
   COMPACTION_TRIGGER: 128_000, // 触发压缩
   COMFORT_ZONE: 100_000 // 最佳性能区
-}
+};
 
 // 预算分配（Orchestrator）
 const ORCHESTRATOR_BUDGET: Record<string, number> = {
@@ -468,7 +468,7 @@ const ORCHESTRATOR_BUDGET: Record<string, number> = {
   workerReports: 0.35, // 35% - 子任务结果摘要
   historyDecisions: 0.1, // 10% - 关键决策记录
   buffer: 0.1 // 10% - 预留响应生成
-}
+};
 
 // 预算分配（Worker）
 const WORKER_BUDGET: Record<string, number> = {
@@ -477,18 +477,18 @@ const WORKER_BUDGET: Record<string, number> = {
   codeContext: 0.45, // 45% - 相关文件内容
   toolHistory: 0.2, // 20% - 最近操作记录
   buffer: 0.1 // 10% - 预留响应生成
-}
+};
 
 // 缩减策略决策树
 interface ReductionStrategy {
-  currentTokens: number
-  action: 'none' | 'compact' | 'summarize' | 'offload'
-  reason: string
+  currentTokens: number;
+  action: 'none' | 'compact' | 'summarize' | 'offload';
+  reason: string;
 }
 
 function selectReductionStrategy(tokens: number): ReductionStrategy {
   if (tokens < CONTEXT_THRESHOLDS.COMPACTION_TRIGGER) {
-    return { currentTokens: tokens, action: 'none', reason: '在舒适区' }
+    return { currentTokens: tokens, action: 'none', reason: '在舒适区' };
   }
 
   if (tokens < CONTEXT_THRESHOLDS.SUMMARIZATION_TRIGGER) {
@@ -496,7 +496,7 @@ function selectReductionStrategy(tokens: number): ReductionStrategy {
       currentTokens: tokens,
       action: 'compact',
       reason: '执行压缩（可逆）'
-    }
+    };
   }
 
   if (tokens < CONTEXT_THRESHOLDS.ROT_THRESHOLD) {
@@ -504,14 +504,14 @@ function selectReductionStrategy(tokens: number): ReductionStrategy {
       currentTokens: tokens,
       action: 'summarize',
       reason: '执行摘要（优先旧消息）'
-    }
+    };
   }
 
   return {
     currentTokens: tokens,
     action: 'offload',
     reason: '强制摘要 + 卸载工具输出到文件'
-  }
+  };
 }
 
 // 信息优先级（保留 vs 卸载）
@@ -523,14 +523,14 @@ const RETENTION_PRIORITY = [
   '修改的文件列表',
   '历史对话摘要',
   '旧工具调用详情' // 最先卸载
-]
+];
 
 const OFFLOAD_CANDIDATES = [
   '大型文件内容 (> 5k tokens)',
   '命令输出 (> 2k tokens)',
   '已完成子任务的详细结果',
   '调试日志'
-]
+];
 ```
 
 ---
@@ -541,64 +541,64 @@ const OFFLOAD_CANDIDATES = [
 // src/main/ai/core/progress-evaluation.ts
 
 interface ProgressHealth {
-  score: number // 0-100
-  status: 'healthy' | 'warning' | 'critical'
-  factors: HealthFactor[]
+  score: number; // 0-100
+  status: 'healthy' | 'warning' | 'critical';
+  factors: HealthFactor[];
 }
 
 interface HealthFactor {
-  name: string
-  weight: number // 权重
-  value: number // 0-100
-  reason: string
+  name: string;
+  weight: number; // 权重
+  value: number; // 0-100
+  reason: string;
 }
 
 function calculateHealth(subtask: SubTask, execution: ExecutionState): ProgressHealth {
-  const factors: HealthFactor[] = []
+  const factors: HealthFactor[] = [];
 
   // 1. 时间因素 (30%)
-  const timeRatio = execution.elapsed / subtask.estimatedMinutes
+  const timeRatio = execution.elapsed / subtask.estimatedMinutes;
   factors.push({
     name: '时间进度',
     weight: 0.3,
     value: timeRatio <= 1 ? 100 : Math.max(0, 100 - (timeRatio - 1) * 50),
     reason: timeRatio <= 1 ? '按时推进' : `超时 ${((timeRatio - 1) * 100).toFixed(0)}%`
-  })
+  });
 
   // 2. 错误因素 (30%)
-  const errorPenalty = Math.min(execution.errorCount * 20, 100)
+  const errorPenalty = Math.min(execution.errorCount * 20, 100);
   factors.push({
     name: '错误频率',
     weight: 0.3,
     value: 100 - errorPenalty,
     reason: execution.errorCount === 0 ? '无错误' : `${execution.errorCount} 次错误`
-  })
+  });
 
   // 3. 工具调用效率 (20%)
-  const toolEfficiency = (execution.successfulToolCalls / execution.totalToolCalls) * 100
+  const toolEfficiency = (execution.successfulToolCalls / execution.totalToolCalls) * 100;
   factors.push({
     name: '工具效率',
     weight: 0.2,
     value: toolEfficiency,
     reason: `${toolEfficiency.toFixed(0)}% 成功率`
-  })
+  });
 
   // 4. 循环检测 (20%)
-  const loopPenalty = Math.min(execution.duplicateToolCalls * 30, 100)
+  const loopPenalty = Math.min(execution.duplicateToolCalls * 30, 100);
   factors.push({
     name: '循环风险',
     weight: 0.2,
     value: 100 - loopPenalty,
     reason: execution.duplicateToolCalls === 0 ? '无循环' : `${execution.duplicateToolCalls} 次重复`
-  })
+  });
 
-  const score = factors.reduce((sum, f) => sum + f.value * f.weight, 0)
+  const score = factors.reduce((sum, f) => sum + f.value * f.weight, 0);
 
   return {
     score,
     status: score >= 70 ? 'healthy' : score >= 40 ? 'warning' : 'critical',
     factors
-  }
+  };
 }
 
 // 重规划触发条件
@@ -608,7 +608,7 @@ const REPLAN_TRIGGERS = {
   timeoutMultiplier: 3, // 超时 > 3x 估时
   dependencyChanged: true, // 依赖项变更
   resourceConflict: true // 资源冲突检测
-}
+};
 ```
 
 ---
@@ -638,11 +638,11 @@ enum FailurePattern {
 }
 
 interface RecoveryAction {
-  type: 'retry' | 'escalate' | 'abort' | 'alternative'
-  retryable: boolean
-  maxAttempts?: number
-  backoffMs?: number
-  handler: (ctx: Context, error: Error) => Promise<RecoveryResult>
+  type: 'retry' | 'escalate' | 'abort' | 'alternative';
+  retryable: boolean;
+  maxAttempts?: number;
+  backoffMs?: number;
+  handler: (ctx: Context, error: Error) => Promise<RecoveryResult>;
 }
 
 const AUTO_RECOVERY_ACTIONS: Record<FailurePattern, RecoveryAction> = {
@@ -651,8 +651,8 @@ const AUTO_RECOVERY_ACTIONS: Record<FailurePattern, RecoveryAction> = {
     retryable: true,
     maxAttempts: 1,
     handler: async (ctx) => {
-      await ctx.promptEngine.autoReduce()
-      return { retry: true }
+      await ctx.promptEngine.autoReduce();
+      return { retry: true };
     }
   },
 
@@ -664,7 +664,7 @@ const AUTO_RECOVERY_ACTIONS: Record<FailurePattern, RecoveryAction> = {
         abort: true,
         reason: `工具重复调用检测`,
         suggestion: '请尝试不同的方法'
-      }
+      };
     }
   },
 
@@ -674,17 +674,17 @@ const AUTO_RECOVERY_ACTIONS: Record<FailurePattern, RecoveryAction> = {
     maxAttempts: 3,
     backoffMs: 1000, // 指数退避
     handler: async (ctx, error) => {
-      await sleep(ctx.attempt * 1000)
-      return { retry: true }
+      await sleep(ctx.attempt * 1000);
+      return { retry: true };
     }
   }
-}
+};
 
 // 风险评估矩阵
 interface RiskAssessment {
-  impact: 'low' | 'medium' | 'high' | 'critical'
-  probability: 'low' | 'medium' | 'high'
-  action: 'accept' | 'monitor' | 'mitigate' | 'must_handle'
+  impact: 'low' | 'medium' | 'high' | 'critical';
+  probability: 'low' | 'medium' | 'high';
+  action: 'accept' | 'monitor' | 'mitigate' | 'must_handle';
 }
 
 function assessRisk(impact: string, probability: string): RiskAssessment['action'] {
@@ -701,9 +701,9 @@ function assessRisk(impact: string, probability: string): RiskAssessment['action
     'critical-low': 'mitigate',
     'critical-medium': 'must_handle',
     'critical-high': 'must_handle'
-  }
+  };
 
-  return matrix[`${impact}-${probability}`] || 'monitor'
+  return matrix[`${impact}-${probability}`] || 'monitor';
 }
 ```
 
@@ -778,23 +778,23 @@ src/main/ai/
 
 ```typescript
 // src/main/ai/core/TaskPlanner.ts
-import { TaskDecomposition } from '../planning/decomposition'
-import { ProjectArchetype, matchArchetype } from '../planning/archetypes'
+import { TaskDecomposition } from '../planning/decomposition';
+import { ProjectArchetype, matchArchetype } from '../planning/archetypes';
 
 export class TaskPlanner {
   async plan(task: LongRunningTask): Promise<TaskPlan> {
     // 1. 识别项目类型
-    const archetype = matchArchetype(task.name, task.description)
+    const archetype = matchArchetype(task.name, task.description);
 
     // 2. 应用 WBS 分解
-    const decomposition = await this.decompose(task, archetype)
+    const decomposition = await this.decompose(task, archetype);
 
     // 3. 生成执行计划
     return {
       steps: decomposition.steps,
       criticalPath: decomposition.criticalPath,
       archetype: archetype.type
-    }
+    };
   }
 }
 ```
@@ -804,19 +804,16 @@ export class TaskPlanner {
 ```typescript
 // src/main/ai/monitoring/health-checker.ts
 export class HealthChecker {
-  async evaluateProgress(
-    task: LongRunningTask,
-    execution: ExecutionState
-  ): Promise<ProgressHealth> {
+  async evaluateProgress(task: LongRunningTask, execution: ExecutionState): Promise<ProgressHealth> {
     // 使用 Tachikoma 的健康度算法
-    const health = calculateHealth(task, execution)
+    const health = calculateHealth(task, execution);
 
     // 触发重规划
     if (health.status === 'critical') {
-      await this.triggerReplan(task, health)
+      await this.triggerReplan(task, health);
     }
 
-    return health
+    return health;
   }
 }
 ```
@@ -826,23 +823,23 @@ export class HealthChecker {
 ```typescript
 // src/main/ai/core/ContextBudget.ts
 export class ContextBudgetManager {
-  private thresholds = CONTEXT_THRESHOLDS
-  private budget = ORCHESTRATOR_BUDGET
+  private thresholds = CONTEXT_THRESHOLDS;
+  private budget = ORCHESTRATOR_BUDGET;
 
   async checkAndReduce(context: AgentContext): Promise<void> {
-    const tokens = this.countTokens(context)
-    const strategy = selectReductionStrategy(tokens)
+    const tokens = this.countTokens(context);
+    const strategy = selectReductionStrategy(tokens);
 
     switch (strategy.action) {
       case 'compact':
-        await this.compact(context)
-        break
+        await this.compact(context);
+        break;
       case 'summarize':
-        await this.summarize(context)
-        break
+        await this.summarize(context);
+        break;
       case 'offload':
-        await this.offload(context)
-        break
+        await this.offload(context);
+        break;
     }
   }
 }
@@ -907,15 +904,15 @@ console.log('计划:', plan);
 // src/main/ai/core/TaskExecutor.ts (扩展)
 
 class TaskExecutor {
-  private planner: TaskPlanner // ⭐ 新增
-  private monitor: ProgressMonitor // ⭐ 新增
+  private planner: TaskPlanner; // ⭐ 新增
+  private monitor: ProgressMonitor; // ⭐ 新增
 
   async createTask(config: CreateTaskConfig): Promise<string> {
     // 1. 使用 Planner 生成执行计划
     const plan = await this.planner.plan({
       name: config.name,
       description: config.description
-    })
+    });
 
     // 2. 创建任务（集成 Tachikoma 的 Archetype）
     const task: LongRunningTask = {
@@ -932,58 +929,58 @@ class TaskExecutor {
       validationStrategy: config.validationStrategy,
       createdAt: Date.now(),
       updatedAt: Date.now()
-    }
+    };
 
-    await this.taskStore.save(task)
+    await this.taskStore.save(task);
 
     // 3. 开始执行（增强监控）
-    await this.executeTask(task.id)
+    await this.executeTask(task.id);
 
-    return task.id
+    return task.id;
   }
 
   async executeTask(taskId: string): Promise<void> {
-    const task = await this.taskStore.get(taskId)
+    const task = await this.taskStore.get(taskId);
 
     try {
-      task.status = TaskStatus.RUNNING
-      await this.taskStore.update(task)
+      task.status = TaskStatus.RUNNING;
+      await this.taskStore.update(task);
 
       for (let i = task.currentStepIndex; i < task.plan.steps.length; i++) {
-        const step = task.plan.steps[i]
+        const step = task.plan.steps[i];
 
         // ⭐ 执行前健康度检查
-        const health = await this.monitor.checkHealth(task)
+        const health = await this.monitor.checkHealth(task);
         if (health.status === 'critical') {
-          log.warn('[TaskExecutor] 健康度低，触发重规划')
-          await this.replan(task)
-          continue
+          log.warn('[TaskExecutor] 健康度低，触发重规划');
+          await this.replan(task);
+          continue;
         }
 
         // 执行步骤
-        const result = await this.executeStep(task.sessionId, step)
+        const result = await this.executeStep(task.sessionId, step);
 
-        step.status = 'completed'
-        step.result = result
-        task.currentStepIndex = i + 1
-        task.progress = Math.round(((i + 1) / task.plan.steps.length) * 100)
+        step.status = 'completed';
+        step.result = result;
+        task.currentStepIndex = i + 1;
+        task.progress = Math.round(((i + 1) / task.plan.steps.length) * 100);
 
-        await this.taskStore.update(task)
-        await this.checkpointManager.create(task, 'step_completed')
+        await this.taskStore.update(task);
+        await this.checkpointManager.create(task, 'step_completed');
       }
 
       // 进入验证阶段
-      task.status = TaskStatus.VALIDATING
-      await this.validateTask(task)
+      task.status = TaskStatus.VALIDATING;
+      await this.validateTask(task);
     } catch (error) {
       // ⭐ 使用风险缓解系统
-      const recovery = await this.riskManager.handleFailure(task, error)
+      const recovery = await this.riskManager.handleFailure(task, error);
 
       if (recovery.retry) {
-        await this.executeTask(taskId) // 重试
+        await this.executeTask(taskId); // 重试
       } else {
-        task.status = TaskStatus.INTERRUPTED
-        await this.taskStore.update(task)
+        task.status = TaskStatus.INTERRUPTED;
+        await this.taskStore.update(task);
       }
     }
   }

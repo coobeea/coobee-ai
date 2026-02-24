@@ -132,63 +132,63 @@ export enum PlanVersionReason {
  * 计划版本元数据
  */
 export interface PlanVersionMetadata {
-  version: number
-  file: string
-  createdAt: number
-  createdBy: string // agent ID
-  reason: PlanVersionReason
-  reasonDetails?: string
-  parentVersion?: number | null // 继承自哪个版本
-  status: 'draft' | 'active' | 'replaced' | 'archived'
+  version: number;
+  file: string;
+  createdAt: number;
+  createdBy: string; // agent ID
+  reason: PlanVersionReason;
+  reasonDetails?: string;
+  parentVersion?: number | null; // 继承自哪个版本
+  status: 'draft' | 'active' | 'replaced' | 'archived';
 
   // 统计信息
   stats: {
-    totalSubTasks: number
-    totalStages: number
-    estimatedDuration: number
-    estimatedCost?: number
-  }
+    totalSubTasks: number;
+    totalStages: number;
+    estimatedDuration: number;
+    estimatedCost?: number;
+  };
 
   // 执行结果（完成后填充）
   execution?: {
-    startTime: number
-    endTime: number
-    duration: number
-    completedSubTasks: number
-    failedSubTasks: number
-    completionRate: number
-    successRate: number
-  }
+    startTime: number;
+    endTime: number;
+    duration: number;
+    completedSubTasks: number;
+    failedSubTasks: number;
+    completionRate: number;
+    successRate: number;
+  };
 }
 
 /**
  * 计划索引
  */
 export interface PlanIndex {
-  sessionId: string
-  versions: PlanVersionMetadata[]
-  currentVersion: number
-  totalVersions: number
-  createdAt: number
-  updatedAt: number
+  sessionId: string;
+  versions: PlanVersionMetadata[];
+  currentVersion: number;
+  totalVersions: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 /**
  * 计划变更记录
  */
 export interface PlanChangeLog {
-  timestamp: number
-  fromVersion: number | null
-  toVersion: number
-  type: 'create' | 'replan' | 'update' | 'archive'
-  reason: PlanVersionReason
-  reasonDetails?: string
-  triggeredBy: 'orchestrator' | 'user' | 'system'
+  timestamp: number;
+  fromVersion: number | null;
+  toVersion: number;
+  type: 'create' | 'replan' | 'update' | 'archive';
+  reason: PlanVersionReason;
+  reasonDetails?: string;
+  triggeredBy: 'orchestrator' | 'user' | 'system';
   changes?: {
-    addedSubTasks: number
-    removedSubTasks: number
-    modifiedSubTasks: number
-  }
+    addedSubTasks: number;
+    removedSubTasks: number;
+    modifiedSubTasks: number;
+  };
 }
 ```
 
@@ -199,21 +199,15 @@ export interface PlanChangeLog {
 ```typescript
 // src/main/ai/orchestration/PlanVersionManager.ts
 
-import { writeFile, readFile } from 'fs/promises'
-import { join } from 'path'
-import type {
-  ExecutionPlan,
-  PlanIndex,
-  PlanVersionMetadata,
-  PlanChangeLog,
-  PlanVersionReason
-} from './types'
+import { writeFile, readFile } from 'fs/promises';
+import { join } from 'path';
+import type { ExecutionPlan, PlanIndex, PlanVersionMetadata, PlanChangeLog, PlanVersionReason } from './types';
 
 /**
  * 计划版本管理器
  */
 export class PlanVersionManager {
-  private index: PlanIndex | null = null
+  private index: PlanIndex | null = null;
 
   constructor(
     private readonly sessionManager: SessionFileManager,
@@ -225,7 +219,7 @@ export class PlanVersionManager {
    */
   async initialize(): Promise<void> {
     // 尝试加载现有索引
-    this.index = await this.loadIndex()
+    this.index = await this.loadIndex();
 
     if (!this.index) {
       // 创建新索引
@@ -236,11 +230,11 @@ export class PlanVersionManager {
         totalVersions: 0,
         createdAt: Date.now(),
         updatedAt: Date.now()
-      }
-      await this.saveIndex()
+      };
+      await this.saveIndex();
     }
 
-    console.log(`[PlanVersionManager] Initialized with ${this.index.totalVersions} versions`)
+    console.log(`[PlanVersionManager] Initialized with ${this.index.totalVersions} versions`);
   }
 
   /**
@@ -253,11 +247,11 @@ export class PlanVersionManager {
     parentVersion?: number
   ): Promise<number> {
     if (!this.index) {
-      throw new Error('PlanVersionManager not initialized')
+      throw new Error('PlanVersionManager not initialized');
     }
 
-    const newVersion = this.index.totalVersions + 1
-    const fileName = `plan-v${newVersion}.json`
+    const newVersion = this.index.totalVersions + 1;
+    const fileName = `plan-v${newVersion}.json`;
 
     // 创建版本元数据
     const metadata: PlanVersionMetadata = {
@@ -274,25 +268,25 @@ export class PlanVersionManager {
         totalStages: plan.stages.length,
         estimatedDuration: plan.estimatedDuration || 0
       }
-    }
+    };
 
     // 1. 保存计划文件
-    await this.savePlanFile(fileName, plan)
+    await this.savePlanFile(fileName, plan);
 
     // 2. 如果有当前版本，标记为 replaced
     if (this.index.currentVersion > 0) {
-      const currentMeta = this.index.versions.find((v) => v.version === this.index!.currentVersion)
+      const currentMeta = this.index.versions.find((v) => v.version === this.index!.currentVersion);
       if (currentMeta) {
-        currentMeta.status = 'replaced'
+        currentMeta.status = 'replaced';
       }
     }
 
     // 3. 添加到索引
-    this.index.versions.push(metadata)
-    this.index.currentVersion = newVersion
-    this.index.totalVersions = newVersion
-    this.index.updatedAt = Date.now()
-    await this.saveIndex()
+    this.index.versions.push(metadata);
+    this.index.currentVersion = newVersion;
+    this.index.totalVersions = newVersion;
+    this.index.updatedAt = Date.now();
+    await this.saveIndex();
 
     // 4. 记录变更日志
     await this.logPlanChange({
@@ -304,11 +298,11 @@ export class PlanVersionManager {
       reasonDetails,
       triggeredBy: 'orchestrator',
       changes: parentVersion ? await this.calculateChanges(parentVersion, newVersion) : undefined
-    })
+    });
 
-    console.log(`[PlanVersionManager] Created plan version ${newVersion} (reason: ${reason})`)
+    console.log(`[PlanVersionManager] Created plan version ${newVersion} (reason: ${reason})`);
 
-    return newVersion
+    return newVersion;
   }
 
   /**
@@ -316,22 +310,22 @@ export class PlanVersionManager {
    */
   async getCurrentPlan(): Promise<ExecutionPlan | null> {
     if (!this.index || this.index.currentVersion === 0) {
-      return null
+      return null;
     }
 
-    return await this.getPlanByVersion(this.index.currentVersion)
+    return await this.getPlanByVersion(this.index.currentVersion);
   }
 
   /**
    * 获取指定版本的计划
    */
   async getPlanByVersion(version: number): Promise<ExecutionPlan | null> {
-    const meta = this.index?.versions.find((v) => v.version === version)
+    const meta = this.index?.versions.find((v) => v.version === version);
     if (!meta) {
-      return null
+      return null;
     }
 
-    return await this.loadPlanFile(meta.file)
+    return await this.loadPlanFile(meta.file);
   }
 
   /**
@@ -340,44 +334,43 @@ export class PlanVersionManager {
   async updatePlanExecution(
     version: number,
     execution: {
-      startTime: number
-      endTime: number
-      completedSubTasks: number
-      failedSubTasks: number
+      startTime: number;
+      endTime: number;
+      completedSubTasks: number;
+      failedSubTasks: number;
     }
   ): Promise<void> {
-    if (!this.index) return
+    if (!this.index) return;
 
-    const meta = this.index.versions.find((v) => v.version === version)
-    if (!meta) return
+    const meta = this.index.versions.find((v) => v.version === version);
+    if (!meta) return;
 
     meta.execution = {
       ...execution,
       duration: execution.endTime - execution.startTime,
       completionRate: execution.completedSubTasks / meta.stats.totalSubTasks,
-      successRate:
-        execution.completedSubTasks / (execution.completedSubTasks + execution.failedSubTasks)
-    }
+      successRate: execution.completedSubTasks / (execution.completedSubTasks + execution.failedSubTasks)
+    };
 
-    await this.saveIndex()
+    await this.saveIndex();
   }
 
   /**
    * 获取计划历史
    */
   getPlanHistory(): PlanVersionMetadata[] {
-    return this.index?.versions || []
+    return this.index?.versions || [];
   }
 
   /**
    * 获取计划统计
    */
   async getPlanAnalytics(): Promise<{
-    totalVersions: number
-    totalReplans: number
-    replanReasons: Record<string, number>
-    averageSubTasksPerPlan: number
-    planEffectiveness: Record<string, { completionRate: number; successRate: number }>
+    totalVersions: number;
+    totalReplans: number;
+    replanReasons: Record<string, number>;
+    averageSubTasksPerPlan: number;
+    planEffectiveness: Record<string, { completionRate: number; successRate: number }>;
   }> {
     if (!this.index) {
       return {
@@ -386,28 +379,28 @@ export class PlanVersionManager {
         replanReasons: {},
         averageSubTasksPerPlan: 0,
         planEffectiveness: {}
-      }
+      };
     }
 
-    const replanReasons: Record<string, number> = {}
-    let totalSubTasks = 0
-    const planEffectiveness: Record<string, { completionRate: number; successRate: number }> = {}
+    const replanReasons: Record<string, number> = {};
+    let totalSubTasks = 0;
+    const planEffectiveness: Record<string, { completionRate: number; successRate: number }> = {};
 
     for (const version of this.index.versions) {
       // 统计重新规划原因
       if (version.version > 1) {
-        replanReasons[version.reason] = (replanReasons[version.reason] || 0) + 1
+        replanReasons[version.reason] = (replanReasons[version.reason] || 0) + 1;
       }
 
       // 统计子任务数量
-      totalSubTasks += version.stats.totalSubTasks
+      totalSubTasks += version.stats.totalSubTasks;
 
       // 统计计划有效性
       if (version.execution) {
         planEffectiveness[`v${version.version}`] = {
           completionRate: version.execution.completionRate,
           successRate: version.execution.successRate
-        }
+        };
       }
     }
 
@@ -417,7 +410,7 @@ export class PlanVersionManager {
       replanReasons,
       averageSubTasksPerPlan: totalSubTasks / this.index.totalVersions,
       planEffectiveness
-    }
+    };
   }
 
   /**
@@ -425,88 +418,86 @@ export class PlanVersionManager {
    */
   async archiveOldPlans(keepRecentCount: number = 10): Promise<void> {
     if (!this.index || this.index.totalVersions <= keepRecentCount) {
-      return
+      return;
     }
 
-    const toArchive = this.index.versions
-      .filter((v) => v.status === 'replaced')
-      .slice(0, -keepRecentCount)
+    const toArchive = this.index.versions.filter((v) => v.status === 'replaced').slice(0, -keepRecentCount);
 
     for (const meta of toArchive) {
       // 标记为已归档
-      meta.status = 'archived'
+      meta.status = 'archived';
 
       // 可选：移动到归档目录或压缩
       // await this.moveToArchive(meta.file)
     }
 
-    await this.saveIndex()
-    console.log(`[PlanVersionManager] Archived ${toArchive.length} old plans`)
+    await this.saveIndex();
+    console.log(`[PlanVersionManager] Archived ${toArchive.length} old plans`);
   }
 
   // ========== 私有方法 ==========
 
   private async savePlanFile(fileName: string, plan: ExecutionPlan): Promise<void> {
-    const path = join(this.sessionManager['basePath'], 'planner', 'plans', fileName)
-    await writeFile(path, JSON.stringify(plan, null, 2))
+    const path = join(this.sessionManager['basePath'], 'planner', 'plans', fileName);
+    await writeFile(path, JSON.stringify(plan, null, 2));
   }
 
   private async loadPlanFile(fileName: string): Promise<ExecutionPlan | null> {
     try {
-      const path = join(this.sessionManager['basePath'], 'planner', 'plans', fileName)
-      const content = await readFile(path, 'utf-8')
-      return JSON.parse(content)
+      const path = join(this.sessionManager['basePath'], 'planner', 'plans', fileName);
+      const content = await readFile(path, 'utf-8');
+      return JSON.parse(content);
     } catch {
-      return null
+      return null;
     }
   }
 
   private async saveIndex(): Promise<void> {
-    if (!this.index) return
+    if (!this.index) return;
 
-    const path = join(this.sessionManager['basePath'], 'planner', 'plan_index.json')
-    await writeFile(path, JSON.stringify(this.index, null, 2))
+    const path = join(this.sessionManager['basePath'], 'planner', 'plan_index.json');
+    await writeFile(path, JSON.stringify(this.index, null, 2));
   }
 
   private async loadIndex(): Promise<PlanIndex | null> {
     try {
-      const path = join(this.sessionManager['basePath'], 'planner', 'plan_index.json')
-      const content = await readFile(path, 'utf-8')
-      return JSON.parse(content)
+      const path = join(this.sessionManager['basePath'], 'planner', 'plan_index.json');
+      const content = await readFile(path, 'utf-8');
+      return JSON.parse(content);
     } catch {
-      return null
+      return null;
     }
   }
 
   private async logPlanChange(log: PlanChangeLog): Promise<void> {
-    const path = join(this.sessionManager['basePath'], 'planner', 'plan_changes.jsonl')
-    await writeFile(path, JSON.stringify(log) + '\n', { flag: 'a' })
+    const path = join(this.sessionManager['basePath'], 'planner', 'plan_changes.jsonl');
+    await writeFile(path, JSON.stringify(log) + '\n', { flag: 'a' });
   }
 
   private async calculateChanges(
     fromVersion: number,
     toVersion: number
   ): Promise<{ addedSubTasks: number; removedSubTasks: number; modifiedSubTasks: number }> {
-    const oldPlan = await this.getPlanByVersion(fromVersion)
-    const newPlan = await this.getPlanByVersion(toVersion)
+    const oldPlan = await this.getPlanByVersion(fromVersion);
+    const newPlan = await this.getPlanByVersion(toVersion);
 
     if (!oldPlan || !newPlan) {
-      return { addedSubTasks: 0, removedSubTasks: 0, modifiedSubTasks: 0 }
+      return { addedSubTasks: 0, removedSubTasks: 0, modifiedSubTasks: 0 };
     }
 
     // 简单比较（可以更精细）
-    const oldIds = new Set(oldPlan.subTasks.map((st) => st.id))
-    const newIds = new Set(newPlan.subTasks.map((st) => st.id))
+    const oldIds = new Set(oldPlan.subTasks.map((st) => st.id));
+    const newIds = new Set(newPlan.subTasks.map((st) => st.id));
 
-    const added = newPlan.subTasks.filter((st) => !oldIds.has(st.id)).length
-    const removed = oldPlan.subTasks.filter((st) => !newIds.has(st.id)).length
-    const modified = 0 // TODO: 实现内容比较
+    const added = newPlan.subTasks.filter((st) => !oldIds.has(st.id)).length;
+    const removed = oldPlan.subTasks.filter((st) => !newIds.has(st.id)).length;
+    const modified = 0; // TODO: 实现内容比较
 
     return {
       addedSubTasks: added,
       removedSubTasks: removed,
       modifiedSubTasks: modified
-    }
+    };
   }
 }
 ```
@@ -519,41 +510,41 @@ export class PlanVersionManager {
 // src/main/ai/orchestration/Orchestrator.ts (集成版本管理)
 
 export class Orchestrator implements IOrchestrator {
-  private sessionManager!: SessionFileManager
-  private planVersionManager!: PlanVersionManager
-  private verificationGate!: VerificationGate
+  private sessionManager!: SessionFileManager;
+  private planVersionManager!: PlanVersionManager;
+  private verificationGate!: VerificationGate;
 
   async initialize(sessionId: string): Promise<void> {
     // 初始化文件管理器
-    this.sessionManager = new SessionFileManager(sessionId)
-    await this.sessionManager.initialize()
+    this.sessionManager = new SessionFileManager(sessionId);
+    await this.sessionManager.initialize();
 
     // 初始化计划版本管理器 ✨
-    this.planVersionManager = new PlanVersionManager(this.sessionManager, sessionId)
-    await this.planVersionManager.initialize()
+    this.planVersionManager = new PlanVersionManager(this.sessionManager, sessionId);
+    await this.planVersionManager.initialize();
 
     // 初始化评审者
-    this.verificationGate = new VerificationGate(this.sessionManager, sessionId)
+    this.verificationGate = new VerificationGate(this.sessionManager, sessionId);
 
-    console.log(`[Orchestrator] Initialized with session: ${sessionId}`)
+    console.log(`[Orchestrator] Initialized with session: ${sessionId}`);
   }
 
   async executeTask(task: Task): Promise<TaskExecutionResult> {
-    const startTime = Date.now()
+    const startTime = Date.now();
 
     try {
       // 1️⃣ 规划阶段：创建初始计划（版本1）✨
-      const plan = await this.planner.plan(task)
+      const plan = await this.planner.plan(task);
       const planVersion = await this.planVersionManager.createPlanVersion(
         plan,
         PlanVersionReason.INITIAL,
         '初始任务规划'
-      )
+      );
 
-      console.log(`[Orchestrator] Created initial plan (version ${planVersion})`)
+      console.log(`[Orchestrator] Created initial plan (version ${planVersion})`);
 
       // 2️⃣ 执行阶段
-      const subTaskResults = await this.executePlanWithReplan(plan, planVersion)
+      const subTaskResults = await this.executePlanWithReplan(plan, planVersion);
 
       // 3️⃣ 更新计划执行结果 ✨
       await this.planVersionManager.updatePlanExecution(planVersion, {
@@ -561,10 +552,10 @@ export class Orchestrator implements IOrchestrator {
         endTime: Date.now(),
         completedSubTasks: subTaskResults.filter((r) => r.status === 'completed').length,
         failedSubTasks: subTaskResults.filter((r) => r.status === 'failed').length
-      })
+      });
 
       // 4️⃣ 聚合结果
-      const finalOutput = this.aggregateResults(subTaskResults)
+      const finalOutput = this.aggregateResults(subTaskResults);
 
       return {
         taskId: task.id,
@@ -574,9 +565,9 @@ export class Orchestrator implements IOrchestrator {
         stats: {
           /* ... */
         }
-      }
+      };
     } catch (error) {
-      throw error
+      throw error;
     }
   }
 
@@ -587,34 +578,34 @@ export class Orchestrator implements IOrchestrator {
     initialPlan: ExecutionPlan,
     initialVersion: number
   ): Promise<SubTaskExecutionResult[]> {
-    let currentPlan = initialPlan
-    let currentVersion = initialVersion
-    const MAX_REPLAN_ATTEMPTS = 3
-    let replanAttempt = 0
+    let currentPlan = initialPlan;
+    let currentVersion = initialVersion;
+    const MAX_REPLAN_ATTEMPTS = 3;
+    let replanAttempt = 0;
 
     while (replanAttempt <= MAX_REPLAN_ATTEMPTS) {
       // 执行当前计划
-      const results = await this.executePlan(currentPlan)
+      const results = await this.executePlan(currentPlan);
 
       // 检查是否需要重新规划
-      const failedCount = results.filter((r) => r.status === 'failed').length
+      const failedCount = results.filter((r) => r.status === 'failed').length;
 
       if (failedCount === 0) {
         // 全部成功，返回结果
-        return results
+        return results;
       }
 
       // 有失败的子任务
-      replanAttempt++
+      replanAttempt++;
 
       if (replanAttempt > MAX_REPLAN_ATTEMPTS) {
         // 超过重试次数，返回部分成功结果
-        console.log('[Orchestrator] Max replan attempts reached')
-        return results
+        console.log('[Orchestrator] Max replan attempts reached');
+        return results;
       }
 
       // 重新规划 ✨
-      console.log(`[Orchestrator] Replanning (attempt ${replanAttempt}/${MAX_REPLAN_ATTEMPTS})`)
+      console.log(`[Orchestrator] Replanning (attempt ${replanAttempt}/${MAX_REPLAN_ATTEMPTS})`);
 
       const replanTask: Task = {
         id: `replan-${Date.now()}`,
@@ -623,9 +614,9 @@ export class Orchestrator implements IOrchestrator {
           failedSubTasks: results.filter((r) => r.status === 'failed'),
           completedSubTasks: results.filter((r) => r.status === 'completed')
         }
-      }
+      };
 
-      const newPlan = await this.planner.plan(replanTask)
+      const newPlan = await this.planner.plan(replanTask);
 
       // 创建新的计划版本 ✨
       currentVersion = await this.planVersionManager.createPlanVersion(
@@ -633,13 +624,13 @@ export class Orchestrator implements IOrchestrator {
         PlanVersionReason.TASK_FAILED,
         `${failedCount}个子任务失败，需要重新规划`,
         currentVersion // 父版本
-      )
+      );
 
-      currentPlan = newPlan
-      console.log(`[Orchestrator] Created replan version ${currentVersion}`)
+      currentPlan = newPlan;
+      console.log(`[Orchestrator] Created replan version ${currentVersion}`);
     }
 
-    throw new Error('Unexpected execution path')
+    throw new Error('Unexpected execution path');
   }
 }
 ```
@@ -652,48 +643,48 @@ export class Orchestrator implements IOrchestrator {
 
 ```typescript
 // 获取所有计划版本
-const history = planVersionManager.getPlanHistory()
+const history = planVersionManager.getPlanHistory();
 
-console.log(`共有 ${history.length} 个计划版本：`)
+console.log(`共有 ${history.length} 个计划版本：`);
 history.forEach((meta) => {
-  console.log(`- v${meta.version}: ${meta.reason} (${meta.stats.totalSubTasks}个子任务)`)
-})
+  console.log(`- v${meta.version}: ${meta.reason} (${meta.stats.totalSubTasks}个子任务)`);
+});
 ```
 
 ### 计划分析报告
 
 ```typescript
 // 获取计划分析
-const analytics = await planVersionManager.getPlanAnalytics()
+const analytics = await planVersionManager.getPlanAnalytics();
 
-console.log('计划统计：')
-console.log(`- 总版本数: ${analytics.totalVersions}`)
-console.log(`- 重新规划次数: ${analytics.totalReplans}`)
-console.log(`- 平均子任务数: ${analytics.averageSubTasksPerPlan}`)
+console.log('计划统计：');
+console.log(`- 总版本数: ${analytics.totalVersions}`);
+console.log(`- 重新规划次数: ${analytics.totalReplans}`);
+console.log(`- 平均子任务数: ${analytics.averageSubTasksPerPlan}`);
 
-console.log('\n重新规划原因分布：')
+console.log('\n重新规划原因分布：');
 Object.entries(analytics.replanReasons).forEach(([reason, count]) => {
-  console.log(`- ${reason}: ${count}次`)
-})
+  console.log(`- ${reason}: ${count}次`);
+});
 
-console.log('\n计划有效性：')
+console.log('\n计划有效性：');
 Object.entries(analytics.planEffectiveness).forEach(([version, stats]) => {
   console.log(
     `- ${version}: 完成率${(stats.completionRate * 100).toFixed(1)}%, 成功率${(stats.successRate * 100).toFixed(1)}%`
-  )
-})
+  );
+});
 ```
 
 ### 对比计划版本
 
 ```typescript
 // 对比两个版本的计划
-const v1 = await planVersionManager.getPlanByVersion(1)
-const v2 = await planVersionManager.getPlanByVersion(2)
+const v1 = await planVersionManager.getPlanByVersion(1);
+const v2 = await planVersionManager.getPlanByVersion(2);
 
-console.log('版本对比：')
-console.log(`v1: ${v1.subTasks.length}个子任务`)
-console.log(`v2: ${v2.subTasks.length}个子任务`)
+console.log('版本对比：');
+console.log(`v1: ${v1.subTasks.length}个子任务`);
+console.log(`v2: ${v2.subTasks.length}个子任务`);
 ```
 
 ---
@@ -704,13 +695,13 @@ console.log(`v2: ${v2.subTasks.length}个子任务`)
 
 ```typescript
 // 用户提交任务
-const task = { id: 'task-001', objective: '开发用户登录功能' }
+const task = { id: 'task-001', objective: '开发用户登录功能' };
 
 // Planner 生成计划
-const plan = await planner.plan(task)
+const plan = await planner.plan(task);
 
 // 创建版本 1
-await planVersionManager.createPlanVersion(plan, PlanVersionReason.INITIAL, '初始任务规划')
+await planVersionManager.createPlanVersion(plan, PlanVersionReason.INITIAL, '初始任务规划');
 
 // 文件系统：
 // planner/plans/plan-v1.json
@@ -721,11 +712,11 @@ await planVersionManager.createPlanVersion(plan, PlanVersionReason.INITIAL, '初
 
 ```typescript
 // 执行版本 1，部分子任务失败
-const results = await orchestrator.executePlan(plan)
+const results = await orchestrator.executePlan(plan);
 // 结果：3/5 子任务成功，2个失败
 
 // 重新规划
-const newPlan = await planner.replan(failedSubTasks)
+const newPlan = await planner.replan(failedSubTasks);
 
 // 创建版本 2
 await planVersionManager.createPlanVersion(
@@ -733,7 +724,7 @@ await planVersionManager.createPlanVersion(
   PlanVersionReason.TASK_FAILED,
   '2个子任务失败，调整执行方案',
   1 // 父版本
-)
+);
 
 // 文件系统：
 // planner/plans/plan-v2.json
@@ -745,7 +736,7 @@ await planVersionManager.createPlanVersion(
 
 ```typescript
 // 用户反馈："第3个子任务不需要了"
-const modifiedPlan = await planner.adjustPlan(currentPlan, userFeedback)
+const modifiedPlan = await planner.adjustPlan(currentPlan, userFeedback);
 
 // 创建版本 3
 await planVersionManager.createPlanVersion(
@@ -753,14 +744,14 @@ await planVersionManager.createPlanVersion(
   PlanVersionReason.USER_FEEDBACK,
   '用户反馈：移除子任务3',
   2 // 父版本
-)
+);
 ```
 
 ### 场景 4: 分析和学习
 
 ```typescript
 // 任务完成后，分析哪些计划更有效
-const analytics = await planVersionManager.getPlanAnalytics()
+const analytics = await planVersionManager.getPlanAnalytics();
 
 // 发现：
 // - v1 完成率60%，成功率40%
