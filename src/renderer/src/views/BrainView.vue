@@ -289,8 +289,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 52px;
-  padding: 0 20px;
+  height: 42px;
+  padding: 0 16px;
   flex-shrink: 0;
   border-bottom: 1px solid hsl(var(--border) / 0.3);
   background: hsl(var(--surface) / 0.6);
@@ -307,15 +307,15 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   background: hsl(var(--primary) / 0.1);
   color: hsl(var(--primary));
 }
 
 .header-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: hsl(var(--foreground));
   letter-spacing: -0.01em;

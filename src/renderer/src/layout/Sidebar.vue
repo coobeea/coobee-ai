@@ -38,9 +38,9 @@ const activeMenuId = ref('agent');
 
 const menuItems: MenuItem[] = [
   { id: 'agent', label: '智能体', icon: 'i-carbon-bot', route: '/agent' },
-  { id: 'skills', label: '技能', icon: 'i-carbon-skill-level-advanced', route: '/skills' },
-  { id: 'tavern', label: '酒馆', icon: 'i-carbon-task-star', route: '/tavern' },
-  { id: 'brain', label: '智库', icon: 'i-carbon-catalog', route: '/brain' },
+  { id: 'skills', label: '技能市场', icon: 'i-carbon-skill-level-advanced', route: '/skills' },
+  { id: 'tavern', label: '酒馆任务', icon: 'i-carbon-task-star', route: '/tavern' },
+  { id: 'brain', label: '知识智库', icon: 'i-carbon-catalog', route: '/brain' },
   { id: 'cron', label: '定时任务', icon: 'i-carbon-time', route: '/cron' }
 ];
 
