@@ -38,6 +38,13 @@ interface SkillInfo {
 const availableSkills = ref<SkillInfo[]>([]);
 const skillsLoading = ref(false);
 
+/** 文件/目录选择相关 */
+interface AttachmentRef {
+  path: string;
+  name: string;
+  type: 'file' | 'directory';
+}
+
 onMounted(() => {
   agentsStore.fetchAgents();
 });
@@ -63,68 +70,168 @@ async function handleAiCreate(): Promise<void> {
 
 const confirmDeleteId = ref<string | null>(null);
 
-/** 运行模式选择弹窗状态 */
-const showModeSelector = ref(false);
+/** 运行弹窗状态 */
+const showRunDialog = ref(false);
 const pendingAgentId = ref<string | null>(null);
 const selectedMode = ref<AgentType>('agent');
+/** 弹窗中的可选配置（默认折叠） */
+const showAdvancedOptions = ref(false);
+const taskDescription = ref('');
+const taskAttachments = ref<AttachmentRef[]>([]);
+const taskSkills = ref<string[]>([]);
 
 /** 运行模式选项 */
 const modeOptions: { value: AgentType; label: string; description: string; icon: string }[] = [
   {
     value: 'agent',
-    label: '单 Agent',
-    description: '标准模式，单个智能体独立完成任务',
+    label: '自主模式',
+    description: '智能体独立执行，可按需调度子智能体协助',
     icon: 'i-carbon-bot'
   },
   {
     value: 'orchestrator',
-    label: '编排器',
-    description: '自动分解任务，多个子 Agent 并行协作',
+    label: '编排模式',
+    description: '自动分解任务，多个子智能体并行协作',
     icon: 'i-carbon-flow'
   },
   {
     value: 'swarm',
-    label: 'Swarm',
+    label: '蜂群模式',
     description: '智能体群组，动态切换处理不同子任务',
     icon: 'i-carbon-network-3'
   }
 ];
 
-function openModeSelector(agentId: string): void {
+function openRunDialog(agentId: string): void {
   pendingAgentId.value = agentId;
   selectedMode.value = 'agent';
-  showModeSelector.value = true;
+  showAdvancedOptions.value = false;
+  taskDescription.value = '';
+  taskAttachments.value = [];
+
+  // 预填技能：使用 Agent 自身绑定的技能
+  const agent = agentsStore.agents.find((a) => a.id === agentId);
+  taskSkills.value = agent?.skills ? [...agent.skills] : [];
+
+  showRunDialog.value = true;
+
+  // 加载可用技能
+  if (availableSkills.value.length === 0) {
+    loadAvailableSkills();
+  }
 }
 
-function closeModeSelector(): void {
-  showModeSelector.value = false;
+function closeRunDialog(): void {
+  showRunDialog.value = false;
   pendingAgentId.value = null;
 }
 
-async function confirmStartTask(): Promise<void> {
+async function loadAvailableSkills(): Promise<void> {
+  if (skillsLoading.value) return;
+  skillsLoading.value = true;
+  try {
+    const url = `${configManager.getBaseUrl()}/gateway/skills`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = (await res.json()) as { skills: SkillInfo[] };
+      availableSkills.value = data.skills;
+    }
+  } catch (err) {
+    console.warn('[AgentView] Failed to fetch skills:', err);
+  } finally {
+    skillsLoading.value = false;
+  }
+}
+
+function toggleRunSkill(skillName: string): void {
+  const idx = taskSkills.value.indexOf(skillName);
+  if (idx >= 0) {
+    taskSkills.value.splice(idx, 1);
+  } else {
+    taskSkills.value.push(skillName);
+  }
+}
+
+async function handleAddAttachment(): Promise<void> {
+  try {
+    const result = await window.api.openFile({
+      properties: ['openFile', 'openDirectory', 'multiSelections']
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      for (const filePath of result.filePaths) {
+        const name = filePath.split('/').pop() || filePath;
+        const exists = taskAttachments.value.some((a) => a.path === filePath);
+        if (!exists) {
+          taskAttachments.value.push({ path: filePath, name, type: 'file' });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[AgentView] File dialog failed:', err);
+  }
+}
+
+function removeAttachment(index: number): void {
+  taskAttachments.value.splice(index, 1);
+}
+
+/** 构建初始消息 */
+function buildInitialMessage(): string {
+  const parts: string[] = [];
+
+  if (taskDescription.value.trim()) {
+    parts.push(taskDescription.value.trim());
+  } else {
+    parts.push('你好');
+  }
+
+  if (taskAttachments.value.length > 0) {
+    parts.push('');
+    parts.push('相关资料：');
+    for (const att of taskAttachments.value) {
+      parts.push(`- ${att.path}`);
+    }
+  }
+
+  return parts.join('\n');
+}
+
+async function confirmStartTask(background = false): Promise<void> {
   if (!pendingAgentId.value) return;
   const agentId = pendingAgentId.value;
   const mode = selectedMode.value;
-  closeModeSelector();
-  await handleStartTask(agentId, mode);
+  const message = buildInitialMessage();
+  closeRunDialog();
+  await handleStartTask(agentId, mode, message, background);
 }
 
-async function handleStartTask(agentId: string, mode: AgentType = 'agent'): Promise<void> {
+async function handleStartTask(
+  agentId: string,
+  mode: AgentType = 'agent',
+  initialMessage = '你好',
+  background = false
+): Promise<void> {
   agentsStore.selectAgent(agentId);
   const agent = agentsStore.agents.find((a) => a.id === agentId);
-  const title = agent ? `${agent.name} 的任务` : '新任务';
+  const title = taskDescription.value.trim()
+    ? taskDescription.value.trim().slice(0, 30) + (taskDescription.value.trim().length > 30 ? '...' : '')
+    : agent
+      ? `${agent.name} 的任务`
+      : '新任务';
   const thread = await threadsStore.createThread(title, agentId, mode);
   if (thread) {
-    // 跳转到 Thread 页面
-    await router.push(`/thread/${thread.id}`);
+    if (!background) {
+      await router.push(`/thread/${thread.id}`);
+    }
 
-    // 等待页面加载完成，然后自动发送初始消息启动 Agent
     await nextTick();
-    setTimeout(() => {
-      const chatStore = useChatStore();
-      // 发送一条简单的启动消息，让 Agent 根据自己的 instructions 决定如何响应
-      chatStore.sendMessage('你好');
-    }, 300);
+    setTimeout(
+      () => {
+        const chatStore = useChatStore();
+        chatStore.sendMessage(initialMessage);
+      },
+      background ? 100 : 300
+    );
   }
 }
 
@@ -144,19 +251,7 @@ async function openSkillsEditor(agentId: string): Promise<void> {
   editSkillsList.value = [...(agent.skills ?? [])];
 
   if (availableSkills.value.length === 0) {
-    skillsLoading.value = true;
-    try {
-      const url = `${configManager.getBaseUrl()}/gateway/skills`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = (await res.json()) as { skills: SkillInfo[] };
-        availableSkills.value = data.skills;
-      }
-    } catch (err) {
-      console.warn('[AgentView] Failed to fetch skills:', err);
-    } finally {
-      skillsLoading.value = false;
-    }
+    await loadAvailableSkills();
   }
 }
 
@@ -372,7 +467,7 @@ function formatTime(iso: string): string {
             </div>
 
             <div class="card-footer">
-              <button class="start-task-btn" @click="openModeSelector(agent.id)">
+              <button class="start-task-btn" @click="openRunDialog(agent.id)">
                 <span class="i-carbon-play-filled-alt inline-block h-3.5 w-3.5" />
                 <span>运行任务</span>
               </button>
@@ -440,37 +535,133 @@ function formatTime(iso: string): string {
       </Transition>
     </Teleport>
 
-    <!-- 运行模式选择弹窗 -->
+    <!-- 运行任务弹窗 -->
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="showModeSelector" class="skills-overlay" @click.self="closeModeSelector">
-          <div class="skills-dialog mode-dialog">
+        <div v-if="showRunDialog" class="skills-overlay" @click.self="closeRunDialog">
+          <div class="skills-dialog run-dialog">
             <div class="skills-dialog-header">
               <span class="i-carbon-play-filled-alt inline-block h-4 w-4" />
-              <span>选择运行模式</span>
+              <span>运行任务</span>
             </div>
-            <div class="skills-dialog-body mode-options">
-              <label
-                v-for="option in modeOptions"
-                :key="option.value"
-                class="mode-option"
-                :class="{ selected: selectedMode === option.value }">
-                <input v-model="selectedMode" type="radio" name="agentMode" :value="option.value" class="mode-radio" />
-                <div class="mode-icon">
-                  <span :class="option.icon" class="inline-block h-5 w-5" />
+
+            <div class="run-dialog-body">
+              <!-- 运行模式选择 -->
+              <section class="run-section">
+                <h4 class="run-section-title">运行模式</h4>
+                <div class="mode-options-compact">
+                  <label
+                    v-for="option in modeOptions"
+                    :key="option.value"
+                    class="mode-chip"
+                    :class="{ selected: selectedMode === option.value }">
+                    <input
+                      v-model="selectedMode"
+                      type="radio"
+                      name="agentMode"
+                      :value="option.value"
+                      class="mode-radio" />
+                    <span :class="option.icon" class="inline-block h-3.5 w-3.5" />
+                    <span class="mode-chip-label">{{ option.label }}</span>
+                  </label>
                 </div>
-                <div class="mode-info">
-                  <span class="mode-label">{{ option.label }}</span>
-                  <span class="mode-desc">{{ option.description }}</span>
-                </div>
-              </label>
-            </div>
-            <div class="skills-dialog-footer">
-              <button class="text-btn" @click="closeModeSelector">取消</button>
-              <button class="primary-btn" @click="confirmStartTask">
-                <span class="i-carbon-play-filled-alt inline-block h-3.5 w-3.5" />
-                开始
+                <p class="run-section-hint">
+                  {{ modeOptions.find((o) => o.value === selectedMode)?.description }}
+                </p>
+              </section>
+
+              <!-- 折叠区：高级选项 -->
+              <button class="advanced-toggle" @click="showAdvancedOptions = !showAdvancedOptions">
+                <span
+                  class="i-carbon-chevron-right inline-block h-3 w-3 transition-transform"
+                  :class="{ 'rotate-90': showAdvancedOptions }" />
+                <span>高级选项</span>
+                <span
+                  v-if="taskDescription || taskAttachments.length > 0 || taskSkills.length > 0"
+                  class="advanced-dot">
+                </span>
               </button>
+
+              <Transition name="slide-down">
+                <div v-if="showAdvancedOptions" class="advanced-options">
+                  <!-- 任务描述 -->
+                  <div class="run-field">
+                    <label class="run-field-label">
+                      <span class="i-carbon-document inline-block h-3 w-3" />
+                      任务描述
+                    </label>
+                    <textarea
+                      v-model="taskDescription"
+                      placeholder="描述你想完成的任务..."
+                      rows="2"
+                      class="run-textarea"></textarea>
+                  </div>
+
+                  <!-- 相关资料 -->
+                  <div class="run-field">
+                    <label class="run-field-label">
+                      <span class="i-carbon-folder-add inline-block h-3 w-3" />
+                      相关资料
+                    </label>
+                    <div v-if="taskAttachments.length > 0" class="attachment-list">
+                      <div v-for="(att, idx) in taskAttachments" :key="att.path" class="attachment-item">
+                        <span class="i-carbon-document inline-block h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span class="attachment-path" :title="att.path">{{ att.name }}</span>
+                        <button class="attachment-remove" @click="removeAttachment(idx)">
+                          <span class="i-carbon-close inline-block h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <button class="add-attachment-btn" @click="handleAddAttachment">
+                      <span class="i-carbon-add inline-block h-3 w-3" />
+                      添加文件或目录
+                    </button>
+                    <p class="run-field-hint">选择的路径将作为上下文信息传递给智能体</p>
+                  </div>
+
+                  <!-- 技能选择 -->
+                  <div class="run-field">
+                    <label class="run-field-label">
+                      <span class="i-carbon-skill-level-advanced inline-block h-3 w-3" />
+                      技能
+                      <span v-if="taskSkills.length > 0" class="skill-count">{{ taskSkills.length }}</span>
+                    </label>
+                    <div v-if="skillsLoading" class="run-field-hint">
+                      <span class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
+                      加载中...
+                    </div>
+                    <div v-else class="skill-chips">
+                      <label
+                        v-for="skill in availableSkills"
+                        :key="skill.name"
+                        class="skill-chip"
+                        :class="{ active: taskSkills.includes(skill.name) }"
+                        :title="skill.description">
+                        <input
+                          type="checkbox"
+                          :checked="taskSkills.includes(skill.name)"
+                          class="sr-only"
+                          @change="toggleRunSkill(skill.name)" />
+                        {{ skill.name }}
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </Transition>
+            </div>
+
+            <div class="skills-dialog-footer run-footer">
+              <button class="text-btn" @click="closeRunDialog">取消</button>
+              <div class="flex items-center gap-2">
+                <button class="secondary-btn" title="创建任务但不跳转" @click="confirmStartTask(true)">
+                  <span class="i-carbon-send-to-back inline-block h-3.5 w-3.5" />
+                  后台运行
+                </button>
+                <button class="primary-btn" @click="confirmStartTask(false)">
+                  <span class="i-carbon-play-filled-alt inline-block h-3.5 w-3.5" />
+                  运行
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1280,35 +1471,72 @@ function formatTime(iso: string): string {
   border-top: 1px solid hsl(var(--border) / 0.25);
 }
 
-/* 运行模式选择弹窗样式 */
-.mode-dialog {
-  width: 420px;
+/* 运行任务弹窗样式 */
+.run-dialog {
+  width: 460px;
+  max-height: 600px;
 }
 
-.mode-options {
+.run-dialog-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.run-section {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.mode-option {
+.run-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.run-section-hint {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  line-height: 1.4;
+}
+
+.mode-options-compact {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 10px;
+  gap: 6px;
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
-  border: 1px solid hsl(var(--border) / 0.3);
+  border: 1px solid hsl(var(--border) / 0.35);
   background: hsl(var(--surface) / 0.5);
+  color: hsl(var(--muted-foreground) / 0.7);
 }
 
-.mode-option:hover {
+.mode-chip:hover {
   background: hsl(var(--surface));
-  border-color: hsl(var(--border) / 0.5);
+  border-color: hsl(var(--border) / 0.6);
 }
 
-.mode-option.selected {
-  background: hsl(var(--primary) / 0.06);
-  border-color: hsl(var(--primary) / 0.25);
+.mode-chip.selected {
+  background: hsl(var(--primary) / 0.08);
+  border-color: hsl(var(--primary) / 0.3);
+  color: hsl(var(--primary));
+}
+
+.mode-chip-label {
+  line-height: 1;
 }
 
 .mode-radio {
@@ -1317,45 +1545,219 @@ function formatTime(iso: string): string {
   pointer-events: none;
 }
 
-.mode-icon {
+/* 高级选项折叠 */
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.6);
+  transition: color 0.15s ease;
+}
+
+.advanced-toggle:hover {
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.advanced-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+}
+
+.advanced-options {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+.run-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.run-field-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: hsl(var(--foreground) / 0.6);
+}
+
+.run-field-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: hsl(var(--muted-foreground) / 0.4);
+}
+
+.run-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.4);
+  border-radius: 8px;
+  outline: none;
+  resize: vertical;
+  min-height: 48px;
+  transition: border-color 0.15s ease;
+}
+
+.run-textarea:focus {
+  border-color: hsl(var(--primary) / 0.4);
+}
+
+.run-textarea::placeholder {
+  color: hsl(var(--muted-foreground) / 0.3);
+}
+
+/* 附件列表 */
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: hsl(var(--foreground) / 0.03);
+  font-size: 11.5px;
+}
+
+.attachment-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.attachment-remove {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground) / 0.4);
   flex-shrink: 0;
+  transition: all 0.12s ease;
+}
+
+.attachment-remove:hover {
+  background: hsl(var(--error) / 0.08);
+  color: hsl(var(--error));
+}
+
+.add-attachment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.6);
+  border: 1px dashed hsl(var(--border) / 0.4);
+  transition: all 0.15s ease;
+  align-self: flex-start;
+}
+
+.add-attachment-btn:hover {
+  background: hsl(var(--foreground) / 0.03);
+  border-color: hsl(var(--primary) / 0.3);
+  color: hsl(var(--primary));
+}
+
+/* 技能选择 */
+.skill-count {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  line-height: 1.6;
+}
+
+.skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.skill-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
   background: hsl(var(--foreground) / 0.04);
-  color: hsl(var(--muted-foreground) / 0.5);
+  color: hsl(var(--muted-foreground) / 0.6);
+  border: 1px solid transparent;
+}
+
+.skill-chip:hover {
+  background: hsl(var(--foreground) / 0.06);
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.skill-chip.active {
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+  border-color: hsl(var(--primary) / 0.2);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+/* 弹窗底部 */
+.run-footer {
+  justify-content: space-between;
+}
+
+.secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.7);
+  background: hsl(var(--foreground) / 0.05);
   transition: all 0.15s ease;
 }
 
-.mode-option.selected .mode-icon {
-  background: hsl(var(--primary) / 0.1);
-  color: hsl(var(--primary));
-}
-
-.mode-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.mode-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: hsl(var(--foreground) / 0.85);
-  line-height: 1.3;
-}
-
-.mode-option.selected .mode-label {
-  color: hsl(var(--primary));
-}
-
-.mode-desc {
-  font-size: 12px;
-  color: hsl(var(--muted-foreground) / 0.55);
-  line-height: 1.5;
+.secondary-btn:hover {
+  background: hsl(var(--foreground) / 0.08);
+  color: hsl(var(--foreground) / 0.8);
 }
 </style>
