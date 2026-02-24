@@ -232,6 +232,45 @@ export function registerAgentRoutes(router: Router): void {
     }
   });
 
+  // ==================== AGENT SKILLS ====================
+
+  router.get('/agents/:id/skills', async (ctx) => {
+    const agentId = ctx.params.id;
+    if (!agentId) {
+      ctx.status = 400;
+      ctx.body = { error: 'agentId is required' };
+      return;
+    }
+
+    try {
+      const store = await AgentStore.getInstance();
+      const agent = await store.get(agentId);
+      if (!agent) {
+        ctx.status = 404;
+        ctx.body = { error: `Agent "${agentId}" not found` };
+        return;
+      }
+
+      const skillNames = agent.skills ?? [];
+      if (skillNames.length === 0) {
+        ctx.body = { skills: [] };
+        return;
+      }
+
+      const skillDefs = loadSkillDefinitions(skillNames);
+      const skills = skillDefs.map((s) => ({
+        name: s.name,
+        description: s.description || ''
+      }));
+
+      ctx.body = { skills };
+    } catch (err) {
+      log.error(`[agents.skills] Error (${agentId}):`, err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // ==================== QUICK CHAT (SSE) ====================
 
   router.post('/agents/:id/quick-chat', async (ctx) => {

@@ -18,6 +18,7 @@ import ProjectPanel from '@/components/agent/ProjectPanel.vue';
 import WorkbenchPanel from '@/components/agent/WorkbenchPanel.vue';
 import ChatPanel from '@/components/agent/ChatPanel.vue';
 import AgentsPanel from '@/components/agent/AgentsPanel.vue';
+import ContextPanel from '@/components/agent/ContextPanel.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -47,8 +48,17 @@ function addToChat(node: { path: string; name: string; type: 'file' | 'directory
 }
 
 provide('addToChat', addToChat);
-// addFileToTask 功能尚未实现，提供 undefined 避免 inject 警告
 provide('addFileToTask', undefined);
+
+const pendingSkillRef = ref<string | null>(null);
+
+function handleUseSkill(skillName: string): void {
+  pendingSkillRef.value = skillName;
+  const prompt = `请按照 [${skillName}] 技能执行`;
+  chatPanelRef.value?.insertSkillPrompt(prompt);
+}
+
+provide('pendingSkillRef', pendingSkillRef);
 
 function enterWorkspaceForThread(id: string): void {
   const thread = threadsStore.threads.find((t) => t.id === id);
@@ -133,7 +143,10 @@ onUnmounted(() => {
     <div v-else class="flex min-h-0 flex-1">
       <ProjectPanel v-model:collapsed="leftCollapsed" v-model:project-path="projectPath" :thread-id="threadId" />
       <WorkbenchPanel />
-      <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" />
+      <div class="right-area">
+        <ContextPanel :thread-id="threadId" @use-skill="handleUseSkill" />
+        <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" />
+      </div>
       <AgentsPanel v-model:collapsed="agentsPanelCollapsed" />
     </div>
   </div>
@@ -146,6 +159,14 @@ onUnmounted(() => {
   height: 100%;
   width: 100%;
   background: hsl(var(--background));
+}
+
+.right-area {
+  display: flex;
+  flex-direction: column;
+  width: 400px;
+  flex-shrink: 0;
+  min-height: 0;
 }
 
 .dir-prompt {

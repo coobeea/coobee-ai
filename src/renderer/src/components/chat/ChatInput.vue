@@ -167,11 +167,18 @@ onUnmounted(() => {
   }
 });
 
-// 暴露给父组件
+function setInputText(text: string): void {
+  if (!editor.value) return;
+  editor.value.commands.clearContent();
+  editor.value.commands.insertContent(text);
+  editor.value.commands.focus('end');
+}
+
 defineExpose({
   focus: () => editor.value?.commands.focus(),
   clear: () => editor.value?.commands.clearContent(),
-  insertFileReference
+  insertFileReference,
+  setInputText
 });
 
 onUnmounted(() => {

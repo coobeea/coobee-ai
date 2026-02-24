@@ -6,7 +6,7 @@
  * 从原 ChatView.vue 提取，适配窄面板布局。
  */
 
-import { ref, watch, onMounted } from 'vue';
+import { ref, inject, watch, onMounted } from 'vue';
 import { useChatStore } from '@/stores/chat';
 import type { PendingApproval } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
@@ -14,19 +14,25 @@ import { gateway } from '@/plugins/gatewaySetup';
 import ChatMessages from '@/components/chat/ChatMessages.vue';
 import ChatInput from '@/components/chat/ChatInput.vue';
 import MessageQueue from '@/components/chat/MessageQueue.vue';
+import type { Ref } from 'vue';
 
 const chatStore = useChatStore();
 const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null);
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 const isCollapsed = defineModel<boolean>('collapsed', { default: false });
 
+const pendingSkillRef = inject<Ref<string | null>>('pendingSkillRef', ref(null));
+
 function scrollToBottom(force = false): void {
   chatMessagesRef.value?.scrollToBottom(force);
 }
 
-// 插入文件引用
 function insertFileReference(file: { path: string; name: string }): void {
   chatInputRef.value?.insertFileReference(file);
+}
+
+function insertSkillPrompt(prompt: string): void {
+  chatInputRef.value?.setInputText(prompt);
 }
 
 // 新消息到达 → 自动滚动（除非用户在看上面的内容）
@@ -52,11 +58,14 @@ watch(
 async function handleSend(data: { text: string; files: { path: string; name: string }[] }): Promise<void> {
   if (!data.text) return;
 
-  // 用户发送消息 → 强制滚到底部（要看回复）
   scrollToBottom(true);
 
-  // 将文件引用传递给后端
-  await chatStore.sendMessage(data.text, data.files);
+  const skillRef = pendingSkillRef.value ?? undefined;
+  if (pendingSkillRef.value) {
+    pendingSkillRef.value = null;
+  }
+
+  await chatStore.sendMessage(data.text, data.files, skillRef ? { skillRef } : undefined);
 }
 
 async function handleStop(): Promise<void> {
@@ -86,14 +95,14 @@ onMounted(() => {
   scrollToBottom();
 });
 
-// 暴露给父组件
 defineExpose({
-  insertFileReference
+  insertFileReference,
+  insertSkillPrompt
 });
 </script>
 
 <template>
-  <aside v-show="!isCollapsed" class="flex h-full w-[400px] shrink-0 flex-col border-l border-gray-200/80 bg-[#f7f7f8]">
+  <aside v-show="!isCollapsed" class="flex min-h-0 flex-1 flex-col border-l border-gray-200/80 bg-[#f7f7f8]">
     <!-- 面板标题 -->
     <div class="flex h-10 shrink-0 items-center border-b border-gray-200/60 px-3">
       <div class="flex items-center gap-1.5">

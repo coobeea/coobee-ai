@@ -210,12 +210,14 @@ export const chatMethods: MethodGroup = {
         message,
         sessionId,
         mode = 'agent',
-        agentId
+        agentId,
+        skillRef
       } = params as {
         message?: string;
         sessionId?: string;
         mode?: AgentMode;
         agentId?: string;
+        skillRef?: string;
       };
 
       if (!message) {
@@ -315,6 +317,27 @@ export const chatMethods: MethodGroup = {
         }
 
         const builder = agentDef ? createBuilderFromDefinition(agentDef, mode) : createBuilder(mode);
+
+        // skillRef: 显式 Skill 注入 — 将 Skill 全文作为强制指令追加到 system prompt
+        if (skillRef) {
+          try {
+            const skillDefs = loadSkillDefinitions([skillRef]);
+            if (skillDefs.length > 0) {
+              const skill = skillDefs[0];
+              const skillInstruction =
+                `<active_skill name="${skill.name}">\n` +
+                `You MUST strictly follow the instructions in this Skill. Do NOT skip any steps.\n\n` +
+                `${skill.content}\n` +
+                `</active_skill>`;
+              builder.appendInstructions(skillInstruction);
+              log.info(`[chat.send] Injected skillRef="${skillRef}" (${skill.content.length} chars)`);
+            } else {
+              log.warn(`[chat.send] skillRef="${skillRef}" not found, skipping injection`);
+            }
+          } catch (err) {
+            log.warn(`[chat.send] Failed to load skillRef="${skillRef}":`, err);
+          }
+        }
 
         const modelSourceRef =
           agentDef?.model && (agentDef.model.startsWith('@') || agentDef.model === 'auto') ? agentDef.model : undefined;

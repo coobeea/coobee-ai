@@ -60,7 +60,11 @@ export const useChatStore = defineStore('chat', () => {
 
   // ---- 对外 Actions ----
 
-  async function sendMessage(text: string, files?: { path: string; name: string }[]): Promise<void> {
+  async function sendMessage(
+    text: string,
+    files?: { path: string; name: string }[],
+    options?: { skillRef?: string }
+  ): Promise<void> {
     if (!text.trim()) return;
 
     // 如果正在处理，加入队列
@@ -75,10 +79,14 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // 否则直接发送
-    await sendMessageInternal(text, files);
+    await sendMessageInternal(text, files, options?.skillRef);
   }
 
-  async function sendMessageInternal(text: string, files?: { path: string; name: string }[]): Promise<void> {
+  async function sendMessageInternal(
+    text: string,
+    files?: { path: string; name: string }[],
+    skillRef?: string
+  ): Promise<void> {
     // 构建完整消息（包含文件路径）
     let finalMessage = text;
     if (files && files.length > 0) {
@@ -125,7 +133,8 @@ export const useChatStore = defineStore('chat', () => {
         message: finalMessage,
         sessionId: oldSessionId,
         mode,
-        ...(agentId ? { agentId } : {})
+        ...(agentId ? { agentId } : {}),
+        ...(skillRef ? { skillRef } : {})
       });
 
       if (result) {
