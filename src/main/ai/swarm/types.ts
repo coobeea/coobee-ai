@@ -78,6 +78,17 @@ export interface SwarmConfig {
   enableMonitoring: boolean;
   /** 扩展元数据 */
   metadata?: Record<string, unknown>;
+  /** 质量保证闭环配置 */
+  qualityLoop?: {
+    enabled: boolean;
+    maxIterations?: number;
+    passThreshold?: number;
+    acceptanceCriteria?: Array<{
+      description: string;
+      type: 'quantifiable' | 'qualitative' | 'existence';
+      weight?: number;
+    }>;
+  };
   /** 🆕 自定义 SwarmContext（用于注入持久化版本） */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   context?: any;
