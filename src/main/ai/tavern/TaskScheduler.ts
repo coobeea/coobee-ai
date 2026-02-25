@@ -32,6 +32,8 @@ export interface TaskSchedulerOptions {
   maxConcurrent?: number;
   /** 是否发送系统通知，默认 true */
   enableNotification?: boolean;
+  /** 启动时跳过超过此时间（ms）的 pending 任务，默认 24 小时。设为 0 表示不跳过 */
+  staleThreshold?: number;
 }
 
 export class TaskScheduler {
@@ -40,9 +42,12 @@ export class TaskScheduler {
   private readonly pollInterval: number;
   private readonly maxConcurrent: number;
   private readonly enableNotification: boolean;
+  private readonly staleThreshold: number;
 
   private running = false;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** 是否为启动后的首次 poll（用于 stale task 检测） */
+  private firstPoll = true;
 
   /** sessionId → TaskExecution 映射 */
   private executions = new Map<string, TaskExecution>();
@@ -51,6 +56,7 @@ export class TaskScheduler {
     this.pollInterval = options.pollInterval ?? 30_000;
     this.maxConcurrent = options.maxConcurrent ?? 1;
     this.enableNotification = options.enableNotification ?? true;
+    this.staleThreshold = options.staleThreshold ?? 24 * 60 * 60 * 1000; // 24h
   }
 
   static getInstance(options?: TaskSchedulerOptions): TaskScheduler {
@@ -113,8 +119,36 @@ export class TaskScheduler {
     }
 
     const store = await TavernStore.getInstance();
-    const pendingTasks = await store.getPendingTasks();
+    let pendingTasks = await store.getPendingTasks();
     if (pendingTasks.length === 0) return;
+
+    // 首次启动时，跳过过于陈旧的 pending 任务（避免重启后盲目执行历史残留）
+    if (this.firstPoll && this.staleThreshold > 0) {
+      this.firstPoll = false;
+      const now = Date.now();
+      const stale: Task[] = [];
+      const fresh: Task[] = [];
+
+      for (const task of pendingTasks) {
+        const age = now - new Date(task.createdAt).getTime();
+        if (age > this.staleThreshold) {
+          stale.push(task);
+        } else {
+          fresh.push(task);
+        }
+      }
+
+      if (stale.length > 0) {
+        log.warn(
+          `[TaskScheduler] Skipped ${stale.length} stale pending task(s) on startup: ${stale.map((t) => t.id).join(', ')}`
+        );
+      }
+
+      pendingTasks = fresh;
+      if (pendingTasks.length === 0) return;
+    } else {
+      this.firstPoll = false;
+    }
 
     const slotsAvailable = this.maxConcurrent - this.executions.size;
     const tasksToDispatch = pendingTasks.slice(0, slotsAvailable);

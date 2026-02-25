@@ -17,6 +17,11 @@ export interface ExtensionManifest {
   version: string;
   description?: string;
   /**
+   * 设为 false 可禁用此 Extension，加载器会跳过它。
+   * 省略或 true 表示启用（默认行为）。
+   */
+  enabled?: boolean;
+  /**
    * 扩展贡献的 Skill 目录（相对于扩展根目录）
    *
    * 声明后，该目录下的 Skill 会被 Skill 加载器自动发现。

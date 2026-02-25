@@ -103,6 +103,12 @@ export class ExtensionLoader {
       return;
     }
 
+    // enabled 字段检查：明确设为 false 时跳过
+    if (manifest.enabled === false) {
+      log.info(`[ExtensionLoader] Skipping disabled extension: ${manifest.id}`);
+      return;
+    }
+
     // 信任模型校验：非 builtin Extension 需要通过安全检查
     if (origin !== 'builtin') {
       const trustResult = verifyExtensionTrust(manifest, dir, origin);

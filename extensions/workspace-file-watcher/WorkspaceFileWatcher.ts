@@ -119,22 +119,9 @@ export class WorkspaceFileWatcher {
     // Initialize dependencies
     await initDeps(logger, bus);
 
-    // 获取并缓存 workspacesDir 路径（避免每次 startWatch 时动态 import）
-    try {
-      const envModule = await import('../../src/main/common/env');
-      const Env = envModule.Env || envModule.default;
-
-      if (!Env || !Env.paths || !Env.paths.workspacesDir) {
-        log.error('[WorkspaceFileWatcher] Failed to get workspacesDir from Env, Extension will not function properly');
-        this.workspacesDir = null;
-      } else {
-        this.workspacesDir = Env.paths.workspacesDir;
-        log.info(`[WorkspaceFileWatcher] Initialized with workspacesDir: ${this.workspacesDir}`);
-      }
-    } catch (err) {
-      log.error('[WorkspaceFileWatcher] Failed to import Env module:', err);
-      this.workspacesDir = null;
-    }
+    // workspacesDir 采用 lazy 获取策略：
+    // Extension 在 priority 50 阶段加载，而 Env.paths 在 priority 55 (ReadyInfraHook) 才初始化。
+    // 因此不在 start() 中获取，而是延迟到首次 startWatch() 时按需获取。
 
     // 创建 bound 函数引用（保证 on/off 使用相同引用）
     this.boundHandlers.message = this.handleStreamMessage.bind(this);
@@ -251,14 +238,25 @@ export class WorkspaceFileWatcher {
       return;
     }
 
-    // 使用缓存的 workspacesDir 路径
+    // Lazy 获取 workspacesDir（Env.paths 在 ReadyInfraHook priority 55 才初始化）
     if (!this.workspacesDir) {
-      // 只记录一次错误，避免终端日志刷屏
+      try {
+        const envModule = await import('../../src/main/common/env');
+        const Env = envModule.Env || envModule.default;
+        if (Env?.paths?.workspacesDir) {
+          this.workspacesDir = Env.paths.workspacesDir;
+          log.info(`[WorkspaceFileWatcher] Resolved workspacesDir: ${this.workspacesDir}`);
+        }
+      } catch {
+        // Env not available yet, will retry on next startWatch call
+      }
+    }
+
+    if (!this.workspacesDir) {
       if (!this.workspacesDirErrorLogged) {
-        log.error(
-          `[WorkspaceFileWatcher] workspacesDir not available, Extension cannot function. ` +
-            `This usually means Env.paths was not initialized when Extension started. ` +
-            `All subsequent watch requests will be silently ignored.`
+        log.warn(
+          `[WorkspaceFileWatcher] workspacesDir not available yet. ` +
+            `Watch request for ${threadId} skipped. Will retry on next event.`
         );
         this.workspacesDirErrorLogged = true;
       }
