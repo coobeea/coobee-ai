@@ -14,6 +14,11 @@ const router = createRouter({
           component: () => import('@/views/AgentView.vue')
         },
         {
+          path: 'employee',
+          name: 'employee',
+          component: () => import('@/views/EmployeeView.vue')
+        },
+        {
           path: 'thread/:id',
           name: 'thread',
           component: () => import('@/views/ThreadView.vue')

@@ -77,13 +77,35 @@ LANG_MAP = {
 # ==================== 模型加载 ====================
 
 def detect_device() -> str:
-    """自动选择最佳计算设备"""
+    """自动选择最佳计算设备，并进行环境优化"""
     import torch
+    
+    device = "cpu"
+    
     if torch.cuda.is_available():
-        return "cuda:0"
+        device = "cuda:0"
+        # CUDA 优化: 开启 CuDNN Benchmark
+        torch.backends.cudnn.benchmark = True
+        log.info("[优化] 已开启 CUDA CuDNN Benchmark")
     elif torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
+        device = "mps"
+        # macOS MPS 优化: 允许回退到 CPU (防止某些算子不支持导致崩溃)
+        os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+        log.info("[优化] 已开启 MPS Fallback")
+    
+    # CPU 线程优化: 默认设为物理核心数的一半 (避免过度抢占)
+    # 对于 TTS 这种计算密集型任务，过多的线程反而会增加上下文切换开销
+    if device == "cpu":
+        try:
+            num_cores = os.cpu_count() or 4
+            # 经验值：设置为物理核数（通常是 cpu_count / 2）
+            num_threads = max(1, num_cores // 2)
+            torch.set_num_threads(num_threads)
+            log.info(f"[优化] CPU 线程数设置为: {num_threads}")
+        except Exception as e:
+            log.warning(f"CPU 线程优化失败: {e}")
+            
+    return device
 
 
 def load_tts_model():
@@ -102,8 +124,18 @@ def load_tts_model():
     
     t0 = time.time()
     
-    # CPU 使用 float32，GPU 使用 bfloat16
-    dtype = torch.bfloat16 if device == "cuda:0" else torch.float32
+    # 精度优化策略
+    if device == "cuda:0":
+        # GPU (NVIDIA): 使用 bfloat16 (如果硬件支持) 或 float16
+        dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    elif device == "mps":
+        # GPU (macOS): 强制使用 float16 (Apple Silicon 对 fp16 优化极佳)
+        dtype = torch.float16
+    else:
+        # CPU: 默认 float32 (bfloat16 在某些 CPU 上也支持，暂保守使用 fp32)
+        dtype = torch.float32
+        
+    log.info(f"[优化] 使用计算精度: {dtype}")
     
     tts_model = Qwen3TTSModel.from_pretrained(
         model_path,

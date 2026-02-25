@@ -21,6 +21,7 @@ import { registerThreadRoutes } from './http/threads';
 import { registerSkillRoutes } from './http/skills';
 import { registerFileRoutes } from './http/files';
 import { registerTavernRoutes } from './http/tavern';
+import { registerEmployeeRoutes } from './http/employee';
 import { registerCronJobRoutes } from './http/cron-jobs';
 import { registerBrainMetricsRoutes } from './http/brain-metrics';
 import { registerMetricsRoutes } from './http/metrics';
@@ -268,6 +269,7 @@ export class Gateway implements GatewayApi {
     registerSkillRoutes(router);
     registerFileRoutes(router);
     registerTavernRoutes(router);
+    registerEmployeeRoutes(router);
     registerCronJobRoutes(router);
     registerBrainMetricsRoutes(router);
     registerMetricsRoutes(router);

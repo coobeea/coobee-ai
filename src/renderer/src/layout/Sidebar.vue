@@ -38,6 +38,7 @@ const activeMenuId = ref('agent');
 
 const menuItems: MenuItem[] = [
   { id: 'agent', label: '智能体', icon: 'i-carbon-bot', route: '/agent' },
+  { id: 'employee', label: '数字员工', icon: 'i-carbon-user-avatar', route: '/employee' },
   { id: 'skills', label: '技能市场', icon: 'i-carbon-skill-level-advanced', route: '/skills' },
   { id: 'tavern', label: '酒馆任务', icon: 'i-carbon-task-star', route: '/tavern' },
   { id: 'brain', label: '知识智库', icon: 'i-carbon-catalog', route: '/brain' },
