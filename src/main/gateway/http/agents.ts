@@ -122,13 +122,24 @@ export function registerAgentRoutes(router: Router): void {
     }
 
     try {
+      // 工具默认全选：未指定时自动使用全部可用工具
+      let finalTools = tools;
+      if (!finalTools || finalTools.length === 0) {
+        const extensionTools = ToolRegistry.getInstance().getAll();
+        const toolMap = new Map(builtinTools.map((t) => [t.name, t]));
+        for (const ext of extensionTools) {
+          toolMap.set(ext.name, ext);
+        }
+        finalTools = Array.from(toolMap.keys());
+      }
+
       const store = await AgentStore.getInstance();
       const agent = await store.create({
         id,
         name,
         description,
         instructions,
-        tools,
+        tools: finalTools,
         skills,
         model,
         createdBy: 'user'

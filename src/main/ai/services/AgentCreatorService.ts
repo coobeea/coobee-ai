@@ -294,7 +294,6 @@ export async function aiCreateAgent(requirement: string, onProgress?: ProgressCa
     description?: string;
     instructions?: string;
   };
-  const rawTools = parsed.tools as string[] | undefined;
   const rawSkills = parsed.skills as string[] | undefined;
 
   if (!id || !name || !instructions) {
@@ -306,12 +305,10 @@ export async function aiCreateAgent(requirement: string, onProgress?: ProgressCa
   const toolNames = tools.map((t) => t.name);
   const skillNames = skills.map((s) => s.name);
 
-  const validTools = (rawTools ?? []).filter((t) => toolNames.includes(t));
+  // 工具默认全选：无论 LLM 选了哪些，都赋予全部工具
+  const validTools = [...toolNames];
   const validSkills = (rawSkills ?? []).filter((s) => skillNames.includes(s));
 
-  if (rawTools && validTools.length < rawTools.length) {
-    log.warn(`[AgentCreatorService] 过滤了无效工具: ${rawTools.filter((t) => !toolNames.includes(t)).join(', ')}`);
-  }
   if (rawSkills && validSkills.length < rawSkills.length) {
     log.warn(`[AgentCreatorService] 过滤了无效技能: ${rawSkills.filter((s) => !skillNames.includes(s)).join(', ')}`);
   }
@@ -334,7 +331,7 @@ export async function aiCreateAgent(requirement: string, onProgress?: ProgressCa
     name,
     description: description || name,
     instructions,
-    tools: validTools.length > 0 ? validTools : undefined,
+    tools: validTools,
     skills: validSkills.length > 0 ? validSkills : undefined,
     createdBy: 'user'
   };

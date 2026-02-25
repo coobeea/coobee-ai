@@ -1,53 +1,130 @@
 <script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue';
+
 const props = defineProps<{
   volume: number; // 0 - 100
   isActive: boolean;
+  color?: string; // 波形颜色
 }>();
 
-// 生成 12 个条，每个条有不同的高度系数，模拟无规则波形
-const bars = [0.4, 0.7, 1.0, 0.6, 0.8, 1.2, 0.9, 0.5, 1.1, 0.7, 0.4, 0.6];
+const canvasRef = ref<HTMLCanvasElement | null>(null);
+let animationId: number;
 
-const barStyle = (factor: number, index: number): Record<string, string> => {
-  // 基础高度 + 音量驱动的增量
-  // 当静音时，保持一个微小的高度
-  const minHeight = 4;
-  const variableHeight = (props.volume / 100) * 40 * factor; // 最大高度 40px * factor
+// 历史数据
+const bufferLength = 120; // 点越多越圆滑
+const dataBuffer = new Array(bufferLength).fill(0);
 
-  // 增加一点随机抖动，让它看起来更像是在动
-  const height = props.isActive ? Math.max(minHeight, variableHeight) : minHeight;
+const draw = (): void => {
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
 
-  return {
-    height: `${height}px`,
-    transition: 'height 0.1s ease-out', // 平滑过渡
-    animationDelay: `${index * 0.05}s`
-  };
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+
+  const w = rect.width;
+  const h = rect.height;
+  const cx = w / 2;
+  const cy = h / 2;
+  const maxRadius = Math.min(w, h) / 2 - 10;
+  const minRadius = maxRadius * 0.6;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const targetVal = props.isActive ? props.volume : 0;
+
+  // 模拟波形向外扩散：这里其实是旋转buffer
+  // 但为了简单，我们只更新最后一个点是不行的，需要更新整个buffer
+  // 这里采用更简单的方案：buffer 存储的是不同角度的幅值
+  // 每一帧都随机更新一些点，或者让整体旋转
+
+  // 简化方案：基于当前 volume 生成一个新的随机波形
+  for (let i = 0; i < bufferLength; i++) {
+    // 基础半径 + 音量驱动的波动
+    // 使用 Perlin Noise 或者简单的正弦叠加会更好，这里用随机叠加
+    const angle = (i / bufferLength) * Math.PI * 2;
+    // 制造 3 个主要波峰
+    const wave = Math.sin(angle * 3 + Date.now() / 200) * (targetVal / 100) * 20;
+    const random = (Math.random() - 0.5) * (targetVal / 100) * 10;
+
+    // 平滑插值
+    const current = dataBuffer[i];
+    const target = wave + random;
+    dataBuffer[i] = current + (target - current) * 0.2;
+  }
+
+  // 绘制闭合曲线
+  ctx.beginPath();
+  for (let i = 0; i <= bufferLength; i++) {
+    const idx = i % bufferLength;
+    const angle = (i / bufferLength) * Math.PI * 2;
+    const r = minRadius + dataBuffer[idx] + (targetVal / 100) * 10; // 基础呼吸
+
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+
+  // 样式
+  const gradient = ctx.createRadialGradient(cx, cy, minRadius * 0.5, cx, cy, maxRadius);
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+  gradient.addColorStop(0.8, props.color || 'rgba(74, 222, 128, 0.4)');
+  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  // 描边
+  ctx.strokeStyle = props.color || 'rgba(74, 222, 128, 0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  animationId = requestAnimationFrame(draw);
 };
+
+onMounted(() => {
+  draw();
+});
+
+onUnmounted(() => {
+  cancelAnimationFrame(animationId);
+});
 </script>
 
 <template>
-  <div class="visualizer" :class="{ active: isActive }">
-    <div v-for="(factor, index) in bars" :key="index" class="bar" :style="barStyle(factor, index)"></div>
+  <div class="visualizer-container">
+    <canvas ref="canvasRef" class="visualizer-canvas"></canvas>
   </div>
 </template>
 
 <style scoped>
-.visualizer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 60px;
+.visualizer-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  /* 旋转动画让波形动起来 */
+  animation: rotate 10s linear infinite;
 }
 
-.bar {
-  width: 4px;
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 2px;
-  will-change: height;
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.visualizer.active .bar {
-  background: #4ade80; /* 激活时变绿，或者用 primary color */
-  box-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+.visualizer-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 </style>
