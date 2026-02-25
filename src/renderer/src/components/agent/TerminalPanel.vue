@@ -18,11 +18,20 @@ import {
   type ProcessOutputLine
 } from '@/composables/useProcessWs';
 import { useTerminal, initTerminalWs } from '@/composables/useTerminal';
+import { useOpenFiles } from '@/composables/useOpenFiles';
 
 const chatStore = useChatStore();
 const { processes, outputBuffer } = useProcessState();
-const { terminals, activeTerminalId, createTerminal, destroyTerminal, attachToElement, fitTerminal, fitAllTerminals } =
-  useTerminal();
+const { openUrl } = useOpenFiles();
+const {
+  terminals,
+  activeTerminalId,
+  createTerminal,
+  destroyTerminal,
+  attachToContainer,
+  showTerminal,
+  fitAllTerminals
+} = useTerminal();
 
 const activeTab = ref<'terminal' | 'output' | 'processes'>('terminal');
 const outputEl = ref<HTMLDivElement | null>(null);
@@ -105,6 +114,20 @@ function viewProcessOutput(processId: string): void {
   activeTab.value = 'output';
 }
 
+// ==================== 网页预览 ====================
+
+const showUrlInput = ref(false);
+const urlInputValue = ref('http://localhost:');
+
+function handleOpenUrl(): void {
+  const url = urlInputValue.value.trim();
+  if (!url) return;
+  const normalizedUrl = /^https?:\/\//i.test(url) ? url : 'http://' + url;
+  openUrl(normalizedUrl);
+  showUrlInput.value = false;
+  urlInputValue.value = 'http://localhost:';
+}
+
 // ==================== 终端管理 ====================
 
 const isCreatingTerminal = ref(false);
@@ -117,10 +140,8 @@ async function handleCreateTerminal(): Promise<void> {
     const term = await createTerminal();
     if (term && terminalContainerEl.value) {
       await nextTick();
-      const container = terminalContainerEl.value;
-      if (container) {
-        await attachToElement(term.id, container);
-      }
+      await attachToContainer(term.id, terminalContainerEl.value);
+      showTerminal(term.id);
     }
   } finally {
     isCreatingTerminal.value = false;
@@ -129,6 +150,9 @@ async function handleCreateTerminal(): Promise<void> {
 
 async function handleDestroyTerminal(id: string): Promise<void> {
   await destroyTerminal(id);
+  if (activeTerminalId.value) {
+    showTerminal(activeTerminalId.value);
+  }
 }
 
 async function switchTerminal(id: string): Promise<void> {
@@ -138,21 +162,17 @@ async function switchTerminal(id: string): Promise<void> {
   const term = terminals.value.find((t) => t.id === id);
   if (term && terminalContainerEl.value) {
     if (!term.xterm) {
-      await attachToElement(id, terminalContainerEl.value);
-    } else {
-      terminalContainerEl.value.innerHTML = '';
-      term.xterm.open(terminalContainerEl.value);
-      requestAnimationFrame(() => fitTerminal(id));
+      await attachToContainer(id, terminalContainerEl.value);
     }
+    showTerminal(id);
   }
 }
 
-// 当终端 Tab 被选中且有终端时，确保 xterm 正确渲染
 watch(activeTab, async (tab) => {
   if (tab === 'terminal') {
     await nextTick();
     if (activeTerminalId.value) {
-      fitTerminal(activeTerminalId.value);
+      showTerminal(activeTerminalId.value);
     }
   }
 });
@@ -243,6 +263,10 @@ onUnmounted(() => {
             @click="handleDestroyTerminal(activeTerminalId)">
             <span class="i-carbon-close inline-block h-3 w-3"></span>
           </button>
+          <span class="mx-0.5 h-3 w-px bg-gray-300/40"></span>
+          <button class="terminal-action" title="预览网页" @click="showUrlInput = !showUrlInput">
+            <span class="i-carbon-earth inline-block h-3 w-3"></span>
+          </button>
         </template>
         <!-- 输出 Tab 的操作按钮 -->
         <template v-if="activeTab === 'output'">
@@ -262,6 +286,19 @@ onUnmounted(() => {
           </button>
         </template>
       </div>
+    </div>
+
+    <!-- URL 输入栏 -->
+    <div v-if="showUrlInput" class="url-input-bar">
+      <span class="i-carbon-earth inline-block h-3 w-3 shrink-0 text-gray-400"></span>
+      <input
+        v-model="urlInputValue"
+        class="url-input"
+        placeholder="输入 URL，例如 http://localhost:3000"
+        autofocus
+        @keydown.enter="handleOpenUrl"
+        @keydown.escape="showUrlInput = false" />
+      <button class="url-go-btn" @click="handleOpenUrl">打开</button>
     </div>
 
     <!-- 终端内容 -->
@@ -443,6 +480,42 @@ onUnmounted(() => {
   padding: 1px 16px 1px 6px;
   height: 18px;
   cursor: pointer;
+}
+
+.url-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-bottom: 1px solid hsl(var(--border) / 0.2);
+  background: hsl(var(--muted) / 0.15);
+  flex-shrink: 0;
+}
+
+.url-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 11px;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  color: hsl(var(--foreground) / 0.8);
+}
+
+.url-go-btn {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: hsl(var(--primary));
+  color: white;
+  transition: background 0.1s ease;
+}
+
+.url-go-btn:hover {
+  background: hsl(var(--primary) / 0.85);
 }
 
 .xterm-container {

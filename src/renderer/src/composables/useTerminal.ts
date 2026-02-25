@@ -26,7 +26,8 @@ export interface TerminalInstance {
   xterm: any | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fitAddon: any | null;
-  element: HTMLElement | null;
+  /** 每个终端独立的 DOM 容器 */
+  wrapperEl: HTMLDivElement | null;
 }
 
 // ==================== 状态 ====================
@@ -87,7 +88,7 @@ async function createTerminal(cwd?: string): Promise<TerminalInstance | null> {
       ...info,
       xterm: null,
       fitAddon: null,
-      element: null
+      wrapperEl: null
     };
 
     terminals.value.push(instance);
@@ -111,6 +112,7 @@ async function destroyTerminal(terminalId: string): Promise<void> {
   if (idx >= 0) {
     const term = terminals.value[idx];
     term.xterm?.dispose();
+    term.wrapperEl?.remove();
     terminals.value.splice(idx, 1);
   }
 
@@ -119,18 +121,26 @@ async function destroyTerminal(terminalId: string): Promise<void> {
   }
 }
 
-async function attachToElement(terminalId: string, element: HTMLElement): Promise<void> {
+/**
+ * 在父容器中为终端创建独立的 wrapper div 并初始化 xterm。
+ * 每个终端拥有自己的 wrapper，通过 display 切换可见性，避免 open() 冲突。
+ */
+async function attachToContainer(terminalId: string, parentEl: HTMLElement): Promise<void> {
   const term = terminals.value.find((t) => t.id === terminalId);
   if (!term) return;
 
-  if (term.xterm) {
-    term.xterm.dispose();
-  }
+  if (term.xterm) return;
 
   await import('@xterm/xterm/css/xterm.css');
   const { Terminal } = await import('@xterm/xterm');
   const { FitAddon } = await import('@xterm/addon-fit');
   const { WebLinksAddon } = await import('@xterm/addon-web-links');
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'xterm-wrapper';
+  wrapper.style.cssText = 'width:100%;height:100%;display:none;';
+  wrapper.dataset.terminalId = terminalId;
+  parentEl.appendChild(wrapper);
 
   const isDark =
     document.documentElement.classList.contains('dark') || window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -177,15 +187,7 @@ async function attachToElement(terminalId: string, element: HTMLElement): Promis
 
   xterm.loadAddon(fitAddon);
   xterm.loadAddon(webLinksAddon);
-  xterm.open(element);
-
-  requestAnimationFrame(() => {
-    try {
-      fitAddon.fit();
-    } catch {
-      // element might not be visible yet
-    }
-  });
+  xterm.open(wrapper);
 
   xterm.onData((data: string) => {
     sendInput(terminalId, data);
@@ -197,7 +199,29 @@ async function attachToElement(terminalId: string, element: HTMLElement): Promis
 
   term.xterm = xterm;
   term.fitAddon = fitAddon;
-  term.element = element;
+  term.wrapperEl = wrapper;
+}
+
+/**
+ * 显示指定终端、隐藏其它终端的 wrapper
+ */
+function showTerminal(terminalId: string): void {
+  for (const t of terminals.value) {
+    if (t.wrapperEl) {
+      t.wrapperEl.style.display = t.id === terminalId ? 'block' : 'none';
+    }
+  }
+  const term = terminals.value.find((t) => t.id === terminalId);
+  if (term?.fitAddon) {
+    requestAnimationFrame(() => {
+      try {
+        term.fitAddon.fit();
+      } catch {
+        // ignore
+      }
+      term.xterm?.focus();
+    });
+  }
 }
 
 function fitTerminal(terminalId: string): void {
@@ -265,7 +289,8 @@ export function useTerminal() {
     activeTerminal,
     createTerminal,
     destroyTerminal,
-    attachToElement,
+    attachToContainer,
+    showTerminal,
     fitTerminal,
     fitAllTerminals,
     initTerminalWs,
