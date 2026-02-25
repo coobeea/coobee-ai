@@ -31,6 +31,10 @@ function handleObservability(): void {
   router.push('/observability');
 }
 
+function handleBrainMonitor(): void {
+  router.push('/brain-monitor');
+}
+
 /** 获取状态颜色 */
 function getStatusColor(status: string): string {
   switch (status) {
@@ -122,10 +126,18 @@ function handleWorkerClick(worker: { name: string; status: string }): void {
       <button
         class="action-btn"
         :class="{ active: activeMenuId === 'observability' }"
-        title="监控"
+        title="系统监控"
         @click="handleObservability">
         <span class="i-carbon-chart-line inline-block h-3.5 w-3.5" />
         <span>监控</span>
+      </button>
+      <button
+        class="action-btn"
+        :class="{ active: activeMenuId === 'brain-monitor' }"
+        title="Brain 监控"
+        @click="handleBrainMonitor">
+        <span class="i-carbon-catalog inline-block h-3.5 w-3.5" />
+        <span>智库</span>
       </button>
       <button class="action-btn" :class="{ active: activeMenuId === 'logs' }" title="日志" @click="handleLogs">
         <span class="i-carbon-report inline-block h-3.5 w-3.5" />

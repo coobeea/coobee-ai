@@ -41,7 +41,6 @@ const menuItems: MenuItem[] = [
   { id: 'skills', label: '技能市场', icon: 'i-carbon-skill-level-advanced', route: '/skills' },
   { id: 'tavern', label: '酒馆任务', icon: 'i-carbon-task-star', route: '/tavern' },
   { id: 'brain', label: '知识智库', icon: 'i-carbon-catalog', route: '/brain' },
-  { id: 'brain-monitor', label: 'Brain 监控', icon: 'i-carbon-chart-line', route: '/brain-monitor' },
   { id: 'cron', label: '定时任务', icon: 'i-carbon-time', route: '/cron' }
 ];
 

@@ -17,8 +17,6 @@ export interface OpenFile {
   isTooLarge?: boolean;
   error?: string;
   size?: number;
-  /** 标记为 web URL 预览模式 */
-  isWebUrl?: boolean;
   // 分块加载相关
   chunked?: boolean;
   offset?: number;
@@ -195,43 +193,11 @@ function activateFile(filePath: string): void {
   activeFilePath.value = filePath;
 }
 
-/**
- * 打开 URL 作为 web 预览标签页（用于 localhost dev server 等）
- */
-function openUrl(url: string, title?: string): void {
-  const existing = openFiles.value.find((f) => f.path === url);
-  if (existing) {
-    activeFilePath.value = url;
-    return;
-  }
-
-  let displayName = title || url;
-  try {
-    const parsed = new URL(url);
-    displayName = title || `${parsed.hostname}${parsed.port ? ':' + parsed.port : ''}${parsed.pathname}`;
-  } catch {
-    // keep original
-  }
-
-  const entry: OpenFile = {
-    path: url,
-    name: displayName,
-    language: 'html',
-    content: '',
-    loading: false,
-    isWebUrl: true
-  };
-
-  openFiles.value.push(entry);
-  activeFilePath.value = url;
-}
-
 export function useOpenFiles(): {
   openFiles: typeof openFiles;
   activeFilePath: typeof activeFilePath;
   activeFile: typeof activeFile;
   openFile: typeof openFile;
-  openUrl: typeof openUrl;
   closeFile: typeof closeFile;
   closeAllFiles: typeof closeAllFiles;
   activateFile: typeof activateFile;
@@ -242,7 +208,6 @@ export function useOpenFiles(): {
     activeFilePath,
     activeFile,
     openFile,
-    openUrl,
     closeFile,
     closeAllFiles,
     activateFile,
