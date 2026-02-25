@@ -23,7 +23,8 @@ const newAgent = reactive({
   name: '',
   description: '',
   instructions: '',
-  model: ''
+  model: '',
+  tools: [] as string[]
 });
 
 // 模型选项（单模型 + 分组）
@@ -33,7 +34,15 @@ interface ModelOption {
   isGroup: boolean;
 }
 
+interface ToolOption {
+  name: string;
+  description: string;
+  category: string;
+}
+
 const modelOptions = ref<ModelOption[]>([]);
+const toolOptions = ref<ToolOption[]>([]);
+const showToolPicker = ref(false);
 
 async function loadModelOptions(): Promise<void> {
   try {
@@ -42,7 +51,6 @@ async function loadModelOptions(): Promise<void> {
 
     const options: ModelOption[] = [];
 
-    // 模型分组
     const groups = modelsConfig?.groups as Record<string, unknown> | undefined;
     if (groups) {
       for (const [id, cfg] of Object.entries(groups)) {
@@ -53,7 +61,6 @@ async function loadModelOptions(): Promise<void> {
       }
     }
 
-    // 单个模型（来自 providers）
     const providers = modelsConfig?.providers as Record<string, unknown> | undefined;
     if (providers) {
       for (const [, provCfg] of Object.entries(providers)) {
@@ -69,13 +76,38 @@ async function loadModelOptions(): Promise<void> {
 
     modelOptions.value = options;
   } catch {
-    // 加载失败时静默忽略
+    // 静默忽略
+  }
+}
+
+async function loadToolOptions(): Promise<void> {
+  try {
+    const baseUrl = (await import('@/config')).default.getBaseUrl();
+    const res = await fetch(`${baseUrl}/gateway/agents/tools`);
+    const data = (await res.json()) as { tools: ToolOption[] };
+    toolOptions.value = data.tools || [];
+  } catch {
+    // 静默忽略
+  }
+}
+
+function isToolSelected(name: string): boolean {
+  return newAgent.tools.includes(name);
+}
+
+function toggleTool(name: string): void {
+  const idx = newAgent.tools.indexOf(name);
+  if (idx >= 0) {
+    newAgent.tools.splice(idx, 1);
+  } else {
+    newAgent.tools.push(name);
   }
 }
 
 onMounted(() => {
   agentsStore.fetchAgents();
   loadModelOptions();
+  loadToolOptions();
 });
 
 function handleSelect(agentId: string): void {
@@ -107,7 +139,10 @@ function toggleCreateForm(): void {
     newAgent.description = '';
     newAgent.instructions = '';
     newAgent.model = '';
+    newAgent.tools = [];
+    showToolPicker.value = false;
     loadModelOptions();
+    loadToolOptions();
   }
 }
 
@@ -119,7 +154,8 @@ async function handleCreate(): Promise<void> {
     name: newAgent.name.trim(),
     description: newAgent.description.trim() || newAgent.name.trim(),
     instructions: newAgent.instructions.trim(),
-    model: newAgent.model.trim() || undefined
+    model: newAgent.model.trim() || undefined,
+    tools: newAgent.tools.length > 0 ? [...newAgent.tools] : undefined
   });
 
   if (ok) {
@@ -205,6 +241,53 @@ async function handleCreate(): Promise<void> {
             </option>
           </optgroup>
         </select>
+        <!-- 工具选择 -->
+        <div>
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-700 outline-none transition hover:bg-gray-100"
+            @click="showToolPicker = !showToolPicker">
+            <span>
+              {{ newAgent.tools.length > 0 ? `已选 ${newAgent.tools.length} 个工具` : '选择工具（可选，默认全部）' }}
+            </span>
+            <span
+              :class="[
+                'i-carbon-chevron-down inline-block h-3 w-3 transition-transform',
+                showToolPicker ? 'rotate-180' : ''
+              ]"></span>
+          </button>
+          <div v-if="showToolPicker" class="mt-1 max-h-36 overflow-y-auto rounded-md border border-gray-200 bg-white">
+            <label
+              v-for="tool in toolOptions"
+              :key="tool.name"
+              class="flex cursor-pointer items-center gap-2 border-b border-gray-100 px-2 py-1.5 transition-colors last:border-b-0 hover:bg-gray-50"
+              :class="{ 'bg-primary/5': isToolSelected(tool.name) }">
+              <input
+                type="checkbox"
+                :checked="isToolSelected(tool.name)"
+                class="h-3 w-3 rounded border-gray-300 accent-primary"
+                @change="toggleTool(tool.name)" />
+              <div class="min-w-0 flex-1">
+                <span class="text-[11px] font-medium text-gray-700">{{ tool.name }}</span>
+                <span v-if="tool.description" class="ml-1 text-[9px] text-gray-400"
+                  >{{ tool.description.slice(0, 30) }}{{ tool.description.length > 30 ? '…' : '' }}</span
+                >
+              </div>
+            </label>
+          </div>
+          <!-- 已选工具标签 -->
+          <div v-if="newAgent.tools.length > 0 && !showToolPicker" class="mt-1 flex flex-wrap gap-1">
+            <span
+              v-for="t in newAgent.tools"
+              :key="t"
+              class="inline-flex items-center gap-0.5 rounded bg-primary/8 px-1 py-px text-[9px] text-primary/70">
+              {{ t }}
+              <button class="hover:text-red-500" @click="toggleTool(t)">
+                <span class="i-carbon-close inline-block h-2 w-2"></span>
+              </button>
+            </span>
+          </div>
+        </div>
         <div class="flex justify-end gap-1">
           <button
             class="rounded-md px-2.5 py-1 text-[11px] text-gray-500 transition hover:bg-gray-100"
@@ -326,6 +409,12 @@ async function handleCreate(): Promise<void> {
             <span v-if="agent.skills.length > 2" class="text-[9px] text-gray-400">
               +{{ agent.skills.length - 2 }}
             </span>
+          </div>
+
+          <!-- 工具标签 -->
+          <div v-if="agent.tools && agent.tools.length > 0" class="mt-1 flex flex-wrap items-center gap-1">
+            <span class="i-carbon-tool-box inline-block h-2.5 w-2.5 text-gray-400"></span>
+            <span class="text-[9px] text-gray-400">{{ agent.tools.length }} 个工具</span>
           </div>
 
           <!-- 底部标签 -->

@@ -51,6 +51,30 @@ export function registerAgentRoutes(router: Router): void {
     }
   });
 
+  // ==================== AVAILABLE TOOLS ====================
+
+  router.get('/agents/tools', async (ctx) => {
+    try {
+      const extensionTools = ToolRegistry.getInstance().getAll();
+      const toolMap = new Map(builtinTools.map((t) => [t.name, t]));
+      for (const ext of extensionTools) {
+        toolMap.set(ext.name, ext);
+      }
+
+      const tools = Array.from(toolMap.values()).map((t) => ({
+        name: t.name,
+        description: t.description || '',
+        category: t.category || 'general'
+      }));
+
+      ctx.body = { tools };
+    } catch (err) {
+      log.error('[agents.tools] Error:', err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // ==================== GET ====================
 
   router.get('/agents/:id', async (ctx) => {

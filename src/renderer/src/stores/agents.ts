@@ -111,6 +111,7 @@ export const useAgentsStore = defineStore('agents', () => {
     description: string;
     instructions: string;
     model?: string;
+    tools?: string[];
   }): Promise<boolean> {
     try {
       await apiRequest<{ agent: AgentEntry }>('', {
@@ -233,8 +234,11 @@ export const useAgentsStore = defineStore('agents', () => {
     }
   }
 
-  /** 更新 Agent（部分更新，如修改 skills） */
-  async function updateAgent(agentId: string, params: { skills?: string[] }): Promise<boolean> {
+  /** 更新 Agent（部分更新） */
+  async function updateAgent(
+    agentId: string,
+    params: { skills?: string[]; tools?: string[]; model?: string }
+  ): Promise<boolean> {
     try {
       await apiRequest<{ agent: AgentEntry }>(`/${agentId}`, {
         method: 'PATCH',

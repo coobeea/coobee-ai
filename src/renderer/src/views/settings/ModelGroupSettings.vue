@@ -22,6 +22,12 @@ interface ModelGroup {
   enabled: boolean;
 }
 
+interface AvailableModel {
+  id: string;
+  name: string;
+  provider: string;
+}
+
 interface ProviderInfo {
   id: string;
   name: string;
@@ -36,6 +42,17 @@ const showGroupForm = ref(false);
 const loading = ref(true);
 
 const providers = ref<ProviderInfo[]>([]);
+const allModels = ref<AvailableModel[]>([]);
+const modelSearchQuery = ref('');
+
+const filteredModels = computed(() => {
+  const q = modelSearchQuery.value.toLowerCase().trim();
+  if (!q) return allModels.value;
+  return allModels.value.filter(
+    (m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q)
+  );
+});
+
 const providerMap = computed(() => {
   const map: Record<string, string> = {};
   for (const p of providers.value) {
@@ -69,8 +86,20 @@ const groupForm = ref<Omit<ModelGroup, 'id'> & { id: string }>({
   strategy: 'round-robin',
   enabled: true
 });
-const groupFormModelsText = ref('');
 const isEditingGroup = ref(false);
+
+function isModelSelected(modelId: string): boolean {
+  return groupForm.value.models.includes(modelId);
+}
+
+function toggleModel(modelId: string): void {
+  const idx = groupForm.value.models.indexOf(modelId);
+  if (idx >= 0) {
+    groupForm.value.models.splice(idx, 1);
+  } else {
+    groupForm.value.models.push(modelId);
+  }
+}
 
 async function loadData(): Promise<void> {
   loading.value = true;
@@ -99,15 +128,19 @@ async function loadData(): Promise<void> {
 
     const providersConfig = modelsConfig?.providers as Record<string, unknown> | undefined;
     if (providersConfig) {
-      providers.value = Object.entries(providersConfig).map(([id, cfg]) => {
+      const provList: ProviderInfo[] = [];
+      const modelList: AvailableModel[] = [];
+      for (const [id, cfg] of Object.entries(providersConfig)) {
         const p = cfg as Record<string, unknown>;
-        const models = (p.models as { id: string }[]) || [];
-        return {
-          id,
-          name: (p.name as string) || id,
-          models: models.map((m) => m.id)
-        };
-      });
+        const provName = (p.name as string) || id;
+        const models = (p.models as { id: string; name?: string }[]) || [];
+        provList.push({ id, name: provName, models: models.map((m) => m.id) });
+        for (const m of models) {
+          modelList.push({ id: m.id, name: m.name || m.id, provider: provName });
+        }
+      }
+      providers.value = provList;
+      allModels.value = modelList;
     }
   } catch {
     groupError.value = '加载配置失败';
@@ -126,7 +159,7 @@ function selectGroup(id: string): void {
 function openNewGroupForm(): void {
   isEditingGroup.value = false;
   groupForm.value = { id: '', name: '', description: '', models: [], strategy: 'round-robin', enabled: true };
-  groupFormModelsText.value = '';
+  modelSearchQuery.value = '';
   showGroupForm.value = true;
   selectedGroup.value = '';
 }
@@ -134,7 +167,7 @@ function openNewGroupForm(): void {
 function openEditGroupForm(group: ModelGroup): void {
   isEditingGroup.value = true;
   groupForm.value = { ...group, models: [...group.models] };
-  groupFormModelsText.value = group.models.join('\n');
+  modelSearchQuery.value = '';
   showGroupForm.value = true;
   selectedGroup.value = group.id;
 }
@@ -147,10 +180,7 @@ function cancelGroupForm(): void {
 }
 
 async function saveGroup(): Promise<void> {
-  const models = groupFormModelsText.value
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const models = groupForm.value.models;
   if (!groupForm.value.id.trim() || !groupForm.value.name.trim() || models.length === 0) {
     groupError.value = '分组 ID、名称和模型列表均不能为空';
     return;
@@ -319,15 +349,57 @@ onMounted(() => {
           </div>
           <!-- 模型列表 -->
           <div>
-            <label class="mb-1.5 block text-sm font-medium">模型列表 <span class="text-red-500">*</span></label>
-            <textarea
-              v-model="groupFormModelsText"
-              rows="5"
-              placeholder="每行一个模型 ID&#10;gpt-4o&#10;claude-3-5-sonnet-20241022&#10;qwen-plus"
-              class="w-full resize-none rounded-md border border-input bg-background px-3.5 py-2.5 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
-            <p class="mt-1 text-xs text-muted-foreground"
-              >每行一个完整的模型 ID（如 gpt-4o、claude-3-5-sonnet-20241022）</p
-            >
+            <div class="mb-1.5 flex items-center justify-between">
+              <label class="text-sm font-medium"
+                >选择模型 <span class="text-red-500">*</span>
+                <span v-if="groupForm.models.length > 0" class="ml-1 text-xs font-normal text-muted-foreground"
+                  >(已选 {{ groupForm.models.length }} 个)</span
+                >
+              </label>
+            </div>
+            <!-- 搜索框 -->
+            <div class="relative mb-2">
+              <span
+                class="i-carbon-search pointer-events-none absolute left-3 top-1/2 inline-block h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"></span>
+              <input
+                v-model="modelSearchQuery"
+                type="text"
+                placeholder="搜索模型名称或供应商..."
+                class="w-full rounded-md border border-input bg-background py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <!-- 模型复选框列表 -->
+            <div class="max-h-52 overflow-y-auto rounded-md border border-input bg-background">
+              <div v-if="filteredModels.length === 0" class="px-3 py-4 text-center text-xs text-muted-foreground">
+                {{ allModels.length === 0 ? '暂无可用模型，请先在「模型设置」中配置供应商' : '未找到匹配的模型' }}
+              </div>
+              <label
+                v-for="m in filteredModels"
+                :key="m.id"
+                class="flex cursor-pointer items-center gap-3 border-b border-border/50 px-3 py-2 transition-colors last:border-b-0 hover:bg-muted/50"
+                :class="{ 'bg-primary/5': isModelSelected(m.id) }">
+                <input
+                  type="checkbox"
+                  :checked="isModelSelected(m.id)"
+                  class="h-3.5 w-3.5 rounded border-gray-300 text-primary accent-primary"
+                  @change="toggleModel(m.id)" />
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-mono text-xs">{{ m.id }}</div>
+                  <div class="truncate text-[10px] text-muted-foreground">{{ m.provider }}</div>
+                </div>
+              </label>
+            </div>
+            <!-- 已选标签 -->
+            <div v-if="groupForm.models.length > 0" class="mt-2 flex flex-wrap gap-1.5">
+              <span
+                v-for="modelId in groupForm.models"
+                :key="modelId"
+                class="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                {{ modelId }}
+                <button class="ml-0.5 hover:text-red-500" @click="toggleModel(modelId)">
+                  <span class="i-carbon-close inline-block h-2.5 w-2.5"></span>
+                </button>
+              </span>
+            </div>
           </div>
           <!-- 策略 -->
           <div>
