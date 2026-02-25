@@ -1088,8 +1088,8 @@ describe('execTool', () => {
 // ═══════════════════════════════════════════
 
 describe('builtinTools 集合', () => {
-  it('包含 12 个内置工具（5 个工具已迁移到 Skill）', () => {
-    expect(builtinTools).toHaveLength(12);
+  it('包含 13 个内置工具（5 个工具已迁移到 Skill）', () => {
+    expect(builtinTools).toHaveLength(13);
   });
 
   it('按正确顺序包含所有工具', () => {
@@ -1109,7 +1109,8 @@ describe('builtinTools 集合', () => {
       // manage_agent, manage_skill 已移除
       'delegate_to_agent',
       'task_plan',
-      'todo_write'
+      'todo_write',
+      'emit_event'
     ]);
   });
 
