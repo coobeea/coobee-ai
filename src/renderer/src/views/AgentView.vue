@@ -11,7 +11,7 @@ import { useRouter } from 'vue-router';
 import { useAgentsStore } from '@/stores/agents';
 import { useThreadsStore, type AgentType } from '@/stores/threads';
 import { useChatStore } from '@/stores/chat';
-import { gateway } from '@/plugins/gatewaySetup';
+import ModelSelector from '@/components/ModelSelector.vue';
 import configManager from '@/config';
 
 const isMac = navigator.platform?.includes('Mac') ?? false;
@@ -50,13 +50,8 @@ interface ToolInfo {
 }
 const availableTools = ref<ToolInfo[]>([]);
 
-/** 模型选项 */
-interface ModelOption {
-  value: string;
-  label: string;
-  isGroup: boolean;
-}
-const modelOptions = ref<ModelOption[]>([]);
+/** 运行弹窗的临时模型覆盖 */
+const runModelOverride = ref('');
 
 /** 文件/目录选择相关 */
 interface AttachmentRef {
@@ -138,10 +133,10 @@ function openRunDialog(agentId: string): void {
   const agent = agentsStore.agents.find((a) => a.id === agentId);
   taskSkills.value = agent?.skills ? [...agent.skills] : [];
 
+  runModelOverride.value = '';
   showRunDialog.value = true;
 
   loadAvailableSkills();
-  loadModelOptions();
 }
 
 function closeRunDialog(): void {
@@ -177,41 +172,6 @@ async function loadAvailableTools(): Promise<void> {
     }
   } catch (err) {
     console.warn('[AgentView] Failed to fetch tools:', err);
-  }
-}
-
-async function loadModelOptions(): Promise<void> {
-  if (modelOptions.value.length > 0) return;
-  try {
-    const data = await gateway.request<Record<string, unknown>>('config.getAll');
-    const modelsConfig = data?.models as Record<string, unknown> | undefined;
-    const options: ModelOption[] = [];
-
-    const groups = modelsConfig?.groups as Record<string, unknown> | undefined;
-    if (groups) {
-      for (const [id, cfg] of Object.entries(groups)) {
-        const g = cfg as Record<string, unknown>;
-        if (g.enabled !== false) {
-          options.push({ value: `@group:${id}`, label: `[分组] ${(g.name as string) || id}`, isGroup: true });
-        }
-      }
-    }
-
-    const providers = modelsConfig?.providers as Record<string, unknown> | undefined;
-    if (providers) {
-      for (const [, provCfg] of Object.entries(providers)) {
-        const prov = provCfg as Record<string, unknown>;
-        const models = prov.models as Array<{ id: string; name?: string }> | undefined;
-        if (models) {
-          for (const m of models) {
-            options.push({ value: m.id, label: m.name || m.id, isGroup: false });
-          }
-        }
-      }
-    }
-    modelOptions.value = options;
-  } catch (err) {
-    console.warn('[AgentView] Failed to fetch model options:', err);
   }
 }
 
@@ -325,7 +285,7 @@ async function openAgentEditor(agentId: string): Promise<void> {
   editModel.value = agent.model ?? '';
   editActiveTab.value = 'skills';
 
-  await Promise.all([loadAvailableSkills(), loadAvailableTools(), loadModelOptions()]);
+  await Promise.all([loadAvailableSkills(), loadAvailableTools()]);
 }
 
 function toggleSkill(skillName: string): void {
@@ -623,19 +583,7 @@ function formatTime(iso: string): string {
               <!-- 模型 Tab -->
               <template v-if="editActiveTab === 'model'">
                 <div class="edit-section-hint">选择此智能体使用的模型，留空则使用系统默认模型</div>
-                <select v-model="editModel" class="edit-select">
-                  <option value="">默认模型（跟随系统配置）</option>
-                  <optgroup v-if="modelOptions.filter((o) => o.isGroup).length > 0" label="── 模型分组 ──">
-                    <option v-for="opt in modelOptions.filter((o) => o.isGroup)" :key="opt.value" :value="opt.value">
-                      {{ opt.label }}
-                    </option>
-                  </optgroup>
-                  <optgroup v-if="modelOptions.filter((o) => !o.isGroup).length > 0" label="── 单个模型 ──">
-                    <option v-for="opt in modelOptions.filter((o) => !o.isGroup)" :key="opt.value" :value="opt.value">
-                      {{ opt.label }}
-                    </option>
-                  </optgroup>
-                </select>
+                <ModelSelector v-model="editModel" placeholder="默认模型（跟随系统配置）" :searchable="true" />
               </template>
 
               <!-- 工具 Tab -->
@@ -733,7 +681,7 @@ function formatTime(iso: string): string {
                   :class="{ 'rotate-90': showAdvancedOptions }" />
                 <span>高级选项</span>
                 <span
-                  v-if="taskDescription || taskAttachments.length > 0 || taskSkills.length > 0"
+                  v-if="taskDescription || taskAttachments.length > 0 || taskSkills.length > 0 || runModelOverride"
                   class="advanced-dot">
                 </span>
               </button>
@@ -746,25 +694,7 @@ function formatTime(iso: string): string {
                       <span class="i-carbon-machine-learning-model inline-block h-3 w-3" />
                       模型
                     </label>
-                    <select v-model="editModel" class="edit-select">
-                      <option value="">使用智能体默认模型</option>
-                      <optgroup v-if="modelOptions.filter((o) => o.isGroup).length > 0" label="── 模型分组 ──">
-                        <option
-                          v-for="opt in modelOptions.filter((o) => o.isGroup)"
-                          :key="opt.value"
-                          :value="opt.value">
-                          {{ opt.label }}
-                        </option>
-                      </optgroup>
-                      <optgroup v-if="modelOptions.filter((o) => !o.isGroup).length > 0" label="── 单个模型 ──">
-                        <option
-                          v-for="opt in modelOptions.filter((o) => !o.isGroup)"
-                          :key="opt.value"
-                          :value="opt.value">
-                          {{ opt.label }}
-                        </option>
-                      </optgroup>
-                    </select>
+                    <ModelSelector v-model="runModelOverride" placeholder="使用智能体默认模型" :searchable="true" />
                   </div>
 
                   <!-- 任务描述 -->
@@ -2028,21 +1958,5 @@ function formatTime(iso: string): string {
   color: hsl(var(--muted-foreground) / 0.5);
   line-height: 1.5;
   margin-bottom: 8px;
-}
-
-.edit-select {
-  width: 100%;
-  padding: 8px 10px;
-  font-size: 12.5px;
-  color: hsl(var(--foreground));
-  background: hsl(var(--background) / 0.5);
-  border: 1px solid hsl(var(--border) / 0.4);
-  border-radius: 8px;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-
-.edit-select:focus {
-  border-color: hsl(var(--primary) / 0.4);
 }
 </style>
