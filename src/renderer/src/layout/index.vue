@@ -20,19 +20,22 @@
 
 import Sidebar from './Sidebar.vue';
 import CopilotBubble from '@/components/copilot/CopilotBubble.vue';
+import { useRoute } from 'vue-router';
+
+const route = useRoute();
 </script>
 
 <template>
   <div class="flex h-full w-full">
-    <!-- 左侧窄导航 -->
-    <Sidebar />
+    <!-- 左侧窄导航 (fullscreen 模式下隐藏) -->
+    <Sidebar v-if="!route.meta.fullscreen" />
 
     <!-- 主内容区域 -->
     <main class="min-h-0 min-w-0 flex-1 overflow-hidden">
       <router-view />
     </main>
 
-    <!-- 全局悬浮：应用管家气泡 -->
-    <CopilotBubble />
+    <!-- 全局悬浮：应用管家气泡 (fullscreen 模式下隐藏) -->
+    <CopilotBubble v-if="!route.meta.fullscreen" />
   </div>
 </template>

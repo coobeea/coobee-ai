@@ -34,7 +34,27 @@ except ImportError:
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_NAME = "Qwen3-TTS-12Hz-1.7B-CustomVoice"
-MODEL_DIR = os.environ.get("MODEL_DIR", "/Users/lifeng/data/models")
+
+# 默认路径
+DEFAULT_MODEL_DIR = os.path.join(os.environ.get("HOME", ""), ".cache", "modelscope", "hub")
+MODEL_DIR = os.environ.get("MODEL_DIR", DEFAULT_MODEL_DIR)
+
+# 尝试读取本地配置覆盖 (local_config.json)
+local_config_path = os.path.join(SCRIPT_DIR, "local_config.json")
+if os.path.exists(local_config_path):
+    try:
+        import json
+        with open(local_config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+            if "model_dir" in config:
+                # 支持相对路径
+                p = config["model_dir"]
+                if not os.path.isabs(p):
+                    p = os.path.abspath(os.path.join(SCRIPT_DIR, p))
+                MODEL_DIR = p
+                print(f"[TTS Config] 已加载本地配置，MODEL_DIR -> {MODEL_DIR}")
+    except Exception as e:
+        print(f"[TTS Config] 读取本地配置失败: {e}", file=sys.stderr)
 
 logging.basicConfig(level=logging.INFO, format="[TTS] %(message)s")
 log = logging.getLogger("tts")
@@ -116,8 +136,16 @@ def load_tts_model():
     from qwen_tts import Qwen3TTSModel
     
     device = detect_device()
-    model_path = os.path.join(MODEL_DIR, "Qwen", MODEL_NAME)
+    # 兼容性调整：不再硬编码 "Qwen" 子目录，直接在 MODEL_DIR 下查找
+    # 如果用户遵循 ModelScope 结构 (MODEL_DIR/Qwen/MODEL_NAME)，需要将 MODEL_DIR 设为 MODEL_DIR/Qwen
+    model_path = os.path.join(MODEL_DIR, MODEL_NAME)
     
+    # 向后兼容：如果直接拼接找不到，尝试加一层 "Qwen" (适配旧配置)
+    if not os.path.exists(model_path):
+        fallback_path = os.path.join(MODEL_DIR, "Qwen", MODEL_NAME)
+        if os.path.exists(fallback_path):
+            model_path = fallback_path
+
     log.info(f"加载模型: {MODEL_NAME}")
     log.info(f"设备: {device}")
     log.info(f"模型路径: {model_path}")

@@ -12,5 +12,8 @@ out
 runtime/*/
 runtime/**/.gitkeep
 
+# 本地配置文件 (不提交)
+**/local_config.json
+
 # 测试结果和日志（每次运行生成）
 test-results/

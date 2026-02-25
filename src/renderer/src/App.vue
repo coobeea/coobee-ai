@@ -12,6 +12,7 @@
  */
 
 import { ref, onMounted, onUnmounted } from 'vue';
+import { useRoute } from 'vue-router';
 import Container from '@/components/Container.vue';
 import ConfirmContainer from '@/components/Confirm/ConfirmContainer.vue';
 import MessageContainer from '@/components/Message/MessageContainer.vue';
@@ -26,6 +27,7 @@ import { useWorkerStore } from '@/stores/worker';
 
 const isReady = ref(false);
 let timeoutId: ReturnType<typeof setTimeout> | null = null;
+const route = useRoute();
 const copilotStore = useCopilotStore();
 const workerStore = useWorkerStore();
 
@@ -99,7 +101,7 @@ onUnmounted(() => {
       <router-view />
       <Container />
     </div>
-    <StatusBar />
+    <StatusBar v-if="!route.meta.fullscreen" />
   </div>
 
   <!-- 全局容器 -->

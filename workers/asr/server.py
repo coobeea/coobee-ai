@@ -41,7 +41,31 @@ except ImportError:
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_NAME = "FunAudioLLM/Fun-ASR-Nano-2512"
-MODEL_DIR = os.environ.get("MODEL_DIR", "/Users/lifeng/data/models")
+
+# 默认路径
+DEFAULT_MODEL_DIR = os.path.join(os.environ.get("HOME", ""), ".cache", "modelscope", "hub")
+MODEL_DIR = os.environ.get("MODEL_DIR", DEFAULT_MODEL_DIR)
+
+# 尝试读取本地配置覆盖 (local_config.json)
+local_config_path = os.path.join(SCRIPT_DIR, "local_config.json")
+if os.path.exists(local_config_path):
+    try:
+        import json
+        with open(local_config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+            if "model_dir" in config:
+                # 支持相对路径
+                p = config["model_dir"]
+                if not os.path.isabs(p):
+                    p = os.path.abspath(os.path.join(SCRIPT_DIR, p))
+                MODEL_DIR = p
+                print(f"[ASR Config] 已加载本地配置，MODEL_DIR -> {MODEL_DIR}")
+            
+            if "model_name" in config:
+                MODEL_NAME = config["model_name"]
+                print(f"[ASR Config] MODEL_NAME -> {MODEL_NAME}")
+    except Exception as e:
+        print(f"[ASR Config] 读取本地配置失败: {e}", file=sys.stderr)
 
 # PCM 音频参数
 SAMPLE_RATE = 16000
@@ -94,15 +118,30 @@ def load_asr_model():
     os.environ.setdefault("HF_HOME", MODEL_DIR)
     os.environ.setdefault("HUGGINGFACE_HUB_CACHE", os.path.join(MODEL_DIR, "hub"))
 
+    # 构造模型路径
+    # 如果 MODEL_NAME 是相对路径，尝试在 MODEL_DIR 下查找
+    model_path = os.path.join(MODEL_DIR, MODEL_NAME)
+    if os.path.exists(model_path):
+        log.info(f"使用本地模型路径: {model_path}")
+        model_arg = model_path
+    else:
+        # 否则尝试直接用 MODEL_NAME (作为 ID)
+        model_arg = MODEL_NAME
+
     t0 = time.time()
     asr_engine = AutoModel(
-        model=MODEL_NAME,
+        model=model_arg,
         trust_remote_code=True,
         remote_code=model_py_path,
         device=device,
         hub="ms",
         disable_update=True,
+        log_level="ERROR",
     )
+    
+    # 屏蔽 FunASR 的繁琐日志
+    logging.getLogger("funasr").setLevel(logging.ERROR)
+    
     elapsed = time.time() - t0
     model_loaded = True
     log.info(f"模型加载完成，耗时 {elapsed:.1f}s")
@@ -227,6 +266,8 @@ def do_transcribe(pcm_bytes: bytes) -> tuple[str, int]:
             hotwords=[],
             language="中文",
             itn=True,
+            disable_pbar=True,  # 禁用进度条
+            log_level="ERROR",
         )
         infer_ms = int((time.time() - t1) * 1000)
         

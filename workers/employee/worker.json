@@ -1,7 +1,0 @@
-{
-  "name": "employee",
-  "description": "Digital Employee Manager - Manages 3D avatars, voices and personas",
-  "port": 42044,
-  "health_check": "/health",
-  "dependencies": ["requirements.txt"]
-}

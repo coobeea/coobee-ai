@@ -19,6 +19,12 @@ const router = createRouter({
           component: () => import('@/views/EmployeeView.vue')
         },
         {
+          path: 'employee/:id/chat',
+          name: 'employee-chat',
+          component: () => import('@/views/EmployeeChatView.vue'),
+          meta: { fullscreen: true } // 标记为全屏模式，隐藏侧边栏（需要在 Layout 处理）
+        },
+        {
           path: 'thread/:id',
           name: 'thread',
           component: () => import('@/views/ThreadView.vue')

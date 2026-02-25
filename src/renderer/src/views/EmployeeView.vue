@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { employeeApi, type DigitalEmployee } from '@/api/employee';
+
+const router = useRouter();
 const employees = ref<DigitalEmployee[]>([]);
 const loading = ref(false);
 const showCreateDialog = ref(false);
@@ -95,6 +98,9 @@ const resetForm = (): void => {
 onMounted(() => {
   loadEmployees();
 });
+const handleChat = (id: string): void => {
+  router.push(`/employee/${id}/chat`);
+};
 </script>
 
 <template>
@@ -137,6 +143,9 @@ onMounted(() => {
               <span class="role-badge">{{ emp.role }}</span>
             </div>
             <div class="card-actions">
+              <button class="icon-btn" title="对话" @click="handleChat(emp.id)">
+                <span class="i-carbon-chat h-4 w-4" />
+              </button>
               <button class="icon-btn" title="编辑" @click="handleEdit(emp)">
                 <span class="i-carbon-edit h-4 w-4" />
               </button>
