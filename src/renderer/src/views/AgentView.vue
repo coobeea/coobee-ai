@@ -60,6 +60,13 @@ interface ModelItem {
   description: string;
   provider: string;
   type: 'group' | 'model';
+  features?: string[];
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  reasoning?: boolean;
+  functionCalling?: boolean;
+  vision?: boolean;
+  webSearch?: boolean;
 }
 const flatModelList = ref<ModelItem[]>([]);
 const modelSearchQuery = ref('');
@@ -226,15 +233,22 @@ async function loadModelList(): Promise<void> {
       for (const [providerId, provCfg] of Object.entries(providers)) {
         const prov = provCfg as Record<string, unknown>;
         const provName = (prov.name as string) || providerId;
-        const models = prov.models as Array<{ id: string; name?: string; description?: string }> | undefined;
+        const models = prov.models as Array<Record<string, unknown>> | undefined;
         if (models) {
           for (const m of models) {
             items.push({
-              value: `${providerId}/${m.id}`,
-              label: m.name || m.id,
-              description: m.description || '',
+              value: `${providerId}/${m.id as string}`,
+              label: (m.name as string) || (m.id as string),
+              description: (m.description as string) || '',
               provider: provName,
-              type: 'model'
+              type: 'model',
+              features: (m.features as string[]) || undefined,
+              contextWindow: m.contextWindow as number | undefined,
+              maxOutputTokens: m.maxOutputTokens as number | undefined,
+              reasoning: m.reasoning as boolean | undefined,
+              functionCalling: m.functionCalling as boolean | undefined,
+              vision: m.vision as boolean | undefined,
+              webSearch: m.webSearch as boolean | undefined
             });
           }
         }
@@ -704,13 +718,31 @@ function formatTime(iso: string): string {
                   <label
                     v-for="item in filteredModelList.filter((m) => m.type === 'model' && m.provider === providerName)"
                     :key="item.value"
-                    class="skill-checkbox"
+                    class="model-item"
                     :class="{ checked: editModel === item.value }"
                     @click="editModel = item.value">
                     <input type="radio" name="editModel" :checked="editModel === item.value" class="model-radio" />
-                    <div class="skill-label">
-                      <span class="skill-label-name">{{ item.label }}</span>
-                      <span v-if="item.description" class="skill-label-desc">{{ item.description }}</span>
+                    <div class="model-item-body">
+                      <div class="model-item-header">
+                        <span class="model-item-name">{{ item.label }}</span>
+                        <!-- 能力图标 -->
+                        <span v-if="item.reasoning" class="model-cap" title="推理/思考">
+                          <span class="i-carbon-watson inline-block h-3 w-3" />
+                        </span>
+                        <span v-if="item.vision" class="model-cap" title="视觉理解">
+                          <span class="i-carbon-view inline-block h-3 w-3" />
+                        </span>
+                        <span v-if="item.functionCalling" class="model-cap" title="工具调用">
+                          <span class="i-carbon-function inline-block h-3 w-3" />
+                        </span>
+                        <span v-if="item.webSearch" class="model-cap" title="联网搜索">
+                          <span class="i-carbon-search inline-block h-3 w-3" />
+                        </span>
+                      </div>
+                      <!-- 特性标签 -->
+                      <div v-if="item.features && item.features.length > 0" class="model-features">
+                        <span v-for="feat in item.features" :key="feat" class="model-feat-tag">{{ feat }}</span>
+                      </div>
                     </div>
                   </label>
                 </template>
@@ -853,7 +885,9 @@ function formatTime(iso: string): string {
                         :key="item.value"
                         class="run-model-chip"
                         :class="{ selected: runModelOverride === item.value }"
-                        :title="`${item.provider} / ${item.label}`"
+                        :title="
+                          `${item.provider} / ${item.label}` + (item.features ? `\n${item.features.join(' · ')}` : '')
+                        "
                         @click="runModelOverride = item.value">
                         <input
                           type="radio"
@@ -861,6 +895,7 @@ function formatTime(iso: string): string {
                           :checked="runModelOverride === item.value"
                           class="sr-only" />
                         {{ item.label }}
+                        <span v-if="item.reasoning" class="i-carbon-watson inline-block h-2.5 w-2.5 opacity-50" />
                       </label>
                     </div>
                   </div>
@@ -2183,6 +2218,77 @@ function formatTime(iso: string): string {
   cursor: pointer;
   flex-shrink: 0;
   margin-top: 2px;
+}
+
+/* 模型列表项（富信息版） */
+.model-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  border: 1px solid transparent;
+}
+
+.model-item:hover {
+  background: hsl(var(--foreground) / 0.03);
+}
+
+.model-item.checked {
+  background: hsl(var(--primary) / 0.04);
+  border-color: hsl(var(--primary) / 0.12);
+}
+
+.model-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.model-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.model-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--foreground) / 0.85);
+  line-height: 1.3;
+}
+
+.model-cap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: hsl(var(--primary) / 0.06);
+  color: hsl(var(--primary) / 0.5);
+}
+
+.model-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.model-feat-tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: hsl(var(--foreground) / 0.04);
+  color: hsl(var(--muted-foreground) / 0.6);
+  white-space: nowrap;
+  line-height: 1.6;
 }
 
 /* 运行弹窗中的模型 chip 选择 */
