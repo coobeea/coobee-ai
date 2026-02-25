@@ -102,6 +102,11 @@ export class Gateway implements GatewayApi {
       log.error('[Gateway] Cron system start failed', err);
     });
 
+    // 启动 TaskScheduler（自主任务调度，不阻塞 Gateway）
+    void this.startTaskScheduler().catch((err) => {
+      log.error('[Gateway] TaskScheduler start failed', err);
+    });
+
     log.info(`[Gateway] Started with ${this.methods.size} method(s)`);
   }
 
@@ -124,6 +129,34 @@ export class Gateway implements GatewayApi {
     } catch (error) {
       log.error('[Gateway] Cron system initialization failed', error);
       throw error;
+    }
+  }
+
+  /**
+   * 启动 TaskScheduler（自主任务调度器）
+   */
+  private async startTaskScheduler(): Promise<void> {
+    try {
+      const { TaskScheduler } = await import('@main/ai/tavern/TaskScheduler');
+      const scheduler = TaskScheduler.getInstance();
+      scheduler.start();
+      log.info('[Gateway] TaskScheduler started');
+    } catch (error) {
+      log.error('[Gateway] TaskScheduler initialization failed', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 停止 TaskScheduler
+   */
+  private async stopTaskScheduler(): Promise<void> {
+    try {
+      const { TaskScheduler } = await import('@main/ai/tavern/TaskScheduler');
+      TaskScheduler.getInstance().stop();
+      log.info('[Gateway] TaskScheduler stopped');
+    } catch (error) {
+      log.error('[Gateway] TaskScheduler stop failed', error);
     }
   }
 
@@ -428,6 +461,9 @@ export class Gateway implements GatewayApi {
 
   /** 关闭 Gateway */
   async close(): Promise<void> {
+    // 停止 TaskScheduler
+    await this.stopTaskScheduler();
+
     // 停止 Cron 调度器
     await this.stopCronSystem();
 
