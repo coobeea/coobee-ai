@@ -389,6 +389,11 @@ def main():
     port = args.port
     log("INFO", f"Tavern Worker starting on port {port}")
     
+    # 禁用 Werkzeug 的请求日志（健康检查每 30s 一次会刷屏控制台）
+    import logging
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.setLevel(logging.ERROR)
+    
     app.run(host="127.0.0.1", port=port, debug=False)
 
 
