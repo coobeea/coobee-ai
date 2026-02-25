@@ -11,6 +11,7 @@ import { useRouter } from 'vue-router';
 import { useAgentsStore } from '@/stores/agents';
 import { useThreadsStore, type AgentType } from '@/stores/threads';
 import { useChatStore } from '@/stores/chat';
+import { gateway } from '@/plugins/gatewaySetup';
 import configManager from '@/config';
 
 const isMac = navigator.platform?.includes('Mac') ?? false;
@@ -26,9 +27,12 @@ const aiInputRef = ref<HTMLTextAreaElement | null>(null);
 /** 是否显示创建区域 */
 const showCreateArea = ref(false);
 
-/** 技能编辑：当前编辑的 Agent ID */
-const editSkillsAgentId = ref<string | null>(null);
+/** 编辑弹窗：当前编辑的 Agent ID */
+const editAgentId = ref<string | null>(null);
 const editSkillsList = ref<string[]>([]);
+const editToolsList = ref<string[]>([]);
+const editModel = ref('');
+const editActiveTab = ref<'skills' | 'tools' | 'model'>('skills');
 
 /** 可用技能列表（从后端获取） */
 interface SkillInfo {
@@ -37,6 +41,22 @@ interface SkillInfo {
 }
 const availableSkills = ref<SkillInfo[]>([]);
 const skillsLoading = ref(false);
+
+/** 可用工具列表 */
+interface ToolInfo {
+  name: string;
+  description: string;
+  category: string;
+}
+const availableTools = ref<ToolInfo[]>([]);
+
+/** 模型选项 */
+interface ModelOption {
+  value: string;
+  label: string;
+  isGroup: boolean;
+}
+const modelOptions = ref<ModelOption[]>([]);
 
 /** 文件/目录选择相关 */
 interface AttachmentRef {
@@ -115,16 +135,13 @@ function openRunDialog(agentId: string): void {
   taskDescription.value = '';
   taskAttachments.value = [];
 
-  // 预填技能：使用 Agent 自身绑定的技能
   const agent = agentsStore.agents.find((a) => a.id === agentId);
   taskSkills.value = agent?.skills ? [...agent.skills] : [];
 
   showRunDialog.value = true;
 
-  // 加载可用技能
-  if (availableSkills.value.length === 0) {
-    loadAvailableSkills();
-  }
+  loadAvailableSkills();
+  loadModelOptions();
 }
 
 function closeRunDialog(): void {
@@ -146,6 +163,55 @@ async function loadAvailableSkills(): Promise<void> {
     console.warn('[AgentView] Failed to fetch skills:', err);
   } finally {
     skillsLoading.value = false;
+  }
+}
+
+async function loadAvailableTools(): Promise<void> {
+  if (availableTools.value.length > 0) return;
+  try {
+    const url = `${configManager.getBaseUrl()}/gateway/agents/tools`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = (await res.json()) as { tools: ToolInfo[] };
+      availableTools.value = data.tools;
+    }
+  } catch (err) {
+    console.warn('[AgentView] Failed to fetch tools:', err);
+  }
+}
+
+async function loadModelOptions(): Promise<void> {
+  if (modelOptions.value.length > 0) return;
+  try {
+    const data = await gateway.request<Record<string, unknown>>('config.getAll');
+    const modelsConfig = data?.models as Record<string, unknown> | undefined;
+    const options: ModelOption[] = [];
+
+    const groups = modelsConfig?.groups as Record<string, unknown> | undefined;
+    if (groups) {
+      for (const [id, cfg] of Object.entries(groups)) {
+        const g = cfg as Record<string, unknown>;
+        if (g.enabled !== false) {
+          options.push({ value: `@group:${id}`, label: `[分组] ${(g.name as string) || id}`, isGroup: true });
+        }
+      }
+    }
+
+    const providers = modelsConfig?.providers as Record<string, unknown> | undefined;
+    if (providers) {
+      for (const [, provCfg] of Object.entries(providers)) {
+        const prov = provCfg as Record<string, unknown>;
+        const models = prov.models as Array<{ id: string; name?: string }> | undefined;
+        if (models) {
+          for (const m of models) {
+            options.push({ value: m.id, label: m.name || m.id, isGroup: false });
+          }
+        }
+      }
+    }
+    modelOptions.value = options;
+  } catch (err) {
+    console.warn('[AgentView] Failed to fetch model options:', err);
   }
 }
 
@@ -250,15 +316,16 @@ async function handleDelete(agentId: string): Promise<void> {
   await agentsStore.deleteAgent(agentId);
 }
 
-async function openSkillsEditor(agentId: string): Promise<void> {
+async function openAgentEditor(agentId: string): Promise<void> {
   const agent = agentsStore.agents.find((a) => a.id === agentId);
   if (!agent) return;
-  editSkillsAgentId.value = agentId;
+  editAgentId.value = agentId;
   editSkillsList.value = [...(agent.skills ?? [])];
+  editToolsList.value = [...(agent.tools ?? [])];
+  editModel.value = agent.model ?? '';
+  editActiveTab.value = 'skills';
 
-  if (availableSkills.value.length === 0) {
-    await loadAvailableSkills();
-  }
+  await Promise.all([loadAvailableSkills(), loadAvailableTools(), loadModelOptions()]);
 }
 
 function toggleSkill(skillName: string): void {
@@ -270,16 +337,27 @@ function toggleSkill(skillName: string): void {
   }
 }
 
-async function saveSkills(): Promise<void> {
-  if (!editSkillsAgentId.value) return;
-  await agentsStore.updateAgent(editSkillsAgentId.value, {
-    skills: editSkillsList.value
-  });
-  editSkillsAgentId.value = null;
+function toggleEditTool(toolName: string): void {
+  const idx = editToolsList.value.indexOf(toolName);
+  if (idx >= 0) {
+    editToolsList.value.splice(idx, 1);
+  } else {
+    editToolsList.value.push(toolName);
+  }
 }
 
-function cancelSkillsEdit(): void {
-  editSkillsAgentId.value = null;
+async function saveAgentConfig(): Promise<void> {
+  if (!editAgentId.value) return;
+  await agentsStore.updateAgent(editAgentId.value, {
+    skills: editSkillsList.value,
+    tools: editToolsList.value.length > 0 ? editToolsList.value : undefined,
+    model: editModel.value || undefined
+  });
+  editAgentId.value = null;
+}
+
+function cancelAgentEdit(): void {
+  editAgentId.value = null;
 }
 
 function stepIcon(step: string): string {
@@ -472,6 +550,18 @@ function formatTime(iso: string): string {
               <span v-if="agent.skills.length > 3" class="skill-more"> +{{ agent.skills.length - 3 }} </span>
             </div>
 
+            <!-- 模型 & 工具标签 -->
+            <div class="card-meta">
+              <span v-if="agent.model" class="meta-tag model" :title="agent.model">
+                <span class="i-carbon-machine-learning-model inline-block h-3 w-3" />
+                {{ agent.model.startsWith('@group:') ? agent.model.slice(7) : agent.model.split('/').pop() }}
+              </span>
+              <span v-if="agent.tools && agent.tools.length > 0" class="meta-tag tools">
+                <span class="i-carbon-tool-box inline-block h-3 w-3" />
+                {{ agent.tools.length }} 个工具
+              </span>
+            </div>
+
             <div class="card-footer">
               <button class="start-task-btn" @click="openRunDialog(agent.id)">
                 <span class="i-carbon-play-filled-alt inline-block h-3.5 w-3.5" />
@@ -479,7 +569,7 @@ function formatTime(iso: string): string {
               </button>
               <div class="card-actions-right">
                 <template v-if="confirmDeleteId !== agent.id">
-                  <button class="action-icon" title="编辑技能" @click="openSkillsEditor(agent.id)">
+                  <button class="action-icon" title="编辑配置" @click="openAgentEditor(agent.id)">
                     <span class="i-carbon-edit inline-block h-3.5 w-3.5" />
                   </button>
                   <button
@@ -501,40 +591,100 @@ function formatTime(iso: string): string {
       </div>
     </div>
 
-    <!-- 技能编辑弹窗 -->
+    <!-- 编辑智能体弹窗 -->
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="editSkillsAgentId" class="skills-overlay" @click.self="cancelSkillsEdit">
-          <div class="skills-dialog">
+        <div v-if="editAgentId" class="skills-overlay" @click.self="cancelAgentEdit">
+          <div class="skills-dialog edit-agent-dialog">
             <div class="skills-dialog-header">
-              <span class="i-carbon-skill-level-advanced inline-block h-4 w-4" />
-              <span>编辑技能</span>
+              <span class="i-carbon-settings-adjust inline-block h-4 w-4" />
+              <span>编辑配置</span>
             </div>
+
+            <!-- Tab 切换 -->
+            <div class="edit-tabs">
+              <button :class="['edit-tab', { active: editActiveTab === 'model' }]" @click="editActiveTab = 'model'">
+                <span class="i-carbon-machine-learning-model inline-block h-3 w-3" />
+                模型
+              </button>
+              <button :class="['edit-tab', { active: editActiveTab === 'tools' }]" @click="editActiveTab = 'tools'">
+                <span class="i-carbon-tool-box inline-block h-3 w-3" />
+                工具
+                <span v-if="editToolsList.length > 0" class="edit-tab-count">{{ editToolsList.length }}</span>
+              </button>
+              <button :class="['edit-tab', { active: editActiveTab === 'skills' }]" @click="editActiveTab = 'skills'">
+                <span class="i-carbon-skill-level-advanced inline-block h-3 w-3" />
+                技能
+                <span v-if="editSkillsList.length > 0" class="edit-tab-count">{{ editSkillsList.length }}</span>
+              </button>
+            </div>
+
             <div class="skills-dialog-body">
-              <div v-if="skillsLoading" class="skills-loading">
-                <span class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
-                <span>加载技能列表...</span>
-              </div>
-              <p v-else-if="availableSkills.length === 0" class="skills-empty"> 暂无可用技能 </p>
-              <label
-                v-for="skill in availableSkills"
-                v-else
-                :key="skill.name"
-                class="skill-checkbox"
-                :class="{ checked: editSkillsList.includes(skill.name) }">
-                <input
-                  type="checkbox"
-                  :checked="editSkillsList.includes(skill.name)"
-                  @change="toggleSkill(skill.name)" />
-                <div class="skill-label">
-                  <span class="skill-label-name">{{ skill.name }}</span>
-                  <span v-if="skill.description" class="skill-label-desc">{{ skill.description }}</span>
+              <!-- 模型 Tab -->
+              <template v-if="editActiveTab === 'model'">
+                <div class="edit-section-hint">选择此智能体使用的模型，留空则使用系统默认模型</div>
+                <select v-model="editModel" class="edit-select">
+                  <option value="">默认模型（跟随系统配置）</option>
+                  <optgroup v-if="modelOptions.filter((o) => o.isGroup).length > 0" label="── 模型分组 ──">
+                    <option v-for="opt in modelOptions.filter((o) => o.isGroup)" :key="opt.value" :value="opt.value">
+                      {{ opt.label }}
+                    </option>
+                  </optgroup>
+                  <optgroup v-if="modelOptions.filter((o) => !o.isGroup).length > 0" label="── 单个模型 ──">
+                    <option v-for="opt in modelOptions.filter((o) => !o.isGroup)" :key="opt.value" :value="opt.value">
+                      {{ opt.label }}
+                    </option>
+                  </optgroup>
+                </select>
+              </template>
+
+              <!-- 工具 Tab -->
+              <template v-if="editActiveTab === 'tools'">
+                <div class="edit-section-hint">选择此智能体可使用的工具，不选则使用全部工具</div>
+                <label
+                  v-for="tool in availableTools"
+                  :key="tool.name"
+                  class="skill-checkbox"
+                  :class="{ checked: editToolsList.includes(tool.name) }">
+                  <input
+                    type="checkbox"
+                    :checked="editToolsList.includes(tool.name)"
+                    @change="toggleEditTool(tool.name)" />
+                  <div class="skill-label">
+                    <span class="skill-label-name">{{ tool.name }}</span>
+                    <span v-if="tool.description" class="skill-label-desc">{{ tool.description }}</span>
+                  </div>
+                </label>
+              </template>
+
+              <!-- 技能 Tab -->
+              <template v-if="editActiveTab === 'skills'">
+                <div v-if="skillsLoading" class="skills-loading">
+                  <span class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
+                  <span>加载技能列表...</span>
                 </div>
-              </label>
+                <p v-else-if="availableSkills.length === 0" class="skills-empty"> 暂无可用技能 </p>
+                <template v-else>
+                  <label
+                    v-for="skill in availableSkills"
+                    :key="skill.name"
+                    class="skill-checkbox"
+                    :class="{ checked: editSkillsList.includes(skill.name) }">
+                    <input
+                      type="checkbox"
+                      :checked="editSkillsList.includes(skill.name)"
+                      @change="toggleSkill(skill.name)" />
+                    <div class="skill-label">
+                      <span class="skill-label-name">{{ skill.name }}</span>
+                      <span v-if="skill.description" class="skill-label-desc">{{ skill.description }}</span>
+                    </div>
+                  </label>
+                </template>
+              </template>
             </div>
             <div class="skills-dialog-footer">
-              <button class="text-btn" @click="cancelSkillsEdit">取消</button>
-              <button class="primary-btn" @click="saveSkills">保存</button>
+              <button class="text-btn" @click="cancelAgentEdit">取消</button>
+              <button class="primary-btn" @click="saveAgentConfig">保存</button>
             </div>
           </div>
         </div>
@@ -590,6 +740,33 @@ function formatTime(iso: string): string {
 
               <Transition name="slide-down">
                 <div v-if="showAdvancedOptions" class="advanced-options">
+                  <!-- 模型覆盖 -->
+                  <div class="run-field">
+                    <label class="run-field-label">
+                      <span class="i-carbon-machine-learning-model inline-block h-3 w-3" />
+                      模型
+                    </label>
+                    <select v-model="editModel" class="edit-select">
+                      <option value="">使用智能体默认模型</option>
+                      <optgroup v-if="modelOptions.filter((o) => o.isGroup).length > 0" label="── 模型分组 ──">
+                        <option
+                          v-for="opt in modelOptions.filter((o) => o.isGroup)"
+                          :key="opt.value"
+                          :value="opt.value">
+                          {{ opt.label }}
+                        </option>
+                      </optgroup>
+                      <optgroup v-if="modelOptions.filter((o) => !o.isGroup).length > 0" label="── 单个模型 ──">
+                        <option
+                          v-for="opt in modelOptions.filter((o) => !o.isGroup)"
+                          :key="opt.value"
+                          :value="opt.value">
+                          {{ opt.label }}
+                        </option>
+                      </optgroup>
+                    </select>
+                  </div>
+
                   <!-- 任务描述 -->
                   <div class="run-field">
                     <label class="run-field-label">
@@ -1765,5 +1942,107 @@ function formatTime(iso: string): string {
 .secondary-btn:hover {
   background: hsl(var(--foreground) / 0.08);
   color: hsl(var(--foreground) / 0.8);
+}
+
+/* Agent 卡片 meta 标签 */
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.meta-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.meta-tag.model {
+  background: hsl(var(--warning) / 0.08);
+  color: hsl(var(--warning) / 0.7);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta-tag.tools {
+  background: hsl(var(--foreground) / 0.05);
+  color: hsl(var(--muted-foreground) / 0.55);
+}
+
+/* 编辑弹窗增强 */
+.edit-agent-dialog {
+  width: 440px;
+  max-height: 560px;
+}
+
+.edit-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 16px 0;
+  border-bottom: 1px solid hsl(var(--border) / 0.2);
+}
+
+.edit-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.55);
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.edit-tab:hover {
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.edit-tab.active {
+  color: hsl(var(--primary));
+  border-bottom-color: hsl(var(--primary));
+}
+
+.edit-tab-count {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  line-height: 1.6;
+}
+
+.edit-section-hint {
+  font-size: 11.5px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.edit-select {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.4);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.edit-select:focus {
+  border-color: hsl(var(--primary) / 0.4);
 }
 </style>
