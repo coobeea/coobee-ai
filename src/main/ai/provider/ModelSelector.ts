@@ -94,7 +94,10 @@ export class ModelSelector {
     if (!modelRef.startsWith('@')) {
       return null;
     }
-    const groupName = modelRef.substring(1);
+    let groupName = modelRef.substring(1);
+    if (groupName.startsWith('group:')) {
+      groupName = groupName.substring(6);
+    }
     const candidates = this.groupResolver.getGroupCandidates(groupName);
     return candidates.length > 0 ? candidates : null;
   }
@@ -153,8 +156,11 @@ export class ModelSelector {
     // 🆕 检查是否是模型组或 auto 模式
     if (opts.modelOverride) {
       if (opts.modelOverride.startsWith('@')) {
-        // 模型组：@group-name
-        const groupName = opts.modelOverride.substring(1);
+        // 模型组：支持 @group-name 和 @group:group-name 两种格式（前端使用后者）
+        let groupName = opts.modelOverride.substring(1);
+        if (groupName.startsWith('group:')) {
+          groupName = groupName.substring(6);
+        }
         modelRefStr = this.resolveModelGroup(groupName, opts.context);
         source = 'model-group';
       } else if (opts.modelOverride === 'auto') {

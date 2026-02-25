@@ -55,13 +55,12 @@ function init(): void {
 
 function fetchWorkerList(): void {
   gateway
-    .request<WorkerStatusInfo[]>('worker.list')
-    .then((list) => {
-      if (Array.isArray(list)) {
-        for (const info of list) {
-          for (const handler of statusHandlers) {
-            handler(info);
-          }
+    .request<{ workers: WorkerStatusInfo[] } | WorkerStatusInfo[]>('worker.list')
+    .then((result) => {
+      const list = Array.isArray(result) ? result : ((result as { workers?: WorkerStatusInfo[] })?.workers ?? []);
+      for (const info of list) {
+        for (const handler of statusHandlers) {
+          handler(info);
         }
       }
     })
@@ -93,7 +92,7 @@ export function onWorkerStatus(handler: (info: WorkerStatusInfo) => void): () =>
  */
 export function startWorker(name: string): void {
   gateway
-    .request('worker.start', { workerName: name })
+    .request('worker.start', { name })
     .catch((err) => console.error(`[useWorkerWs] 启动 Worker ${name} 失败:`, err));
 }
 
@@ -102,7 +101,7 @@ export function startWorker(name: string): void {
  */
 export function stopWorker(name: string): void {
   gateway
-    .request('worker.stop', { workerName: name })
+    .request('worker.stop', { name })
     .catch((err) => console.error(`[useWorkerWs] 停止 Worker ${name} 失败:`, err));
 }
 

@@ -34,6 +34,8 @@ export interface TaskSchedulerOptions {
   enableNotification?: boolean;
   /** 启动时跳过超过此时间（ms）的 pending 任务，默认 24 小时。设为 0 表示不跳过 */
   staleThreshold?: number;
+  /** 最大重试次数，超过后标记为 failed 终态，默认 3 */
+  maxRetries?: number;
 }
 
 export class TaskScheduler {
@@ -43,6 +45,7 @@ export class TaskScheduler {
   private readonly maxConcurrent: number;
   private readonly enableNotification: boolean;
   private readonly staleThreshold: number;
+  private readonly maxRetries: number;
 
   private running = false;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -57,6 +60,7 @@ export class TaskScheduler {
     this.maxConcurrent = options.maxConcurrent ?? 1;
     this.enableNotification = options.enableNotification ?? true;
     this.staleThreshold = options.staleThreshold ?? 24 * 60 * 60 * 1000; // 24h
+    this.maxRetries = options.maxRetries ?? 3;
   }
 
   static getInstance(options?: TaskSchedulerOptions): TaskScheduler {
@@ -208,7 +212,20 @@ export class TaskScheduler {
     } catch (err) {
       log.error(`[TaskScheduler] Failed to dispatch task ${task.id}:`, err);
       const store = await TavernStore.getInstance();
-      await store.updateTask(task.id, { status: 'pending' });
+      const currentTask = await store.readMeta(task.id);
+      const retryCount = (currentTask?.retryCount ?? 0) + 1;
+      const exhausted = retryCount >= this.maxRetries;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+
+      await store.updateTask(task.id, {
+        status: exhausted ? 'failed' : 'pending',
+        retryCount,
+        lastError: errorMsg
+      });
+
+      if (exhausted) {
+        log.error(`[TaskScheduler] Task ${task.id} permanently failed after ${retryCount} dispatch attempts`);
+      }
     }
   }
 
@@ -275,18 +292,32 @@ export class TaskScheduler {
     this.executions.delete(sessionId);
 
     const store = await TavernStore.getInstance();
+    const task = await store.readMeta(taskId);
+    const retryCount = (task?.retryCount ?? 0) + 1;
+    const exhausted = retryCount >= this.maxRetries;
+
     await store.updateTask(taskId, {
-      status: 'pending',
+      status: exhausted ? 'failed' : 'pending',
+      retryCount,
+      lastError: error,
       result: {
-        textResult: `执行失败: ${error}`,
+        textResult: exhausted
+          ? `任务在 ${retryCount} 次尝试后最终失败: ${error}`
+          : `第 ${retryCount}/${this.maxRetries} 次执行失败: ${error}，将自动重试`,
         fileResults: []
       }
     });
 
-    log.warn(`[TaskScheduler] Task ${taskId} failed: ${error}`);
-
-    if (this.enableNotification) {
-      this.sendNotification(`任务失败: ${taskId}`, error);
+    if (exhausted) {
+      log.error(`[TaskScheduler] Task ${taskId} permanently failed after ${retryCount} attempts: ${error}`);
+      if (this.enableNotification) {
+        this.sendNotification(`任务彻底失败: ${taskId}`, `已重试 ${retryCount} 次，最后错误: ${error}`);
+      }
+    } else {
+      log.warn(`[TaskScheduler] Task ${taskId} failed (attempt ${retryCount}/${this.maxRetries}): ${error}`);
+      if (this.enableNotification) {
+        this.sendNotification(`任务失败: ${taskId}`, `第 ${retryCount} 次失败，将自动重试`);
+      }
     }
   }
 

@@ -27,10 +27,14 @@ export interface Task {
   description: string;
   amount: number;
   files: string[];
-  status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled' | 'failed';
   result?: TaskResult;
   /** 关联的 threadId（TaskScheduler 分配执行后写入） */
   threadId?: string;
+  /** 已重试次数（TaskScheduler 失败后递增） */
+  retryCount?: number;
+  /** 最后一次失败的错误信息 */
+  lastError?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -116,7 +120,7 @@ export class TavernStore {
 
   async updateTask(
     taskId: string,
-    updates: Partial<Pick<Task, 'status' | 'result' | 'threadId'>>
+    updates: Partial<Pick<Task, 'status' | 'result' | 'threadId' | 'retryCount' | 'lastError'>>
   ): Promise<Task | null> {
     const task = await this.readMeta(taskId);
     if (!task) return null;
@@ -124,6 +128,8 @@ export class TavernStore {
     if (updates.status) task.status = updates.status;
     if (updates.result) task.result = updates.result;
     if (updates.threadId) task.threadId = updates.threadId;
+    if (updates.retryCount !== undefined) task.retryCount = updates.retryCount;
+    if (updates.lastError !== undefined) task.lastError = updates.lastError;
     task.updatedAt = new Date().toISOString();
 
     await this.writeMeta(taskId, task);
