@@ -231,13 +231,23 @@ export class TaskScheduler {
 
   /** 将任务描述转换为 Agent 可以理解的消息 */
   private buildTaskMessage(task: Task): string {
+    const retryNote =
+      task.retryCount && task.retryCount > 0
+        ? `\n\n> ⚠️ 这是第 ${task.retryCount + 1} 次尝试。上次失败原因: ${task.lastError || '未知'}\n> 请尝试不同的方法来完成任务。`
+        : '';
+
     const parts = [`## 任务: ${task.title}`, '', task.description];
 
     if (task.files.length > 0) {
       parts.push('', '### 相关文件', ...task.files.map((f) => `- ${f}`));
     }
 
-    parts.push('', '---', '请完成以上任务。完成后请总结你做了什么，以及最终产出物（如有文件产出请列出路径）。');
+    parts.push(
+      retryNote,
+      '',
+      '---',
+      '请先创建 GOAL.md 记录任务目标，然后完成以上任务。完成后请总结你做了什么，以及最终产出物（如有文件产出请列出路径）。'
+    );
 
     return parts.join('\n');
   }

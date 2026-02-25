@@ -15,6 +15,7 @@
  */
 
 import path from 'node:path';
+import fs from 'node:fs';
 import { createLogger } from '@main/common/logger';
 import { formatRuntimePaths, buildAgentEnv, type AgentEnv } from './AgentEnv';
 import { SkillManager } from './skills';
@@ -80,9 +81,11 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
             `</skill_discovery>`
           : '';
       const agentDiscoveryHint = await buildAgentDiscoveryHint();
+      const goalBlock = readGoalFile(workspace);
       builder.appendInstructions(
         executionProtocol,
         runtimePathsBlock,
+        ...(goalBlock ? [goalBlock] : []),
         ...(skillDiscoveryHint ? [skillDiscoveryHint] : []),
         ...(agentDiscoveryHint ? [agentDiscoveryHint] : [])
       );
@@ -116,6 +119,40 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
   }
 }
 
+// ==================== 目标文件读取 ====================
+
+/**
+ * 读取工作空间中的 GOAL.md 目标文件
+ *
+ * 目标文件由 Agent 在执行协议第 1 步（Intent & Goal Extraction）时创建，
+ * 存储用户的原始需求和可验证的目标准则。
+ *
+ * 每次新的请求都会重新读取并注入到 appendInstructions 中，
+ * 确保在多轮对话（即使上下文窗口截断）时目标不丢失。
+ *
+ * @returns `<current_goal>` XML 块，或 undefined（文件不存在时）
+ */
+function readGoalFile(workspace: string): string | undefined {
+  const goalPath = path.join(workspace, 'GOAL.md');
+  try {
+    const content = fs.readFileSync(goalPath, 'utf-8').trim();
+    if (!content) return undefined;
+
+    // 截断过长的目标文件（保护 token 预算）
+    const maxLen = 4000;
+    const truncated = content.length > maxLen ? content.slice(0, maxLen) + '\n\n... (truncated)' : content;
+
+    return `<current_goal>
+The following is the persistent goal for this session, extracted from GOAL.md in the workspace.
+Always keep this goal in mind. If the user's new message changes the goal, update GOAL.md accordingly.
+
+${truncated}
+</current_goal>`;
+  } catch {
+    return undefined;
+  }
+}
+
 // ==================== 核心执行协议 ====================
 
 /**
@@ -133,10 +170,17 @@ function buildExecutionProtocol(_skillManager?: SkillManager): string {
 When you receive a user request, follow this protocol:
 
 1. **Intent & Goal Extraction** - Identify core intent and define verifiable criteria
+   - **CRITICAL**: For non-trivial tasks, persist the goal by writing a \`GOAL.md\` file in the workspace root:
+     \`\`\`
+     write({ path: "<workspace>/GOAL.md", content: "# Goal\\n\\n## Original Request\\n...\\n## Objectives\\n...\\n## Verifiable Criteria\\n..." })
+     \`\`\`
+   - This ensures the goal survives across many conversation turns and context window truncation
+   - If GOAL.md already exists (shown in <current_goal> above), review it — update if the user's intent has changed
 2. **Plan & Execute** - Create plan and execute step by step
-3. **Self-Evaluation** - Compare output against criteria
+3. **Self-Evaluation** - Compare output against criteria (from GOAL.md)
 4. **Self-Repair** - Fix issues if needed (max 3 rounds)
 5. **Report & Memorize** - Summarize results and save valuable knowledge
+   - When task is complete, update GOAL.md status or remove it
 
 ## Brain Knowledge Base Integration
 
