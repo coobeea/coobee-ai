@@ -131,6 +131,7 @@ export const Env = {
        *
        * 每次会话/Agent 通过 getAgentWorkspaceDir(id) 获取独立子目录：
        *   workspaces/{id}/
+       *   ├── GOAL.md       目标文件（系统初始化，Agent 填写）
        *   ├── sessions/     会话持久化
        *   ├── contexts/     LLM 请求上下文快照
        *   ├── skills/       Agent 自生成的 Skill
@@ -284,6 +285,7 @@ export const Env = {
    *
    * 结构：
    *   {workspacesDir}/{id}/
+   *   ├── GOAL.md       目标文件（系统初始化时创建，Agent 填写）
    *   ├── sessions/     会话持久化
    *   ├── contexts/     LLM 请求上下文快照
    *   ├── events/       流式事件记录（完整时间线）
@@ -320,6 +322,11 @@ export const Env = {
       if (!fs.existsSync(dir)) {
         await mkdirp(dir);
       }
+    }
+    // 初始化 GOAL.md（工作空间标准文件，Agent 在意图提取阶段填写内容）
+    const goalPath = path.join(workspace, 'GOAL.md');
+    if (!fs.existsSync(goalPath)) {
+      fs.writeFileSync(goalPath, '', 'utf-8');
     }
     return workspace;
   },

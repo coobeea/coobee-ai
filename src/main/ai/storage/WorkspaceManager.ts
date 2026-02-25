@@ -53,6 +53,9 @@ export class WorkspaceManager {
       if (enableExtensions) mkdirSync(join(workspace, 'extensions'), { recursive: true });
       if (enableMemory) mkdirSync(join(workspace, 'memory'), { recursive: true });
 
+      // 初始化 GOAL.md（子 Agent 也有独立目标，由父 Agent 或系统预填）
+      writeFileSync(join(workspace, 'GOAL.md'), '', 'utf-8');
+
       // 初始化统一的 checkpoint.json
       const checkpoint: AgentCheckpoint = {
         agentId: config.agentName,

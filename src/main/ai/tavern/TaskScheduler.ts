@@ -187,6 +187,9 @@ export class TaskScheduler {
 
       await store.updateTask(task.id, { threadId: sessionId });
 
+      // 预填 GOAL.md：酒馆任务的目标文件必须包含「完成后更新酒馆任务状态」的终极目标
+      await this.writeTaskGoalFile(sessionId, task);
+
       const execution: TaskExecution = {
         taskId: task.id,
         threadId: sessionId,
@@ -250,6 +253,58 @@ export class TaskScheduler {
     );
 
     return parts.join('\n');
+  }
+
+  /** 为酒馆任务预填 GOAL.md（工作空间初始化后立即写入） */
+  private async writeTaskGoalFile(sessionId: string, task: Task): Promise<void> {
+    try {
+      const { Env } = await import('@main/common/env');
+      const workspace = await Env.getAgentWorkspaceDir(sessionId);
+      const goalPath = await import('node:path').then((p) => p.join(workspace, 'GOAL.md'));
+      const fs = await import('node:fs');
+
+      const retryNote =
+        task.retryCount && task.retryCount > 0
+          ? `\n> ⚠️ 第 ${task.retryCount + 1} 次尝试。上次失败: ${task.lastError || '未知'}\n`
+          : '';
+
+      const content = `# Goal
+
+## Original Request
+
+> 酒馆任务 [${task.id}]: ${task.title}
+${retryNote}
+## Task Description
+
+${task.description}
+${task.files.length > 0 ? '\n## Related Files\n\n' + task.files.map((f) => `- ${f}`).join('\n') + '\n' : ''}
+## Objectives
+
+1. 理解并分析任务需求
+2. 执行任务所需的具体操作
+3. 生成任务产出物（如有）
+4. **[终极目标] 任务完成后，确保酒馆任务状态被正确更新**
+
+## Verifiable Criteria
+
+- [ ] 任务核心需求已完成
+- [ ] 产出物（如有）已保存到 output/ 目录
+- [ ] 执行结果已总结
+- [ ] **酒馆任务 ${task.id} 的状态已更新为 completed（通过 Tavern Skill 或系统自动完成）**
+
+## Status
+
+- **Phase**: Planning
+- **Progress**: 任务已分配，等待执行
+- **Tavern Task ID**: ${task.id}
+- **Session ID**: ${sessionId}
+`;
+
+      fs.writeFileSync(goalPath, content, 'utf-8');
+      log.info(`[TaskScheduler] GOAL.md written for task ${task.id} in session ${sessionId}`);
+    } catch (err) {
+      log.warn(`[TaskScheduler] Failed to write GOAL.md for task ${task.id}:`, err);
+    }
   }
 
   /** 监听 stream:end 事件，识别任务执行完成 */
