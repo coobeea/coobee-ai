@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
+import { ref, nextTick, onMounted, onUnmounted, watch, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { employeeApi, type DigitalEmployee } from '@/api/employee';
 import EmployeeAvatar from '@/components/EmployeeAvatar.vue';
@@ -47,47 +47,24 @@ const lastAssistantMsg = computed((): StreamChatMessage | undefined => {
   return undefined;
 });
 
-const aiDisplayText = computed((): string => {
-  const msg = lastAssistantMsg.value;
-  if (!msg) return '';
-  return msg.content;
-});
+// 消息列表自动滚动到底部
+const messagesEl = ref<HTMLElement | null>(null);
+function scrollToBottom(): void {
+  nextTick(() => {
+    if (messagesEl.value) {
+      messagesEl.value.scrollTop = messagesEl.value.scrollHeight;
+    }
+  });
+}
 
-const aiThinking = computed((): string => {
-  const msg = lastAssistantMsg.value;
-  if (!msg) return '';
-  const thinkBlock = msg.blocks.find((b) => b.type === 'thinking');
-  if (thinkBlock && thinkBlock.type === 'thinking') return thinkBlock.text;
-  return '';
-});
-
-const aiToolCalls = computed(() => {
-  const msg = lastAssistantMsg.value;
-  if (!msg) return [];
-  return msg.blocks
-    .filter((b) => b.type === 'tool')
-    .map((b) => (b.type === 'tool' ? b.tool : null))
-    .filter(Boolean);
-});
-
-// 字幕：优先显示用户正在说的话，其次显示 AI 文字输出
 watch(
   () => messages.value.length,
-  (newLen, oldLen) => {
-    if (newLen > oldLen) {
-      const lastMsg = messages.value[newLen - 1];
-      if (lastMsg.role === 'assistant') {
-        watch(
-          () => lastMsg.content,
-          (newContent) => {
-            if (status.value !== 'listening') {
-              subtitle.value = newContent;
-            }
-          }
-        );
-      }
-    }
-  }
+  () => scrollToBottom()
+);
+
+watch(
+  () => lastAssistantMsg.value?.content,
+  () => scrollToBottom()
 );
 
 // ---- 发送消息给应用管家 ----
@@ -99,7 +76,7 @@ async function sendToLLM(text: string): Promise<void> {
   addUserMessage(text);
 
   try {
-    const targetAgentId = 'app-manager';
+    const targetAgentId = 'app-copilot';
 
     const result = await gateway.request<{ sessionId: string; status: string }>('chat.send', {
       message: text,
@@ -189,14 +166,14 @@ function handleExit(): void {
 
 <template>
   <div class="chat-view">
-    <!-- 3D Scene Container -->
+    <!-- Avatar 背景 -->
     <div class="scene-container">
       <EmployeeAvatar :state="status" />
     </div>
 
-    <!-- UI Overlay -->
+    <!-- UI 层 -->
     <div class="ui-overlay">
-      <!-- Top Bar -->
+      <!-- 顶栏 -->
       <header class="top-bar">
         <div v-if="employee" class="employee-info">
           <h2 class="name">{{ employee.name }}</h2>
@@ -211,61 +188,78 @@ function handleExit(): void {
             </span>
           </div>
           <button class="btn-icon" title="结束对话" @click="handleExit">
-            <span class="i-carbon-close h-6 w-6" />
+            <span class="i-carbon-close h-5 w-5" />
           </button>
         </div>
       </header>
 
-      <!-- AI 响应区 -->
-      <div class="response-area">
-        <!-- 思考过程（折叠） -->
-        <div v-if="aiThinking && status === 'thinking'" class="thinking-indicator">
-          <span class="i-carbon-watson inline-block h-3.5 w-3.5 animate-pulse" />
-          <span class="thinking-text">{{ aiThinking.slice(-80) }}{{ aiThinking.length > 80 ? '...' : '' }}</span>
+      <!-- 对话内容区（可滚动） -->
+      <div ref="messagesEl" class="messages-area">
+        <div v-for="msg in messages" :key="msg.id" class="msg-bubble" :class="msg.role">
+          <!-- 用户消息 -->
+          <template v-if="msg.role === 'user'">
+            <div class="msg-user">
+              <span class="i-carbon-user inline-block h-3 w-3 shrink-0" />
+              <span>{{ msg.content }}</span>
+            </div>
+          </template>
+
+          <!-- AI 消息 -->
+          <template v-else>
+            <!-- 思考过程 -->
+            <template v-for="(block, bIdx) in msg.blocks" :key="bIdx">
+              <div v-if="block.type === 'thinking'" class="msg-thinking">
+                <span class="i-carbon-watson inline-block h-3 w-3 shrink-0" />
+                <span class="msg-thinking-text"
+                  >{{ block.text.slice(-120) }}{{ block.text.length > 120 ? '…' : '' }}</span
+                >
+              </div>
+              <div v-else-if="block.type === 'tool'" class="msg-tool">
+                <span class="i-carbon-tool-box inline-block h-3 w-3 shrink-0" />
+                <span class="msg-tool-name">{{ block.tool.name }}</span>
+                <span v-if="block.tool.status === 'calling'" class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
+                <span
+                  v-else-if="block.tool.status === 'done'"
+                  class="i-carbon-checkmark inline-block h-3 w-3 text-green-400" />
+              </div>
+            </template>
+            <!-- 文本输出 -->
+            <div v-if="msg.content" class="msg-ai-text">{{ msg.content }}</div>
+            <!-- 错误 -->
+            <div v-if="msg.status === 'error' && msg.error" class="msg-error">
+              <span class="i-carbon-warning-alt inline-block h-3 w-3" />
+              {{ msg.error }}
+            </div>
+          </template>
         </div>
 
-        <!-- 工具调用 -->
-        <div v-if="aiToolCalls.length > 0" class="tool-calls">
-          <div v-for="(tool, idx) in aiToolCalls" :key="idx" class="tool-call-item">
-            <span class="i-carbon-tool-box inline-block h-3 w-3" />
-            <span class="tool-name">{{ tool?.name }}</span>
-            <span v-if="tool?.status === 'calling'" class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
-            <span v-else-if="tool?.status === 'done'" class="i-carbon-checkmark inline-block h-3 w-3 text-green-400" />
+        <!-- 正在输入指示 -->
+        <div v-if="status === 'thinking' && !lastAssistantMsg" class="msg-typing"> <span /><span /><span /> </div>
+      </div>
+
+      <!-- 底部：字幕 + 麦克风 -->
+      <div class="bottom-zone">
+        <!-- 实时字幕（用户说话时） -->
+        <div v-if="subtitle && status === 'listening'" class="live-subtitle">
+          <span class="i-carbon-microphone inline-block h-3 w-3 shrink-0 text-red-400" />
+          <span>{{ subtitle }}</span>
+        </div>
+
+        <!-- 麦克风控制 -->
+        <div class="mic-wrapper">
+          <div class="mic-visualizer-bg" :class="{ active: status === 'listening' }">
+            <AudioVisualizer :volume="volume" :is-active="status === 'listening'" color="rgba(239, 68, 68, 0.6)" />
           </div>
+          <div class="mic-ring" :class="{ active: status === 'listening' }" />
+          <button
+            class="mic-btn-main"
+            :class="{ active: status === 'listening' }"
+            :style="status === 'listening' ? { transform: `scale(${1 + volume / 400})` } : {}"
+            @click="toggleMic">
+            <span v-if="status !== 'listening'" class="i-carbon-microphone h-7 w-7" />
+            <span v-else class="i-carbon-stop-filled h-7 w-7" />
+          </button>
         </div>
-      </div>
-
-      <!-- Subtitle Area -->
-      <div class="subtitle-area">
-        <Transition name="subtitle-fade">
-          <p v-if="subtitle || aiDisplayText" class="subtitle-text">
-            {{ subtitle || aiDisplayText }}
-          </p>
-        </Transition>
-        <p v-if="!subtitle && !aiDisplayText && status === 'listening'" class="subtitle-text listening-dots">
-          <span /><span /><span />
-        </p>
-      </div>
-
-      <!-- Bottom Controls -->
-      <div class="mic-wrapper">
-        <!-- 波形可视化 -->
-        <div class="mic-visualizer-bg" :class="{ active: status === 'listening' }">
-          <AudioVisualizer :volume="volume" :is-active="status === 'listening'" color="rgba(239, 68, 68, 0.6)" />
-        </div>
-
-        <!-- 脉冲光环 -->
-        <div class="mic-ring" :class="{ active: status === 'listening' }" />
-
-        <!-- Mic Button -->
-        <button
-          class="mic-btn-main"
-          :class="{ active: status === 'listening' }"
-          :style="status === 'listening' ? { transform: `scale(${1 + volume / 400})` } : {}"
-          @click="toggleMic">
-          <span v-if="status !== 'listening'" class="i-carbon-microphone h-8 w-8" />
-          <span v-else class="i-carbon-stop-filled h-8 w-8" />
-        </button>
       </div>
     </div>
   </div>
@@ -298,17 +292,18 @@ function handleExit(): void {
   flex-direction: column;
 }
 
-/* ---- Top Bar ---- */
+/* ---- 顶栏 ---- */
 .top-bar {
-  padding: 20px 24px;
+  padding: 16px 20px;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   pointer-events: auto;
+  flex-shrink: 0;
 }
 
 .employee-info .name {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   color: #fff;
   margin: 0;
@@ -316,23 +311,23 @@ function handleExit(): void {
 }
 
 .employee-info .role {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .top-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .status-pill {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 16px;
+  font-size: 11px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(8px);
@@ -354,8 +349,8 @@ function handleExit(): void {
 }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: #ef4444;
 }
@@ -382,8 +377,8 @@ function handleExit(): void {
   background: rgba(255, 255, 255, 0.08);
   border: none;
   border-radius: 50%;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -397,163 +392,163 @@ function handleExit(): void {
   color: #fff;
 }
 
-/* ---- AI Response Area ---- */
-.response-area {
+/* ---- 消息列表 ---- */
+.messages-area {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 20px 12px;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 8px;
-  padding: 0 32px;
-  pointer-events: auto;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 100%);
 }
 
-.thinking-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 10px;
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.15);
-  color: rgba(165, 180, 252, 0.8);
-  font-size: 12px;
-  max-width: 60%;
-  animation: fadeIn 0.3s ease;
+.messages-area::-webkit-scrollbar {
+  width: 4px;
 }
 
-.thinking-text {
+.messages-area::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.msg-bubble {
+  animation: fadeUp 0.25s ease-out;
+}
+
+.msg-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-end;
+  background: rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  padding: 6px 14px;
+  border-radius: 12px 12px 4px 12px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  max-width: 80%;
+  margin-left: auto;
+}
+
+.msg-thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.1);
+  color: rgba(165, 180, 252, 0.7);
+  font-size: 11px;
+  max-width: 70%;
+}
+
+.msg-thinking-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.tool-calls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: center;
-}
-
-.tool-call-item {
-  display: flex;
+.msg-tool {
+  display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.65);
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.55);
   font-size: 11px;
 }
 
-.tool-name {
+.msg-tool-name {
   font-weight: 500;
 }
 
-/* ---- Subtitle ---- */
-.subtitle-area {
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 150px;
-  pointer-events: none;
-}
-
-.subtitle-text {
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(12px);
-  padding: 14px 28px;
-  border-radius: 14px;
-  font-size: 17px;
-  line-height: 1.6;
-  max-width: 65%;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+.msg-ai-text {
+  background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  animation: fadeUp 0.3s ease-out;
+  padding: 8px 14px;
+  border-radius: 12px 12px 12px 4px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 85%;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.subtitle-fade-enter-active,
-.subtitle-fade-leave-active {
-  transition: all 0.3s ease;
-}
-
-.subtitle-fade-enter-from,
-.subtitle-fade-leave-to {
-  opacity: 0;
-  transform: translateY(12px);
-}
-
-.listening-dots {
-  display: flex;
+.msg-error {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  padding: 16px 28px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  color: rgba(252, 165, 165, 0.8);
+  font-size: 11px;
 }
 
-.listening-dots span {
-  display: block;
-  width: 8px;
-  height: 8px;
-  background: rgba(255, 255, 255, 0.5);
+.msg-typing {
+  display: flex;
+  gap: 5px;
+  padding: 4px 0;
+}
+
+.msg-typing span {
+  width: 6px;
+  height: 6px;
+  background: rgba(99, 102, 241, 0.5);
   border-radius: 50%;
   animation: dotBounce 1.4s ease-in-out infinite;
 }
 
-.listening-dots span:nth-child(2) {
+.msg-typing span:nth-child(2) {
   animation-delay: 0.2s;
 }
-
-.listening-dots span:nth-child(3) {
+.msg-typing span:nth-child(3) {
   animation-delay: 0.4s;
 }
 
-@keyframes dotBounce {
-  0%,
-  80%,
-  100% {
-    transform: scale(0.6);
-    opacity: 0.4;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
-  }
+/* ---- 底部区域 ---- */
+.bottom-zone {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px 24px;
+  pointer-events: auto;
 }
 
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.live-subtitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  padding: 6px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  max-width: 70%;
+  text-align: center;
+  animation: fadeUp 0.2s ease-out;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-/* ---- Mic ---- */
 .mic-wrapper {
-  position: absolute;
-  bottom: 56px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 140px;
-  height: 140px;
+  position: relative;
+  width: 120px;
+  height: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: auto;
 }
 
 .mic-visualizer-bg {
@@ -571,8 +566,8 @@ function handleExit(): void {
 
 .mic-btn-main {
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.08);
@@ -601,10 +596,10 @@ function handleExit(): void {
 
 .mic-ring {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  width: 100px;
-  height: 100px;
+  top: 15px;
+  left: 15px;
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
   border: 1px solid rgba(239, 68, 68, 0.2);
   pointer-events: none;
@@ -629,6 +624,30 @@ function handleExit(): void {
   50% {
     transform: scale(1.05);
     opacity: 0.6;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dotBounce {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 </style>
