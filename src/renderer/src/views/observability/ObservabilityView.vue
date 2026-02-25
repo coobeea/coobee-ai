@@ -153,32 +153,36 @@ async function fetchSystem(): Promise<void> {
 async function loadAll(): Promise<void> {
   loading.value = true;
   error.value = null;
-  try {
-    await Promise.all([fetchCompression(), fetchMemory(), fetchTokens(), fetchSystem()]);
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err);
-    console.error('[ObservabilityView] 加载失败:', err);
-  } finally {
-    loading.value = false;
+  const results = await Promise.allSettled([fetchCompression(), fetchMemory(), fetchTokens(), fetchSystem()]);
+  const failures = results.filter((r) => r.status === 'rejected');
+  if (failures.length > 0) {
+    const msgs = failures.map((r) => (r as PromiseRejectedResult).reason?.message ?? 'Unknown error');
+    error.value = msgs.join('; ');
+    console.error('[ObservabilityView] 部分加载失败:', msgs);
   }
+  loading.value = false;
 }
 
-function formatNumber(num: number): string {
+function formatNumber(num: number | undefined | null): string {
+  if (num == null || isNaN(num)) return '0';
   if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M`;
   if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
   return num.toString();
 }
 
-function formatCost(cost: number): string {
+function formatCost(cost: number | undefined | null): string {
+  if (cost == null || isNaN(cost)) return '$0.0000';
   return `$${cost.toFixed(4)}`;
 }
 
-function formatDuration(ms: number): string {
+function formatDuration(ms: number | undefined | null): string {
+  if (ms == null || isNaN(ms)) return '0ms';
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-function formatUptime(seconds: number): string {
+function formatUptime(seconds: number | undefined | null): string {
+  if (seconds == null || isNaN(seconds)) return '0s';
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
@@ -187,8 +191,10 @@ function formatUptime(seconds: number): string {
   return `${s}s`;
 }
 
-function formatTime(iso: string): string {
+function formatTime(iso: string | undefined | null): string {
+  if (!iso) return '-';
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return '-';
   return d.toLocaleString('zh-CN', {
     month: '2-digit',
     day: '2-digit',
@@ -270,7 +276,7 @@ onUnmounted(() => {
           </div>
           <div class="stat-card">
             <div class="stat-label">平均压缩率</div>
-            <div class="stat-value">{{ (compressionData.summary.avgCompressionRatio * 100).toFixed(1) }}%</div>
+            <div class="stat-value">{{ ((compressionData.summary.avgCompressionRatio ?? 0) * 100).toFixed(1) }}%</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">节省 Token</div>
@@ -295,10 +301,10 @@ onUnmounted(() => {
             <tbody>
               <tr v-for="(r, i) in compressionData.records" :key="i">
                 <td>{{ formatTime(r.timestamp) }}</td>
-                <td class="mono-cell">{{ r.sessionId.slice(-8) }}</td>
+                <td class="mono-cell">{{ (r.sessionId ?? '').slice(-8) }}</td>
                 <td>{{ formatNumber(r.beforeTokens) }}</td>
                 <td>{{ formatNumber(r.afterTokens) }}</td>
-                <td>{{ (r.compressionRatio * 100).toFixed(1) }}%</td>
+                <td>{{ ((r.compressionRatio ?? 0) * 100).toFixed(1) }}%</td>
                 <td>{{ formatDuration(r.duration) }}</td>
               </tr>
             </tbody>
@@ -334,7 +340,7 @@ onUnmounted(() => {
           </div>
           <div class="stat-card">
             <div class="stat-label">成功率</div>
-            <div class="stat-value">{{ ((memoryData.summary.successRate ?? 0) * 100).toFixed(1) }}%</div>
+            <div class="stat-value">{{ ((memoryData.summary?.successRate ?? 0) * 100).toFixed(1) }}%</div>
           </div>
         </div>
       </div>
@@ -356,7 +362,7 @@ onUnmounted(() => {
               <tr v-for="(r, i) in memoryData.records" :key="i">
                 <td>{{ formatTime(r.timestamp) }}</td>
                 <td>{{ operationLabels[r.operation] ?? r.operation }}</td>
-                <td class="mono-cell">{{ r.sessionId.slice(-8) }}</td>
+                <td class="mono-cell">{{ (r.sessionId ?? '').slice(-8) }}</td>
                 <td>{{ r.agentId ?? '-' }}</td>
                 <td :class="r.success ? 'text-green-600' : 'text-red-600'">{{ r.success ? '成功' : '失败' }}</td>
                 <td>{{ formatDuration(r.duration) }}</td>
@@ -436,8 +442,8 @@ onUnmounted(() => {
             <tbody>
               <tr v-for="(r, i) in tokenData.records" :key="i">
                 <td>{{ formatTime(r.timestamp) }}</td>
-                <td class="mono-cell">{{ r.model }}</td>
-                <td class="mono-cell">{{ r.sessionId.slice(-8) }}</td>
+                <td class="mono-cell">{{ r.model ?? '-' }}</td>
+                <td class="mono-cell">{{ (r.sessionId ?? '').slice(-8) }}</td>
                 <td>{{ r.agentId ?? '-' }}</td>
                 <td>{{ formatNumber(r.promptTokens) }}</td>
                 <td>{{ formatNumber(r.completionTokens) }}</td>
@@ -477,7 +483,7 @@ onUnmounted(() => {
           </div>
           <div class="stat-card">
             <div class="stat-label">成功率</div>
-            <div class="stat-value">{{ (systemData.requests.successRate * 100).toFixed(1) }}%</div>
+            <div class="stat-value">{{ ((systemData.requests.successRate ?? 0) * 100).toFixed(1) }}%</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">平均响应</div>
