@@ -59,12 +59,11 @@
 | 27  | Sidebar 与路由入口不一致          | 前端 UI      | logs/settings 需在底部栏或 sidebar 增加入口     |
 | 28  | 无全局错误边界                    | 前端         | 增加 Vue Error Boundary 防止白屏                |
 | 29  | 无离线/断连提示                   | 前端         | 增加 GatewayClient 连接状态提示                 |
-| 30  | 国际化未实现                      | 前端         | schema 中有 ui.language 但无 i18n               |
-| 31  | Skill 依赖关系未声明              | Skill        | frontmatter 增加 depends 字段                   |
-| 32  | 快捷键无文档或设置界面            | 前端         | 增加快捷键配置页                                |
-| 33  | PlanVersionManager 版本无限增长   | Orchestrator | 增加版本淘汰策略                                |
-| 34  | approval-done 事件已废弃但仍兼容  | Thread       | 清理废弃代码                                    |
-| 35  | PTY 环境变量全量继承              | Terminal     | 过滤敏感环境变量                                |
+| 30  | Skill 依赖关系未声明              | Skill        | frontmatter 增加 depends 字段                   |
+| 31  | 快捷键无文档或设置界面            | 前端         | 增加快捷键配置页                                |
+| 32  | PlanVersionManager 版本无限增长   | Orchestrator | 增加版本淘汰策略                                |
+| 33  | approval-done 事件已废弃但仍兼容  | Thread       | 清理废弃代码                                    |
+| 34  | PTY 环境变量全量继承              | Terminal     | 过滤敏感环境变量                                |
 
 ---
 
@@ -95,5 +94,4 @@
 
 - AgentView 组件拆分
 - 全局错误边界
-- 国际化基础设施
 - 快捷键管理
