@@ -23,6 +23,7 @@ import { skillListTool } from './skill_list';
 import { delegateToAgentTool } from './delegate-to-agent';
 import { taskPlanTool } from './task-plan';
 import { todoWriteTool } from './todo-write';
+import { emitEventTool } from './emit-event';
 
 // 单独导出
 export { readTool } from './read';
@@ -37,6 +38,7 @@ export { skillListTool } from './skill_list';
 export { delegateToAgentTool } from './delegate-to-agent';
 export { taskPlanTool } from './task-plan';
 export { todoWriteTool } from './todo-write';
+export { emitEventTool } from './emit-event';
 
 /**
  * 所有内置工具
@@ -60,6 +62,8 @@ export { todoWriteTool } from './todo-write';
  *   delegate_to_agent   — 委托子任务给专业 Agent，中风险
  *   task_plan           — 任务计划管理，低风险
  *   todo_write          — 会话级 TODO 管理，低风险
+ *   --- 事件 ---
+ *   emit_event          — 向 UI 发送事件（打开预览、通知等），低风险
  *
  * 已迁移到 Skills：
  *   - session_status, session_history, context_inspect → observability Skill
@@ -77,5 +81,6 @@ export const builtinTools: ToolDefinition[] = [
   skillListTool,
   delegateToAgentTool,
   taskPlanTool,
-  todoWriteTool
+  todoWriteTool,
+  emitEventTool
 ];

@@ -9,7 +9,7 @@
 
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, shallowRef, computed, defineAsyncComponent } from 'vue';
 import { monaco } from '@/utils/monaco-setup';
-import { useOpenFiles } from '@/composables/useOpenFiles';
+import { useOpenFiles, type OpenFile } from '@/composables/useOpenFiles';
 import { routePreview, type PreviewMode } from '@/utils/previewRouter';
 import eventBus from '@/eventbus';
 import { EventTypes } from '@shared/ipc/events';
@@ -39,6 +39,7 @@ const editorInstance = shallowRef<monaco.editor.IStandaloneCodeEditor | null>(nu
 
 const previewMode = computed<PreviewMode>(() => {
   if (!activeFile.value) return 'code';
+  if (activeFile.value.isWebUrl) return 'web';
   const result = routePreview(activeFile.value.path);
   return result.mode;
 });
@@ -52,6 +53,7 @@ const previewComponent = computed(() => {
     case 'video':
       return VideoPlayer;
     case 'html':
+    case 'web':
       return HTMLPreview;
     case 'markdown':
       return MarkdownPreview;
@@ -230,8 +232,9 @@ onBeforeUnmount(() => {
   editorInstance.value = null;
 });
 
-function getFileIcon(name: string): string {
-  const ext = name.split('.').pop()?.toLowerCase();
+function getFileIcon(file: OpenFile): string {
+  if (file.isWebUrl) return 'i-carbon-earth text-blue-400';
+  const ext = file.name.split('.').pop()?.toLowerCase();
   switch (ext) {
     case 'ts':
     case 'tsx':
@@ -288,7 +291,7 @@ function getFileIcon(name: string): string {
           :class="{ active: file.path === activeFilePath }"
           :title="file.path"
           @click="activateFile(file.path)">
-          <span :class="getFileIcon(file.name)" class="inline-block h-3 w-3 shrink-0"></span>
+          <span :class="getFileIcon(file)" class="inline-block h-3 w-3 shrink-0"></span>
           <span class="max-w-[120px] truncate text-[11px]">{{ file.name }}</span>
           <button class="tab-close" @click.stop="closeFile(file.path)">
             <span class="i-carbon-close inline-block h-2.5 w-2.5"></span>
