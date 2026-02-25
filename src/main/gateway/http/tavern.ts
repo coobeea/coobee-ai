@@ -4,11 +4,14 @@
  * 提供酒馆任务系统的 HTTP API。
  * 挂载到 GatewayServer 的 Koa Router（prefix = /gateway），最终路径：
  *
- *   GET    /gateway/tavern/tasks           — 获取任务列表
- *   GET    /gateway/tavern/tasks/:id       — 获取任务详情
- *   POST   /gateway/tavern/tasks           — 发布新任务
- *   PATCH  /gateway/tavern/tasks/:id       — 更新任务状态
- *   DELETE /gateway/tavern/tasks/:id       — 删除任务
+ *   GET    /gateway/tavern/tasks              — 获取任务列表
+ *   GET    /gateway/tavern/tasks/:id          — 获取任务详情
+ *   POST   /gateway/tavern/tasks              — 发布新任务
+ *   PATCH  /gateway/tavern/tasks/:id          — 更新任务状态
+ *   DELETE /gateway/tavern/tasks/:id          — 删除任务
+ *   GET    /gateway/tavern/scheduler/status   — TaskScheduler 运行状态
+ *   POST   /gateway/tavern/scheduler/start    — 启动 TaskScheduler
+ *   POST   /gateway/tavern/scheduler/stop     — 停止 TaskScheduler
  *
  * 存储层委托给 TavernStore（src/main/ai/tavern/TavernStore.ts）。
  */
@@ -17,6 +20,7 @@ import type Router from '@koa/router';
 import { createLogger } from '@main/common/logger';
 import { nanoid } from 'nanoid';
 import { TavernStore, type Task, type TaskResult } from '@main/ai/tavern/TavernStore';
+import { TaskScheduler } from '@main/ai/tavern/TaskScheduler';
 
 const log = createLogger('gateway-http-tavern');
 
@@ -178,5 +182,27 @@ export function registerTavernRoutes(router: Router): void {
       ctx.status = 500;
       ctx.body = { error: 'Failed to delete task' };
     }
+  });
+
+  // ==================== TaskScheduler 管理 ====================
+
+  router.get('/tavern/scheduler/status', (ctx) => {
+    const scheduler = TaskScheduler.getInstance();
+    ctx.body = {
+      running: scheduler.isRunning(),
+      activeExecutions: scheduler.getActiveExecutions()
+    };
+  });
+
+  router.post('/tavern/scheduler/start', (ctx) => {
+    const scheduler = TaskScheduler.getInstance();
+    scheduler.start();
+    ctx.body = { success: true, running: scheduler.isRunning() };
+  });
+
+  router.post('/tavern/scheduler/stop', (ctx) => {
+    const scheduler = TaskScheduler.getInstance();
+    scheduler.stop();
+    ctx.body = { success: true, running: scheduler.isRunning() };
   });
 }
