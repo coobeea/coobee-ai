@@ -434,8 +434,19 @@ export function registerFileRoutes(router: Router): void {
 
     const { Env } = await import('@main/common/env');
     const workspacesDir = Env.paths.workspacesDir;
+    const appHome = Env.paths.userHome;
+    const systemHome = Env.paths.home;
 
-    // 验证路径安全
+    if (
+      !isPathSafe(sourcePath, workspacesDir) &&
+      !isPathSafe(sourcePath, appHome) &&
+      !isPathSafe(sourcePath, systemHome)
+    ) {
+      ctx.status = 400;
+      ctx.body = { error: 'Invalid source path: must be within workspaces, app data, or user home' };
+      return;
+    }
+
     if (!isPathSafe(targetDir, workspacesDir)) {
       ctx.status = 400;
       ctx.body = { error: 'Invalid target directory: directory traversal not allowed' };
@@ -443,7 +454,6 @@ export function registerFileRoutes(router: Router): void {
     }
 
     try {
-      // 检查源路径是否存在
       const sourceExists = await fs.promises
         .stat(sourcePath)
         .then(() => true)

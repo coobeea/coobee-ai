@@ -32,8 +32,8 @@ import { checkExecPolicy } from '../../sandbox/exec-policy';
 import { scanCommand } from '../security/command-scanner';
 import { getPtyManager } from '@main/terminal/PtyManager';
 
-/** 默认超时（ms） */
-const DEFAULT_TIMEOUT_MS = 30_000;
+/** 默认超时（ms）— 2 分钟，覆盖大部分构建/测试场景 */
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 /** 最大输出字节数（约 100KB，防止 token 爆炸） */
 const MAX_OUTPUT_BYTES = 100_000;
@@ -66,7 +66,7 @@ export const execTool: ToolDefinition = {
       .number()
       .optional()
       .describe(
-        `Timeout in milliseconds (foreground only). Defaults to ${DEFAULT_TIMEOUT_MS}ms (${DEFAULT_TIMEOUT_MS / 1000}s)`
+        `Timeout in milliseconds (foreground only). Defaults to ${DEFAULT_TIMEOUT_MS / 1000}s. Set higher for builds/tests.`
       )
   }),
 
@@ -171,9 +171,8 @@ export const execTool: ToolDefinition = {
         detached: false // 不脱离父进程，确保可管理
       });
 
-      // 注册到 ProcessRegistry
       const registry = ProcessRegistry.getInstance();
-      const processId = registry.register(command, cwd, child);
+      const processId = registry.register(command, cwd, child, context?.threadId);
 
       const llmContent =
         `Process started in background.\n` +

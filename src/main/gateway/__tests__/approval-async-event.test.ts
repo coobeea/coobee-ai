@@ -92,7 +92,7 @@ describe('approval.ts 异步路径事件发出', () => {
       'thread:wake',
       expect.objectContaining({
         threadId,
-        reason: 'approval-done',
+        reason: 'tool-done',
         approvalDecision: 'approve-once',
         toolName: 'exec'
       })

@@ -83,8 +83,33 @@ class PtyManager extends EventEmitter {
     const rows = options.rows || 24;
     const cwd = options.cwd || os.homedir();
 
+    const SENSITIVE_ENV_KEYS = [
+      'npm_config_',
+      'GITHUB_TOKEN',
+      'GH_TOKEN',
+      'AWS_SECRET',
+      'OPENAI_API_KEY',
+      'ANTHROPIC_API_KEY',
+      'SECRET_KEY',
+      'PRIVATE_KEY',
+      'DATABASE_URL',
+      'REDIS_URL'
+    ];
+
+    const filteredEnv: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value === undefined) continue;
+      const upper = key.toUpperCase();
+      const isSensitive = SENSITIVE_ENV_KEYS.some(
+        (pat) => upper === pat.toUpperCase() || upper.startsWith(pat.toUpperCase())
+      );
+      if (!isSensitive) {
+        filteredEnv[key] = value;
+      }
+    }
+
     const env = {
-      ...process.env,
+      ...filteredEnv,
       ...options.env,
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor'

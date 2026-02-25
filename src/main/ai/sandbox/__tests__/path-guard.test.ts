@@ -538,3 +538,33 @@ describe('resolveSandboxPath — 符号链接穿越检查', () => {
     });
   });
 });
+
+describe('resolveSandboxPath — readOnly 敏感系统文件黑名单', () => {
+  const ctx = { workspaceRoot: '/workspace' };
+
+  it.each([
+    '/etc/shadow',
+    '/etc/sudoers',
+    '/etc/master.passwd',
+    '/home/user/.ssh/id_rsa',
+    '/home/user/.ssh/id_ed25519',
+    '/home/user/.ssh/my_key',
+    '/home/user/.gnupg/secring.gpg',
+    '/home/user/.aws/credentials',
+    '/home/user/.kube/config'
+  ])('readOnly 模式阻止读取敏感路径: %s', (sensitiveFile) => {
+    const result = resolveSandboxPath(sensitiveFile, ctx, { readOnly: true });
+    expect(result.error).toBeDefined();
+    expect(result.error!.code).toBe('SANDBOX_VIOLATION');
+    expect(result.error!.message).toContain('sensitive system file');
+  });
+
+  it.each(['/home/user/.bashrc', '/etc/hosts', '/var/log/syslog', '/tmp/data.json'])(
+    'readOnly 模式允许读取非敏感路径: %s',
+    (normalFile) => {
+      const result = resolveSandboxPath(normalFile, ctx, { readOnly: true });
+      expect(result.error).toBeUndefined();
+      expect(result.path).toBeDefined();
+    }
+  );
+});

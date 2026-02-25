@@ -20,7 +20,7 @@
  * 事件格式：
  *   eventBus.emit('thread:wake', {
  *     threadId: string,
- *     reason: 'approval-done' | 'tool-done' | 'restart-recovery',
+ *     reason: 'tool-done' | 'restart-recovery',
  *     toolResult?: string,
  *     approvalDecision?: 'approve-once' | 'approve-always' | 'reject'
  *   })
@@ -35,7 +35,7 @@ const log = createLogger('thread-waker');
 
 export interface ThreadWakeEvent {
   threadId: string;
-  reason: 'approval-done' | 'tool-done' | 'restart-recovery';
+  reason: 'tool-done' | 'restart-recovery';
   toolResult?: string;
   approvalDecision?: string;
   /** 被审批的工具名称 */
@@ -124,11 +124,6 @@ export class ThreadWaker {
    */
   private async resumeThread(threadId: string, checkpoint: ThreadCheckpoint, event: ThreadWakeEvent): Promise<void> {
     if (event.reason === 'tool-done') {
-      // 工具执行完成（由后台任务执行），接收结果并继续
-      await this.handleApprovalResume(threadId, checkpoint, event);
-    } else if (event.reason === 'approval-done') {
-      // 兼容旧的 reason（已废弃）
-      log.warn(`[ThreadWaker] Deprecated reason 'approval-done', use 'tool-done' instead`);
       await this.handleApprovalResume(threadId, checkpoint, event);
     } else if (event.reason === 'restart-recovery') {
       await this.handleRestartRecovery(threadId, checkpoint);

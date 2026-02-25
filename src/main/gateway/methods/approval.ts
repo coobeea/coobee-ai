@@ -71,7 +71,7 @@ export const approvalMethods: MethodGroup = {
 
         eventBus.emit('thread:wake', {
           threadId: sessionId,
-          reason: 'approval-done',
+          reason: 'tool-done',
           approvalDecision: decision,
           toolName: resolvedToolName,
           toolParams

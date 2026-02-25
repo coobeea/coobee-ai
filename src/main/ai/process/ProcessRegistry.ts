@@ -38,6 +38,8 @@ export interface ManagedProcess {
   endedAt?: number;
   /** 退出码（仅已结束的进程有） */
   exitCode?: number | null;
+  /** 关联的 Thread/Session ID（可选，用于按 Thread 清理） */
+  threadId?: string;
 }
 
 /** 进程列表项（暴露给 LLM） */
@@ -115,7 +117,7 @@ export class ProcessRegistry extends EventEmitter {
    * @returns 分配的 processId
    * @throws 当进程数量达到 MAX_PROCESSES 上限时抛出错误
    */
-  register(command: string, cwd: string, child: ChildProcess): string {
+  register(command: string, cwd: string, child: ChildProcess, threadId?: string): string {
     // 先尝试自动 prune 已结束的进程腾出空间
     if (this.processes.size >= MAX_PROCESSES) {
       this.prune();
@@ -139,7 +141,8 @@ export class ProcessRegistry extends EventEmitter {
         cwd,
         pid: child.pid,
         status: 'running',
-        startedAt: Date.now()
+        startedAt: Date.now(),
+        threadId
       },
       child,
       outputBuffer: [],
@@ -279,6 +282,40 @@ export class ProcessRegistry extends EventEmitter {
       log.info(`[ProcessRegistry] Cleanup: killed ${killed} running processes`);
     }
     this.processes.clear();
+  }
+
+  /** 终止并移除关联到指定 threadId 的所有进程 */
+  cleanupByThread(threadId: string): number {
+    let cleaned = 0;
+    for (const [id, entry] of this.processes) {
+      if (entry.info.threadId === threadId) {
+        if (entry.info.status === 'running') {
+          entry.child.kill('SIGTERM');
+          log.info(`[ProcessRegistry] Cleanup by thread: killing ${id} (thread=${threadId})`);
+        }
+        this.processes.delete(id);
+        cleaned++;
+      }
+    }
+    return cleaned;
+  }
+
+  /** 列出关联到指定 threadId 的所有进程 */
+  listByThread(threadId: string): ProcessListItem[] {
+    const now = Date.now();
+    return Array.from(this.processes.values())
+      .filter((entry) => entry.info.threadId === threadId)
+      .map((entry) => ({
+        processId: entry.info.processId,
+        command: entry.info.command,
+        cwd: entry.info.cwd,
+        pid: entry.info.pid,
+        status: entry.info.status,
+        startedAt: entry.info.startedAt,
+        endedAt: entry.info.endedAt,
+        exitCode: entry.info.exitCode,
+        runningMs: (entry.info.endedAt ?? now) - entry.info.startedAt
+      }));
   }
 
   /** 移除已结束的进程记录 */

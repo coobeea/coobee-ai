@@ -3,7 +3,7 @@
  *
  * 覆盖：
  *   - start/stop 监听管理
- *   - 审批恢复（approval-done → resume）
+ *   - 审批恢复（tool-done → resume）
  *   - 拒绝恢复（reject → resume with rejection message）
  *   - 系统重启恢复（restart-recovery）
  *   - 无检查点时跳过
@@ -164,7 +164,7 @@ describe('ThreadWaker', () => {
 
       // 提取注册的 handler
       const handler = mockEventBus.on.mock.calls[0][1];
-      await handler({ threadId: 'nonexistent', reason: 'approval-done' });
+      await handler({ threadId: 'nonexistent', reason: 'tool-done' });
 
       expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('No checkpoint'));
       expect(mockSubmitViaPipeline).not.toHaveBeenCalled();
@@ -194,7 +194,7 @@ describe('ThreadWaker', () => {
       const waker = ThreadWaker.getInstance();
       waker.start();
       const handler = mockEventBus.on.mock.calls[0][1];
-      await handler({ threadId: 'thread-idle', reason: 'approval-done' });
+      await handler({ threadId: 'thread-idle', reason: 'tool-done' });
 
       expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('already idle'));
       expect(mockSubmitViaPipeline).not.toHaveBeenCalled();
@@ -224,13 +224,13 @@ describe('ThreadWaker', () => {
       const waker = ThreadWaker.getInstance();
       waker.start();
       const handler = mockEventBus.on.mock.calls[0][1];
-      await handler({ threadId: 't', reason: 'approval-done' });
+      await handler({ threadId: 't', reason: 'tool-done' });
 
       expect(mockSubmitViaPipeline).not.toHaveBeenCalled();
     });
   });
 
-  // ========== approval-done ==========
+  // ========== tool-done ==========
 
   describe('tool-done (approval resume)', () => {
     const approvalCheckpoint: ThreadCheckpoint = {

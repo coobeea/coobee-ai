@@ -142,4 +142,50 @@ describe('ProcessRegistry', () => {
     expect(output).toContain('line2');
     expect(output).toContain('line3');
   });
+
+  it('should store threadId when provided', () => {
+    const { child } = createMockChild();
+    const processId = registry.register('echo ok', '/tmp', child, 'thread-123');
+
+    const proc = registry.get(processId);
+    expect(proc?.threadId).toBe('thread-123');
+  });
+
+  it('listByThread returns only processes matching threadId', () => {
+    const { child: c1 } = createMockChild();
+    const { child: c2 } = createMockChild();
+    const { child: c3 } = createMockChild();
+
+    registry.register('cmd-a', '/tmp', c1, 'thread-A');
+    registry.register('cmd-b', '/tmp', c2, 'thread-B');
+    registry.register('cmd-c', '/tmp', c3, 'thread-A');
+
+    const listA = registry.listByThread('thread-A');
+    expect(listA).toHaveLength(2);
+    expect(listA.map((p) => p.command)).toEqual(['cmd-a', 'cmd-c']);
+
+    const listB = registry.listByThread('thread-B');
+    expect(listB).toHaveLength(1);
+    expect(listB[0].command).toBe('cmd-b');
+  });
+
+  it('cleanupByThread kills and removes matching processes', () => {
+    const killFn1 = vi.fn();
+    const killFn2 = vi.fn();
+
+    const { child: c1 } = createMockChild();
+    c1.kill = killFn1;
+    const { child: c2 } = createMockChild();
+    c2.kill = killFn2;
+
+    registry.register('long-a', '/tmp', c1, 'thread-X');
+    registry.register('long-b', '/tmp', c2, 'thread-Y');
+
+    const cleaned = registry.cleanupByThread('thread-X');
+    expect(cleaned).toBe(1);
+    expect(killFn1).toHaveBeenCalledWith('SIGTERM');
+    expect(killFn2).not.toHaveBeenCalled();
+    expect(registry.listByThread('thread-X')).toHaveLength(0);
+    expect(registry.listByThread('thread-Y')).toHaveLength(1);
+  });
 });
