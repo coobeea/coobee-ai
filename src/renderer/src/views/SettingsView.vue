@@ -10,6 +10,7 @@
 import { ref, shallowRef, markRaw } from 'vue';
 import BasicSettings from './settings/BasicSettings.vue';
 import ModelSettings from './settings/ModelSettings.vue';
+import ModelGroupSettings from './settings/ModelGroupSettings.vue';
 import WorkersSettings from './settings/WorkersSettings.vue';
 import MemorySettings from './settings/MemorySettings.vue';
 import AboutView from './settings/AboutView.vue';
@@ -18,6 +19,12 @@ import AboutView from './settings/AboutView.vue';
 const menuItems = [
   { id: 'basic', label: '基本配置', icon: 'i-carbon-settings', component: markRaw(BasicSettings) },
   { id: 'models', label: '模型设置', icon: 'i-carbon-machine-learning-model', component: markRaw(ModelSettings) },
+  {
+    id: 'model-groups',
+    label: '模型分组',
+    icon: 'i-carbon-group-objects',
+    component: markRaw(ModelGroupSettings)
+  },
   { id: 'workers', label: '内置服务', icon: 'i-carbon-cube', component: markRaw(WorkersSettings) },
   { id: 'memory', label: '记忆管理', icon: 'i-carbon-cognitive', component: markRaw(MemorySettings) },
   { id: 'about', label: '关于我们', icon: 'i-carbon-information', component: markRaw(AboutView) }
