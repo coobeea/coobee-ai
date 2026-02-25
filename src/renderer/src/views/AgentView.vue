@@ -6,12 +6,12 @@
  * 点击智能体卡片 → 创建 Thread → 跳转 /thread/:id。
  */
 
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAgentsStore } from '@/stores/agents';
 import { useThreadsStore, type AgentType } from '@/stores/threads';
 import { useChatStore } from '@/stores/chat';
-import ModelSelector from '@/components/ModelSelector.vue';
+import { gateway } from '@/plugins/gatewaySetup';
 import configManager from '@/config';
 
 const isMac = navigator.platform?.includes('Mac') ?? false;
@@ -52,6 +52,26 @@ const availableTools = ref<ToolInfo[]>([]);
 
 /** 运行弹窗的临时模型覆盖 */
 const runModelOverride = ref('');
+
+/** 模型平铺列表 */
+interface ModelItem {
+  value: string;
+  label: string;
+  description: string;
+  provider: string;
+  type: 'group' | 'model';
+}
+const flatModelList = ref<ModelItem[]>([]);
+const modelSearchQuery = ref('');
+
+const filteredModelList = computed(() => {
+  const q = modelSearchQuery.value.trim().toLowerCase();
+  if (!q) return flatModelList.value;
+  return flatModelList.value.filter(
+    (m) =>
+      m.label.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q) || m.value.toLowerCase().includes(q)
+  );
+});
 
 /** 文件/目录选择相关 */
 interface AttachmentRef {
@@ -137,6 +157,7 @@ function openRunDialog(agentId: string): void {
   showRunDialog.value = true;
 
   loadAvailableSkills();
+  loadModelList();
 }
 
 function closeRunDialog(): void {
@@ -172,6 +193,56 @@ async function loadAvailableTools(): Promise<void> {
     }
   } catch (err) {
     console.warn('[AgentView] Failed to fetch tools:', err);
+  }
+}
+
+async function loadModelList(): Promise<void> {
+  if (flatModelList.value.length > 0) return;
+  try {
+    const data = await gateway.request<Record<string, unknown>>('config.getAll');
+    const modelsConfig = data?.models as Record<string, unknown> | undefined;
+    const items: ModelItem[] = [];
+
+    const groups = modelsConfig?.groups as Record<string, unknown> | undefined;
+    if (groups) {
+      for (const [id, cfg] of Object.entries(groups)) {
+        const g = cfg as Record<string, unknown>;
+        if (g.enabled !== false) {
+          const models = (g.models as string[]) || [];
+          const strategy = (g.strategy as string) || 'round-robin';
+          items.push({
+            value: `@group:${id}`,
+            label: (g.name as string) || id,
+            description: `${models.length} 个模型 · ${strategy}`,
+            provider: '模型分组',
+            type: 'group'
+          });
+        }
+      }
+    }
+
+    const providers = modelsConfig?.providers as Record<string, unknown> | undefined;
+    if (providers) {
+      for (const [providerId, provCfg] of Object.entries(providers)) {
+        const prov = provCfg as Record<string, unknown>;
+        const provName = (prov.name as string) || providerId;
+        const models = prov.models as Array<{ id: string; name?: string; description?: string }> | undefined;
+        if (models) {
+          for (const m of models) {
+            items.push({
+              value: `${providerId}/${m.id}`,
+              label: m.name || m.id,
+              description: m.description || '',
+              provider: provName,
+              type: 'model'
+            });
+          }
+        }
+      }
+    }
+    flatModelList.value = items;
+  } catch (err) {
+    console.warn('[AgentView] Failed to load models:', err);
   }
 }
 
@@ -285,7 +356,8 @@ async function openAgentEditor(agentId: string): Promise<void> {
   editModel.value = agent.model ?? '';
   editActiveTab.value = 'skills';
 
-  await Promise.all([loadAvailableSkills(), loadAvailableTools()]);
+  modelSearchQuery.value = '';
+  await Promise.all([loadAvailableSkills(), loadAvailableTools(), loadModelList()]);
 }
 
 function toggleSkill(skillName: string): void {
@@ -583,7 +655,66 @@ function formatTime(iso: string): string {
               <!-- 模型 Tab -->
               <template v-if="editActiveTab === 'model'">
                 <div class="edit-section-hint">选择此智能体使用的模型，留空则使用系统默认模型</div>
-                <ModelSelector v-model="editModel" placeholder="默认模型（跟随系统配置）" :searchable="true" />
+                <!-- 搜索框 -->
+                <div class="model-search">
+                  <span class="i-carbon-search inline-block h-3 w-3 model-search-icon" />
+                  <input
+                    v-model="modelSearchQuery"
+                    type="text"
+                    placeholder="搜索模型名称或供应商..."
+                    class="model-search-input" />
+                </div>
+                <!-- 默认选项 -->
+                <label class="skill-checkbox" :class="{ checked: !editModel }" @click="editModel = ''">
+                  <input type="radio" name="editModel" :checked="!editModel" class="model-radio" />
+                  <div class="skill-label">
+                    <span class="skill-label-name">默认模型</span>
+                    <span class="skill-label-desc">跟随系统配置</span>
+                  </div>
+                </label>
+                <!-- 模型分组 -->
+                <template v-if="filteredModelList.filter((m) => m.type === 'group').length > 0">
+                  <div class="model-group-header">
+                    <span class="i-carbon-group-objects inline-block h-3 w-3" />
+                    模型分组
+                  </div>
+                  <label
+                    v-for="item in filteredModelList.filter((m) => m.type === 'group')"
+                    :key="item.value"
+                    class="skill-checkbox"
+                    :class="{ checked: editModel === item.value }"
+                    @click="editModel = item.value">
+                    <input type="radio" name="editModel" :checked="editModel === item.value" class="model-radio" />
+                    <div class="skill-label">
+                      <span class="skill-label-name">{{ item.label }}</span>
+                      <span class="skill-label-desc">{{ item.description }}</span>
+                    </div>
+                  </label>
+                </template>
+                <!-- 按供应商展示模型 -->
+                <template
+                  v-for="providerName in [
+                    ...new Set(filteredModelList.filter((m) => m.type === 'model').map((m) => m.provider))
+                  ]"
+                  :key="providerName">
+                  <div class="model-group-header">
+                    <span class="i-carbon-cloud inline-block h-3 w-3" />
+                    {{ providerName }}
+                  </div>
+                  <label
+                    v-for="item in filteredModelList.filter((m) => m.type === 'model' && m.provider === providerName)"
+                    :key="item.value"
+                    class="skill-checkbox"
+                    :class="{ checked: editModel === item.value }"
+                    @click="editModel = item.value">
+                    <input type="radio" name="editModel" :checked="editModel === item.value" class="model-radio" />
+                    <div class="skill-label">
+                      <span class="skill-label-name">{{ item.label }}</span>
+                      <span v-if="item.description" class="skill-label-desc">{{ item.description }}</span>
+                    </div>
+                  </label>
+                </template>
+                <p v-if="filteredModelList.length === 0 && modelSearchQuery" class="skills-empty"> 未找到匹配的模型 </p>
               </template>
 
               <!-- 工具 Tab -->
@@ -694,7 +825,44 @@ function formatTime(iso: string): string {
                       <span class="i-carbon-machine-learning-model inline-block h-3 w-3" />
                       模型
                     </label>
-                    <ModelSelector v-model="runModelOverride" placeholder="使用智能体默认模型" :searchable="true" />
+                    <div class="run-model-picker">
+                      <label
+                        class="run-model-chip"
+                        :class="{ selected: !runModelOverride }"
+                        @click="runModelOverride = ''">
+                        <input type="radio" name="runModel" :checked="!runModelOverride" class="sr-only" />
+                        默认
+                      </label>
+                      <label
+                        v-for="item in flatModelList.filter((m) => m.type === 'group')"
+                        :key="item.value"
+                        class="run-model-chip"
+                        :class="{ selected: runModelOverride === item.value }"
+                        :title="`${item.label} — ${item.description}`"
+                        @click="runModelOverride = item.value">
+                        <input
+                          type="radio"
+                          name="runModel"
+                          :checked="runModelOverride === item.value"
+                          class="sr-only" />
+                        <span class="i-carbon-group-objects inline-block h-3 w-3" />
+                        {{ item.label }}
+                      </label>
+                      <label
+                        v-for="item in flatModelList.filter((m) => m.type === 'model')"
+                        :key="item.value"
+                        class="run-model-chip"
+                        :class="{ selected: runModelOverride === item.value }"
+                        :title="`${item.provider} / ${item.label}`"
+                        @click="runModelOverride = item.value">
+                        <input
+                          type="radio"
+                          name="runModel"
+                          :checked="runModelOverride === item.value"
+                          class="sr-only" />
+                        {{ item.label }}
+                      </label>
+                    </div>
                   </div>
 
                   <!-- 任务描述 -->
@@ -1958,5 +2126,96 @@ function formatTime(iso: string): string {
   color: hsl(var(--muted-foreground) / 0.5);
   line-height: 1.5;
   margin-bottom: 8px;
+}
+
+/* 模型搜索框 */
+.model-search {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.model-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: hsl(var(--muted-foreground) / 0.35);
+  pointer-events: none;
+}
+
+.model-search-input {
+  width: 100%;
+  padding: 7px 10px 7px 30px;
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.4);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.model-search-input:focus {
+  border-color: hsl(var(--primary) / 0.4);
+}
+
+.model-search-input::placeholder {
+  color: hsl(var(--muted-foreground) / 0.3);
+}
+
+/* 模型分组标题 */
+.model-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground) / 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.model-radio {
+  width: 14px;
+  height: 14px;
+  accent-color: hsl(var(--primary));
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* 运行弹窗中的模型 chip 选择 */
+.run-model-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.run-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  background: hsl(var(--foreground) / 0.04);
+  color: hsl(var(--muted-foreground) / 0.6);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.run-model-chip:hover {
+  background: hsl(var(--foreground) / 0.06);
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.run-model-chip.selected {
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+  border-color: hsl(var(--primary) / 0.2);
 }
 </style>
