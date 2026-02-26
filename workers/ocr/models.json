@@ -1,0 +1,21 @@
+{
+  "configField": "model_name",
+  "options": [
+    {
+      "id": "glm-ocr",
+      "label": "GLM-OCR",
+      "type": "local",
+      "description": "本地 OCR 模型，离线可用",
+      "configKey": "GLM-OCR",
+      "provider": "THUDM"
+    },
+    {
+      "id": "paddle-ocr",
+      "label": "PaddleOCR",
+      "type": "local",
+      "description": "百度 PaddleOCR，轻量高效",
+      "configKey": "PaddleOCR-V5",
+      "provider": "PaddlePaddle"
+    }
+  ]
+}

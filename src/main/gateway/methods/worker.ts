@@ -2,11 +2,12 @@
  * Gateway Worker 方法组
  *
  * 方法：
- *   worker.list       — 获取所有 Worker 状态
- *   worker.start      — 启动指定 Worker
- *   worker.stop       — 停止指定 Worker
- *   worker.configGet  — 获取 Worker 的 local_config.json
+ *   worker.list         — 获取所有 Worker 状态
+ *   worker.start        — 启动指定 Worker
+ *   worker.stop         — 停止指定 Worker
+ *   worker.configGet    — 获取 Worker 的 local_config.json
  *   worker.configUpdate — 更新 Worker 的 local_config.json（合并写入）
+ *   worker.modelsGet    — 获取 Worker 的 models.json（可选模型列表）
  */
 
 import fs from 'node:fs';
@@ -144,6 +145,25 @@ export const workerMethods: MethodGroup = {
       const config = readLocalConfig(name);
       log.info(`[worker.configGet] ${name}:`, JSON.stringify(redactConfig(config)));
       return { name, config };
+    },
+
+    modelsGet: async (params) => {
+      const { name } = params as { name?: string };
+      validateWorkerName(name);
+
+      const modelsFile = path.join(Env.paths.workersDir, name, 'models.json');
+      if (!fs.existsSync(modelsFile)) {
+        return { name, models: null };
+      }
+
+      try {
+        const raw = fs.readFileSync(modelsFile, 'utf-8');
+        const models = JSON.parse(raw);
+        return { name, models };
+      } catch (err) {
+        log.warn(`[worker.modelsGet] Failed to read models.json for ${name}:`, err);
+        return { name, models: null };
+      }
     },
 
     configUpdate: async (params) => {

@@ -36,112 +36,8 @@ interface WorkerModelDef {
   options: ModelOption[];
 }
 
-const WORKER_MODELS: Record<string, WorkerModelDef> = {
-  asr: {
-    configField: 'model_name',
-    options: [
-      {
-        id: 'fun-asr-nano',
-        label: 'FunASR Nano',
-        type: 'local',
-        description: '轻量级本地模型，速度快，适合日常使用',
-        configKey: 'FunAudioLLM/Fun-ASR-Nano-2512',
-        provider: 'FunAudioLLM'
-      },
-      {
-        id: 'sensevoice-small',
-        label: 'SenseVoice Small',
-        type: 'local',
-        description: '高精度本地模型，支持 50+ 语种，情感识别',
-        configKey: 'iic/SenseVoiceSmall',
-        provider: 'FunAudioLLM'
-      },
-      {
-        id: 'aliyun-qwen3-asr',
-        label: '阿里云 Qwen3 ASR',
-        type: 'online',
-        description: '工业级实时语音识别，支持方言/情感识别，首包延迟极低',
-        configKey: 'aliyun/qwen3-asr-flash-realtime',
-        provider: '阿里云百炼',
-        pricing: '按量计费',
-        requiresApiKey: true
-      }
-    ]
-  },
-  tts: {
-    configField: 'model_name',
-    options: [
-      {
-        id: 'qwen3-tts',
-        label: 'Qwen3 TTS',
-        type: 'local',
-        description: '本地语音合成，9 种音色，支持多语种和情绪指令',
-        configKey: 'Qwen3-TTS-12Hz-1.7B-CustomVoice',
-        provider: 'Qwen'
-      },
-      {
-        id: 'edge-tts',
-        label: 'Microsoft Edge TTS',
-        type: 'online',
-        description: '微软免费在线语音合成，300+ 音色，无需 API Key',
-        configKey: 'edge-tts',
-        provider: 'Microsoft',
-        free: true
-      },
-      {
-        id: 'aliyun-cosyvoice-v3-flash',
-        label: '阿里云 CosyVoice v3 Flash',
-        type: 'online',
-        description: '低成本实时合成，首包延迟 <150ms，支持 SSML 和情感表达',
-        configKey: 'aliyun/cosyvoice-v3-flash',
-        provider: '阿里云百炼',
-        pricing: '¥0.1/万字符',
-        requiresApiKey: true
-      },
-      {
-        id: 'aliyun-cosyvoice-v3-plus',
-        label: '阿里云 CosyVoice v3 Plus',
-        type: 'online',
-        description: '最强声音复刻，48kHz 高音质输出，支持 200+ 语言',
-        configKey: 'aliyun/cosyvoice-v3-plus',
-        provider: '阿里云百炼',
-        pricing: '¥0.2/万字符',
-        requiresApiKey: true
-      },
-      {
-        id: 'aliyun-cosyvoice-v2',
-        label: '阿里云 CosyVoice v2',
-        type: 'online',
-        description: '支持 SSML 和 LaTeX 公式转语音，稳定可靠',
-        configKey: 'aliyun/cosyvoice-v2',
-        provider: '阿里云百炼',
-        pricing: '¥0.1/万字符',
-        requiresApiKey: true
-      }
-    ]
-  },
-  ocr: {
-    configField: 'model_name',
-    options: [
-      {
-        id: 'glm-ocr',
-        label: 'GLM-OCR',
-        type: 'local',
-        description: '本地 OCR 模型，离线可用',
-        configKey: 'GLM-OCR',
-        provider: 'THUDM'
-      },
-      {
-        id: 'paddle-ocr',
-        label: 'PaddleOCR',
-        type: 'local',
-        description: '百度 PaddleOCR，轻量高效',
-        configKey: 'PaddleOCR-V5',
-        provider: 'PaddlePaddle'
-      }
-    ]
-  }
-};
+// 从后端 models.json 动态加载，不再硬编码
+const workerModels = ref<Record<string, WorkerModelDef>>({});
 
 const workers = ref<WorkerStatus[]>([]);
 const loading = ref(true);
@@ -159,12 +55,26 @@ const apiKeyVisible = ref<Record<string, boolean>>({});
 // 判断选中的模型是否需要 API Key
 const selectedNeedsApiKey = computed(() => {
   const result: Record<string, boolean> = {};
-  for (const name of Object.keys(WORKER_MODELS)) {
+  for (const name of Object.keys(workerModels.value)) {
     const opt = getSelectedModelOption(name);
     result[name] = opt?.requiresApiKey === true;
   }
   return result;
 });
+
+async function loadWorkerModels(name: string): Promise<void> {
+  try {
+    const result = (await gateway.request('worker.modelsGet', { name })) as {
+      name: string;
+      models: WorkerModelDef | null;
+    };
+    if (result.models) {
+      workerModels.value[name] = result.models;
+    }
+  } catch (err) {
+    console.warn(`[WorkersSettings] Failed to load models for ${name}:`, err);
+  }
+}
 
 async function loadWorkers(): Promise<void> {
   loading.value = true;
@@ -173,8 +83,11 @@ async function loadWorkers(): Promise<void> {
       workers: WorkerStatus[];
     };
     workers.value = result.workers || [];
+
+    await Promise.all(workers.value.map((w) => loadWorkerModels(w.name)));
+
     for (const w of workers.value) {
-      if (WORKER_MODELS[w.name]) {
+      if (workerModels.value[w.name]) {
         await loadWorkerConfig(w.name);
       }
     }
@@ -204,7 +117,7 @@ async function loadWorkerConfig(name: string): Promise<void> {
 }
 
 function getSelectedModel(workerName: string): string | undefined {
-  const def = WORKER_MODELS[workerName];
+  const def = workerModels.value[workerName];
   if (!def) return undefined;
   const config = workerConfigs.value[workerName];
   if (!config) return undefined;
@@ -212,7 +125,7 @@ function getSelectedModel(workerName: string): string | undefined {
 }
 
 function getSelectedModelOption(workerName: string): ModelOption | undefined {
-  const def = WORKER_MODELS[workerName];
+  const def = workerModels.value[workerName];
   if (!def) return undefined;
   const selected = getSelectedModel(workerName);
   if (!selected) return def.options[0];
@@ -221,12 +134,12 @@ function getSelectedModelOption(workerName: string): ModelOption | undefined {
 
 function isModelSelected(workerName: string, opt: ModelOption): boolean {
   const selected = getSelectedModel(workerName);
-  if (!selected) return opt === WORKER_MODELS[workerName].options[0];
+  if (!selected) return opt === workerModels.value[workerName].options[0];
   return selected === opt.configKey;
 }
 
 async function selectModel(workerName: string, option: ModelOption): Promise<void> {
-  const def = WORKER_MODELS[workerName];
+  const def = workerModels.value[workerName];
   if (!def || configSaving.value === workerName) return;
   if (isModelSelected(workerName, option)) return;
 
@@ -416,7 +329,7 @@ onMounted(() => {
                       <span v-if="worker.uptime">· 运行时间: {{ formatUptime(worker.uptime) }}</span>
                     </div>
                     <!-- 当前模型 -->
-                    <div v-if="WORKER_MODELS[worker.name]" class="mt-1 flex items-center gap-1.5">
+                    <div v-if="workerModels[worker.name]" class="mt-1 flex items-center gap-1.5">
                       <span class="i-carbon-model-alt inline-block h-3 w-3" />
                       <span>{{ getSelectedModelOption(worker.name)?.label || '默认' }}</span>
                       <span v-if="getSelectedModelOption(worker.name)?.provider" class="text-muted-foreground/50">
@@ -443,7 +356,7 @@ onMounted(() => {
                 <!-- 操作按钮 -->
                 <div class="flex items-center gap-2">
                   <button
-                    v-if="WORKER_MODELS[worker.name]"
+                    v-if="workerModels[worker.name]"
                     class="mr-1 rounded-lg bg-muted/50 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
                     @click="toggleConfig(worker.name)">
                     <span class="i-carbon-settings mr-1 inline-block h-3 w-3" />
@@ -477,18 +390,18 @@ onMounted(() => {
 
               <!-- 模型配置面板 -->
               <div
-                v-if="configExpanded[worker.name] && WORKER_MODELS[worker.name]"
+                v-if="configExpanded[worker.name] && workerModels[worker.name]"
                 class="border-t border-border/50 bg-muted/20 px-4 py-3">
                 <div class="mb-3 text-xs font-medium text-muted-foreground">选择模型</div>
 
                 <!-- 本地模型 -->
-                <div v-if="WORKER_MODELS[worker.name].options.some((o) => o.type === 'local')" class="mb-4">
+                <div v-if="workerModels[worker.name].options.some((o) => o.type === 'local')" class="mb-4">
                   <div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
                     本地模型
                   </div>
                   <div class="flex flex-col gap-1.5">
                     <label
-                      v-for="opt in WORKER_MODELS[worker.name].options.filter((o) => o.type === 'local')"
+                      v-for="opt in workerModels[worker.name].options.filter((o) => o.type === 'local')"
                       :key="opt.id"
                       class="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors"
                       :class="
@@ -519,13 +432,13 @@ onMounted(() => {
                 </div>
 
                 <!-- 在线模型 -->
-                <div v-if="WORKER_MODELS[worker.name].options.some((o) => o.type === 'online')" class="mb-3">
+                <div v-if="workerModels[worker.name].options.some((o) => o.type === 'online')" class="mb-3">
                   <div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
                     在线模型
                   </div>
                   <div class="flex flex-col gap-1.5">
                     <label
-                      v-for="opt in WORKER_MODELS[worker.name].options.filter((o) => o.type === 'online')"
+                      v-for="opt in workerModels[worker.name].options.filter((o) => o.type === 'online')"
                       :key="opt.id"
                       class="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors"
                       :class="
