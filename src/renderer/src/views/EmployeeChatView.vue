@@ -39,16 +39,21 @@ function ensureSubscribed(): void {
   }
 }
 
+function getThreadTag(): string {
+  return `[emp:${employeeId}]`;
+}
+
 async function initThread(): Promise<void> {
   await threadsStore.fetchThreads(TARGET_AGENT_ID);
+  const tag = getThreadTag();
   const existing = threadsStore.threads.find(
-    (t) => t.agentId === TARGET_AGENT_ID && t.status === 'active' && t.runStatus !== 'error'
+    (t) => t.agentId === TARGET_AGENT_ID && t.status === 'active' && t.title.includes(tag)
   );
   if (existing) {
     sessionId.value = existing.id;
   } else {
     const empName = employee.value?.name || '员工';
-    const thread = await threadsStore.createThread(`${empName} 的对话`, TARGET_AGENT_ID);
+    const thread = await threadsStore.createThread(`${empName} 的对话 ${tag}`, TARGET_AGENT_ID);
     if (thread) {
       sessionId.value = thread.id;
     } else {
