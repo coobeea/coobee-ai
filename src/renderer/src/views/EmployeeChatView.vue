@@ -18,6 +18,7 @@ const loading = ref(true);
 const status = ref<'idle' | 'listening' | 'thinking' | 'speaking'>('idle');
 const subtitle = ref('');
 const volume = ref(0);
+const textInput = ref('');
 
 // ---- Session 管理 ----
 const sessionId = ref(`chat-employee-${employeeId}`);
@@ -27,10 +28,17 @@ const { messages, isStreaming, handleStreamMessage, addUserMessage, addErrorMess
   maxMessages: 50
 });
 
+function ensureSubscribed(): void {
+  streamSubscribe(sessionId.value, handleStreamMessage);
+}
+
 onMounted(() => {
-  if (sessionId.value) {
-    streamSubscribe(sessionId.value, handleStreamMessage);
-  }
+  ensureSubscribed();
+  // Gateway 首次连接后也确保订阅生效
+  const unregister = gateway.onConnect(() => {
+    ensureSubscribed();
+  });
+  onUnmounted(unregister);
 });
 
 onUnmounted(() => {
@@ -78,6 +86,9 @@ async function sendToLLM(text: string): Promise<void> {
   try {
     const targetAgentId = 'app-copilot';
 
+    // 发送前确保订阅已建立
+    ensureSubscribed();
+
     const result = await gateway.request<{ sessionId: string; status: string }>('chat.send', {
       message: text,
       sessionId: sessionId.value,
@@ -85,7 +96,11 @@ async function sendToLLM(text: string): Promise<void> {
       agentId: targetAgentId
     });
 
-    if (result && result.sessionId !== sessionId.value) {
+    console.log('[EmployeeChat] chat.send result:', result);
+
+    // 后端可能返回不同的 sessionId（自动创建 Thread 的场景）
+    if (result && result.sessionId && result.sessionId !== sessionId.value) {
+      console.log(`[EmployeeChat] SessionId changed: ${sessionId.value} → ${result.sessionId}`);
       streamUnsubscribe(sessionId.value);
       sessionId.value = result.sessionId;
       streamSubscribe(sessionId.value, handleStreamMessage);
@@ -97,15 +112,17 @@ async function sendToLLM(text: string): Promise<void> {
   }
 }
 
+function handleTextSend(): void {
+  const text = textInput.value.trim();
+  if (!text) return;
+  textInput.value = '';
+  sendToLLM(text);
+}
+
 // ---- 流式状态追踪 ----
 watch(isStreaming, (val) => {
   if (!val) {
-    const lastMsg = messages.value[messages.value.length - 1];
-    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content) {
-      status.value = 'idle';
-    } else {
-      status.value = 'idle';
-    }
+    status.value = 'idle';
   } else {
     status.value = 'thinking';
   }
@@ -237,12 +254,24 @@ function handleExit(): void {
         <div v-if="status === 'thinking' && !lastAssistantMsg" class="msg-typing"> <span /><span /><span /> </div>
       </div>
 
-      <!-- 底部：字幕 + 麦克风 -->
+      <!-- 底部：字幕 + 输入 + 麦克风 -->
       <div class="bottom-zone">
         <!-- 实时字幕（用户说话时） -->
         <div v-if="subtitle && status === 'listening'" class="live-subtitle">
-          <span class="i-carbon-microphone inline-block h-3 w-3 shrink-0 text-red-400" />
-          <span>{{ subtitle }}</span>
+          {{ subtitle }}
+        </div>
+
+        <!-- 文本输入 -->
+        <div class="text-input-row">
+          <input
+            v-model="textInput"
+            class="text-input"
+            placeholder="输入消息..."
+            :disabled="status === 'thinking'"
+            @keydown.enter="handleTextSend" />
+          <button class="send-btn" :disabled="!textInput.trim() || status === 'thinking'" @click="handleTextSend">
+            <span class="i-carbon-send h-4 w-4" />
+          </button>
         </div>
 
         <!-- 麦克风控制 -->
@@ -256,8 +285,8 @@ function handleExit(): void {
             :class="{ active: status === 'listening' }"
             :style="status === 'listening' ? { transform: `scale(${1 + volume / 400})` } : {}"
             @click="toggleMic">
-            <span v-if="status !== 'listening'" class="i-carbon-microphone h-7 w-7" />
-            <span v-else class="i-carbon-stop-filled h-7 w-7" />
+            <span v-if="status !== 'listening'" class="i-carbon-microphone h-6 w-6" />
+            <span v-else class="i-carbon-stop-filled h-6 w-6" />
           </button>
         </div>
       </div>
@@ -521,8 +550,8 @@ function handleExit(): void {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 8px 20px 24px;
+  gap: 8px;
+  padding: 8px 20px 20px;
   pointer-events: auto;
 }
 
@@ -542,10 +571,67 @@ function handleExit(): void {
   animation: fadeUp 0.2s ease-out;
 }
 
+.text-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 480px;
+}
+
+.text-input {
+  flex: 1;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.text-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.text-input:focus {
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.text-input:disabled {
+  opacity: 0.5;
+}
+
+.send-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(99, 102, 241, 0.7);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.9);
+}
+
+.send-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 .mic-wrapper {
   position: relative;
-  width: 120px;
-  height: 120px;
+  width: 80px;
+  height: 80px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -566,8 +652,8 @@ function handleExit(): void {
 
 .mic-btn-main {
   position: relative;
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.08);
@@ -596,10 +682,10 @@ function handleExit(): void {
 
 .mic-ring {
   position: absolute;
-  top: 15px;
-  left: 15px;
-  width: 90px;
-  height: 90px;
+  top: 8px;
+  left: 8px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   border: 1px solid rgba(239, 68, 68, 0.2);
   pointer-events: none;
