@@ -18,6 +18,44 @@ import { useWorkerStore } from '@/stores/worker';
 const SENTENCE_DELIMITERS = /([。！？；\n!?;])/;
 const MIN_SENTENCE_LENGTH = 2;
 
+/**
+ * 清洗文本中不适合语音朗读的符号
+ * 移除 Markdown 格式符号、代码块标记等，保留纯文本内容
+ */
+function cleanForTts(text: string): string {
+  return (
+    text
+      // 代码块 ```...``` → 去掉（含内容，代码不适合朗读）
+      .replace(/```[\s\S]*?```/g, '')
+      // 行内代码 `...`
+      .replace(/`([^`]*)`/g, '$1')
+      // 加粗 **...** 或 __...__
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/__(.+?)__/g, '$1')
+      // 斜体 *...* 或 _..._（单个）
+      .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '$1')
+      .replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '$1')
+      // 删除线 ~~...~~
+      .replace(/~~(.+?)~~/g, '$1')
+      // 标题 # ## ### 等
+      .replace(/^#{1,6}\s+/gm, '')
+      // 列表标记 - * + 和数字列表 1.
+      .replace(/^[\s]*[-*+]\s+/gm, '')
+      .replace(/^[\s]*\d+\.\s+/gm, '')
+      // 链接 [text](url) → text
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      // 图片 ![alt](url) → 去掉
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '')
+      // HTML 标签
+      .replace(/<[^>]+>/g, '')
+      // 剩余的孤立 * _ ~ # 符号
+      .replace(/[*_~#`]/g, '')
+      // 多余空白合并
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
+}
+
 export interface TtsPlaybackOptions {
   speaker?: string;
 }
@@ -79,7 +117,10 @@ export function useTtsPlayback(options: TtsPlaybackOptions = {}): UseTtsPlayback
     return socket;
   }
 
-  function synthesize(sentence: string): void {
+  function synthesize(raw: string): void {
+    const sentence = cleanForTts(raw);
+    if (!sentence || sentence.length < MIN_SENTENCE_LENGTH) return;
+
     const socket = ensureWs();
     if (!socket) return;
 
