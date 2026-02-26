@@ -213,17 +213,10 @@ async function sendToLLM(text: string): Promise<void> {
   }
 }
 
-let pendingText = '';
-
 watch(isStreaming, (val) => {
   if (!val) {
     status.value = 'listening';
     unmute();
-    if (pendingText) {
-      const text = pendingText;
-      pendingText = '';
-      sendToLLM(text);
-    }
   } else {
     status.value = 'thinking';
   }
@@ -235,7 +228,6 @@ function trySendOrQueue(text: string): void {
   const cleaned = text.trim();
   if (!cleaned || cleaned.length < MIN_SEND_CHARS) return;
   if (isStreaming.value) {
-    pendingText = pendingText ? pendingText + ' ' + cleaned : cleaned;
     return;
   }
   sendToLLM(cleaned);
@@ -561,7 +553,7 @@ function handleExit(): void {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   padding: 8px 4px;
   justify-content: flex-end;
 }
@@ -577,7 +569,7 @@ function handleExit(): void {
 .turn-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .turn-row.older {
   opacity: 0.35;
@@ -616,7 +608,7 @@ function handleExit(): void {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   animation: fadeIn 0.25s ease-out;
 }
 .turn-ai-card::-webkit-scrollbar {
@@ -629,7 +621,7 @@ function handleExit(): void {
 
 /* 思考折叠 */
 .thinking-block {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 .thinking-summary {
   display: flex;
@@ -661,8 +653,8 @@ function handleExit(): void {
 .delegate-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 6px;
+  gap: 3px;
+  margin-bottom: 4px;
 }
 .delegate-chip {
   display: inline-flex;
@@ -680,8 +672,8 @@ function handleExit(): void {
 .tool-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 6px;
+  gap: 3px;
+  margin-bottom: 4px;
 }
 .tool-chip {
   display: inline-flex;
@@ -697,9 +689,9 @@ function handleExit(): void {
 
 .ai-text {
   color: rgba(255, 255, 255, 0.88);
-  font-size: 14px;
-  line-height: 1.65;
-  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: normal;
   word-break: break-word;
 }
 
