@@ -259,10 +259,28 @@ def synthesize_audio(text: str, speaker: str = "vivian", language: str = "chines
     return wavs[0], sr
 
 
+ONLINE_TTS_TIMEOUT = 30  # seconds
+MAX_RETRIES = 2
+
+
+async def _edge_tts_once(text: str, voice_id: str) -> bytes:
+    """单次 Edge TTS 调用（带超时）"""
+    import edge_tts
+
+    communicate = edge_tts.Communicate(text, voice_id)
+    audio_buffer = io.BytesIO()
+
+    async for chunk in communicate.stream():
+        if chunk.get("type") == "audio" and chunk.get("data"):
+            audio_buffer.write(chunk["data"])
+
+    return audio_buffer.getvalue()
+
+
 async def synthesize_edge_tts(text: str, speaker: str = "xiaoxiao") -> bytes:
-    """使用 Microsoft Edge TTS 合成音频（免费在线）"""
+    """使用 Microsoft Edge TTS 合成音频（免费在线，带超时和重试）"""
     try:
-        import edge_tts
+        import edge_tts  # noqa: F401
     except ImportError:
         raise RuntimeError("edge-tts 未安装，请运行: pip install edge-tts")
 
@@ -270,28 +288,37 @@ async def synthesize_edge_tts(text: str, speaker: str = "xiaoxiao") -> bytes:
     log.info(f"[Edge TTS] 合成: \"{text[:50]}{'...' if len(text) > 50 else ''}\"")
     log.info(f"  音色: {speaker} -> {voice_id}")
 
-    t0 = time.time()
-    try:
-        communicate = edge_tts.Communicate(text, voice_id)
-        audio_buffer = io.BytesIO()
+    last_err = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        t0 = time.time()
+        try:
+            audio_bytes = await asyncio.wait_for(
+                _edge_tts_once(text, voice_id),
+                timeout=ONLINE_TTS_TIMEOUT
+            )
 
-        async for chunk in communicate.stream():
-            if chunk.get("type") == "audio" and chunk.get("data"):
-                audio_buffer.write(chunk["data"])
+            if not audio_bytes:
+                raise RuntimeError("Edge TTS 返回了空音频数据")
 
-        audio_bytes = audio_buffer.getvalue()
-    except Exception as e:
-        elapsed = time.time() - t0
-        log.error(f"  Edge TTS 调用失败 ({elapsed:.1f}s): {e}")
-        raise RuntimeError(f"Edge TTS 合成失败: {e}") from e
+            elapsed = time.time() - t0
+            log.info(f"  完成: {len(audio_bytes)} bytes, 耗时 {elapsed:.1f}s")
+            return audio_bytes
 
-    if not audio_bytes:
-        raise RuntimeError("Edge TTS 返回了空音频数据")
+        except asyncio.TimeoutError:
+            elapsed = time.time() - t0
+            last_err = f"请求超时 ({ONLINE_TTS_TIMEOUT}s)"
+            log.warning(f"  [尝试 {attempt}/{MAX_RETRIES}] Edge TTS 超时 ({elapsed:.1f}s)")
+        except Exception as e:
+            elapsed = time.time() - t0
+            last_err = str(e)
+            log.warning(f"  [尝试 {attempt}/{MAX_RETRIES}] Edge TTS 失败 ({elapsed:.1f}s): {e}")
 
-    elapsed = time.time() - t0
-    log.info(f"  完成: {len(audio_bytes)} bytes, 耗时 {elapsed:.1f}s")
+        if attempt < MAX_RETRIES:
+            wait = attempt * 1.0
+            log.info(f"  {wait}s 后重试...")
+            await asyncio.sleep(wait)
 
-    return audio_bytes
+    raise RuntimeError(f"Edge TTS 合成失败（已重试 {MAX_RETRIES} 次）: {last_err}")
 
 
 # CosyVoice 默认音色（阿里云百炼）
@@ -328,11 +355,33 @@ COSYVOICE_SPEAKER_INFO = {
 }
 
 
-def synthesize_cosyvoice_sync(text: str, speaker: str = "longxiaochun") -> bytes:
-    """使用阿里云 CosyVoice 合成音频（DashScope SDK，同步调用）"""
+def _cosyvoice_once(text: str, voice: str) -> bytes:
+    """单次 CosyVoice SDK 调用"""
+    import dashscope
+    from dashscope.audio.tts_v2 import SpeechSynthesizer
+
+    dashscope.api_key = API_KEY
+    if API_URL:
+        dashscope.base_websocket_api_url = API_URL
+    else:
+        dashscope.base_websocket_api_url = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+
+    synthesizer = SpeechSynthesizer(model=COSYVOICE_MODEL, voice=voice)
+    audio = synthesizer.call(text)
+
     try:
-        import dashscope
-        from dashscope.audio.tts_v2 import SpeechSynthesizer
+        log.info(f"  requestId: {synthesizer.get_last_request_id()}, "
+                 f"首包延迟: {synthesizer.get_first_package_delay()} ms")
+    except Exception:
+        pass
+
+    return audio
+
+
+def synthesize_cosyvoice_sync(text: str, speaker: str = "longxiaochun") -> bytes:
+    """使用阿里云 CosyVoice 合成音频（带重试）"""
+    try:
+        import dashscope  # noqa: F401
     except ImportError:
         raise RuntimeError("dashscope SDK 未安装，请运行: pip install dashscope")
 
@@ -342,38 +391,34 @@ def synthesize_cosyvoice_sync(text: str, speaker: str = "longxiaochun") -> bytes
     if not COSYVOICE_MODEL:
         raise RuntimeError("CosyVoice 模型名无效，请检查 model_name 配置")
 
-    dashscope.api_key = API_KEY
-    if API_URL:
-        dashscope.base_websocket_api_url = API_URL
-    else:
-        dashscope.base_websocket_api_url = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
-
     voice = COSYVOICE_VOICE_MAP.get(speaker, speaker) if speaker else "longxiaochun"
     log.info(f"[CosyVoice] 合成: \"{text[:50]}{'...' if len(text) > 50 else ''}\"")
     log.info(f"  模型: {COSYVOICE_MODEL} | 音色: {voice}")
 
-    t0 = time.time()
+    last_err = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        t0 = time.time()
+        try:
+            audio = _cosyvoice_once(text, voice)
 
-    try:
-        synthesizer = SpeechSynthesizer(model=COSYVOICE_MODEL, voice=voice)
-        audio = synthesizer.call(text)
-    except Exception as e:
-        elapsed = time.time() - t0
-        log.error(f"  CosyVoice API 调用失败 ({elapsed:.1f}s): {e}")
-        raise RuntimeError(f"CosyVoice 合成失败: {e}") from e
+            if not audio or not isinstance(audio, (bytes, bytearray)):
+                raise RuntimeError("CosyVoice 返回了空音频数据")
 
-    if not audio or not isinstance(audio, (bytes, bytearray)):
-        raise RuntimeError("CosyVoice 返回了空音频数据")
+            elapsed = time.time() - t0
+            log.info(f"  完成: {len(audio)} bytes, 耗时 {elapsed:.1f}s")
+            return bytes(audio)
 
-    elapsed = time.time() - t0
-    log.info(f"  完成: {len(audio)} bytes, 耗时 {elapsed:.1f}s")
-    try:
-        log.info(f"  requestId: {synthesizer.get_last_request_id()}, "
-                 f"首包延迟: {synthesizer.get_first_package_delay()} ms")
-    except Exception:
-        pass
+        except Exception as e:
+            elapsed = time.time() - t0
+            last_err = str(e)
+            log.warning(f"  [尝试 {attempt}/{MAX_RETRIES}] CosyVoice 失败 ({elapsed:.1f}s): {e}")
 
-    return bytes(audio)
+        if attempt < MAX_RETRIES:
+            wait = attempt * 1.5
+            log.info(f"  {wait}s 后重试...")
+            time.sleep(wait)
+
+    raise RuntimeError(f"CosyVoice 合成失败（已重试 {MAX_RETRIES} 次）: {last_err}")
 
 
 # ==================== HTTP 接口 ====================

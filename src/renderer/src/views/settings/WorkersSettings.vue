@@ -232,12 +232,15 @@ async function selectModel(workerName: string, option: ModelOption): Promise<voi
 
   configSaving.value = workerName;
   try {
-    await gateway.request('worker.configUpdate', {
+    const result = (await gateway.request('worker.configUpdate', {
       name: workerName,
       config: { [def.configField]: option.configKey }
-    });
+    })) as { restarted?: boolean } | undefined;
     if (!workerConfigs.value[workerName]) workerConfigs.value[workerName] = {};
     workerConfigs.value[workerName][def.configField] = option.configKey;
+    if (result?.restarted) {
+      await loadWorkers();
+    }
   } catch (err) {
     console.error(`[WorkersSettings] Failed to save config for ${workerName}:`, err);
   } finally {
@@ -253,12 +256,15 @@ async function saveApiConfig(workerName: string): Promise<void> {
       api_key: apiKeyInputs.value[workerName] ?? '',
       api_url: apiUrlInputs.value[workerName] ?? ''
     };
-    await gateway.request('worker.configUpdate', {
+    const result = (await gateway.request('worker.configUpdate', {
       name: workerName,
       config: updates
-    });
+    })) as { restarted?: boolean } | undefined;
     if (!workerConfigs.value[workerName]) workerConfigs.value[workerName] = {};
     Object.assign(workerConfigs.value[workerName], updates);
+    if (result?.restarted) {
+      await loadWorkers();
+    }
   } catch (err) {
     console.error(`[WorkersSettings] Failed to save API config for ${workerName}:`, err);
   } finally {
@@ -274,7 +280,46 @@ function toggleApiKeyVisibility(name: string): void {
   apiKeyVisible.value[name] = !apiKeyVisible.value[name];
 }
 
+function hasUnsavedApiConfig(name: string): boolean {
+  const saved = workerConfigs.value[name] ?? {};
+  const savedKey = (saved.api_key as string) || '';
+  const savedUrl = (saved.api_url as string) || '';
+  const inputKey = apiKeyInputs.value[name] ?? '';
+  const inputUrl = apiUrlInputs.value[name] ?? '';
+  return inputKey !== savedKey || inputUrl !== savedUrl;
+}
+
+const pendingAction = ref<{ name: string; action: 'start' | 'stop' } | null>(null);
+
+function confirmAction(): void {
+  if (!pendingAction.value) return;
+  const { name, action } = pendingAction.value;
+  pendingAction.value = null;
+  if (action === 'start') doStartWorker(name);
+  else doStopWorker(name);
+}
+
+function cancelAction(): void {
+  pendingAction.value = null;
+}
+
 async function startWorker(name: string): Promise<void> {
+  if (hasUnsavedApiConfig(name)) {
+    pendingAction.value = { name, action: 'start' };
+    return;
+  }
+  doStartWorker(name);
+}
+
+async function stopWorker(name: string): Promise<void> {
+  if (hasUnsavedApiConfig(name)) {
+    pendingAction.value = { name, action: 'stop' };
+    return;
+  }
+  doStopWorker(name);
+}
+
+async function doStartWorker(name: string): Promise<void> {
   operationLoading.value = name;
   try {
     await gateway.request('worker.start', { name });
@@ -286,7 +331,7 @@ async function startWorker(name: string): Promise<void> {
   }
 }
 
-async function stopWorker(name: string): Promise<void> {
+async function doStopWorker(name: string): Promise<void> {
   operationLoading.value = name;
   try {
     await gateway.request('worker.stop', { name });
@@ -576,12 +621,41 @@ onMounted(() => {
                   <span class="i-carbon-in-progress inline-block h-3 w-3 animate-spin" />
                   保存中...
                 </div>
-                <p class="mt-2 text-[11px] text-muted-foreground/60">切换模型后需重启服务才能生效</p>
+                <p class="mt-2 text-[11px] text-muted-foreground/60">切换模型或 API Key 后，运行中的服务会自动重启</p>
               </div>
             </div>
           </div>
         </div>
       </section>
+
+      <!-- 未保存配置确认弹窗 -->
+      <Teleport to="body">
+        <div
+          v-if="pendingAction"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          @click.self="cancelAction">
+          <div class="w-80 rounded-xl border border-border bg-background p-5 shadow-xl">
+            <h3 class="text-sm font-semibold">API 配置未保存</h3>
+            <p class="mt-2 text-xs text-muted-foreground">
+              你有未保存的 API 配置修改，{{
+                pendingAction.action === 'start' ? '启动' : '停止'
+              }}服务后这些修改不会生效。是否继续？
+            </p>
+            <div class="mt-4 flex justify-end gap-2">
+              <button
+                class="rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                @click="cancelAction">
+                取消
+              </button>
+              <button
+                class="rounded-lg bg-primary px-3 py-1.5 text-xs text-primary-foreground transition-colors hover:bg-primary/90"
+                @click="confirmAction">
+                继续{{ pendingAction.action === 'start' ? '启动' : '停止' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
     </div>
   </div>
 </template>

@@ -168,7 +168,27 @@ export const workerMethods: MethodGroup = {
         writeLocalConfig(name, merged);
 
         log.info(`[worker.configUpdate] ${name}: updated`, JSON.stringify(redactConfig(merged)));
-        return { name, config: merged };
+
+        let restarted = false;
+        const wm = WorkerManager.getInstance();
+        const info = wm.getWorkerInfo(name);
+        if (info && (info.status === 'ready' || info.status === 'starting')) {
+          const modelChanged = updates.model_name !== undefined && existing.model_name !== updates.model_name;
+          const apiChanged = updates.api_key !== undefined && existing.api_key !== updates.api_key;
+          if (modelChanged || apiChanged) {
+            log.info(`[worker.configUpdate] ${name}: key config changed, restarting...`);
+            try {
+              await wm.stop(name);
+              await wm.start(name);
+              restarted = true;
+              log.info(`[worker.configUpdate] ${name}: restarted successfully`);
+            } catch (err) {
+              log.warn(`[worker.configUpdate] ${name}: auto-restart failed:`, err);
+            }
+          }
+        }
+
+        return { name, config: merged, restarted };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         log.error(`[worker.configUpdate] Failed to write config for ${name}:`, error);
