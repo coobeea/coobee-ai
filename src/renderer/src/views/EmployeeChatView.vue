@@ -8,13 +8,9 @@ import { useAudioRecorder, type AsrMeta } from '@/composables/useAudioRecorder';
 import { useStreamHandler, type StreamChatMessage } from '@/composables/useStreamHandler';
 import { gateway } from '@/plugins/gatewaySetup';
 import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs';
-import { useThreadsStore } from '@/stores/threads';
-
 const route = useRoute();
 const router = useRouter();
 const employeeId = route.params.id as string;
-
-const threadsStore = useThreadsStore();
 
 const employee = ref<DigitalEmployee | null>(null);
 const loading = ref(true);
@@ -24,8 +20,9 @@ const volume = ref(0);
 const asrMeta = ref<AsrMeta>({});
 const TARGET_AGENT_ID = 'app-copilot';
 
-// ---- Session / Thread ----
-const sessionId = ref<string | null>(null);
+// ---- Session 管理（每个员工固定 sessionId，持久化） ----
+const STORAGE_KEY = `emp-session:${employeeId}`;
+const sessionId = ref<string | null>(localStorage.getItem(STORAGE_KEY));
 const threadReady = ref(false);
 
 const { messages, isStreaming, handleStreamMessage, addUserMessage, addErrorMessage } = useStreamHandler({
@@ -39,30 +36,19 @@ function ensureSubscribed(): void {
   }
 }
 
-function getThreadTag(): string {
-  return `[emp:${employeeId}]`;
+function saveSessionId(sid: string): void {
+  sessionId.value = sid;
+  localStorage.setItem(STORAGE_KEY, sid);
 }
 
-async function initThread(): Promise<void> {
-  await threadsStore.fetchThreads(TARGET_AGENT_ID);
-  const tag = getThreadTag();
-  const existing = threadsStore.threads.find(
-    (t) => t.agentId === TARGET_AGENT_ID && t.status === 'active' && t.title.includes(tag)
-  );
-  if (existing) {
-    sessionId.value = existing.id;
-  } else {
-    const empName = employee.value?.name || '员工';
-    const thread = await threadsStore.createThread(`${empName} 的对话 ${tag}`, TARGET_AGENT_ID);
-    if (thread) {
-      sessionId.value = thread.id;
-    } else {
-      addErrorMessage('无法创建对话会话');
-      return;
-    }
+async function initSession(): Promise<void> {
+  if (sessionId.value) {
+    threadReady.value = true;
+    ensureSubscribed();
+    return;
   }
+  // 首次对话时由 sendToLLM 自动创建（不传 sessionId，后端自动生成）
   threadReady.value = true;
-  ensureSubscribed();
 }
 
 onMounted(() => {
@@ -183,7 +169,7 @@ function buildIdentityPrefix(): string {
 
 async function sendToLLM(text: string): Promise<void> {
   if (!text.trim()) return;
-  if (!threadReady.value || !sessionId.value) {
+  if (!threadReady.value) {
     addErrorMessage('会话尚未就绪，请稍后再试');
     return;
   }
@@ -200,17 +186,25 @@ async function sendToLLM(text: string): Promise<void> {
   const messageToSend = identity + contextHint + text;
 
   try {
-    ensureSubscribed();
-    const result = await gateway.request<{ sessionId: string; status: string }>('chat.send', {
+    const payload: Record<string, unknown> = {
       message: messageToSend,
-      sessionId: sessionId.value,
       mode: 'agent',
       agentId: TARGET_AGENT_ID
-    });
-    if (result && result.sessionId && result.sessionId !== sessionId.value) {
-      streamUnsubscribe(sessionId.value);
-      sessionId.value = result.sessionId;
-      streamSubscribe(sessionId.value, handleStreamMessage);
+    };
+    if (sessionId.value) {
+      payload.sessionId = sessionId.value;
+    }
+
+    ensureSubscribed();
+    const result = await gateway.request<{ sessionId: string; status: string }>('chat.send', payload);
+
+    if (result?.sessionId) {
+      const newSid = result.sessionId;
+      if (newSid !== sessionId.value) {
+        if (sessionId.value) streamUnsubscribe(sessionId.value);
+        saveSessionId(newSid);
+        streamSubscribe(newSid, handleStreamMessage);
+      }
     }
   } catch (err) {
     addErrorMessage(String(err));
@@ -286,7 +280,7 @@ onMounted(async () => {
     loading.value = false;
   }
 
-  await initThread();
+  await initSession();
 
   try {
     await startRecording();
