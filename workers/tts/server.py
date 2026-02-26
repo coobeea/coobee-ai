@@ -64,6 +64,22 @@ if os.path.exists(local_config_path):
     except Exception as e:
         print(f"[TTS Config] 读取本地配置失败: {e}", file=sys.stderr)
 
+# API 配置（在线模型使用）
+API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
+API_URL = ""
+
+if os.path.exists(local_config_path):
+    try:
+        import json
+        with open(local_config_path, "r", encoding="utf-8") as f:
+            _cfg = json.load(f)
+            if "api_key" in _cfg and _cfg["api_key"]:
+                API_KEY = _cfg["api_key"]
+            if "api_url" in _cfg and _cfg["api_url"]:
+                API_URL = _cfg["api_url"]
+    except Exception:
+        pass
+
 logging.basicConfig(level=logging.INFO, format="[TTS] %(message)s")
 log = logging.getLogger("tts")
 
@@ -71,6 +87,8 @@ app = FastAPI(title="TTS Worker", version="0.2.0")
 
 # 模式检测
 USE_EDGE_TTS = MODEL_NAME.lower() == "edge-tts"
+USE_COSYVOICE = MODEL_NAME.lower().startswith("aliyun/cosyvoice")
+COSYVOICE_MODEL = MODEL_NAME.split("/", 1)[1] if USE_COSYVOICE else ""
 
 # ==================== 全局状态 ====================
 
@@ -270,17 +288,86 @@ async def synthesize_edge_tts(text: str, speaker: str = "xiaoxiao") -> bytes:
     return audio_bytes
 
 
+# CosyVoice 默认音色（阿里云百炼）
+COSYVOICE_VOICE_MAP = {
+    "longanyang": "longanyang",          # 阳光大男孩
+    "longanhuan": "longanhuan",          # 欢脱元气女
+    "longxiaochun": "longxiaochun",      # 温柔知性女
+    "longxiaobai": "longxiaobai",        # 活泼女声
+    "longshu": "longshu",                # 知性女声
+    "longhua": "longhua",                # 标准男声
+    "longshuo": "longshuo",              # 温和男声
+    "longwan": "longwan",                # 清新女声
+    "longfei": "longfei",                # 激昂朗诵男声
+    "longyue": "longyue",                # 女声朗诵
+    # 向前兼容 Qwen3-TTS 音色名
+    "vivian": "longxiaochun",
+    "serena": "longwan",
+    "uncle_fu": "longhua",
+    "dylan": "longshu",
+    "xiaoxiao": "longxiaochun",
+}
+
+COSYVOICE_SPEAKER_INFO = {
+    "longanyang": "阳光大男孩（20-30岁，中文/英文）",
+    "longanhuan": "欢脱元气女（20-30岁，中文/英文）",
+    "longxiaochun": "温柔知性女声（中文）",
+    "longxiaobai": "活泼俏皮女声（中文）",
+    "longshu": "知性女声（中文）",
+    "longhua": "标准男声（中文）",
+    "longshuo": "温和男声（中文）",
+    "longwan": "清新女声（中文）",
+    "longfei": "激昂朗诵男声（中文）",
+    "longyue": "女声朗诵（中文）",
+}
+
+
+def synthesize_cosyvoice_sync(text: str, speaker: str = "longxiaochun") -> bytes:
+    """使用阿里云 CosyVoice 合成音频（DashScope SDK，同步调用）"""
+    try:
+        import dashscope
+        from dashscope.audio.tts_v2 import SpeechSynthesizer
+    except ImportError:
+        raise RuntimeError("dashscope SDK 未安装，请运行: pip install dashscope")
+
+    if not API_KEY:
+        raise RuntimeError("未配置 API Key，请在设置中配置阿里云 DashScope API Key")
+
+    dashscope.api_key = API_KEY
+    if API_URL:
+        dashscope.base_websocket_api_url = API_URL
+    else:
+        dashscope.base_websocket_api_url = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+
+    voice = COSYVOICE_VOICE_MAP.get(speaker, speaker)
+    log.info(f"[CosyVoice] 合成: \"{text[:50]}{'...' if len(text) > 50 else ''}\"")
+    log.info(f"  模型: {COSYVOICE_MODEL} | 音色: {voice}")
+
+    t0 = time.time()
+
+    synthesizer = SpeechSynthesizer(model=COSYVOICE_MODEL, voice=voice)
+    audio = synthesizer.call(text)
+
+    elapsed = time.time() - t0
+    log.info(f"  完成: {len(audio)} bytes, 耗时 {elapsed:.1f}s")
+    log.info(f"  requestId: {synthesizer.get_last_request_id()}, "
+             f"首包延迟: {synthesizer.get_first_package_delay()} ms")
+
+    return audio
+
+
 # ==================== HTTP 接口 ====================
 
 @app.get("/health")
 async def health():
     """健康检查（RuntimeManager 轮询此接口判断是否就绪）"""
+    backend = "cosyvoice" if USE_COSYVOICE else ("edge-tts" if USE_EDGE_TTS else "local")
     return JSONResponse({
         "status": "ok",
         "model_loaded": model_loaded,
-        "backend": "edge-tts" if USE_EDGE_TTS else "local",
+        "backend": backend,
         "model_name": MODEL_NAME,
-        "model_dir": MODEL_DIR if not USE_EDGE_TTS else None,
+        "model_dir": MODEL_DIR if not (USE_EDGE_TTS or USE_COSYVOICE) else None,
     })
 
 
@@ -301,9 +388,22 @@ async def tts_sync(request: dict):
     if not text:
         return JSONResponse({"error": "缺少 text 字段"}, status_code=400)
     
-    speaker = request.get("speaker", "xiaoxiao" if USE_EDGE_TTS else "vivian").lower()
+    default_speaker = "longxiaochun" if USE_COSYVOICE else ("xiaoxiao" if USE_EDGE_TTS else "vivian")
+    speaker = request.get("speaker", default_speaker).lower()
 
-    if USE_EDGE_TTS:
+    if USE_COSYVOICE:
+        try:
+            loop = asyncio.get_event_loop()
+            audio_bytes = await loop.run_in_executor(None, synthesize_cosyvoice_sync, text, speaker)
+            return Response(
+                content=audio_bytes,
+                media_type="audio/mpeg",
+                headers={"Content-Disposition": "attachment; filename=tts_output.mp3"}
+            )
+        except Exception as e:
+            log.error(f"CosyVoice 合成失败: {e}")
+            return JSONResponse({"error": str(e)}, status_code=500)
+    elif USE_EDGE_TTS:
         try:
             audio_bytes = await synthesize_edge_tts(text, speaker)
             return Response(
@@ -367,9 +467,23 @@ async def tts_stream(ws: WebSocket):
                 await ws.send_json({"error": "缺少 text 字段"})
                 continue
             
-            speaker = data.get("speaker", "xiaoxiao" if USE_EDGE_TTS else "vivian").lower()
+            default_spk = "longxiaochun" if USE_COSYVOICE else ("xiaoxiao" if USE_EDGE_TTS else "vivian")
+            speaker = data.get("speaker", default_spk).lower()
 
-            if USE_EDGE_TTS:
+            if USE_COSYVOICE:
+                try:
+                    await ws.send_json({"status": "processing", "text": text[:50]})
+                    loop = asyncio.get_event_loop()
+                    audio_bytes = await loop.run_in_executor(
+                        None, synthesize_cosyvoice_sync, text, speaker
+                    )
+                    audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
+                    await ws.send_json({"audio": audio_b64, "format": "mp3"})
+                    await ws.send_json({"done": True})
+                except Exception as e:
+                    log.error(f"CosyVoice 合成失败: {e}")
+                    await ws.send_json({"error": str(e)})
+            elif USE_EDGE_TTS:
                 try:
                     await ws.send_json({"status": "processing", "text": text[:50]})
                     audio_bytes = await synthesize_edge_tts(text, speaker)
@@ -426,6 +540,13 @@ async def tts_stream(ws: WebSocket):
 @app.get("/api/speakers")
 async def list_speakers():
     """列出所有可用音色"""
+    if USE_COSYVOICE:
+        return JSONResponse({
+            "speakers": COSYVOICE_SPEAKER_INFO,
+            "backend": "cosyvoice",
+            "model": COSYVOICE_MODEL,
+            "languages": ["chinese", "english", "japanese", "korean", "french", "german", "russian"]
+        })
     if USE_EDGE_TTS:
         return JSONResponse({
             "speakers": EDGE_SPEAKER_INFO,
@@ -446,9 +567,18 @@ async def startup_event():
     """应用启动时加载模型"""
     global model_loaded
 
-    if USE_EDGE_TTS:
+    if USE_COSYVOICE:
+        log.info(f"使用阿里云 CosyVoice（{COSYVOICE_MODEL}），跳过本地模型加载")
+        try:
+            import dashscope  # noqa: F401
+            log.info("dashscope SDK 已就绪")
+            if not API_KEY:
+                log.warning("未配置 API Key！请在设置中配置 DashScope API Key")
+            model_loaded = True
+        except ImportError:
+            log.error("dashscope SDK 未安装！请运行: pip install dashscope")
+    elif USE_EDGE_TTS:
         log.info("使用 Microsoft Edge TTS（免费在线），跳过本地模型加载")
-        # 验证 edge-tts 可导入
         try:
             import edge_tts  # noqa: F401
             log.info("edge-tts 库已就绪")
