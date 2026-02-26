@@ -43,9 +43,15 @@ export const ReadyMediaPermissionHook: LifecycleHook = {
         }
       });
 
-      // 同步权限检查 — 允许所有权限（避免阻止设备枚举）
-      // 使用 null 代替自定义 handler，确保不会误拦截设备枚举等隐式权限检查
-      session.defaultSession.setPermissionCheckHandler(null);
+      // 同步权限检查 — 显式允许 media 相关权限
+      session.defaultSession.setPermissionCheckHandler((_webContents, permission, _requestingOrigin, _details) => {
+        const allowed = ['media', 'mediaKeySystem', 'geolocation', 'notifications'];
+        if (allowed.includes(permission)) {
+          return true;
+        }
+        log.debug(`[ReadyMediaPermissionHook] PermissionCheck 拒绝: ${permission}`);
+        return false;
+      });
 
       log.info('[ReadyMediaPermissionHook] Electron session 权限策略已设置');
 

@@ -21,8 +21,6 @@ const loading = ref(true);
 const status = ref<'idle' | 'listening' | 'thinking' | 'speaking'>('idle');
 const subtitle = ref('');
 const volume = ref(0);
-const textInput = ref('');
-
 const TARGET_AGENT_ID = 'app-copilot';
 
 // ---- Session / Thread 管理 ----
@@ -94,6 +92,12 @@ const lastAssistantMsg = computed((): StreamChatMessage | undefined => {
   return undefined;
 });
 
+const olderMessages = computed(() => {
+  if (messages.value.length <= 1) return [];
+  const lastAi = lastAssistantMsg.value;
+  return messages.value.filter((m) => m !== lastAi).slice(-6);
+});
+
 // 消息列表自动滚动到底部
 const messagesEl = ref<HTMLElement | null>(null);
 function scrollToBottom(): void {
@@ -152,13 +156,6 @@ async function sendToLLM(text: string): Promise<void> {
     addErrorMessage(String(err));
     status.value = 'idle';
   }
-}
-
-function handleTextSend(): void {
-  const text = textInput.value.trim();
-  if (!text) return;
-  textInput.value = '';
-  sendToLLM(text);
 }
 
 // ---- 流式状态追踪 ----
@@ -256,71 +253,53 @@ function handleExit(): void {
         </div>
       </header>
 
-      <!-- 对话内容区（可滚动） -->
-      <div ref="messagesEl" class="messages-area">
-        <div v-for="msg in messages" :key="msg.id" class="msg-bubble" :class="msg.role">
-          <!-- 用户消息 -->
-          <template v-if="msg.role === 'user'">
-            <div class="msg-user">
-              <span class="i-carbon-user inline-block h-3 w-3 shrink-0" />
-              <span>{{ msg.content }}</span>
-            </div>
-          </template>
-
-          <!-- AI 消息 -->
-          <template v-else>
-            <!-- 思考过程 -->
-            <template v-for="(block, bIdx) in msg.blocks" :key="bIdx">
-              <div v-if="block.type === 'thinking'" class="msg-thinking">
-                <span class="i-carbon-watson inline-block h-3 w-3 shrink-0" />
-                <span class="msg-thinking-text"
-                  >{{ block.text.slice(-120) }}{{ block.text.length > 120 ? '…' : '' }}</span
-                >
-              </div>
-              <div v-else-if="block.type === 'tool'" class="msg-tool">
-                <span class="i-carbon-tool-box inline-block h-3 w-3 shrink-0" />
-                <span class="msg-tool-name">{{ block.tool.name }}</span>
-                <span v-if="block.tool.status === 'calling'" class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
+      <!-- AI 回复展示区 -->
+      <div ref="messagesEl" class="response-area">
+        <!-- 最新一条 AI 回复（突出显示） -->
+        <div v-if="lastAssistantMsg" class="ai-response-card">
+          <!-- 工具执行摘要（折叠形式） -->
+          <div v-if="lastAssistantMsg.blocks?.length" class="tool-summary">
+            <template v-for="(block, bIdx) in lastAssistantMsg.blocks" :key="bIdx">
+              <span v-if="block.type === 'tool'" class="tool-chip">
+                <span class="i-carbon-tool-box inline-block h-2.5 w-2.5" />
+                <span>{{ block.tool.name }}</span>
+                <span
+                  v-if="block.tool.status === 'calling'"
+                  class="i-carbon-renew inline-block h-2.5 w-2.5 animate-spin" />
                 <span
                   v-else-if="block.tool.status === 'done'"
-                  class="i-carbon-checkmark inline-block h-3 w-3 text-green-400" />
-              </div>
+                  class="i-carbon-checkmark inline-block h-2.5 w-2.5 text-green-400" />
+              </span>
             </template>
-            <!-- 文本输出 -->
-            <div v-if="msg.content" class="msg-ai-text">{{ msg.content }}</div>
-            <!-- 错误 -->
-            <div v-if="msg.status === 'error' && msg.error" class="msg-error">
-              <span class="i-carbon-warning-alt inline-block h-3 w-3" />
-              {{ msg.error }}
-            </div>
-          </template>
+          </div>
+          <!-- AI 文本回复 -->
+          <div v-if="lastAssistantMsg.content" class="ai-text">{{ lastAssistantMsg.content }}</div>
+          <!-- 错误 -->
+          <div v-if="lastAssistantMsg.status === 'error' && lastAssistantMsg.error" class="ai-error">
+            <span class="i-carbon-warning-alt inline-block h-3 w-3" />
+            {{ lastAssistantMsg.error }}
+          </div>
         </div>
 
-        <!-- 正在输入指示 -->
-        <div v-if="status === 'thinking' && !lastAssistantMsg" class="msg-typing"> <span /><span /><span /> </div>
+        <!-- 思考中动画 -->
+        <div v-else-if="status === 'thinking'" class="thinking-indicator">
+          <span class="thinking-dot" /><span class="thinking-dot" /><span class="thinking-dot" />
+        </div>
+
+        <!-- 对话历史（较旧的消息，半透明） -->
+        <div v-if="olderMessages.length" class="history-area">
+          <div v-for="msg in olderMessages" :key="msg.id" class="history-msg" :class="msg.role">
+            <span v-if="msg.role === 'user'" class="history-user">{{ msg.content }}</span>
+            <span v-else class="history-ai">{{ msg.content }}</span>
+          </div>
+        </div>
       </div>
 
-      <!-- 底部：字幕 + 输入 + 麦克风 -->
+      <!-- 底部：字幕 + 麦克风 -->
       <div class="bottom-zone">
         <!-- 实时字幕（用户说话时） -->
         <div v-if="subtitle && status === 'listening'" class="live-subtitle">
           {{ subtitle }}
-        </div>
-
-        <!-- 文本输入 -->
-        <div class="text-input-row">
-          <input
-            v-model="textInput"
-            class="text-input"
-            :placeholder="threadReady ? '输入消息...' : '会话准备中...'"
-            :disabled="!threadReady || status === 'thinking'"
-            @keydown.enter="handleTextSend" />
-          <button
-            class="send-btn"
-            :disabled="!threadReady || !textInput.trim() || status === 'thinking'"
-            @click="handleTextSend">
-            <span class="i-carbon-send h-4 w-4" />
-          </button>
         </div>
 
         <!-- 麦克风控制 -->
@@ -331,12 +310,14 @@ function handleExit(): void {
           <div class="mic-ring" :class="{ active: status === 'listening' }" />
           <button
             class="mic-btn-main"
-            :class="{ active: status === 'listening' }"
+            :class="{ active: status === 'listening', disabled: !threadReady }"
+            :disabled="!threadReady || status === 'thinking'"
             :style="status === 'listening' ? { transform: `scale(${1 + volume / 400})` } : {}"
             @click="toggleMic">
             <span v-if="status !== 'listening'" class="i-carbon-microphone h-6 w-6" />
             <span v-else class="i-carbon-stop-filled h-6 w-6" />
           </button>
+          <span v-if="!threadReady" class="mic-hint">会话准备中...</span>
         </div>
       </div>
     </div>
@@ -470,97 +451,67 @@ function handleExit(): void {
   color: #fff;
 }
 
-/* ---- 消息列表 ---- */
-.messages-area {
+/* ---- AI 回复展示区 ---- */
+.response-area {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 20px 12px;
+  padding: 0 24px 12px;
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 100%);
+  justify-content: flex-end;
+  gap: 10px;
 }
 
-.messages-area::-webkit-scrollbar {
-  width: 4px;
+.response-area::-webkit-scrollbar {
+  width: 3px;
 }
 
-.messages-area::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+.response-area::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 2px;
 }
 
-.msg-bubble {
-  animation: fadeUp 0.25s ease-out;
+/* 最新 AI 回复卡片 */
+.ai-response-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 14px 18px;
+  max-width: 90%;
+  animation: fadeUp 0.3s ease-out;
 }
 
-.msg-user {
+.tool-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.tool-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  align-self: flex-end;
-  background: rgba(99, 102, 241, 0.2);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  padding: 6px 14px;
-  border-radius: 12px 12px 4px 12px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
-  max-width: 80%;
-  margin-left: auto;
-}
-
-.msg-thinking {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.1);
-  color: rgba(165, 180, 252, 0.7);
-  font-size: 11px;
-  max-width: 70%;
-}
-
-.msg-thinking-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.msg-tool {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: 6px;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 4px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 10px;
 }
 
-.msg-tool-name {
-  font-weight: 500;
-}
-
-.msg-ai-text {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 8px 14px;
-  border-radius: 12px 12px 12px 4px;
+.ai-text {
   color: rgba(255, 255, 255, 0.88);
-  font-size: 13px;
-  line-height: 1.6;
-  max-width: 85%;
+  font-size: 14px;
+  line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.msg-error {
+.ai-error {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -570,27 +521,61 @@ function handleExit(): void {
   border: 1px solid rgba(239, 68, 68, 0.15);
   color: rgba(252, 165, 165, 0.8);
   font-size: 11px;
+  margin-top: 6px;
 }
 
-.msg-typing {
+/* 思考中指示器 */
+.thinking-indicator {
   display: flex;
-  gap: 5px;
-  padding: 4px 0;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 0;
 }
 
-.msg-typing span {
-  width: 6px;
-  height: 6px;
+.thinking-dot {
+  width: 8px;
+  height: 8px;
   background: rgba(99, 102, 241, 0.5);
   border-radius: 50%;
   animation: dotBounce 1.4s ease-in-out infinite;
 }
 
-.msg-typing span:nth-child(2) {
+.thinking-dot:nth-child(2) {
   animation-delay: 0.2s;
 }
-.msg-typing span:nth-child(3) {
+
+.thinking-dot:nth-child(3) {
   animation-delay: 0.4s;
+}
+
+/* 对话历史（半透明、紧凑） */
+.history-area {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  opacity: 0.45;
+}
+
+.history-msg {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.history-user {
+  display: inline-block;
+  margin-left: auto;
+  text-align: right;
+  color: rgba(165, 180, 252, 0.7);
+  max-width: 70%;
+}
+
+.history-ai {
+  display: inline-block;
+  color: rgba(255, 255, 255, 0.6);
+  max-width: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---- 底部区域 ---- */
@@ -599,15 +584,12 @@ function handleExit(): void {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 8px 20px 20px;
+  gap: 10px;
+  padding: 12px 20px 24px;
   pointer-events: auto;
 }
 
 .live-subtitle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(10px);
   padding: 6px 16px;
@@ -620,70 +602,14 @@ function handleExit(): void {
   animation: fadeUp 0.2s ease-out;
 }
 
-.text-input-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  max-width: 480px;
-}
-
-.text-input {
-  flex: 1;
-  height: 36px;
-  padding: 0 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.text-input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
-}
-
-.text-input:focus {
-  border-color: rgba(99, 102, 241, 0.5);
-}
-
-.text-input:disabled {
-  opacity: 0.5;
-}
-
-.send-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(99, 102, 241, 0.7);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.send-btn:hover:not(:disabled) {
-  background: rgba(99, 102, 241, 0.9);
-}
-
-.send-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
 .mic-wrapper {
   position: relative;
-  width: 80px;
-  height: 80px;
+  width: 88px;
+  height: 88px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-direction: column;
 }
 
 .mic-visualizer-bg {
@@ -701,10 +627,10 @@ function handleExit(): void {
 
 .mic-btn-main {
   position: relative;
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(10px);
   color: white;
@@ -714,12 +640,13 @@ function handleExit(): void {
   cursor: pointer;
   transition:
     background 0.3s,
-    transform 0.1s;
+    transform 0.1s,
+    opacity 0.2s;
   z-index: 10;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
-.mic-btn-main:hover {
+.mic-btn-main:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.15);
 }
 
@@ -729,12 +656,18 @@ function handleExit(): void {
   border-color: rgba(239, 68, 68, 0.5);
 }
 
+.mic-btn-main.disabled,
+.mic-btn-main:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .mic-ring {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  width: 64px;
-  height: 64px;
+  top: 4px;
+  left: 4px;
+  width: 80px;
+  height: 80px;
   border-radius: 50%;
   border: 1px solid rgba(239, 68, 68, 0.2);
   pointer-events: none;
@@ -748,6 +681,14 @@ function handleExit(): void {
   opacity: 0.5;
   transform: scale(1);
   animation: breathe 2s infinite ease-in-out;
+}
+
+.mic-hint {
+  position: absolute;
+  bottom: -20px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  white-space: nowrap;
 }
 
 @keyframes breathe {
