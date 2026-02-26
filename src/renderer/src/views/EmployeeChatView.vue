@@ -175,14 +175,31 @@ async function sendToLLM(text: string): Promise<void> {
   }
 }
 
-// ---- 流式状态追踪 ----
+// ---- 流式状态追踪 & 排队发送 ----
+let pendingText = '';
+
 watch(isStreaming, (val) => {
   if (!val) {
     status.value = 'idle';
+    if (pendingText) {
+      const text = pendingText;
+      pendingText = '';
+      sendToLLM(text);
+    }
   } else {
     status.value = 'thinking';
   }
 });
+
+function trySendOrQueue(text: string): void {
+  if (!text.trim()) return;
+  if (isStreaming.value) {
+    pendingText = pendingText ? pendingText + ' ' + text.trim() : text.trim();
+    console.log('[EmployeeChat] LLM busy, queued:', pendingText);
+    return;
+  }
+  sendToLLM(text);
+}
 
 // ---- 录音机 ----
 let lastPartialText = '';
@@ -191,13 +208,13 @@ const { startRecording, stopRecording, disconnect } = useAudioRecorder({
   onPartialResult: (text, meta) => {
     subtitle.value = text;
     lastPartialText = text;
-    status.value = 'listening';
+    if (!isStreaming.value) status.value = 'listening';
     if (meta) asrMeta.value = meta;
   },
   onFinalResult: (text) => {
     subtitle.value = text;
     lastPartialText = '';
-    sendToLLM(text);
+    trySendOrQueue(text);
   },
   onVolumeChange: (vol) => {
     volume.value = vol;
@@ -206,7 +223,7 @@ const { startRecording, stopRecording, disconnect } = useAudioRecorder({
     if (lastPartialText.trim()) {
       const text = lastPartialText.trim();
       lastPartialText = '';
-      sendToLLM(text);
+      trySendOrQueue(text);
     }
   }
 });
