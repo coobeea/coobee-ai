@@ -6,7 +6,10 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 websockets>=14.0
 
-# TTS 模型（Qwen3-TTS）
+# Edge TTS（微软免费在线语音合成，无需 API Key）
+edge-tts>=6.1.0
+
+# TTS 模型（Qwen3-TTS，本地模式使用）
 torch>=2.0.0
 torchaudio>=2.0.0
 transformers>=4.57.3

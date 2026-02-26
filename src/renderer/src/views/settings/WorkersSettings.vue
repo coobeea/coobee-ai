@@ -49,18 +49,18 @@ const WORKER_MODELS: Record<string, WorkerModelDef> = {
         configKey: 'FunAudioLLM/Fun-ASR-Nano-2512'
       },
       {
-        id: 'fun-asr-std',
-        label: 'FunASR Standard',
+        id: 'sensevoice-small',
+        label: 'SenseVoice Small',
         type: 'local',
-        description: '标准本地模型，精度更高',
+        description: '高精度本地模型，支持多语种，无需联网',
         configKey: 'FunAudioLLM/SenseVoiceSmall'
       },
       {
-        id: 'openai-whisper',
-        label: 'OpenAI Whisper API',
+        id: 'aliyun-qwen3-asr',
+        label: '阿里云 Qwen3 ASR',
         type: 'online',
-        description: '在线 API，需要 API Key，精度最高',
-        configKey: 'openai/whisper-1'
+        description: '工业级实时语音识别，需要 API Key',
+        configKey: 'aliyun/qwen3-asr-flash-realtime'
       }
     ]
   },
@@ -71,22 +71,15 @@ const WORKER_MODELS: Record<string, WorkerModelDef> = {
         id: 'qwen3-tts',
         label: 'Qwen3 TTS',
         type: 'local',
-        description: '本地语音合成，多音色支持',
+        description: '本地语音合成，多音色支持，无需联网',
         configKey: 'Qwen3-TTS-12Hz-1.7B-CustomVoice'
       },
       {
-        id: 'openai-tts',
-        label: 'OpenAI TTS API',
+        id: 'edge-tts',
+        label: 'Microsoft Edge TTS',
         type: 'online',
-        description: '在线 API，音质出色，延迟较低',
-        configKey: 'openai/tts-1'
-      },
-      {
-        id: 'openai-tts-hd',
-        label: 'OpenAI TTS HD API',
-        type: 'online',
-        description: '在线高保真 API，音质最佳',
-        configKey: 'openai/tts-1-hd'
+        description: '微软免费在线语音合成，无需 API Key，多语种音色',
+        configKey: 'edge-tts'
       }
     ]
   },

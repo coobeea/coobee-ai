@@ -1,8 +1,13 @@
 """
 TTS Worker — 语音合成服务
 
-FastAPI + WebSocket 服务，封装 Qwen3-TTS 模型。
-由 RuntimeManager 管理生命周期。
+FastAPI + WebSocket 服务，支持两种后端：
+  1. 本地 Qwen3-TTS 模型（需要 GPU / Apple Silicon）
+  2. Microsoft Edge TTS（免费在线，无需 API Key）
+
+通过 local_config.json 的 model_name 切换：
+  - "Qwen3-TTS-*"  → 本地模型
+  - "edge-tts"      → 微软 Edge TTS
 
 启动方式（由 RuntimeManager 自动调用）：
     python server.py --port 18101
@@ -64,12 +69,15 @@ log = logging.getLogger("tts")
 
 app = FastAPI(title="TTS Worker", version="0.2.0")
 
+# 模式检测
+USE_EDGE_TTS = MODEL_NAME.lower() == "edge-tts"
+
 # ==================== 全局状态 ====================
 
 tts_model = None
 model_loaded = False
 
-# 音色和语言配置
+# Qwen3 TTS 音色
 SPEAKER_INFO = {
     "vivian": "明亮略带锐利的年轻女声（中文）",
     "serena": "温暖温柔的年轻女声（中文）",
@@ -80,6 +88,33 @@ SPEAKER_INFO = {
     "aiden": "阳光清朗的美式男声（英文）",
     "ono_anna": "灵动俏皮的日本女声（日文）",
     "sohee": "情感丰富的温暖韩国女声（韩文）",
+}
+
+# Edge TTS 音色映射
+EDGE_VOICE_MAP = {
+    "xiaoxiao": "zh-CN-XiaoxiaoNeural",
+    "xiaoyi": "zh-CN-XiaoyiNeural",
+    "yunyang": "zh-CN-YunyangNeural",
+    "yunjian": "zh-CN-YunjianNeural",
+    "yunxi": "zh-CN-YunxiNeural",
+    # 向前兼容：Qwen3 音色名映射到 Edge TTS 最接近的音色
+    "vivian": "zh-CN-XiaoxiaoNeural",
+    "serena": "zh-CN-XiaoyiNeural",
+    "uncle_fu": "zh-CN-YunjianNeural",
+    "dylan": "zh-CN-YunxiNeural",
+    "eric": "zh-CN-YunxiNeural",
+    "ryan": "en-US-GuyNeural",
+    "aiden": "en-US-GuyNeural",
+    "ono_anna": "ja-JP-NanamiNeural",
+    "sohee": "ko-KR-SunHiNeural",
+}
+
+EDGE_SPEAKER_INFO = {
+    "xiaoxiao": "温暖亲切的年轻女声（中文）",
+    "xiaoyi": "清脆清晰的年轻女声（中文）",
+    "yunyang": "专业自然的男声（中文）",
+    "yunjian": "沉稳低沉的男声（中文）",
+    "yunxi": "温和自然的男声（中文）",
 }
 
 LANG_MAP = {
@@ -181,21 +216,11 @@ def load_tts_model():
 
 
 def synthesize_audio(text: str, speaker: str = "vivian", language: str = "chinese", instruct: str = ""):
-    """执行语音合成
-    
-    Args:
-        text: 要合成的文本
-        speaker: 音色名
-        language: 语言
-        instruct: 情绪/风格指令（可选）
-    
-    Returns:
-        tuple: (wav_data_np_array, sample_rate)
-    """
+    """执行本地模型语音合成（Qwen3-TTS）"""
     if not model_loaded or tts_model is None:
         raise RuntimeError("TTS 模型未加载")
     
-    log.info(f"合成: \"{text[:50]}{'...' if len(text) > 50 else ''}\"")
+    log.info(f"[Local] 合成: \"{text[:50]}{'...' if len(text) > 50 else ''}\"")
     log.info(f"  音色: {speaker} | 语言: {language}")
     if instruct:
         log.info(f"  指令: {instruct}")
@@ -219,6 +244,32 @@ def synthesize_audio(text: str, speaker: str = "vivian", language: str = "chines
     return wavs[0], sr
 
 
+async def synthesize_edge_tts(text: str, speaker: str = "xiaoxiao") -> bytes:
+    """使用 Microsoft Edge TTS 合成音频（免费在线）"""
+    try:
+        import edge_tts
+    except ImportError:
+        raise RuntimeError("edge-tts 未安装，请运行: pip install edge-tts")
+
+    voice_id = EDGE_VOICE_MAP.get(speaker, "zh-CN-XiaoxiaoNeural")
+    log.info(f"[Edge TTS] 合成: \"{text[:50]}{'...' if len(text) > 50 else ''}\"")
+    log.info(f"  音色: {speaker} -> {voice_id}")
+
+    t0 = time.time()
+    communicate = edge_tts.Communicate(text, voice_id)
+    audio_buffer = io.BytesIO()
+
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_buffer.write(chunk["data"])
+
+    elapsed = time.time() - t0
+    audio_bytes = audio_buffer.getvalue()
+    log.info(f"  完成: {len(audio_bytes)} bytes, 耗时 {elapsed:.1f}s")
+
+    return audio_bytes
+
+
 # ==================== HTTP 接口 ====================
 
 @app.get("/health")
@@ -227,7 +278,9 @@ async def health():
     return JSONResponse({
         "status": "ok",
         "model_loaded": model_loaded,
-        "model_dir": MODEL_DIR,
+        "backend": "edge-tts" if USE_EDGE_TTS else "local",
+        "model_name": MODEL_NAME,
+        "model_dir": MODEL_DIR if not USE_EDGE_TTS else None,
     })
 
 
@@ -238,54 +291,57 @@ async def tts_sync(request: dict):
 
     请求体: { 
         "text": "你好", 
-        "speaker": "vivian",  # 可选，默认 vivian
-        "language": "chinese",  # 可选，默认 chinese
-        "instruct": ""  # 可选，情绪指令
+        "speaker": "vivian",  # 可选
+        "language": "chinese",  # 可选，仅本地模型使用
+        "instruct": ""  # 可选，仅本地模型使用
     }
-    响应: WAV 二进制（audio/wav）
+    响应: audio/wav 或 audio/mpeg
     """
-    if not model_loaded:
-        return JSONResponse({"error": "模型未加载"}, status_code=503)
-    
     text = request.get("text", "")
     if not text:
         return JSONResponse({"error": "缺少 text 字段"}, status_code=400)
     
-    speaker = request.get("speaker", "vivian").lower()
-    language = request.get("language", "chinese").lower()
-    instruct = request.get("instruct", "")
-    
-    # 规范化语言
-    language = LANG_MAP.get(language, language)
-    
-    # 验证音色
-    if speaker not in SPEAKER_INFO:
-        return JSONResponse({
-            "error": f"未知音色 '{speaker}'",
-            "available": list(SPEAKER_INFO.keys())
-        }, status_code=400)
-    
-    try:
-        import soundfile as sf
-        
-        # 执行合成
-        wav_data, sr = synthesize_audio(text, speaker, language, instruct)
-        
-        # 转换为 WAV 格式
-        wav_buffer = io.BytesIO()
-        sf.write(wav_buffer, wav_data, sr, format='WAV')
-        wav_buffer.seek(0)
-        
-        return Response(
-            content=wav_buffer.read(),
-            media_type="audio/wav",
-            headers={
-                "Content-Disposition": "attachment; filename=tts_output.wav"
-            }
-        )
-    except Exception as e:
-        log.error(f"合成失败: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+    speaker = request.get("speaker", "xiaoxiao" if USE_EDGE_TTS else "vivian").lower()
+
+    if USE_EDGE_TTS:
+        try:
+            audio_bytes = await synthesize_edge_tts(text, speaker)
+            return Response(
+                content=audio_bytes,
+                media_type="audio/mpeg",
+                headers={"Content-Disposition": "attachment; filename=tts_output.mp3"}
+            )
+        except Exception as e:
+            log.error(f"Edge TTS 合成失败: {e}")
+            return JSONResponse({"error": str(e)}, status_code=500)
+    else:
+        if not model_loaded:
+            return JSONResponse({"error": "模型未加载"}, status_code=503)
+
+        language = request.get("language", "chinese").lower()
+        instruct = request.get("instruct", "")
+        language = LANG_MAP.get(language, language)
+
+        if speaker not in SPEAKER_INFO:
+            return JSONResponse({
+                "error": f"未知音色 '{speaker}'",
+                "available": list(SPEAKER_INFO.keys())
+            }, status_code=400)
+
+        try:
+            import soundfile as sf
+            wav_data, sr = synthesize_audio(text, speaker, language, instruct)
+            wav_buffer = io.BytesIO()
+            sf.write(wav_buffer, wav_data, sr, format='WAV')
+            wav_buffer.seek(0)
+            return Response(
+                content=wav_buffer.read(),
+                media_type="audio/wav",
+                headers={"Content-Disposition": "attachment; filename=tts_output.wav"}
+            )
+        except Exception as e:
+            log.error(f"合成失败: {e}")
+            return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.websocket("/ws/tts")
@@ -293,18 +349,11 @@ async def tts_stream(ws: WebSocket):
     """
     流式 TTS 接口（长连接）
 
-    客户端发送: { 
-        "text": "你好", 
-        "speaker": "vivian",
-        "language": "chinese",
-        "instruct": ""
-    }
-    服务端返回: 
+    客户端发送: { "text": "你好", "speaker": "vivian", "language": "chinese", "instruct": "" }
+    服务端返回:
         1. {"status": "processing"}
-        2. {"audio": "<base64_wav>", "duration": 2.5}
+        2. {"audio": "<base64>", "duration": 2.5}  (Edge TTS 无 duration)
         3. {"done": true}
-
-    连接保持直到客户端断开，可多次发送文本。
     """
     await ws.accept()
     log.info("WebSocket 客户端已连接")
@@ -313,63 +362,60 @@ async def tts_stream(ws: WebSocket):
         while True:
             data = await ws.receive_json()
             
-            if not model_loaded:
-                await ws.send_json({"error": "模型未加载"})
-                continue
-            
             text = data.get("text", "")
             if not text:
                 await ws.send_json({"error": "缺少 text 字段"})
                 continue
             
-            speaker = data.get("speaker", "vivian").lower()
-            language = data.get("language", "chinese").lower()
-            instruct = data.get("instruct", "")
-            
-            # 规范化语言
-            language = LANG_MAP.get(language, language)
-            
-            # 验证音色
-            if speaker not in SPEAKER_INFO:
-                await ws.send_json({
-                    "error": f"未知音色 '{speaker}'",
-                    "available": list(SPEAKER_INFO.keys())
-                })
-                continue
-            
-            try:
-                import soundfile as sf
-                
-                # 通知开始处理
-                await ws.send_json({"status": "processing", "text": text[:50]})
-                
-                # 在线程池中执行合成（避免阻塞事件循环）
-                loop = asyncio.get_event_loop()
-                wav_data, sr = await loop.run_in_executor(
-                    None, 
-                    synthesize_audio, 
-                    text, speaker, language, instruct
-                )
-                
-                # 转换为 WAV 格式
-                wav_buffer = io.BytesIO()
-                sf.write(wav_buffer, wav_data, sr, format='WAV')
-                wav_buffer.seek(0)
-                
-                # 编码为 base64 发送
-                audio_b64 = base64.b64encode(wav_buffer.read()).decode('utf-8')
-                duration = len(wav_data) / sr
-                
-                await ws.send_json({
-                    "audio": audio_b64,
-                    "duration": round(duration, 2),
-                    "sample_rate": sr
-                })
-                await ws.send_json({"done": True})
-                
-            except Exception as e:
-                log.error(f"合成失败: {e}")
-                await ws.send_json({"error": str(e)})
+            speaker = data.get("speaker", "xiaoxiao" if USE_EDGE_TTS else "vivian").lower()
+
+            if USE_EDGE_TTS:
+                try:
+                    await ws.send_json({"status": "processing", "text": text[:50]})
+                    audio_bytes = await synthesize_edge_tts(text, speaker)
+                    audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
+                    await ws.send_json({"audio": audio_b64, "format": "mp3"})
+                    await ws.send_json({"done": True})
+                except Exception as e:
+                    log.error(f"Edge TTS 合成失败: {e}")
+                    await ws.send_json({"error": str(e)})
+            else:
+                if not model_loaded:
+                    await ws.send_json({"error": "模型未加载"})
+                    continue
+
+                language = data.get("language", "chinese").lower()
+                instruct = data.get("instruct", "")
+                language = LANG_MAP.get(language, language)
+
+                if speaker not in SPEAKER_INFO:
+                    await ws.send_json({
+                        "error": f"未知音色 '{speaker}'",
+                        "available": list(SPEAKER_INFO.keys())
+                    })
+                    continue
+
+                try:
+                    import soundfile as sf
+                    await ws.send_json({"status": "processing", "text": text[:50]})
+                    loop = asyncio.get_event_loop()
+                    wav_data, sr = await loop.run_in_executor(
+                        None, synthesize_audio, text, speaker, language, instruct
+                    )
+                    wav_buffer = io.BytesIO()
+                    sf.write(wav_buffer, wav_data, sr, format='WAV')
+                    wav_buffer.seek(0)
+                    audio_b64 = base64.b64encode(wav_buffer.read()).decode('utf-8')
+                    duration = len(wav_data) / sr
+                    await ws.send_json({
+                        "audio": audio_b64,
+                        "duration": round(duration, 2),
+                        "sample_rate": sr
+                    })
+                    await ws.send_json({"done": True})
+                except Exception as e:
+                    log.error(f"合成失败: {e}")
+                    await ws.send_json({"error": str(e)})
                 
     except WebSocketDisconnect:
         log.info("WebSocket 客户端断开")
@@ -380,8 +426,15 @@ async def tts_stream(ws: WebSocket):
 @app.get("/api/speakers")
 async def list_speakers():
     """列出所有可用音色"""
+    if USE_EDGE_TTS:
+        return JSONResponse({
+            "speakers": EDGE_SPEAKER_INFO,
+            "backend": "edge-tts",
+            "languages": ["chinese", "english", "japanese", "korean"]
+        })
     return JSONResponse({
         "speakers": SPEAKER_INFO,
+        "backend": "local",
         "languages": sorted(set(LANG_MAP.values()))
     })
 
@@ -391,11 +444,21 @@ async def list_speakers():
 @app.on_event("startup")
 async def startup_event():
     """应用启动时加载模型"""
-    log.info("应用启动，准备加载模型...")
-    
-    # 在后台线程加载模型（避免阻塞启动）
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, load_tts_model)
+    global model_loaded
+
+    if USE_EDGE_TTS:
+        log.info("使用 Microsoft Edge TTS（免费在线），跳过本地模型加载")
+        # 验证 edge-tts 可导入
+        try:
+            import edge_tts  # noqa: F401
+            log.info("edge-tts 库已就绪")
+            model_loaded = True
+        except ImportError:
+            log.error("edge-tts 未安装！请运行: pip install edge-tts")
+    else:
+        log.info("使用本地模型，准备加载...")
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, load_tts_model)
     
     log.info("应用启动完成")
 
