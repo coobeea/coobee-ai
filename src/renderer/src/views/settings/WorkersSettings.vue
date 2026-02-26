@@ -53,7 +53,7 @@ const WORKER_MODELS: Record<string, WorkerModelDef> = {
         label: 'SenseVoice Small',
         type: 'local',
         description: '高精度本地模型，支持 50+ 语种，情感识别',
-        configKey: 'FunAudioLLM/SenseVoiceSmall',
+        configKey: 'iic/SenseVoiceSmall',
         provider: 'FunAudioLLM'
       },
       {

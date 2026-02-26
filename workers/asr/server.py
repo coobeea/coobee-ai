@@ -108,7 +108,6 @@ def load_asr_model():
     from funasr import AutoModel
 
     device = detect_device()
-    model_py_path = os.path.join(SCRIPT_DIR, "model.py")
 
     log.info(f"加载模型: {MODEL_NAME}")
     log.info(f"设备: {device}")
@@ -118,26 +117,29 @@ def load_asr_model():
     os.environ.setdefault("HF_HOME", MODEL_DIR)
     os.environ.setdefault("HUGGINGFACE_HUB_CACHE", os.path.join(MODEL_DIR, "hub"))
 
-    # 构造模型路径
-    # 如果 MODEL_NAME 是相对路径，尝试在 MODEL_DIR 下查找
     model_path = os.path.join(MODEL_DIR, MODEL_NAME)
     if os.path.exists(model_path):
         log.info(f"使用本地模型路径: {model_path}")
         model_arg = model_path
     else:
-        # 否则尝试直接用 MODEL_NAME (作为 ID)
         model_arg = MODEL_NAME
 
-    t0 = time.time()
-    asr_engine = AutoModel(
+    # remote_code 仅用于 Fun-ASR-Nano（自定义模型实现）
+    needs_remote_code = "fun-asr-nano" in MODEL_NAME.lower().replace("_", "-")
+    model_kwargs = dict(
         model=model_arg,
         trust_remote_code=True,
-        remote_code=model_py_path,
         device=device,
         hub="ms",
         disable_update=True,
         log_level="ERROR",
     )
+    if needs_remote_code:
+        model_py_path = os.path.join(SCRIPT_DIR, "model.py")
+        model_kwargs["remote_code"] = model_py_path
+
+    t0 = time.time()
+    asr_engine = AutoModel(**model_kwargs)
     
     # 屏蔽 FunASR 的繁琐日志
     logging.getLogger("funasr").setLevel(logging.ERROR)

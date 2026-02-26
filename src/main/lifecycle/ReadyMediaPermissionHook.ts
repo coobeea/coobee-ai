@@ -43,14 +43,10 @@ export const ReadyMediaPermissionHook: LifecycleHook = {
         }
       });
 
-      // 同步权限检查 — 显式允许 media 相关权限
-      session.defaultSession.setPermissionCheckHandler((_webContents, permission, _requestingOrigin, _details) => {
-        const allowed = ['media', 'mediaKeySystem', 'geolocation', 'notifications'];
-        if (allowed.includes(permission)) {
-          return true;
-        }
-        log.debug(`[ReadyMediaPermissionHook] PermissionCheck 拒绝: ${permission}`);
-        return false;
+      // 同步权限检查 — 默认允许，仅拒绝高风险权限
+      session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+        const denied = new Set(['midi', 'midiSysex', 'openExternal']);
+        return !denied.has(permission);
       });
 
       log.info('[ReadyMediaPermissionHook] Electron session 权限策略已设置');
