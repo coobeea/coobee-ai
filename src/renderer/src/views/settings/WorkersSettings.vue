@@ -6,7 +6,7 @@
  * 在线模型支持 API Key / API URL 配置
  */
 
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { gateway } from '@/plugins/gatewaySetup';
 
 interface WorkerStatus {
@@ -51,6 +51,79 @@ const configSaving = ref<string | null>(null);
 const apiKeyInputs = ref<Record<string, string>>({});
 const apiUrlInputs = ref<Record<string, string>>({});
 const apiKeyVisible = ref<Record<string, boolean>>({});
+
+// 模型切换状态：跟踪每个 Worker 的切换进度
+interface ModelSwitchState {
+  phase: 'saving' | 'restarting' | 'downloading' | 'ready' | 'error';
+  message: string;
+  startedAt: number;
+}
+const modelSwitching = ref<Record<string, ModelSwitchState>>({});
+const pollingTimers = ref<Record<string, ReturnType<typeof setTimeout>>>({});
+
+function clearPolling(name: string): void {
+  if (pollingTimers.value[name]) {
+    clearTimeout(pollingTimers.value[name]);
+    delete pollingTimers.value[name];
+  }
+}
+
+function setSwitchState(name: string, phase: ModelSwitchState['phase'], message: string): void {
+  modelSwitching.value[name] = {
+    phase,
+    message,
+    startedAt: modelSwitching.value[name]?.startedAt ?? Date.now()
+  };
+}
+
+function clearSwitchState(name: string): void {
+  clearPolling(name);
+  delete modelSwitching.value[name];
+}
+
+async function pollWorkerHealth(name: string, maxWaitMs = 300000): Promise<void> {
+  const startedAt = modelSwitching.value[name]?.startedAt ?? Date.now();
+  let attempt = 0;
+
+  const poll = async (): Promise<void> => {
+    if (!modelSwitching.value[name]) return;
+
+    attempt++;
+    const elapsed = Date.now() - startedAt;
+
+    if (elapsed > maxWaitMs) {
+      setSwitchState(name, 'error', '等待超时，请检查服务日志');
+      setTimeout(() => clearSwitchState(name), 8000);
+      return;
+    }
+
+    try {
+      const result = (await gateway.request('worker.list', {})) as { workers: WorkerStatus[] };
+      const w = result.workers.find((x) => x.name === name);
+      workers.value = result.workers;
+
+      if (w?.healthy) {
+        setSwitchState(name, 'ready', '模型切换完成，服务已就绪');
+        setTimeout(() => clearSwitchState(name), 3000);
+        return;
+      }
+
+      if (w?.running && !w.healthy) {
+        const secs = Math.floor(elapsed / 1000);
+        setSwitchState(name, 'downloading', `模型加载中... (${secs}s)`);
+      } else if (!w?.running) {
+        setSwitchState(name, 'restarting', '服务重启中...');
+      }
+    } catch {
+      // 网络错误继续重试
+    }
+
+    const delay = attempt < 5 ? 2000 : attempt < 15 ? 3000 : 5000;
+    pollingTimers.value[name] = setTimeout(poll, delay);
+  };
+
+  pollingTimers.value[name] = setTimeout(poll, 1500);
+}
 
 // 判断选中的模型是否需要 API Key
 const selectedNeedsApiKey = computed(() => {
@@ -142,20 +215,31 @@ async function selectModel(workerName: string, option: ModelOption): Promise<voi
   const def = workerModels.value[workerName];
   if (!def || configSaving.value === workerName) return;
   if (isModelSelected(workerName, option)) return;
+  if (modelSwitching.value[workerName]) return;
 
   configSaving.value = workerName;
+  setSwitchState(workerName, 'saving', `切换到 ${option.label}...`);
+
   try {
     const result = (await gateway.request('worker.configUpdate', {
       name: workerName,
       config: { [def.configField]: option.configKey }
     })) as { restarted?: boolean } | undefined;
+
     if (!workerConfigs.value[workerName]) workerConfigs.value[workerName] = {};
     workerConfigs.value[workerName][def.configField] = option.configKey;
+
     if (result?.restarted) {
-      await loadWorkers();
+      setSwitchState(workerName, 'restarting', '服务重启中，模型下载/加载可能需要几分钟...');
+      pollWorkerHealth(workerName);
+    } else {
+      setSwitchState(workerName, 'ready', '配置已保存');
+      setTimeout(() => clearSwitchState(workerName), 2000);
     }
   } catch (err) {
     console.error(`[WorkersSettings] Failed to save config for ${workerName}:`, err);
+    setSwitchState(workerName, 'error', '保存失败，请重试');
+    setTimeout(() => clearSwitchState(workerName), 5000);
   } finally {
     configSaving.value = null;
   }
@@ -176,7 +260,8 @@ async function saveApiConfig(workerName: string): Promise<void> {
     if (!workerConfigs.value[workerName]) workerConfigs.value[workerName] = {};
     Object.assign(workerConfigs.value[workerName], updates);
     if (result?.restarted) {
-      await loadWorkers();
+      setSwitchState(workerName, 'restarting', 'API 配置已保存，服务重启中...');
+      pollWorkerHealth(workerName);
     }
   } catch (err) {
     console.error(`[WorkersSettings] Failed to save API config for ${workerName}:`, err);
@@ -268,6 +353,10 @@ function formatUptime(ms: number): string {
 onMounted(() => {
   loadWorkers();
 });
+
+onBeforeUnmount(() => {
+  Object.keys(pollingTimers.value).forEach(clearPolling);
+});
 </script>
 
 <template>
@@ -316,6 +405,17 @@ onMounted(() => {
                           : 'bg-gray-500/10 text-gray-600 dark:text-gray-400'
                       ]">
                       {{ worker.running ? (worker.healthy ? '运行中' : '异常') : '已停止' }}
+                    </span>
+                    <!-- 模型切换中的紧凑提示 -->
+                    <span
+                      v-if="
+                        modelSwitching[worker.name] &&
+                        modelSwitching[worker.name].phase !== 'ready' &&
+                        modelSwitching[worker.name].phase !== 'error'
+                      "
+                      class="flex items-center gap-1 rounded bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-600 dark:text-blue-400">
+                      <span class="i-carbon-in-progress inline-block h-2.5 w-2.5 animate-spin" />
+                      {{ modelSwitching[worker.name].message }}
                     </span>
                   </div>
 
@@ -403,12 +503,13 @@ onMounted(() => {
                     <label
                       v-for="opt in workerModels[worker.name].options.filter((o) => o.type === 'local')"
                       :key="opt.id"
-                      class="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors"
-                      :class="
+                      class="flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors"
+                      :class="[
                         isModelSelected(worker.name, opt)
                           ? 'border-primary/40 bg-primary/5'
-                          : 'border-transparent hover:bg-muted/50'
-                      "
+                          : 'border-transparent hover:bg-muted/50',
+                        modelSwitching[worker.name] ? 'pointer-events-none opacity-50' : 'cursor-pointer'
+                      ]"
                       @click="selectModel(worker.name, opt)">
                       <div
                         class="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 transition-colors"
@@ -440,12 +541,13 @@ onMounted(() => {
                     <label
                       v-for="opt in workerModels[worker.name].options.filter((o) => o.type === 'online')"
                       :key="opt.id"
-                      class="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors"
-                      :class="
+                      class="flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors"
+                      :class="[
                         isModelSelected(worker.name, opt)
                           ? 'border-primary/40 bg-primary/5'
-                          : 'border-transparent hover:bg-muted/50'
-                      "
+                          : 'border-transparent hover:bg-muted/50',
+                        modelSwitching[worker.name] ? 'pointer-events-none opacity-50' : 'cursor-pointer'
+                      ]"
                       @click="selectModel(worker.name, opt)">
                       <div
                         class="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 transition-colors"
@@ -529,11 +631,30 @@ onMounted(() => {
                   </button>
                 </div>
 
-                <!-- 保存提示 -->
-                <div v-if="configSaving === worker.name" class="mt-2 flex items-center gap-1 text-[11px] text-primary">
-                  <span class="i-carbon-in-progress inline-block h-3 w-3 animate-spin" />
-                  保存中...
+                <!-- 模型切换状态条 -->
+                <div
+                  v-if="modelSwitching[worker.name]"
+                  class="mt-3 flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs"
+                  :class="{
+                    'bg-blue-500/10 text-blue-600 dark:text-blue-400':
+                      modelSwitching[worker.name].phase === 'saving' ||
+                      modelSwitching[worker.name].phase === 'restarting' ||
+                      modelSwitching[worker.name].phase === 'downloading',
+                    'bg-green-500/10 text-green-600 dark:text-green-400': modelSwitching[worker.name].phase === 'ready',
+                    'bg-red-500/10 text-red-600 dark:text-red-400': modelSwitching[worker.name].phase === 'error'
+                  }">
+                  <span
+                    v-if="
+                      modelSwitching[worker.name].phase !== 'ready' && modelSwitching[worker.name].phase !== 'error'
+                    "
+                    class="i-carbon-in-progress inline-block h-3.5 w-3.5 shrink-0 animate-spin" />
+                  <span
+                    v-else-if="modelSwitching[worker.name].phase === 'ready'"
+                    class="i-carbon-checkmark-filled inline-block h-3.5 w-3.5 shrink-0" />
+                  <span v-else class="i-carbon-warning-alt inline-block h-3.5 w-3.5 shrink-0" />
+                  <span>{{ modelSwitching[worker.name].message }}</span>
                 </div>
+
                 <p class="mt-2 text-[11px] text-muted-foreground/60">切换模型或 API Key 后，运行中的服务会自动重启</p>
               </div>
             </div>
