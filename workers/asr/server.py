@@ -22,6 +22,7 @@ import argparse
 import asyncio
 import logging
 import os
+import re
 import struct
 import sys
 import tempfile
@@ -80,6 +81,9 @@ MIN_UTTERANCE_SEC = 0.3       # 最短有效语段（低于此不值得识别）
 
 logging.basicConfig(level=logging.INFO, format="[ASR] %(message)s")
 log = logging.getLogger("asr")
+
+# 模型类型检测：SenseVoice 系列需要不同的参数和后处理
+_is_sensevoice = "sensevoice" in MODEL_NAME.lower().replace("-", "").replace("_", "")
 
 app = FastAPI(title="ASR Worker", version="0.3.0")
 
@@ -192,14 +196,34 @@ def pcm_to_wav(pcm_bytes: bytes, tmp_dir: str) -> str:
     return wav_path
 
 
+_SENSEVOICE_TAG_RE = re.compile(r"<\|[^|]*\|>")
+
+try:
+    from funasr.utils.postprocess_utils import rich_transcription_postprocess
+    _has_rich_postprocess = True
+except ImportError:
+    _has_rich_postprocess = False
+
+
+def clean_sensevoice_output(text: str) -> str:
+    """清理 SenseVoice 模型输出中的特殊标签 <|zh|><|NEUTRAL|> 等"""
+    if _has_rich_postprocess:
+        return rich_transcription_postprocess(text)
+    return _SENSEVOICE_TAG_RE.sub("", text).strip()
+
+
 def clean_asr_output(text: str, audio_sec: float) -> str:
     """
-    清理 ASR 输出：检测模型幻觉（重复短语）
-    
-    FunASR 在输入音频质量差时会进入循环，不断重复同一短语。
-    检测方法：输出字数远超音频时长合理范围 → 截断。
-    中文正常语速 ~4-8 字/秒，允许 2x 余量。
+    清理 ASR 输出：
+    1. SenseVoice 模型：去除语言/情感/事件标签
+    2. 幻觉检测：输出字数超音频时长合理范围则截断
     """
+    if not text:
+        return text
+    
+    if _is_sensevoice:
+        text = clean_sensevoice_output(text)
+    
     if not text:
         return text
     
@@ -261,16 +285,25 @@ def do_transcribe(pcm_bytes: bytes) -> tuple[str, int]:
         wav_ms = int((time.time() - t0) * 1000)
         
         t1 = time.time()
-        results = asr_engine.generate(
-            input=[wav_path],
-            cache={},
-            batch_size=1,
-            hotwords=[],
-            language="中文",
-            itn=True,
-            disable_pbar=True,  # 禁用进度条
-            log_level="ERROR",
-        )
+        if _is_sensevoice:
+            results = asr_engine.generate(
+                input=wav_path,
+                cache={},
+                language="auto",
+                use_itn=True,
+                batch_size_s=0,
+            )
+        else:
+            results = asr_engine.generate(
+                input=[wav_path],
+                cache={},
+                batch_size=1,
+                hotwords=[],
+                language="中文",
+                itn=True,
+                disable_pbar=True,
+                log_level="ERROR",
+            )
         infer_ms = int((time.time() - t1) * 1000)
         
         text = ""
