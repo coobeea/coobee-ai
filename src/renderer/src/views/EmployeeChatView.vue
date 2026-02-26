@@ -166,6 +166,7 @@ async function sendToLLM(text: string): Promise<void> {
   status.value = 'thinking';
   subtitle.value = '';
   lastPartialText = '';
+  resetSentOffset();
   addUserMessage(text);
 
   const contextHint = buildContextHint();
@@ -214,6 +215,7 @@ watch(isStreaming, (val) => {
 
 function trySendOrQueue(text: string): void {
   if (!text.trim()) return;
+  stopRecording();
   if (isStreaming.value) {
     pendingText = pendingText ? pendingText + ' ' + text.trim() : text.trim();
     console.log('[EmployeeChat] LLM busy, queued:', pendingText);
@@ -225,7 +227,7 @@ function trySendOrQueue(text: string): void {
 // ---- 录音机 ----
 let lastPartialText = '';
 
-const { startRecording, stopRecording, disconnect } = useAudioRecorder({
+const { startRecording, stopRecording, disconnect, resetSentOffset } = useAudioRecorder({
   onPartialResult: (text, meta) => {
     subtitle.value = text;
     lastPartialText = text;
@@ -273,6 +275,8 @@ async function toggleMic(): Promise<void> {
   if (status.value === 'listening') {
     status.value = isStreaming.value ? 'thinking' : 'idle';
     stopRecording();
+  } else if (isStreaming.value) {
+    return;
   } else {
     status.value = 'listening';
     try {
@@ -360,8 +364,8 @@ function handleExit(): void {
           <div v-else-if="status === 'thinking'" class="thinking-anim"> <span /><span /><span /> </div>
         </div>
 
-        <!-- 排队中提示 -->
-        <div v-if="pendingText && isStreaming" class="queued-hint"> 待发送: {{ pendingText }} </div>
+        <!-- 排队中提示（安全兜底） -->
+        <div v-if="pendingText && isStreaming" class="queued-hint">有新消息待发送...</div>
       </div>
 
       <!-- 字幕 + 麦克风 -->
@@ -388,8 +392,8 @@ function handleExit(): void {
             <div class="mic-ring" :class="{ active: status === 'listening' }" />
             <button
               class="mic-btn"
-              :class="{ active: status === 'listening', disabled: !threadReady }"
-              :disabled="!threadReady"
+              :class="{ active: status === 'listening', disabled: !threadReady || isStreaming }"
+              :disabled="!threadReady || (isStreaming && status !== 'listening')"
               :style="status === 'listening' ? { transform: `scale(${1 + volume / 400})` } : {}"
               @click="toggleMic">
               <span v-if="status !== 'listening'" class="i-carbon-microphone h-5 w-5" />
@@ -397,6 +401,7 @@ function handleExit(): void {
             </button>
           </div>
           <span v-if="!threadReady" class="mic-hint">会话准备中...</span>
+          <span v-else-if="isStreaming" class="mic-hint">AI 回复中，请稍候...</span>
         </div>
       </div>
     </div>
@@ -426,16 +431,16 @@ function handleExit(): void {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 24px 20px 12px;
-  gap: 8px;
+  padding: 12px 20px 4px;
+  gap: 4px;
 }
 
 .avatar-frame {
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  width: 160px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 

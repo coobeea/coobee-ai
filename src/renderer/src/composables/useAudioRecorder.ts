@@ -24,6 +24,7 @@ export interface UseAudioRecorderReturn {
   startRecording: () => Promise<void>;
   stopRecording: () => void;
   disconnect: () => void;
+  resetSentOffset: () => void;
 }
 
 export function useAudioRecorder(options: AudioRecorderOptions = {}): UseAudioRecorderReturn {
@@ -101,6 +102,15 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}): UseAudioRe
     return buf;
   };
 
+  // 已发送文本的长度偏移，用于从 committed_text 中截取本轮新内容
+  let sentTextLength = 0;
+
+  const resetSentOffset = (): void => {
+    sentTextLength = lastKnownFullText.length;
+  };
+
+  let lastKnownFullText = '';
+
   // ==================== WebSocket ====================
 
   const connect = async (): Promise<void> => {
@@ -131,14 +141,21 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}): UseAudioRe
         if (data.status === 'ready') {
           // Worker 就绪
         } else if (data.partial) {
+          lastKnownFullText = data.partial;
+          const currentTurnText = data.partial.substring(sentTextLength);
           const meta: AsrMeta = {
             lang: data.lang ?? null,
             emotion: data.emotion ?? null,
             event: data.event ?? null
           };
-          options.onPartialResult?.(data.partial, meta);
+          if (currentTurnText.trim()) {
+            options.onPartialResult?.(currentTurnText, meta);
+          }
         } else if (data.final) {
-          options.onFinalResult?.(data.final);
+          const currentTurnText = data.final.substring(sentTextLength);
+          if (currentTurnText.trim()) {
+            options.onFinalResult?.(currentTurnText);
+          }
         }
       } catch (_e) {
         // 忽略非 JSON 消息
@@ -300,6 +317,7 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}): UseAudioRe
     connect,
     startRecording,
     stopRecording,
-    disconnect
+    disconnect,
+    resetSentOffset
   };
 }

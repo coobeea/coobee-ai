@@ -105,12 +105,12 @@ onUnmounted(() => {
 
 .avatar-wrap {
   position: relative;
-  width: 280px;
-  height: 280px;
+  width: 160px;
+  height: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transform: scale(0.8); /* 默认稍小一点 */
+  transform: scale(0.55);
   transition: transform 0.3s;
 }
 
