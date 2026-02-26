@@ -18,13 +18,13 @@ const threadsStore = useThreadsStore();
 
 const employee = ref<DigitalEmployee | null>(null);
 const loading = ref(true);
-const status = ref<'idle' | 'listening' | 'thinking' | 'speaking'>('idle');
+const status = ref<'idle' | 'listening' | 'thinking'>('idle');
 const subtitle = ref('');
 const volume = ref(0);
 const asrMeta = ref<AsrMeta>({});
 const TARGET_AGENT_ID = 'app-copilot';
 
-// ---- Session / Thread 管理 ----
+// ---- Session / Thread ----
 const sessionId = ref<string | null>(null);
 const threadReady = ref(false);
 
@@ -41,45 +41,35 @@ function ensureSubscribed(): void {
 
 async function initThread(): Promise<void> {
   await threadsStore.fetchThreads(TARGET_AGENT_ID);
-
   const existing = threadsStore.threads.find(
     (t) => t.agentId === TARGET_AGENT_ID && t.status === 'active' && t.runStatus !== 'error'
   );
-
   if (existing) {
     sessionId.value = existing.id;
-    console.log(`[EmployeeChat] Reusing thread: ${existing.id}`);
   } else {
     const empName = employee.value?.name || '员工';
     const thread = await threadsStore.createThread(`${empName} 的对话`, TARGET_AGENT_ID);
     if (thread) {
       sessionId.value = thread.id;
-      console.log(`[EmployeeChat] Created thread: ${thread.id}`);
     } else {
-      console.error('[EmployeeChat] Failed to create thread');
       addErrorMessage('无法创建对话会话');
       return;
     }
   }
-
   threadReady.value = true;
   ensureSubscribed();
 }
 
 onMounted(() => {
-  const unregister = gateway.onConnect(() => {
-    ensureSubscribed();
-  });
+  const unregister = gateway.onConnect(() => ensureSubscribed());
   onUnmounted(unregister);
 });
 
 onUnmounted(() => {
-  if (sessionId.value) {
-    streamUnsubscribe(sessionId.value);
-  }
+  if (sessionId.value) streamUnsubscribe(sessionId.value);
 });
 
-// ---- 对话显示：按轮次组织 ----
+// ---- 对话轮次 ----
 interface ConversationTurn {
   user: StreamChatMessage;
   assistant?: StreamChatMessage;
@@ -101,7 +91,8 @@ const conversationTurns = computed((): ConversationTurn[] => {
 });
 
 const latestTurn = computed(() => {
-  return conversationTurns.value.length > 0 ? conversationTurns.value[conversationTurns.value.length - 1] : null;
+  const all = conversationTurns.value;
+  return all.length > 0 ? all[all.length - 1] : null;
 });
 
 const olderTurns = computed(() => {
@@ -113,9 +104,7 @@ const olderTurns = computed(() => {
 const chatAreaEl = ref<HTMLElement | null>(null);
 function scrollToBottom(): void {
   nextTick(() => {
-    if (chatAreaEl.value) {
-      chatAreaEl.value.scrollTop = chatAreaEl.value.scrollHeight;
-    }
+    if (chatAreaEl.value) chatAreaEl.value.scrollTop = chatAreaEl.value.scrollHeight;
   });
 }
 
@@ -128,18 +117,33 @@ watch(
   () => scrollToBottom()
 );
 
-// ---- 工具执行摘要 ----
+// ---- 工具/思考摘要 ----
 function getToolChips(msg: StreamChatMessage): { name: string; status: string }[] {
   return msg.blocks
     .filter((b) => b.type === 'tool')
-    .map((b) => {
-      if (b.type === 'tool') return { name: b.tool.name, status: b.tool.status };
-      return { name: '', status: '' };
-    })
+    .map((b) => (b.type === 'tool' ? { name: b.tool.name, status: b.tool.status } : { name: '', status: '' }))
     .filter((t) => t.name);
 }
 
-// ---- 发送消息给应用管家 ----
+function getThinkingText(msg: StreamChatMessage): string {
+  return msg.blocks
+    .filter((b) => b.type === 'thinking')
+    .map((b) => (b.type === 'thinking' ? b.text : ''))
+    .join('');
+}
+
+function getDelegateChips(msg: StreamChatMessage): { name: string; status: string; task?: string }[] {
+  return msg.blocks
+    .filter((b) => b.type === 'delegate')
+    .map((b) =>
+      b.type === 'delegate'
+        ? { name: b.delegate.agentName || b.delegate.agentId, status: b.delegate.status, task: b.delegate.task }
+        : { name: '', status: '' }
+    )
+    .filter((d) => d.name);
+}
+
+// ---- 发送 ----
 function buildContextHint(): string {
   const parts: string[] = [];
   const meta = asrMeta.value;
@@ -156,9 +160,7 @@ function buildContextHint(): string {
 
 async function sendToLLM(text: string): Promise<void> {
   if (!text.trim()) return;
-
   if (!threadReady.value || !sessionId.value) {
-    console.warn('[EmployeeChat] Thread not ready, cannot send');
     addErrorMessage('会话尚未就绪，请稍后再试');
     return;
   }
@@ -167,6 +169,7 @@ async function sendToLLM(text: string): Promise<void> {
   subtitle.value = '';
   lastPartialText = '';
   resetSentOffset();
+  mute();
   addUserMessage(text);
 
   const contextHint = buildContextHint();
@@ -174,35 +177,30 @@ async function sendToLLM(text: string): Promise<void> {
 
   try {
     ensureSubscribed();
-
     const result = await gateway.request<{ sessionId: string; status: string }>('chat.send', {
       message: messageToSend,
       sessionId: sessionId.value,
       mode: 'agent',
       agentId: TARGET_AGENT_ID
     });
-
-    console.log('[EmployeeChat] chat.send result:', result);
-
     if (result && result.sessionId && result.sessionId !== sessionId.value) {
-      console.log(`[EmployeeChat] SessionId changed: ${sessionId.value} → ${result.sessionId}`);
       streamUnsubscribe(sessionId.value);
       sessionId.value = result.sessionId;
       streamSubscribe(sessionId.value, handleStreamMessage);
     }
   } catch (err) {
-    console.error('[EmployeeChat] Send error:', err);
     addErrorMessage(String(err));
     status.value = 'idle';
+    unmute();
   }
 }
 
-// ---- 流式状态追踪 & 排队发送 ----
 let pendingText = '';
 
 watch(isStreaming, (val) => {
   if (!val) {
-    status.value = 'idle';
+    status.value = 'listening';
+    unmute();
     if (pendingText) {
       const text = pendingText;
       pendingText = '';
@@ -215,19 +213,17 @@ watch(isStreaming, (val) => {
 
 function trySendOrQueue(text: string): void {
   if (!text.trim()) return;
-  stopRecording();
   if (isStreaming.value) {
     pendingText = pendingText ? pendingText + ' ' + text.trim() : text.trim();
-    console.log('[EmployeeChat] LLM busy, queued:', pendingText);
     return;
   }
   sendToLLM(text);
 }
 
-// ---- 录音机 ----
+// ---- 录音 ----
 let lastPartialText = '';
 
-const { startRecording, stopRecording, disconnect, resetSentOffset } = useAudioRecorder({
+const { startRecording, disconnect, resetSentOffset, mute, unmute, isRecording, isMuted } = useAudioRecorder({
   onPartialResult: (text, meta) => {
     subtitle.value = text;
     lastPartialText = text;
@@ -252,12 +248,11 @@ const { startRecording, stopRecording, disconnect, resetSentOffset } = useAudioR
   }
 });
 
-// ---- 加载员工信息 + 初始化 Thread ----
+// ---- 生命周期 ----
 onMounted(async () => {
   try {
     employee.value = await employeeApi.getEmployee(employeeId);
-  } catch (error) {
-    console.error('Failed to load employee:', error);
+  } catch {
     router.replace('/employee');
     return;
   } finally {
@@ -265,25 +260,34 @@ onMounted(async () => {
   }
 
   await initThread();
+
+  try {
+    await startRecording();
+    status.value = 'listening';
+  } catch {
+    status.value = 'idle';
+  }
 });
 
 onUnmounted(() => {
   disconnect();
 });
 
-async function toggleMic(): Promise<void> {
-  if (status.value === 'listening') {
+function toggleMic(): void {
+  if (isRecording.value && !isMuted.value) {
+    mute();
     status.value = isStreaming.value ? 'thinking' : 'idle';
-    stopRecording();
-  } else if (isStreaming.value) {
-    return;
-  } else {
+  } else if (isMuted.value) {
+    unmute();
     status.value = 'listening';
-    try {
-      await startRecording();
-    } catch (_e) {
-      status.value = 'idle';
-    }
+  } else {
+    startRecording()
+      .then(() => {
+        status.value = 'listening';
+      })
+      .catch(() => {
+        status.value = 'idle';
+      });
   }
 }
 
@@ -299,12 +303,10 @@ function handleExit(): void {
       <div class="avatar-frame">
         <EmployeeAvatar :state="status" />
       </div>
-      <!-- 员工信息 -->
       <div v-if="employee" class="emp-info">
         <span class="emp-name">{{ employee.name }}</span>
         <span class="emp-role">{{ employee.role }}</span>
       </div>
-      <!-- 状态指示 -->
       <div class="state-badge" :class="status">
         <template v-if="status === 'listening'">
           <span class="dot pulse" />
@@ -321,11 +323,10 @@ function handleExit(): void {
       </div>
     </div>
 
-    <!-- 下半区：对话 + 控制 -->
+    <!-- 下半区 -->
     <div class="chat-section">
-      <!-- 对话区域（固定高度，内部滚动） -->
       <div ref="chatAreaEl" class="chat-area">
-        <!-- 历史轮次（简洁、半透明） -->
+        <!-- 历史轮次 -->
         <template v-for="(turn, idx) in olderTurns" :key="'h-' + idx">
           <div class="turn-row older">
             <div class="turn-user">{{ turn.user.content }}</div>
@@ -333,13 +334,32 @@ function handleExit(): void {
           </div>
         </template>
 
-        <!-- 最新一轮（突出显示） -->
+        <!-- 最新一轮 -->
         <div v-if="latestTurn" class="turn-row latest">
           <div class="turn-user latest-user">{{ latestTurn.user.content }}</div>
 
-          <!-- AI 回复 -->
           <div v-if="latestTurn.assistant" class="turn-ai-card">
-            <!-- 工具执行指示器 -->
+            <!-- 思考过程（折叠） -->
+            <details v-if="getThinkingText(latestTurn.assistant)" class="thinking-block">
+              <summary class="thinking-summary">
+                <span class="i-carbon-idea inline-block h-3 w-3" />
+                思考中...
+              </summary>
+              <div class="thinking-content">{{ getThinkingText(latestTurn.assistant) }}</div>
+            </details>
+
+            <!-- 委托 Agent -->
+            <div v-if="getDelegateChips(latestTurn.assistant).length" class="delegate-bar">
+              <span v-for="(d, di) in getDelegateChips(latestTurn.assistant)" :key="di" class="delegate-chip">
+                <span class="i-carbon-user-avatar inline-block h-2.5 w-2.5" />
+                {{ d.name }}
+                <template v-if="d.task"> · {{ d.task }}</template>
+                <span v-if="d.status === 'running'" class="i-carbon-renew inline-block h-2.5 w-2.5 animate-spin" />
+                <span v-else class="i-carbon-checkmark inline-block h-2.5 w-2.5 text-green-400" />
+              </span>
+            </div>
+
+            <!-- 工具调用 -->
             <div v-if="getToolChips(latestTurn.assistant).length" class="tool-bar">
               <span v-for="(chip, ci) in getToolChips(latestTurn.assistant)" :key="ci" class="tool-chip">
                 <span class="i-carbon-tool-box inline-block h-2.5 w-2.5" />
@@ -350,27 +370,24 @@ function handleExit(): void {
                   class="i-carbon-checkmark inline-block h-2.5 w-2.5 text-green-400" />
               </span>
             </div>
-            <!-- 文本内容 -->
+
+            <!-- 文本回复 -->
             <div v-if="latestTurn.assistant.content" class="ai-text">
               {{ latestTurn.assistant.content }}
             </div>
+
             <!-- 错误 -->
             <div v-if="latestTurn.assistant.status === 'error' && latestTurn.assistant.error" class="ai-error">
               {{ latestTurn.assistant.error }}
             </div>
           </div>
 
-          <!-- 思考中动画（AI 还没回复时） -->
           <div v-else-if="status === 'thinking'" class="thinking-anim"> <span /><span /><span /> </div>
         </div>
-
-        <!-- 排队中提示（安全兜底） -->
-        <div v-if="pendingText && isStreaming" class="queued-hint">有新消息待发送...</div>
       </div>
 
-      <!-- 字幕 + 麦克风 -->
+      <!-- 控制区 -->
       <div class="control-zone">
-        <!-- 实时字幕 -->
         <div class="subtitle-row">
           <div v-if="subtitle" class="live-subtitle">
             <span v-if="asrMeta.emotion && asrMeta.emotion !== 'NEUTRAL'" class="emo-badge">
@@ -383,7 +400,6 @@ function handleExit(): void {
           </div>
         </div>
 
-        <!-- 麦克风按钮 -->
         <div class="mic-row">
           <div class="mic-wrapper">
             <div class="mic-vis" :class="{ active: status === 'listening' }">
@@ -392,21 +408,25 @@ function handleExit(): void {
             <div class="mic-ring" :class="{ active: status === 'listening' }" />
             <button
               class="mic-btn"
-              :class="{ active: status === 'listening', disabled: !threadReady || isStreaming }"
-              :disabled="!threadReady || (isStreaming && status !== 'listening')"
+              :class="{
+                active: status === 'listening',
+                muted: isMuted && isRecording,
+                disabled: !threadReady
+              }"
+              :disabled="!threadReady"
               :style="status === 'listening' ? { transform: `scale(${1 + volume / 400})` } : {}"
               @click="toggleMic">
-              <span v-if="status !== 'listening'" class="i-carbon-microphone h-5 w-5" />
-              <span v-else class="i-carbon-stop-filled h-5 w-5" />
+              <span v-if="isMuted && isRecording" class="i-carbon-microphone-off h-5 w-5" />
+              <span v-else-if="status === 'listening'" class="i-carbon-stop-filled h-5 w-5" />
+              <span v-else class="i-carbon-microphone h-5 w-5" />
             </button>
           </div>
           <span v-if="!threadReady" class="mic-hint">会话准备中...</span>
-          <span v-else-if="isStreaming" class="mic-hint">AI 回复中，请稍候...</span>
+          <span v-else-if="status === 'thinking'" class="mic-hint">AI 处理中...</span>
         </div>
       </div>
     </div>
 
-    <!-- 退出按钮 -->
     <button class="exit-btn" title="结束对话" @click="handleExit">
       <span class="i-carbon-close h-4 w-4" />
     </button>
@@ -425,7 +445,7 @@ function handleExit(): void {
   color: #fff;
 }
 
-/* ---- 上半区：头像 ---- */
+/* ---- 头像区 ---- */
 .avatar-section {
   flex-shrink: 0;
   display: flex;
@@ -454,13 +474,11 @@ function handleExit(): void {
 .emp-info {
   text-align: center;
 }
-
 .emp-name {
   font-size: 16px;
   font-weight: 600;
   display: block;
 }
-
 .emp-role {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.4);
@@ -475,12 +493,10 @@ function handleExit(): void {
   border-radius: 12px;
   color: rgba(255, 255, 255, 0.65);
 }
-
 .state-badge.listening {
   background: rgba(239, 68, 68, 0.15);
   color: rgba(252, 165, 165, 0.9);
 }
-
 .state-badge.thinking {
   background: rgba(99, 102, 241, 0.15);
   color: rgba(165, 180, 252, 0.9);
@@ -492,11 +508,9 @@ function handleExit(): void {
   border-radius: 50%;
   background: #ef4444;
 }
-
 .dot.pulse {
   animation: dotPulse 1.5s infinite;
 }
-
 .dot-think {
   width: 5px;
   height: 5px;
@@ -504,7 +518,6 @@ function handleExit(): void {
   background: #818cf8;
   animation: dotPulse 1.5s infinite;
 }
-
 .dot-idle {
   width: 5px;
   height: 5px;
@@ -512,7 +525,7 @@ function handleExit(): void {
   background: rgba(255, 255, 255, 0.25);
 }
 
-/* ---- 下半区：对话 + 控制 ---- */
+/* ---- 对话区 ---- */
 .chat-section {
   flex: 1;
   min-height: 0;
@@ -531,37 +544,32 @@ function handleExit(): void {
   padding: 8px 4px;
   justify-content: flex-end;
 }
-
 .chat-area::-webkit-scrollbar {
   width: 3px;
 }
-
 .chat-area::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 2px;
 }
 
-/* ---- 轮次显示 ---- */
+/* ---- 轮次 ---- */
 .turn-row {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-
 .turn-row.older {
   opacity: 0.35;
 }
 
 .turn-user {
   align-self: flex-start;
-  padding: 4px 0;
+  padding: 4px 0 4px 10px;
   color: rgba(200, 210, 255, 0.85);
   font-size: 13px;
   line-height: 1.5;
   border-left: 2px solid rgba(99, 102, 241, 0.35);
-  padding-left: 10px;
 }
-
 .turn-user.latest-user {
   color: rgba(220, 225, 255, 0.95);
   border-left-color: rgba(99, 102, 241, 0.6);
@@ -581,20 +589,79 @@ function handleExit(): void {
 
 .turn-ai-card {
   align-self: flex-start;
+  max-width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
   padding: 10px 14px;
   animation: fadeIn 0.25s ease-out;
 }
+.turn-ai-card::-webkit-scrollbar {
+  width: 3px;
+}
+.turn-ai-card::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
 
+/* 思考折叠 */
+.thinking-block {
+  margin-bottom: 6px;
+}
+.thinking-summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0;
+}
+.thinking-summary:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+.thinking-content {
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.3);
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  max-height: 80px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 委托 */
+.delegate-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.delegate-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(168, 85, 247, 0.08);
+  border: 1px solid rgba(168, 85, 247, 0.15);
+  color: rgba(196, 181, 253, 0.7);
+  font-size: 10px;
+}
+
+/* 工具 */
 .tool-bar {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 6px;
 }
-
 .tool-chip {
   display: inline-flex;
   align-items: center;
@@ -621,13 +688,12 @@ function handleExit(): void {
   margin-top: 4px;
 }
 
-/* 思考中动画 */
+/* 思考动画 */
 .thinking-anim {
   display: flex;
   gap: 5px;
   padding: 8px 0;
 }
-
 .thinking-anim span {
   width: 6px;
   height: 6px;
@@ -635,26 +701,14 @@ function handleExit(): void {
   border-radius: 50%;
   animation: dotBounce 1.4s ease-in-out infinite;
 }
-
 .thinking-anim span:nth-child(2) {
   animation-delay: 0.2s;
 }
-
 .thinking-anim span:nth-child(3) {
   animation-delay: 0.4s;
 }
 
-/* 排队提示 */
-.queued-hint {
-  align-self: flex-start;
-  font-size: 11px;
-  color: rgba(253, 186, 116, 0.6);
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: rgba(251, 146, 60, 0.08);
-}
-
-/* ---- 底部控制区 ---- */
+/* ---- 控制区 ---- */
 .control-zone {
   flex-shrink: 0;
   display: flex;
@@ -688,7 +742,6 @@ function handleExit(): void {
 .emo-badge {
   font-size: 14px;
 }
-
 .lang-badge {
   font-size: 10px;
   padding: 0 4px;
@@ -722,7 +775,6 @@ function handleExit(): void {
   opacity: 0;
   transition: opacity 0.3s ease;
 }
-
 .mic-vis.active {
   opacity: 1;
 }
@@ -747,17 +799,19 @@ function handleExit(): void {
   z-index: 10;
   box-shadow: 0 3px 16px rgba(0, 0, 0, 0.3);
 }
-
 .mic-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.15);
 }
-
 .mic-btn.active {
   background: #ef4444;
   box-shadow: 0 3px 20px rgba(239, 68, 68, 0.4);
   border-color: rgba(239, 68, 68, 0.5);
 }
-
+.mic-btn.muted {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  opacity: 0.5;
+}
 .mic-btn.disabled,
 .mic-btn:disabled {
   opacity: 0.3;
@@ -778,7 +832,6 @@ function handleExit(): void {
   transform: scale(0.8);
   transition: all 0.3s ease;
 }
-
 .mic-ring.active {
   opacity: 0.5;
   transform: scale(1);
@@ -790,7 +843,7 @@ function handleExit(): void {
   color: rgba(255, 255, 255, 0.3);
 }
 
-/* ---- 退出按钮 ---- */
+/* ---- 退出 ---- */
 .exit-btn {
   position: absolute;
   top: 12px;
@@ -808,7 +861,6 @@ function handleExit(): void {
   z-index: 100;
   transition: all 0.2s;
 }
-
 .exit-btn:hover {
   background: rgba(255, 255, 255, 0.15);
   color: #fff;

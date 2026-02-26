@@ -372,7 +372,7 @@ async def asr_stream(ws: WebSocket):
     - 安全阀：连续说话超过 MAX_UTTERANCE_SEC 时强制切一次
     """
     await ws.accept()
-    log.info("WebSocket 客户端已连接")
+    log.debug("WebSocket 客户端已连接")
     
     if not model_loaded:
         await ws.send_json({"status": "loading", "message": "模型加载中..."})
@@ -412,22 +412,16 @@ async def asr_stream(ws: WebSocket):
                         margin = int(0.2 * BYTES_PER_SEC)
                         skip_to = max(recognized_pos, buf_pos_before - margin)
                         if skip_to > recognized_pos:
-                            skipped_sec = (skip_to - recognized_pos) / BYTES_PER_SEC
                             recognized_pos = skip_to
-                            log.info(
-                                f"[VAD] 开始说话 pos={speech_start_pos}, "
-                                f"跳过 {skipped_sec:.1f}s 静音"
-                            )
-                        else:
-                            log.info(f"[VAD] 开始说话 pos={speech_start_pos}")
+                        log.debug(f"[VAD] 开始说话 pos={speech_start_pos}")
                     silence_start_pos = -1
                     
                     # 安全阀：连续说话太久，强制触发识别
                     speech_len = len(buffer) - speech_start_pos
                     if speech_len >= MAX_UTTERANCE_BYTES:
-                        log.info(
+                        log.debug(
                             f"[VAD] 连续说话 {speech_len / BYTES_PER_SEC:.1f}s，"
-                            f"强制触发识别"
+                            f"强制触发"
                         )
                         pending.set()
                 else:
@@ -439,24 +433,20 @@ async def asr_stream(ws: WebSocket):
                     if speech_start_pos >= 0:
                         silence_len = len(buffer) - silence_start_pos
                         if silence_len >= SILENCE_BYTES:
-                            # 停顿够长 → 一句话说完了
                             utterance_bytes = silence_start_pos - recognized_pos
-                            log.info(
-                                f"[VAD] 检测到停顿 "
-                                f"(语音 {utterance_bytes / BYTES_PER_SEC:.1f}s, "
-                                f"静音 {silence_len / BYTES_PER_SEC:.1f}s)"
+                            log.debug(
+                                f"[VAD] 停顿 "
+                                f"(语音 {utterance_bytes / BYTES_PER_SEC:.1f}s)"
                             )
                             if utterance_bytes >= MIN_UTTERANCE_BYTES:
                                 pending.set()
                             else:
-                                # 太短的语音（如清嗓子），跳过
                                 recognized_pos = len(buffer)
-                                log.info("[VAD] 语音太短，跳过")
                             speech_start_pos = -1
                             silence_start_pos = -1
         
         except (WebSocketDisconnect, Exception) as e:
-            log.info(f"连接断开: {type(e).__name__}")
+            log.debug(f"连接断开: {type(e).__name__}")
             connected = False
             pending.set()
     
@@ -540,7 +530,7 @@ async def asr_stream(ws: WebSocket):
         except Exception:
             pass
     
-    log.info(
+    log.debug(
         f"会话结束: {len(buffer)} bytes, "
         f"已识别到 {recognized_pos} bytes"
     )
@@ -557,7 +547,7 @@ def main():
     print(f"[ASR Worker] 启动服务 {args.host}:{args.port}")
     print(f"[ASR Worker] MODEL_DIR = {MODEL_DIR}")
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":
