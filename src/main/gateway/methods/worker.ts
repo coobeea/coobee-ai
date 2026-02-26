@@ -108,14 +108,15 @@ export const workerMethods: MethodGroup = {
       validateWorkerName(name);
 
       log.info(`[worker.start] Starting worker: ${name}`);
-      try {
-        await WorkerManager.getInstance().start(name);
-        return { ok: true, name };
-      } catch (error) {
+      const mgr = WorkerManager.getInstance();
+
+      // fire-and-forget: 后台异步启动，前端通过 worker 状态推送跟踪进度
+      mgr.start(name).catch((error) => {
         const msg = error instanceof Error ? error.message : String(error);
-        log.error(`[worker.start] Failed: ${name}`, error);
-        throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, msg);
-      }
+        log.error(`[worker.start] Failed: ${name}`, msg);
+      });
+
+      return { ok: true, name };
     },
 
     stop: async (params) => {
