@@ -546,19 +546,18 @@ function handleExit(): void {
 }
 
 .turn-user {
-  align-self: flex-end;
-  max-width: 80%;
-  padding: 6px 12px;
-  border-radius: 12px 12px 2px 12px;
-  background: rgba(99, 102, 241, 0.2);
-  color: rgba(200, 210, 255, 0.9);
+  align-self: flex-start;
+  padding: 4px 0;
+  color: rgba(200, 210, 255, 0.85);
   font-size: 13px;
   line-height: 1.5;
+  border-left: 2px solid rgba(99, 102, 241, 0.35);
+  padding-left: 10px;
 }
 
 .turn-user.latest-user {
-  background: rgba(99, 102, 241, 0.3);
   color: rgba(220, 225, 255, 0.95);
+  border-left-color: rgba(99, 102, 241, 0.6);
 }
 
 .turn-ai {
@@ -575,10 +574,9 @@ function handleExit(): void {
 
 .turn-ai-card {
   align-self: flex-start;
-  max-width: 90%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 12px 12px 12px 2px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
   padding: 10px 14px;
   animation: fadeIn 0.25s ease-out;
 }
@@ -641,7 +639,7 @@ function handleExit(): void {
 
 /* 排队提示 */
 .queued-hint {
-  align-self: flex-end;
+  align-self: flex-start;
   font-size: 11px;
   color: rgba(253, 186, 116, 0.6);
   padding: 2px 8px;
