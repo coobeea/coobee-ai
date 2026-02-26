@@ -196,34 +196,45 @@ def pcm_to_wav(pcm_bytes: bytes, tmp_dir: str) -> str:
     return wav_path
 
 
-_SENSEVOICE_TAG_RE = re.compile(r"<\|[^|]*\|>")
+_SENSEVOICE_TAG_RE = re.compile(r"<\|([^|]*)\|>")
 
-try:
-    from funasr.utils.postprocess_utils import rich_transcription_postprocess
-    _has_rich_postprocess = True
-except ImportError:
-    _has_rich_postprocess = False
+# SenseVoice 标签值域映射
+_LANG_TAGS = {"zh", "en", "yue", "ja", "ko", "nospeech"}
+_EMOTION_TAGS = {"NEUTRAL", "HAPPY", "SAD", "ANGRY", "EMO_UNKNOWN"}
+_EVENT_TAGS = {"Speech", "BGM", "Applause", "Laughter", "Crying", "Coughing", "Sneezing"}
+_ITN_TAGS = {"withitn", "woitn"}
 
 
-def clean_sensevoice_output(text: str) -> str:
-    """清理 SenseVoice 模型输出中的特殊标签 <|zh|><|NEUTRAL|> 等"""
-    if _has_rich_postprocess:
-        return rich_transcription_postprocess(text)
-    return _SENSEVOICE_TAG_RE.sub("", text).strip()
+def parse_sensevoice_output(raw_text: str) -> dict:
+    """
+    解析 SenseVoice 模型输出，提取结构化元数据。
+    
+    Returns:
+        {
+            "text": "纯文本内容",
+            "lang": "zh" | "en" | "yue" | "ja" | "ko" | "nospeech" | None,
+            "emotion": "NEUTRAL" | "HAPPY" | "SAD" | "ANGRY" | None,
+            "event": "Speech" | "BGM" | "Laughter" | ... | None,
+        }
+    """
+    meta = {"lang": None, "emotion": None, "event": None}
+    
+    for match in _SENSEVOICE_TAG_RE.finditer(raw_text):
+        tag = match.group(1)
+        if tag in _LANG_TAGS:
+            meta["lang"] = tag
+        elif tag in _EMOTION_TAGS:
+            meta["emotion"] = tag if tag != "EMO_UNKNOWN" else None
+        elif tag in _EVENT_TAGS:
+            meta["event"] = tag
+        # ITN 标签忽略，不需要传给前端
+
+    text = _SENSEVOICE_TAG_RE.sub("", raw_text).strip()
+    return {"text": text, **meta}
 
 
 def clean_asr_output(text: str, audio_sec: float) -> str:
-    """
-    清理 ASR 输出：
-    1. SenseVoice 模型：去除语言/情感/事件标签
-    2. 幻觉检测：输出字数超音频时长合理范围则截断
-    """
-    if not text:
-        return text
-    
-    if _is_sensevoice:
-        text = clean_sensevoice_output(text)
-    
+    """幻觉检测：输出字数超音频时长合理范围则截断"""
     if not text:
         return text
     
@@ -263,18 +274,22 @@ def check_chunk_energy(data: bytes) -> int:
     return max_amp
 
 
-def do_transcribe(pcm_bytes: bytes) -> tuple[str, int]:
+def do_transcribe(pcm_bytes: bytes) -> dict:
     """
-    同步识别，返回 (文本, 推理耗时ms)
-    
-    Args:
-        pcm_bytes: PCM Int16 LE 字节流
+    同步识别，返回结构化结果。
     
     Returns:
-        (识别文本, 推理耗时ms)
+        {
+            "text": str,          # 纯文本
+            "latency_ms": int,
+            "lang": str | None,   # SenseVoice: 语言
+            "emotion": str | None,# SenseVoice: 情感
+            "event": str | None,  # SenseVoice: 声音事件
+        }
     """
+    empty = {"text": "", "latency_ms": 0, "lang": None, "emotion": None, "event": None}
     if not asr_engine or not pcm_bytes:
-        return "", 0
+        return empty
     
     seg_sec = len(pcm_bytes) / BYTES_PER_SEC
     log.info(f"音频片段: {seg_sec:.1f}s, {len(pcm_bytes)} bytes")
@@ -306,22 +321,32 @@ def do_transcribe(pcm_bytes: bytes) -> tuple[str, int]:
             )
         infer_ms = int((time.time() - t1) * 1000)
         
-        text = ""
+        raw_text = ""
         if results and len(results) > 0:
-            text = results[0].get("text", "").strip()
+            raw_text = results[0].get("text", "").strip()
         
-        # 幻觉检测
+        meta = {"lang": None, "emotion": None, "event": None}
+        if _is_sensevoice and raw_text:
+            parsed = parse_sensevoice_output(raw_text)
+            text = parsed["text"]
+            meta = {"lang": parsed["lang"], "emotion": parsed["emotion"], "event": parsed["event"]}
+        else:
+            text = raw_text
+        
         text = clean_asr_output(text, seg_sec)
         
         total_ms = wav_ms + infer_ms
+        meta_str = ""
+        if _is_sensevoice:
+            meta_str = f" lang={meta['lang']} emo={meta['emotion']} evt={meta['event']}"
         log.info(
-            f"识别: {seg_sec:.1f}s 音频 | wav={wav_ms}ms 推理={infer_ms}ms | "
+            f"识别: {seg_sec:.1f}s 音频 | wav={wav_ms}ms 推理={infer_ms}ms |{meta_str} "
             f'"{text[:80]}"'
         )
-        return text, total_ms
+        return {"text": text, "latency_ms": total_ms, **meta}
 
 
-async def transcribe_async(pcm_bytes: bytes) -> tuple[str, int]:
+async def transcribe_async(pcm_bytes: bytes) -> dict:
     """异步版本：在线程池中执行识别"""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, do_transcribe, pcm_bytes)
@@ -455,21 +480,29 @@ async def asr_stream(ws: WebSocket):
             segment = bytes(buffer[recognized_pos:end])
             
             try:
-                text, latency_ms = await transcribe_async(segment)
+                result = await transcribe_async(segment)
                 recognized_pos = end
                 
-                # 如果是强制触发，重置 speech_start_pos 为当前位置
                 if speech_start_pos >= 0 and speech_start_pos < end:
                     speech_start_pos = end
                 
+                text = result["text"]
                 if text:
                     committed_text = (
                         committed_text + text if committed_text else text
                     )
+                    msg = {
+                        "partial": committed_text,
+                        "latency_ms": result["latency_ms"],
+                    }
+                    if result.get("lang"):
+                        msg["lang"] = result["lang"]
+                    if result.get("emotion"):
+                        msg["emotion"] = result["emotion"]
+                    if result.get("event"):
+                        msg["event"] = result["event"]
                     try:
-                        await ws.send_json(
-                            {"partial": committed_text, "latency_ms": latency_ms}
-                        )
+                        await ws.send_json(msg)
                     except Exception:
                         break
             
@@ -494,9 +527,9 @@ async def asr_stream(ws: WebSocket):
     if remaining > MIN_UTTERANCE_BYTES:
         segment = bytes(buffer[recognized_pos:])
         try:
-            text, _ = await transcribe_async(segment)
-            if text:
-                committed_text = (committed_text + text).strip()
+            result = await transcribe_async(segment)
+            if result["text"]:
+                committed_text = (committed_text + result["text"]).strip()
         except Exception:
             pass
     

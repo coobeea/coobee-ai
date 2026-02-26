@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { employeeApi, type DigitalEmployee } from '@/api/employee';
 import EmployeeAvatar from '@/components/EmployeeAvatar.vue';
 import AudioVisualizer from '@/components/AudioVisualizer.vue';
-import { useAudioRecorder } from '@/composables/useAudioRecorder';
+import { useAudioRecorder, type AsrMeta } from '@/composables/useAudioRecorder';
 import { useStreamHandler, type StreamChatMessage } from '@/composables/useStreamHandler';
 import { gateway } from '@/plugins/gatewaySetup';
 import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs';
@@ -21,6 +21,7 @@ const loading = ref(true);
 const status = ref<'idle' | 'listening' | 'thinking' | 'speaking'>('idle');
 const subtitle = ref('');
 const volume = ref(0);
+const asrMeta = ref<AsrMeta>({});
 const TARGET_AGENT_ID = 'app-copilot';
 
 // ---- Session / Thread 管理 ----
@@ -119,10 +120,23 @@ watch(
 );
 
 // ---- 发送消息给应用管家 ----
+function buildContextHint(): string {
+  const parts: string[] = [];
+  const meta = asrMeta.value;
+  if (meta.emotion && meta.emotion !== 'NEUTRAL') {
+    const emoMap: Record<string, string> = { HAPPY: '开心', SAD: '悲伤', ANGRY: '愤怒' };
+    parts.push(`[用户情绪: ${emoMap[meta.emotion] || meta.emotion}]`);
+  }
+  if (meta.lang && meta.lang !== 'zh' && meta.lang !== 'nospeech') {
+    const langMap: Record<string, string> = { en: '英语', yue: '粤语', ja: '日语', ko: '韩语' };
+    parts.push(`[语言: ${langMap[meta.lang] || meta.lang}]`);
+  }
+  return parts.length > 0 ? parts.join(' ') + '\n' : '';
+}
+
 async function sendToLLM(text: string): Promise<void> {
   if (!text.trim()) return;
 
-  // Thread 未就绪时等待
   if (!threadReady.value || !sessionId.value) {
     console.warn('[EmployeeChat] Thread not ready, cannot send');
     addErrorMessage('会话尚未就绪，请稍后再试');
@@ -133,11 +147,14 @@ async function sendToLLM(text: string): Promise<void> {
   subtitle.value = '';
   addUserMessage(text);
 
+  const contextHint = buildContextHint();
+  const messageToSend = contextHint ? contextHint + text : text;
+
   try {
     ensureSubscribed();
 
     const result = await gateway.request<{ sessionId: string; status: string }>('chat.send', {
-      message: text,
+      message: messageToSend,
       sessionId: sessionId.value,
       mode: 'agent',
       agentId: TARGET_AGENT_ID
@@ -169,9 +186,10 @@ watch(isStreaming, (val) => {
 
 // ---- 录音机 ----
 const { startRecording, stopRecording, disconnect } = useAudioRecorder({
-  onPartialResult: (text) => {
+  onPartialResult: (text, meta) => {
     subtitle.value = text;
     status.value = 'listening';
+    if (meta) asrMeta.value = meta;
   },
   onFinalResult: (text) => {
     subtitle.value = text;
@@ -299,6 +317,19 @@ function handleExit(): void {
       <div class="bottom-zone">
         <!-- 实时字幕（用户说话时） -->
         <div v-if="subtitle && status === 'listening'" class="live-subtitle">
+          <span
+            v-if="asrMeta.emotion && asrMeta.emotion !== 'NEUTRAL'"
+            class="asr-tag emotion-tag"
+            :class="{
+              happy: asrMeta.emotion === 'HAPPY',
+              sad: asrMeta.emotion === 'SAD',
+              angry: asrMeta.emotion === 'ANGRY'
+            }">
+            {{ { HAPPY: '😊', SAD: '😢', ANGRY: '😠' }[asrMeta.emotion] || '🎭' }}
+          </span>
+          <span v-if="asrMeta.lang && asrMeta.lang !== 'zh' && asrMeta.lang !== 'nospeech'" class="asr-tag lang-tag">
+            {{ { en: 'EN', yue: '粤', ja: '日', ko: '韩' }[asrMeta.lang] || asrMeta.lang }}
+          </span>
           {{ subtitle }}
         </div>
 
@@ -590,6 +621,9 @@ function handleExit(): void {
 }
 
 .live-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(10px);
   padding: 6px 16px;
@@ -600,6 +634,26 @@ function handleExit(): void {
   max-width: 70%;
   text-align: center;
   animation: fadeUp 0.2s ease-out;
+}
+
+.asr-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.emotion-tag {
+  font-size: 14px;
+}
+
+.lang-tag {
+  background: rgba(59, 130, 246, 0.3);
+  color: rgba(147, 197, 253, 0.9);
+  font-weight: 600;
+  letter-spacing: 0.5px;
 }
 
 .mic-wrapper {

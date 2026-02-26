@@ -1,9 +1,15 @@
 import { ref } from 'vue';
 import { useWorkerStore } from '@/stores/worker';
 
+export interface AsrMeta {
+  lang?: string | null;
+  emotion?: string | null;
+  event?: string | null;
+}
+
 export interface AudioRecorderOptions {
-  onPartialResult?: (text: string) => void;
-  onFinalResult?: (text: string) => void;
+  onPartialResult?: (text: string, meta?: AsrMeta) => void;
+  onFinalResult?: (text: string, meta?: AsrMeta) => void;
   onVolumeChange?: (volume: number) => void; // 0-100
   onSilence?: () => void;
   vadThreshold?: number; // 0.0 - 1.0 (默认 0.05)
@@ -125,7 +131,12 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}): UseAudioRe
         if (data.status === 'ready') {
           // Worker 就绪
         } else if (data.partial) {
-          options.onPartialResult?.(data.partial);
+          const meta: AsrMeta = {
+            lang: data.lang ?? null,
+            emotion: data.emotion ?? null,
+            event: data.event ?? null
+          };
+          options.onPartialResult?.(data.partial, meta);
         } else if (data.final) {
           options.onFinalResult?.(data.final);
         }
