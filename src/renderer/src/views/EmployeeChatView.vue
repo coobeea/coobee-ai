@@ -158,6 +158,24 @@ function buildContextHint(): string {
   return parts.length > 0 ? parts.join(' ') + '\n' : '';
 }
 
+let identityInjected = false;
+
+function buildIdentityPrefix(): string {
+  const emp = employee.value;
+  if (!emp || identityInjected) return '';
+  identityInjected = true;
+
+  const parts = [`[系统指令] 在本次对话中，你的身份是"${emp.name}"，角色是"${emp.role}"。`];
+  if (emp.persona) {
+    parts.push(`请严格遵守以下人设要求：\n${emp.persona}`);
+  }
+  if (emp.description) {
+    parts.push(`背景信息：${emp.description}`);
+  }
+  parts.push('请始终以该身份回复用户，不要提及你是应用管家或AI助手。\n');
+  return parts.join('\n');
+}
+
 async function sendToLLM(text: string): Promise<void> {
   if (!text.trim()) return;
   if (!threadReady.value || !sessionId.value) {
@@ -172,8 +190,9 @@ async function sendToLLM(text: string): Promise<void> {
   mute();
   addUserMessage(text);
 
+  const identity = buildIdentityPrefix();
   const contextHint = buildContextHint();
-  const messageToSend = contextHint ? contextHint + text : text;
+  const messageToSend = identity + contextHint + text;
 
   try {
     ensureSubscribed();
