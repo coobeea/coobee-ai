@@ -259,7 +259,7 @@ function countEffectiveChars(text: string): number {
 function trySendOrQueue(text: string): void {
   const cleaned = text.trim();
   if (!cleaned || countEffectiveChars(cleaned) < MIN_EFFECTIVE_CHARS) return;
-  if (isStreaming.value) {
+  if (isStreaming.value || tts.isSpeaking.value) {
     return;
   }
   sendToLLM(cleaned);
@@ -270,7 +270,13 @@ let lastPartialText = '';
 
 const { startRecording, disconnect, resetSentOffset, mute, unmute, isRecording, isMuted } = useAudioRecorder({
   onPartialResult: (text, meta) => {
-    if (tts.isSpeaking.value) tts.stop();
+    if (tts.isSpeaking.value) {
+      tts.stop();
+      resetSentOffset();
+      subtitle.value = '';
+      lastPartialText = '';
+      return;
+    }
     subtitle.value = text;
     lastPartialText = text;
     if (!isStreaming.value) status.value = 'listening';

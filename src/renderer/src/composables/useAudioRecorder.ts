@@ -210,6 +210,7 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}): UseAudioRe
 
   const unmute = (): void => {
     isMuted.value = false;
+    sentTextLength = lastKnownFullText.length;
     prevPartialText = '';
   };
 
