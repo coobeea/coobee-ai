@@ -211,13 +211,16 @@ watch(isStreaming, (val) => {
   }
 });
 
+const MIN_SEND_CHARS = 5;
+
 function trySendOrQueue(text: string): void {
-  if (!text.trim()) return;
+  const cleaned = text.trim();
+  if (!cleaned || cleaned.length < MIN_SEND_CHARS) return;
   if (isStreaming.value) {
-    pendingText = pendingText ? pendingText + ' ' + text.trim() : text.trim();
+    pendingText = pendingText ? pendingText + ' ' + cleaned : cleaned;
     return;
   }
-  sendToLLM(text);
+  sendToLLM(cleaned);
 }
 
 // ---- 录音 ----

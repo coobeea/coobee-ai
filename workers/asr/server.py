@@ -29,6 +29,19 @@ import tempfile
 import time
 import wave
 
+os.environ["TQDM_DISABLE"] = "1"
+os.environ["FUNASR_DISABLE_PBAR"] = "1"
+
+try:
+    from tqdm import tqdm
+    from functools import partialmethod
+    tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
+except ImportError:
+    pass
+
+logging.getLogger("modelscope").setLevel(logging.WARNING)
+logging.getLogger("funasr").setLevel(logging.WARNING)
+
 # FastAPI / uvicorn
 try:
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -60,13 +73,11 @@ if os.path.exists(local_config_path):
                 if not os.path.isabs(p):
                     p = os.path.abspath(os.path.join(SCRIPT_DIR, p))
                 MODEL_DIR = p
-                print(f"[ASR Config] MODEL_DIR -> {MODEL_DIR}")
-            
+
             if "model_name" in config and isinstance(config["model_name"], str) and config["model_name"].strip():
                 MODEL_NAME = config["model_name"].strip()
-                print(f"[ASR Config] MODEL_NAME -> {MODEL_NAME}")
-    except Exception as e:
-        print(f"[ASR Config] 读取本地配置失败: {e}", file=sys.stderr)
+    except Exception:
+        pass
 
 # PCM 音频参数
 SAMPLE_RATE = 16000
@@ -79,8 +90,9 @@ SILENCE_DURATION_SEC = 1.2    # 连续静音多久才算"说完一句"
 MAX_UTTERANCE_SEC = 20.0      # 不间断说话的安全上限（超过强制识别）
 MIN_UTTERANCE_SEC = 0.3       # 最短有效语段（低于此不值得识别）
 
-logging.basicConfig(level=logging.INFO, format="[ASR] %(message)s")
+logging.basicConfig(level=logging.WARNING, format="[ASR] %(message)s")
 log = logging.getLogger("asr")
+log.setLevel(logging.WARNING)
 
 # 模型类型检测：SenseVoice 系列需要不同的参数和后处理
 _is_sensevoice = "sensevoice" in MODEL_NAME.lower().replace("-", "").replace("_", "")
@@ -292,7 +304,6 @@ def do_transcribe(pcm_bytes: bytes) -> dict:
         return empty
     
     seg_sec = len(pcm_bytes) / BYTES_PER_SEC
-    log.info(f"音频片段: {seg_sec:.1f}s, {len(pcm_bytes)} bytes")
     
     with tempfile.TemporaryDirectory(prefix="asr_") as tmp:
         t0 = time.time()
@@ -337,13 +348,6 @@ def do_transcribe(pcm_bytes: bytes) -> dict:
         text = clean_asr_output(text, seg_sec)
         
         total_ms = wav_ms + infer_ms
-        meta_str = ""
-        if _is_sensevoice:
-            meta_str = f" lang={meta['lang']} emo={meta['emotion']} evt={meta['event']}"
-        log.info(
-            f"识别: {seg_sec:.1f}s 音频 | wav={wav_ms}ms 推理={infer_ms}ms |{meta_str} "
-            f'"{text[:80]}"'
-        )
         return {"text": text, "latency_ms": total_ms, **meta}
 
 
@@ -545,7 +549,6 @@ def main():
     args = parser.parse_args()
 
     print(f"[ASR Worker] 启动服务 {args.host}:{args.port}")
-    print(f"[ASR Worker] MODEL_DIR = {MODEL_DIR}")
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 

@@ -496,15 +496,20 @@ export class WorkerManager extends EventEmitter {
       }
     });
 
-    // stderr → Worker 专属日志文件（不刷屏控制台）
+    // stderr → Worker 日志文件；仅真正的错误才输出到控制台
     child.stderr?.on('data', (data: Buffer) => {
       const msg = data.toString().trim();
       if (msg) {
-        workerLog.warn(msg);
+        const isNoise = msg.includes('|██') || msg.includes('it/s') || msg.includes('rtf_avg') || msg.includes('%|');
+        if (isNoise) {
+          workerLog.debug(msg);
+        } else {
+          workerLog.warn(msg);
+        }
         this.emit('worker:log', {
           type: 'worker:log',
           name: config.name,
-          level: 'warn',
+          level: isNoise ? 'debug' : 'warn',
           message: msg,
           timestamp: Date.now()
         });
