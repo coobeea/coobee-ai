@@ -248,11 +248,17 @@ watch(isStreaming, (val) => {
   }
 });
 
-const MIN_SEND_CHARS = 5;
+const MIN_EFFECTIVE_CHARS = 4;
+
+function countEffectiveChars(text: string): number {
+  // 只计算中文字符、字母、数字，不算标点和空白
+  const matches = text.match(/[\u4e00-\u9fff\u3400-\u4dbfa-zA-Z0-9]/g);
+  return matches ? matches.length : 0;
+}
 
 function trySendOrQueue(text: string): void {
   const cleaned = text.trim();
-  if (!cleaned || cleaned.length < MIN_SEND_CHARS) return;
+  if (!cleaned || countEffectiveChars(cleaned) < MIN_EFFECTIVE_CHARS) return;
   if (isStreaming.value) {
     return;
   }
