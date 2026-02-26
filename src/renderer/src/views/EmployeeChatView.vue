@@ -436,12 +436,19 @@ function handleExit(): void {
 }
 
 .avatar-frame {
-  width: 160px;
-  height: 160px;
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+}
+
+.avatar-frame :deep(.avatar-wrap) {
+  transform: scale(0.48);
+  transform-origin: center center;
 }
 
 .emp-info {
