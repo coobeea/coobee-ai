@@ -39,15 +39,9 @@ function ensureSubscribed(): void {
   }
 }
 
-/**
- * 创建或恢复 Thread
- *
- * 查找该员工是否已有活跃的 Thread（agentId=app-copilot），有则复用，无则创建。
- */
 async function initThread(): Promise<void> {
   await threadsStore.fetchThreads(TARGET_AGENT_ID);
 
-  // 查找该员工的活跃 Thread（metadata 或 title 中包含员工信息）
   const existing = threadsStore.threads.find(
     (t) => t.agentId === TARGET_AGENT_ID && t.status === 'active' && t.runStatus !== 'error'
   );
@@ -85,26 +79,42 @@ onUnmounted(() => {
   }
 });
 
-// ---- AI 响应展示 ----
-const lastAssistantMsg = computed((): StreamChatMessage | undefined => {
-  for (let i = messages.value.length - 1; i >= 0; i--) {
-    if (messages.value[i].role === 'assistant') return messages.value[i];
+// ---- 对话显示：按轮次组织 ----
+interface ConversationTurn {
+  user: StreamChatMessage;
+  assistant?: StreamChatMessage;
+}
+
+const conversationTurns = computed((): ConversationTurn[] => {
+  const turns: ConversationTurn[] = [];
+  const msgs = messages.value;
+  for (let i = 0; i < msgs.length; i++) {
+    if (msgs[i].role === 'user') {
+      const turn: ConversationTurn = { user: msgs[i] };
+      if (i + 1 < msgs.length && msgs[i + 1].role === 'assistant') {
+        turn.assistant = msgs[i + 1];
+      }
+      turns.push(turn);
+    }
   }
-  return undefined;
+  return turns;
 });
 
-const olderMessages = computed(() => {
-  if (messages.value.length <= 1) return [];
-  const lastAi = lastAssistantMsg.value;
-  return messages.value.filter((m) => m !== lastAi).slice(-6);
+const latestTurn = computed(() => {
+  return conversationTurns.value.length > 0 ? conversationTurns.value[conversationTurns.value.length - 1] : null;
 });
 
-// 消息列表自动滚动到底部
-const messagesEl = ref<HTMLElement | null>(null);
+const olderTurns = computed(() => {
+  const all = conversationTurns.value;
+  if (all.length <= 1) return [];
+  return all.slice(-4, -1);
+});
+
+const chatAreaEl = ref<HTMLElement | null>(null);
 function scrollToBottom(): void {
   nextTick(() => {
-    if (messagesEl.value) {
-      messagesEl.value.scrollTop = messagesEl.value.scrollHeight;
+    if (chatAreaEl.value) {
+      chatAreaEl.value.scrollTop = chatAreaEl.value.scrollHeight;
     }
   });
 }
@@ -113,11 +123,21 @@ watch(
   () => messages.value.length,
   () => scrollToBottom()
 );
-
 watch(
-  () => lastAssistantMsg.value?.content,
+  () => messages.value[messages.value.length - 1]?.content,
   () => scrollToBottom()
 );
+
+// ---- 工具执行摘要 ----
+function getToolChips(msg: StreamChatMessage): { name: string; status: string }[] {
+  return msg.blocks
+    .filter((b) => b.type === 'tool')
+    .map((b) => {
+      if (b.type === 'tool') return { name: b.tool.name, status: b.tool.status };
+      return { name: '', status: '' };
+    })
+    .filter((t) => t.name);
+}
 
 // ---- 发送消息给应用管家 ----
 function buildContextHint(): string {
@@ -145,6 +165,7 @@ async function sendToLLM(text: string): Promise<void> {
 
   status.value = 'thinking';
   subtitle.value = '';
+  lastPartialText = '';
   addUserMessage(text);
 
   const contextHint = buildContextHint();
@@ -212,7 +233,7 @@ const { startRecording, stopRecording, disconnect } = useAudioRecorder({
     if (meta) asrMeta.value = meta;
   },
   onFinalResult: (text) => {
-    subtitle.value = text;
+    subtitle.value = '';
     lastPartialText = '';
     trySendOrQueue(text);
   },
@@ -222,6 +243,7 @@ const { startRecording, stopRecording, disconnect } = useAudioRecorder({
   onSilence: () => {
     if (lastPartialText.trim()) {
       const text = lastPartialText.trim();
+      subtitle.value = '';
       lastPartialText = '';
       trySendOrQueue(text);
     }
@@ -240,7 +262,6 @@ onMounted(async () => {
     loading.value = false;
   }
 
-  // 员工加载成功后初始化 Thread
   await initThread();
 });
 
@@ -250,7 +271,7 @@ onUnmounted(() => {
 
 async function toggleMic(): Promise<void> {
   if (status.value === 'listening') {
-    status.value = 'idle';
+    status.value = isStreaming.value ? 'thinking' : 'idle';
     stopRecording();
   } else {
     status.value = 'listening';
@@ -268,430 +289,422 @@ function handleExit(): void {
 </script>
 
 <template>
-  <div class="chat-view">
-    <!-- Avatar 背景 -->
-    <div class="scene-container">
-      <EmployeeAvatar :state="status" />
+  <div class="chat-root">
+    <!-- 上半区：头像 + 状态 -->
+    <div class="avatar-section">
+      <div class="avatar-frame">
+        <EmployeeAvatar :state="status" />
+      </div>
+      <!-- 员工信息 -->
+      <div v-if="employee" class="emp-info">
+        <span class="emp-name">{{ employee.name }}</span>
+        <span class="emp-role">{{ employee.role }}</span>
+      </div>
+      <!-- 状态指示 -->
+      <div class="state-badge" :class="status">
+        <template v-if="status === 'listening'">
+          <span class="dot pulse" />
+          <span>聆听中</span>
+        </template>
+        <template v-else-if="status === 'thinking'">
+          <span class="dot-think" />
+          <span>思考中...</span>
+        </template>
+        <template v-else>
+          <span class="dot-idle" />
+          <span>待命</span>
+        </template>
+      </div>
     </div>
 
-    <!-- UI 层 -->
-    <div class="ui-overlay">
-      <!-- 顶栏 -->
-      <header class="top-bar">
-        <div v-if="employee" class="employee-info">
-          <h2 class="name">{{ employee.name }}</h2>
-          <span class="role">{{ employee.role }}</span>
-        </div>
-        <div class="top-right">
-          <div v-if="status !== 'idle'" class="status-pill" :class="status">
-            <span v-if="status === 'listening'" class="status-dot pulse" />
-            <span v-else-if="status === 'thinking'" class="i-carbon-watson inline-block h-3 w-3 animate-pulse" />
-            <span class="status-label">
-              {{ status === 'listening' ? '聆听中' : status === 'thinking' ? '思考中' : '说话中' }}
-            </span>
+    <!-- 下半区：对话 + 控制 -->
+    <div class="chat-section">
+      <!-- 对话区域（固定高度，内部滚动） -->
+      <div ref="chatAreaEl" class="chat-area">
+        <!-- 历史轮次（简洁、半透明） -->
+        <template v-for="(turn, idx) in olderTurns" :key="'h-' + idx">
+          <div class="turn-row older">
+            <div class="turn-user">{{ turn.user.content }}</div>
+            <div v-if="turn.assistant?.content" class="turn-ai">{{ turn.assistant.content }}</div>
           </div>
-          <button class="btn-icon" title="结束对话" @click="handleExit">
-            <span class="i-carbon-close h-5 w-5" />
-          </button>
-        </div>
-      </header>
+        </template>
 
-      <!-- AI 回复展示区 -->
-      <div ref="messagesEl" class="response-area">
-        <!-- 最新一条 AI 回复（突出显示） -->
-        <div v-if="lastAssistantMsg" class="ai-response-card">
-          <!-- 工具执行摘要（折叠形式） -->
-          <div v-if="lastAssistantMsg.blocks?.length" class="tool-summary">
-            <template v-for="(block, bIdx) in lastAssistantMsg.blocks" :key="bIdx">
-              <span v-if="block.type === 'tool'" class="tool-chip">
+        <!-- 最新一轮（突出显示） -->
+        <div v-if="latestTurn" class="turn-row latest">
+          <div class="turn-user latest-user">{{ latestTurn.user.content }}</div>
+
+          <!-- AI 回复 -->
+          <div v-if="latestTurn.assistant" class="turn-ai-card">
+            <!-- 工具执行指示器 -->
+            <div v-if="getToolChips(latestTurn.assistant).length" class="tool-bar">
+              <span v-for="(chip, ci) in getToolChips(latestTurn.assistant)" :key="ci" class="tool-chip">
                 <span class="i-carbon-tool-box inline-block h-2.5 w-2.5" />
-                <span>{{ block.tool.name }}</span>
+                {{ chip.name }}
+                <span v-if="chip.status === 'calling'" class="i-carbon-renew inline-block h-2.5 w-2.5 animate-spin" />
                 <span
-                  v-if="block.tool.status === 'calling'"
-                  class="i-carbon-renew inline-block h-2.5 w-2.5 animate-spin" />
-                <span
-                  v-else-if="block.tool.status === 'done'"
+                  v-else-if="chip.status === 'done'"
                   class="i-carbon-checkmark inline-block h-2.5 w-2.5 text-green-400" />
               </span>
-            </template>
+            </div>
+            <!-- 文本内容 -->
+            <div v-if="latestTurn.assistant.content" class="ai-text">
+              {{ latestTurn.assistant.content }}
+            </div>
+            <!-- 错误 -->
+            <div v-if="latestTurn.assistant.status === 'error' && latestTurn.assistant.error" class="ai-error">
+              {{ latestTurn.assistant.error }}
+            </div>
           </div>
-          <!-- AI 文本回复 -->
-          <div v-if="lastAssistantMsg.content" class="ai-text">{{ lastAssistantMsg.content }}</div>
-          <!-- 错误 -->
-          <div v-if="lastAssistantMsg.status === 'error' && lastAssistantMsg.error" class="ai-error">
-            <span class="i-carbon-warning-alt inline-block h-3 w-3" />
-            {{ lastAssistantMsg.error }}
-          </div>
+
+          <!-- 思考中动画（AI 还没回复时） -->
+          <div v-else-if="status === 'thinking'" class="thinking-anim"> <span /><span /><span /> </div>
         </div>
 
-        <!-- 思考中动画 -->
-        <div v-else-if="status === 'thinking'" class="thinking-indicator">
-          <span class="thinking-dot" /><span class="thinking-dot" /><span class="thinking-dot" />
-        </div>
-
-        <!-- 对话历史（较旧的消息，半透明） -->
-        <div v-if="olderMessages.length" class="history-area">
-          <div v-for="msg in olderMessages" :key="msg.id" class="history-msg" :class="msg.role">
-            <span v-if="msg.role === 'user'" class="history-user">{{ msg.content }}</span>
-            <span v-else class="history-ai">{{ msg.content }}</span>
-          </div>
-        </div>
+        <!-- 排队中提示 -->
+        <div v-if="pendingText && isStreaming" class="queued-hint"> 待发送: {{ pendingText }} </div>
       </div>
 
-      <!-- 底部：字幕 + 麦克风 -->
-      <div class="bottom-zone">
-        <!-- 实时字幕（用户说话时） -->
-        <div v-if="subtitle && status === 'listening'" class="live-subtitle">
-          <span
-            v-if="asrMeta.emotion && asrMeta.emotion !== 'NEUTRAL'"
-            class="asr-tag emotion-tag"
-            :class="{
-              happy: asrMeta.emotion === 'HAPPY',
-              sad: asrMeta.emotion === 'SAD',
-              angry: asrMeta.emotion === 'ANGRY'
-            }">
-            {{ { HAPPY: '😊', SAD: '😢', ANGRY: '😠' }[asrMeta.emotion] || '🎭' }}
-          </span>
-          <span v-if="asrMeta.lang && asrMeta.lang !== 'zh' && asrMeta.lang !== 'nospeech'" class="asr-tag lang-tag">
-            {{ { en: 'EN', yue: '粤', ja: '日', ko: '韩' }[asrMeta.lang] || asrMeta.lang }}
-          </span>
-          {{ subtitle }}
+      <!-- 字幕 + 麦克风 -->
+      <div class="control-zone">
+        <!-- 实时字幕 -->
+        <div class="subtitle-row">
+          <div v-if="subtitle" class="live-subtitle">
+            <span v-if="asrMeta.emotion && asrMeta.emotion !== 'NEUTRAL'" class="emo-badge">
+              {{ { HAPPY: '😊', SAD: '😢', ANGRY: '😠' }[asrMeta.emotion] || '' }}
+            </span>
+            <span v-if="asrMeta.lang && asrMeta.lang !== 'zh' && asrMeta.lang !== 'nospeech'" class="lang-badge">
+              {{ { en: 'EN', yue: '粤', ja: '日', ko: '韩' }[asrMeta.lang] || asrMeta.lang }}
+            </span>
+            {{ subtitle }}
+          </div>
         </div>
 
-        <!-- 麦克风控制 -->
-        <div class="mic-wrapper">
-          <div class="mic-visualizer-bg" :class="{ active: status === 'listening' }">
-            <AudioVisualizer :volume="volume" :is-active="status === 'listening'" color="rgba(239, 68, 68, 0.6)" />
+        <!-- 麦克风按钮 -->
+        <div class="mic-row">
+          <div class="mic-wrapper">
+            <div class="mic-vis" :class="{ active: status === 'listening' }">
+              <AudioVisualizer :volume="volume" :is-active="status === 'listening'" color="rgba(239, 68, 68, 0.6)" />
+            </div>
+            <div class="mic-ring" :class="{ active: status === 'listening' }" />
+            <button
+              class="mic-btn"
+              :class="{ active: status === 'listening', disabled: !threadReady }"
+              :disabled="!threadReady"
+              :style="status === 'listening' ? { transform: `scale(${1 + volume / 400})` } : {}"
+              @click="toggleMic">
+              <span v-if="status !== 'listening'" class="i-carbon-microphone h-5 w-5" />
+              <span v-else class="i-carbon-stop-filled h-5 w-5" />
+            </button>
           </div>
-          <div class="mic-ring" :class="{ active: status === 'listening' }" />
-          <button
-            class="mic-btn-main"
-            :class="{ active: status === 'listening', disabled: !threadReady }"
-            :disabled="!threadReady || status === 'thinking'"
-            :style="status === 'listening' ? { transform: `scale(${1 + volume / 400})` } : {}"
-            @click="toggleMic">
-            <span v-if="status !== 'listening'" class="i-carbon-microphone h-6 w-6" />
-            <span v-else class="i-carbon-stop-filled h-6 w-6" />
-          </button>
           <span v-if="!threadReady" class="mic-hint">会话准备中...</span>
         </div>
       </div>
     </div>
+
+    <!-- 退出按钮 -->
+    <button class="exit-btn" title="结束对话" @click="handleExit">
+      <span class="i-carbon-close h-4 w-4" />
+    </button>
   </div>
 </template>
 
 <style scoped>
-.chat-view {
+.chat-root {
   width: 100%;
   height: 100%;
-  position: relative;
-  background: #0f1115;
-  overflow: hidden;
-}
-
-.scene-container {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1;
-}
-
-.ui-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  pointer-events: none;
   display: flex;
   flex-direction: column;
-}
-
-/* ---- 顶栏 ---- */
-.top-bar {
-  padding: 16px 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  pointer-events: auto;
-  flex-shrink: 0;
-}
-
-.employee-info .name {
-  font-size: 18px;
-  font-weight: 600;
+  background: #0f1115;
+  overflow: hidden;
+  position: relative;
   color: #fff;
-  margin: 0;
-  line-height: 1.3;
 }
 
-.employee-info .role {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.45);
-}
-
-.top-right {
+/* ---- 上半区：头像 ---- */
+.avatar-section {
+  flex-shrink: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
+  padding: 24px 20px 12px;
   gap: 8px;
 }
 
-.status-pill {
+.avatar-frame {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.emp-info {
+  text-align: center;
+}
+
+.emp-name {
+  font-size: 16px;
+  font-weight: 600;
+  display: block;
+}
+
+.emp-role {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.state-badge {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 10px;
-  border-radius: 16px;
   font-size: 11px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(8px);
+  padding: 2px 10px;
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.65);
 }
 
-.status-pill.listening {
-  background: rgba(239, 68, 68, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+.state-badge.listening {
+  background: rgba(239, 68, 68, 0.15);
+  color: rgba(252, 165, 165, 0.9);
 }
 
-.status-pill.thinking {
-  background: rgba(99, 102, 241, 0.2);
-  border: 1px solid rgba(99, 102, 241, 0.3);
+.state-badge.thinking {
+  background: rgba(99, 102, 241, 0.15);
+  color: rgba(165, 180, 252, 0.9);
 }
 
-.status-pill.speaking {
-  background: rgba(34, 197, 94, 0.2);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-}
-
-.status-dot {
+.dot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: #ef4444;
 }
 
-.status-dot.pulse {
-  animation: dotPulse 1.5s ease-in-out infinite;
+.dot.pulse {
+  animation: dotPulse 1.5s infinite;
 }
 
-@keyframes dotPulse {
-  0%,
-  100% {
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.status-label {
-  line-height: 1;
-}
-
-.btn-icon {
-  background: rgba(255, 255, 255, 0.08);
-  border: none;
+.dot-think {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  width: 32px;
-  height: 32px;
+  background: #818cf8;
+  animation: dotPulse 1.5s infinite;
+}
+
+.dot-idle {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ---- 下半区：对话 + 控制 ---- */
+.chat-section {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  transition: all 0.2s;
+  flex-direction: column;
+  padding: 0 16px;
 }
 
-.btn-icon:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-}
-
-/* ---- AI 回复展示区 ---- */
-.response-area {
+.chat-area {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 24px 12px;
-  pointer-events: auto;
   display: flex;
   flex-direction: column;
+  gap: 12px;
+  padding: 8px 4px;
   justify-content: flex-end;
-  gap: 10px;
 }
 
-.response-area::-webkit-scrollbar {
+.chat-area::-webkit-scrollbar {
   width: 3px;
 }
 
-.response-area::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+.chat-area::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 2px;
 }
 
-/* 最新 AI 回复卡片 */
-.ai-response-card {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 14px 18px;
-  max-width: 90%;
-  animation: fadeUp 0.3s ease-out;
+/* ---- 轮次显示 ---- */
+.turn-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.tool-summary {
+.turn-row.older {
+  opacity: 0.35;
+}
+
+.turn-user {
+  align-self: flex-end;
+  max-width: 80%;
+  padding: 6px 12px;
+  border-radius: 12px 12px 2px 12px;
+  background: rgba(99, 102, 241, 0.2);
+  color: rgba(200, 210, 255, 0.9);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.turn-user.latest-user {
+  background: rgba(99, 102, 241, 0.3);
+  color: rgba(220, 225, 255, 0.95);
+}
+
+.turn-ai {
+  align-self: flex-start;
+  max-width: 85%;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.turn-ai-card {
+  align-self: flex-start;
+  max-width: 90%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px 12px 12px 2px;
+  padding: 10px 14px;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.tool-bar {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .tool-chip {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 2px 7px;
+  padding: 1px 6px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.4);
   font-size: 10px;
 }
 
 .ai-text {
   color: rgba(255, 255, 255, 0.88);
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .ai-error {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.15);
   color: rgba(252, 165, 165, 0.8);
   font-size: 11px;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
-/* 思考中指示器 */
-.thinking-indicator {
+/* 思考中动画 */
+.thinking-anim {
   display: flex;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px 0;
+  gap: 5px;
+  padding: 8px 0;
 }
 
-.thinking-dot {
-  width: 8px;
-  height: 8px;
+.thinking-anim span {
+  width: 6px;
+  height: 6px;
   background: rgba(99, 102, 241, 0.5);
   border-radius: 50%;
   animation: dotBounce 1.4s ease-in-out infinite;
 }
 
-.thinking-dot:nth-child(2) {
+.thinking-anim span:nth-child(2) {
   animation-delay: 0.2s;
 }
 
-.thinking-dot:nth-child(3) {
+.thinking-anim span:nth-child(3) {
   animation-delay: 0.4s;
 }
 
-/* 对话历史（半透明、紧凑） */
-.history-area {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  opacity: 0.45;
-}
-
-.history-msg {
+/* 排队提示 */
+.queued-hint {
+  align-self: flex-end;
   font-size: 11px;
-  line-height: 1.4;
+  color: rgba(253, 186, 116, 0.6);
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(251, 146, 60, 0.08);
 }
 
-.history-user {
-  display: inline-block;
-  margin-left: auto;
-  text-align: right;
-  color: rgba(165, 180, 252, 0.7);
-  max-width: 70%;
-}
-
-.history-ai {
-  display: inline-block;
-  color: rgba(255, 255, 255, 0.6);
-  max-width: 80%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ---- 底部区域 ---- */
-.bottom-zone {
+/* ---- 底部控制区 ---- */
+.control-zone {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 12px 20px 24px;
-  pointer-events: auto;
+  gap: 8px;
+  padding: 8px 0 20px;
+}
+
+.subtitle-row {
+  min-height: 28px;
+  display: flex;
+  justify-content: center;
 }
 
 .live-subtitle {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(10px);
-  padding: 6px 16px;
-  border-radius: 10px;
+  gap: 5px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  padding: 4px 14px;
+  border-radius: 8px;
   font-size: 13px;
   color: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  max-width: 70%;
-  text-align: center;
-  animation: fadeUp 0.2s ease-out;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  max-width: 80%;
+  animation: fadeIn 0.15s ease-out;
 }
 
-.asr-tag {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.emotion-tag {
+.emo-badge {
   font-size: 14px;
 }
 
-.lang-tag {
-  background: rgba(59, 130, 246, 0.3);
+.lang-badge {
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(59, 130, 246, 0.25);
   color: rgba(147, 197, 253, 0.9);
   font-weight: 600;
-  letter-spacing: 0.5px;
+}
+
+.mic-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
 .mic-wrapper {
   position: relative;
-  width: 88px;
-  height: 88px;
+  width: 72px;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-direction: column;
 }
 
-.mic-visualizer-bg {
+.mic-vis {
   position: absolute;
   inset: 0;
   z-index: 0;
@@ -700,14 +713,14 @@ function handleExit(): void {
   transition: opacity 0.3s ease;
 }
 
-.mic-visualizer-bg.active {
+.mic-vis.active {
   opacity: 1;
 }
 
-.mic-btn-main {
+.mic-btn {
   position: relative;
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.08);
@@ -722,33 +735,33 @@ function handleExit(): void {
     transform 0.1s,
     opacity 0.2s;
   z-index: 10;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 3px 16px rgba(0, 0, 0, 0.3);
 }
 
-.mic-btn-main:hover:not(:disabled) {
+.mic-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.15);
 }
 
-.mic-btn-main.active {
+.mic-btn.active {
   background: #ef4444;
-  box-shadow: 0 4px 24px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 3px 20px rgba(239, 68, 68, 0.4);
   border-color: rgba(239, 68, 68, 0.5);
 }
 
-.mic-btn-main.disabled,
-.mic-btn-main:disabled {
-  opacity: 0.35;
+.mic-btn.disabled,
+.mic-btn:disabled {
+  opacity: 0.3;
   cursor: not-allowed;
 }
 
 .mic-ring {
   position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 80px;
-  height: 80px;
+  top: 2px;
+  left: 2px;
+  width: 68px;
+  height: 68px;
   border-radius: 50%;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.15);
   pointer-events: none;
   z-index: 1;
   opacity: 0;
@@ -763,29 +776,49 @@ function handleExit(): void {
 }
 
 .mic-hint {
-  position: absolute;
-  bottom: -20px;
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.35);
-  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.3);
 }
 
-@keyframes breathe {
+/* ---- 退出按钮 ---- */
+.exit-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 100;
+  transition: all 0.2s;
+}
+
+.exit-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+/* ---- 动画 ---- */
+@keyframes dotPulse {
   0%,
   100% {
-    transform: scale(0.95);
-    opacity: 0.3;
+    opacity: 0.4;
   }
   50% {
-    transform: scale(1.05);
-    opacity: 0.6;
+    opacity: 1;
   }
 }
 
-@keyframes fadeUp {
+@keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -803,6 +836,18 @@ function handleExit(): void {
   40% {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(0.95);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.6;
   }
 }
 </style>
