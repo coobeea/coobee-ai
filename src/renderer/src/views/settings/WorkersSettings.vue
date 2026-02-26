@@ -193,12 +193,13 @@ async function loadWorkerConfig(name: string): Promise<void> {
       config: Record<string, unknown>;
     };
     workerConfigs.value[name] = result.config;
-    // 同步 API Key 输入框
     apiKeyInputs.value[name] = (result.config.api_key as string) || '';
     apiUrlInputs.value[name] = (result.config.api_url as string) || '';
   } catch (err) {
     console.warn(`[WorkersSettings] Failed to load config for ${name}:`, err);
     workerConfigs.value[name] = {};
+    apiKeyInputs.value[name] = '';
+    apiUrlInputs.value[name] = '';
   }
 }
 
@@ -226,7 +227,8 @@ function isModelSelected(workerName: string, opt: ModelOption): boolean {
 
 async function selectModel(workerName: string, option: ModelOption): Promise<void> {
   const def = WORKER_MODELS[workerName];
-  if (!def) return;
+  if (!def || configSaving.value === workerName) return;
+  if (isModelSelected(workerName, option)) return;
 
   configSaving.value = workerName;
   try {
@@ -244,15 +246,13 @@ async function selectModel(workerName: string, option: ModelOption): Promise<voi
 }
 
 async function saveApiConfig(workerName: string): Promise<void> {
+  if (configSaving.value === workerName) return;
   configSaving.value = workerName;
   try {
-    const updates: Record<string, unknown> = {};
-    if (apiKeyInputs.value[workerName] !== undefined) {
-      updates.api_key = apiKeyInputs.value[workerName];
-    }
-    if (apiUrlInputs.value[workerName]) {
-      updates.api_url = apiUrlInputs.value[workerName];
-    }
+    const updates: Record<string, unknown> = {
+      api_key: apiKeyInputs.value[workerName] ?? '',
+      api_url: apiUrlInputs.value[workerName] ?? ''
+    };
     await gateway.request('worker.configUpdate', {
       name: workerName,
       config: updates

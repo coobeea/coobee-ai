@@ -40,55 +40,52 @@ except ImportError:
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_NAME = "Qwen3-TTS-12Hz-1.7B-CustomVoice"
 
-# 默认路径
 DEFAULT_MODEL_DIR = os.path.join(os.environ.get("HOME", ""), ".cache", "modelscope", "hub")
 MODEL_DIR = os.environ.get("MODEL_DIR", DEFAULT_MODEL_DIR)
 
-# 尝试读取本地配置覆盖 (local_config.json)
+API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
+API_URL = ""
+
+# 一次性读取 local_config.json（所有配置项）
 local_config_path = os.path.join(SCRIPT_DIR, "local_config.json")
 if os.path.exists(local_config_path):
     try:
         import json
         with open(local_config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-            if "model_dir" in config:
-                p = config["model_dir"]
+            _cfg = json.load(f)
+
+        if isinstance(_cfg, dict):
+            if "model_dir" in _cfg and isinstance(_cfg["model_dir"], str):
+                p = _cfg["model_dir"]
                 if not os.path.isabs(p):
                     p = os.path.abspath(os.path.join(SCRIPT_DIR, p))
                 MODEL_DIR = p
-                print(f"[TTS Config] 已加载本地配置，MODEL_DIR -> {MODEL_DIR}")
+                print(f"[TTS Config] MODEL_DIR -> {MODEL_DIR}")
 
-            if "model_name" in config:
-                MODEL_NAME = config["model_name"]
+            if "model_name" in _cfg and isinstance(_cfg["model_name"], str) and _cfg["model_name"].strip():
+                MODEL_NAME = _cfg["model_name"].strip()
                 print(f"[TTS Config] MODEL_NAME -> {MODEL_NAME}")
+
+            if "api_key" in _cfg and isinstance(_cfg["api_key"], str) and _cfg["api_key"].strip():
+                API_KEY = _cfg["api_key"].strip()
+                print("[TTS Config] API_KEY loaded from local_config")
+
+            if "api_url" in _cfg and isinstance(_cfg["api_url"], str) and _cfg["api_url"].strip():
+                API_URL = _cfg["api_url"].strip()
+                print(f"[TTS Config] API_URL -> {API_URL}")
     except Exception as e:
         print(f"[TTS Config] 读取本地配置失败: {e}", file=sys.stderr)
-
-# API 配置（在线模型使用）
-API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
-API_URL = ""
-
-if os.path.exists(local_config_path):
-    try:
-        import json
-        with open(local_config_path, "r", encoding="utf-8") as f:
-            _cfg = json.load(f)
-            if "api_key" in _cfg and _cfg["api_key"]:
-                API_KEY = _cfg["api_key"]
-            if "api_url" in _cfg and _cfg["api_url"]:
-                API_URL = _cfg["api_url"]
-    except Exception:
-        pass
 
 logging.basicConfig(level=logging.INFO, format="[TTS] %(message)s")
 log = logging.getLogger("tts")
 
 app = FastAPI(title="TTS Worker", version="0.2.0")
 
-# 模式检测
-USE_EDGE_TTS = MODEL_NAME.lower() == "edge-tts"
-USE_COSYVOICE = MODEL_NAME.lower().startswith("aliyun/cosyvoice")
-COSYVOICE_MODEL = MODEL_NAME.split("/", 1)[1] if USE_COSYVOICE else ""
+# 模式检测（strip + lower 容错）
+_model_lower = MODEL_NAME.lower()
+USE_EDGE_TTS = _model_lower == "edge-tts"
+USE_COSYVOICE = _model_lower.startswith("aliyun/cosyvoice")
+COSYVOICE_MODEL = MODEL_NAME.split("/", 1)[1] if USE_COSYVOICE and "/" in MODEL_NAME else ""
 
 # ==================== 全局状态 ====================
 
@@ -269,20 +266,29 @@ async def synthesize_edge_tts(text: str, speaker: str = "xiaoxiao") -> bytes:
     except ImportError:
         raise RuntimeError("edge-tts 未安装，请运行: pip install edge-tts")
 
-    voice_id = EDGE_VOICE_MAP.get(speaker, "zh-CN-XiaoxiaoNeural")
+    voice_id = EDGE_VOICE_MAP.get(speaker or "xiaoxiao", "zh-CN-XiaoxiaoNeural")
     log.info(f"[Edge TTS] 合成: \"{text[:50]}{'...' if len(text) > 50 else ''}\"")
     log.info(f"  音色: {speaker} -> {voice_id}")
 
     t0 = time.time()
-    communicate = edge_tts.Communicate(text, voice_id)
-    audio_buffer = io.BytesIO()
+    try:
+        communicate = edge_tts.Communicate(text, voice_id)
+        audio_buffer = io.BytesIO()
 
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            audio_buffer.write(chunk["data"])
+        async for chunk in communicate.stream():
+            if chunk.get("type") == "audio" and chunk.get("data"):
+                audio_buffer.write(chunk["data"])
+
+        audio_bytes = audio_buffer.getvalue()
+    except Exception as e:
+        elapsed = time.time() - t0
+        log.error(f"  Edge TTS 调用失败 ({elapsed:.1f}s): {e}")
+        raise RuntimeError(f"Edge TTS 合成失败: {e}") from e
+
+    if not audio_bytes:
+        raise RuntimeError("Edge TTS 返回了空音频数据")
 
     elapsed = time.time() - t0
-    audio_bytes = audio_buffer.getvalue()
     log.info(f"  完成: {len(audio_bytes)} bytes, 耗时 {elapsed:.1f}s")
 
     return audio_bytes
@@ -333,27 +339,41 @@ def synthesize_cosyvoice_sync(text: str, speaker: str = "longxiaochun") -> bytes
     if not API_KEY:
         raise RuntimeError("未配置 API Key，请在设置中配置阿里云 DashScope API Key")
 
+    if not COSYVOICE_MODEL:
+        raise RuntimeError("CosyVoice 模型名无效，请检查 model_name 配置")
+
     dashscope.api_key = API_KEY
     if API_URL:
         dashscope.base_websocket_api_url = API_URL
     else:
         dashscope.base_websocket_api_url = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
 
-    voice = COSYVOICE_VOICE_MAP.get(speaker, speaker)
+    voice = COSYVOICE_VOICE_MAP.get(speaker, speaker) if speaker else "longxiaochun"
     log.info(f"[CosyVoice] 合成: \"{text[:50]}{'...' if len(text) > 50 else ''}\"")
     log.info(f"  模型: {COSYVOICE_MODEL} | 音色: {voice}")
 
     t0 = time.time()
 
-    synthesizer = SpeechSynthesizer(model=COSYVOICE_MODEL, voice=voice)
-    audio = synthesizer.call(text)
+    try:
+        synthesizer = SpeechSynthesizer(model=COSYVOICE_MODEL, voice=voice)
+        audio = synthesizer.call(text)
+    except Exception as e:
+        elapsed = time.time() - t0
+        log.error(f"  CosyVoice API 调用失败 ({elapsed:.1f}s): {e}")
+        raise RuntimeError(f"CosyVoice 合成失败: {e}") from e
+
+    if not audio or not isinstance(audio, (bytes, bytearray)):
+        raise RuntimeError("CosyVoice 返回了空音频数据")
 
     elapsed = time.time() - t0
     log.info(f"  完成: {len(audio)} bytes, 耗时 {elapsed:.1f}s")
-    log.info(f"  requestId: {synthesizer.get_last_request_id()}, "
-             f"首包延迟: {synthesizer.get_first_package_delay()} ms")
+    try:
+        log.info(f"  requestId: {synthesizer.get_last_request_id()}, "
+                 f"首包延迟: {synthesizer.get_first_package_delay()} ms")
+    except Exception:
+        pass
 
-    return audio
+    return bytes(audio)
 
 
 # ==================== HTTP 接口 ====================
@@ -362,13 +382,18 @@ def synthesize_cosyvoice_sync(text: str, speaker: str = "longxiaochun") -> bytes
 async def health():
     """健康检查（RuntimeManager 轮询此接口判断是否就绪）"""
     backend = "cosyvoice" if USE_COSYVOICE else ("edge-tts" if USE_EDGE_TTS else "local")
-    return JSONResponse({
+    resp = {
         "status": "ok",
         "model_loaded": model_loaded,
         "backend": backend,
         "model_name": MODEL_NAME,
-        "model_dir": MODEL_DIR if not (USE_EDGE_TTS or USE_COSYVOICE) else None,
-    })
+    }
+    if USE_COSYVOICE:
+        resp["api_key_configured"] = bool(API_KEY)
+        resp["cosyvoice_model"] = COSYVOICE_MODEL
+    elif not USE_EDGE_TTS:
+        resp["model_dir"] = MODEL_DIR
+    return JSONResponse(resp)
 
 
 @app.post("/api/tts")
@@ -389,7 +414,7 @@ async def tts_sync(request: dict):
         return JSONResponse({"error": "缺少 text 字段"}, status_code=400)
     
     default_speaker = "longxiaochun" if USE_COSYVOICE else ("xiaoxiao" if USE_EDGE_TTS else "vivian")
-    speaker = request.get("speaker", default_speaker).lower()
+    speaker = (request.get("speaker") or default_speaker).strip().lower()
 
     if USE_COSYVOICE:
         try:
@@ -573,7 +598,9 @@ async def startup_event():
             import dashscope  # noqa: F401
             log.info("dashscope SDK 已就绪")
             if not API_KEY:
-                log.warning("未配置 API Key！请在设置中配置 DashScope API Key")
+                log.warning("未配置 API Key！合成请求将会失败，请在设置中配置 DashScope API Key")
+            if not COSYVOICE_MODEL:
+                log.error("CosyVoice 模型名无效！请检查 model_name 配置格式: aliyun/cosyvoice-v3-flash")
             model_loaded = True
         except ImportError:
             log.error("dashscope SDK 未安装！请运行: pip install dashscope")

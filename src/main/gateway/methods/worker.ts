@@ -17,23 +17,68 @@ import { WorkerManager } from '@main/common/worker';
 import { GatewayErrorCode, GatewayMethodError } from '../protocol';
 import type { MethodGroup } from '../protocol';
 
+const WORKER_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+const SENSITIVE_KEYS = new Set(['api_key', 'password', 'secret', 'token']);
+
+function validateWorkerName(name: unknown): asserts name is string {
+  if (!name || typeof name !== 'string') {
+    throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'Worker name is required');
+  }
+  if (!WORKER_NAME_RE.test(name)) {
+    throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'Worker name must be 1-64 chars of [a-zA-Z0-9_-]');
+  }
+}
+
 function getLocalConfigPath(workerName: string): string {
-  return path.join(Env.paths.workersDir, workerName, 'local_config.json');
+  const resolved = path.resolve(Env.paths.workersDir, workerName, 'local_config.json');
+  const base = path.resolve(Env.paths.workersDir);
+  if (!resolved.startsWith(base + path.sep)) {
+    throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'Invalid worker name');
+  }
+  return resolved;
 }
 
 function readLocalConfig(workerName: string): Record<string, unknown> {
   const configPath = getLocalConfigPath(workerName);
   if (!fs.existsSync(configPath)) return {};
   try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
-  } catch {
+    const raw = fs.readFileSync(configPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return parsed as Record<string, unknown>;
+  } catch (err) {
+    log.warn(`[worker] Failed to read config for ${workerName}:`, err);
     return {};
   }
 }
 
 function writeLocalConfig(workerName: string, config: Record<string, unknown>): void {
   const configPath = getLocalConfigPath(workerName);
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+  const content = JSON.stringify(config, null, 2) + '\n';
+  const tmpPath = configPath + '.tmp.' + process.pid;
+  try {
+    fs.writeFileSync(tmpPath, content, 'utf-8');
+    fs.renameSync(tmpPath, configPath);
+  } catch (err) {
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch {
+      /* ignore cleanup error */
+    }
+    throw err;
+  }
+}
+
+function redactConfig(config: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (SENSITIVE_KEYS.has(key) && typeof value === 'string' && value.length > 4) {
+      result[key] = value.slice(0, 4) + '****';
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
 }
 
 export const workerMethods: MethodGroup = {
@@ -42,7 +87,6 @@ export const workerMethods: MethodGroup = {
     list: async () => {
       const allWorkers = WorkerManager.getInstance().getAllWorkerInfo();
 
-      // 转换为前端期望的格式
       const workers = allWorkers.map((w) => ({
         name: w.name,
         label: w.label,
@@ -60,9 +104,7 @@ export const workerMethods: MethodGroup = {
 
     start: async (params) => {
       const { name } = params as { name?: string };
-      if (!name) {
-        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'Worker name is required');
-      }
+      validateWorkerName(name);
 
       log.info(`[worker.start] Starting worker: ${name}`);
       try {
@@ -77,9 +119,7 @@ export const workerMethods: MethodGroup = {
 
     stop: async (params) => {
       const { name } = params as { name?: string };
-      if (!name) {
-        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'Worker name is required');
-      }
+      validateWorkerName(name);
 
       log.info(`[worker.stop] Stopping worker: ${name}`);
       try {
@@ -94,9 +134,7 @@ export const workerMethods: MethodGroup = {
 
     configGet: async (params) => {
       const { name } = params as { name?: string };
-      if (!name) {
-        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'Worker name is required');
-      }
+      validateWorkerName(name);
 
       const workerDir = path.join(Env.paths.workersDir, name);
       if (!fs.existsSync(workerDir)) {
@@ -104,17 +142,19 @@ export const workerMethods: MethodGroup = {
       }
 
       const config = readLocalConfig(name);
-      log.info(`[worker.configGet] ${name}:`, JSON.stringify(config));
+      log.info(`[worker.configGet] ${name}:`, JSON.stringify(redactConfig(config)));
       return { name, config };
     },
 
     configUpdate: async (params) => {
-      const { name, config: updates } = params as { name?: string; config?: Record<string, unknown> };
-      if (!name) {
-        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'Worker name is required');
-      }
-      if (!updates || typeof updates !== 'object') {
-        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'config object is required');
+      const { name, config: updates } = params as {
+        name?: string;
+        config?: Record<string, unknown>;
+      };
+      validateWorkerName(name);
+
+      if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'config must be a plain object');
       }
 
       const workerDir = path.join(Env.paths.workersDir, name);
@@ -122,12 +162,18 @@ export const workerMethods: MethodGroup = {
         throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, `Worker "${name}" not found`);
       }
 
-      const existing = readLocalConfig(name);
-      const merged = { ...existing, ...updates };
-      writeLocalConfig(name, merged);
+      try {
+        const existing = readLocalConfig(name);
+        const merged = { ...existing, ...updates };
+        writeLocalConfig(name, merged);
 
-      log.info(`[worker.configUpdate] ${name}: updated`, JSON.stringify(merged));
-      return { name, config: merged };
+        log.info(`[worker.configUpdate] ${name}: updated`, JSON.stringify(redactConfig(merged)));
+        return { name, config: merged };
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        log.error(`[worker.configUpdate] Failed to write config for ${name}:`, error);
+        throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, `Failed to save config: ${msg}`);
+      }
     }
   }
 };

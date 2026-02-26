@@ -46,15 +46,16 @@ if os.path.exists(local_config_path):
         import json
         with open(local_config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
-            if "model_dir" in config:
+        if isinstance(config, dict):
+            if "model_dir" in config and isinstance(config["model_dir"], str):
                 p = config["model_dir"]
                 if not os.path.isabs(p):
                     p = os.path.abspath(os.path.join(SCRIPT_DIR, p))
                 MODEL_DIR = p
-                print(f"[OCR Config] 已加载本地配置，MODEL_DIR -> {MODEL_DIR}")
+                print(f"[OCR Config] MODEL_DIR -> {MODEL_DIR}")
 
-            if "model_name" in config:
-                MODEL_NAME = config["model_name"]
+            if "model_name" in config and isinstance(config["model_name"], str) and config["model_name"].strip():
+                MODEL_NAME = config["model_name"].strip()
                 print(f"[OCR Config] MODEL_NAME -> {MODEL_NAME}")
     except Exception as e:
         print(f"[OCR Config] 读取本地配置失败: {e}", file=sys.stderr)
