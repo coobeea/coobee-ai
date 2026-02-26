@@ -264,6 +264,7 @@ let lastPartialText = '';
 
 const { startRecording, disconnect, resetSentOffset, mute, unmute, isRecording, isMuted } = useAudioRecorder({
   onPartialResult: (text, meta) => {
+    if (tts.isSpeaking.value) tts.stop();
     subtitle.value = text;
     lastPartialText = text;
     if (!isStreaming.value) status.value = 'listening';
