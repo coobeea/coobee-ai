@@ -307,6 +307,7 @@ def do_transcribe(pcm_bytes: bytes) -> dict:
                 language="auto",
                 use_itn=True,
                 batch_size_s=0,
+                disable_pbar=True,
             )
         else:
             results = asr_engine.generate(

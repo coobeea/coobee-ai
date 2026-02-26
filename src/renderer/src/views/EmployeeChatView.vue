@@ -185,21 +185,29 @@ watch(isStreaming, (val) => {
 });
 
 // ---- 录音机 ----
+let lastPartialText = '';
+
 const { startRecording, stopRecording, disconnect } = useAudioRecorder({
   onPartialResult: (text, meta) => {
     subtitle.value = text;
+    lastPartialText = text;
     status.value = 'listening';
     if (meta) asrMeta.value = meta;
   },
   onFinalResult: (text) => {
     subtitle.value = text;
+    lastPartialText = '';
     sendToLLM(text);
   },
   onVolumeChange: (vol) => {
     volume.value = vol;
   },
   onSilence: () => {
-    // VAD 静音 → ASR 自动产出 final result
+    if (lastPartialText.trim()) {
+      const text = lastPartialText.trim();
+      lastPartialText = '';
+      sendToLLM(text);
+    }
   }
 });
 
