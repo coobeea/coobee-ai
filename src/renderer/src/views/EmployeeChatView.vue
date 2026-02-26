@@ -6,8 +6,10 @@ import EmployeeAvatar from '@/components/EmployeeAvatar.vue';
 import AudioVisualizer from '@/components/AudioVisualizer.vue';
 import { useAudioRecorder, type AsrMeta } from '@/composables/useAudioRecorder';
 import { useStreamHandler, type StreamChatMessage } from '@/composables/useStreamHandler';
+import { useTtsPlayback } from '@/composables/useTtsPlayback';
 import { gateway } from '@/plugins/gatewaySetup';
 import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs';
+import type { StreamMessage } from '@shared/stream-protocol';
 const route = useRoute();
 const router = useRouter();
 const employeeId = route.params.id as string;
@@ -30,9 +32,21 @@ const { messages, isStreaming, handleStreamMessage, addUserMessage, addErrorMess
   maxMessages: 200
 });
 
+// ---- TTS 播放 ----
+const tts = useTtsPlayback({ speaker: 'xiaoxiao' });
+
+function wrappedStreamHandler(msg: StreamMessage): void {
+  handleStreamMessage(msg);
+  if (msg.type === 'text:delta') {
+    tts.feedDelta(msg.content);
+  } else if (msg.type === 'run:done' || msg.type === 'run:error') {
+    tts.flush();
+  }
+}
+
 function ensureSubscribed(): void {
   if (sessionId.value) {
-    streamSubscribe(sessionId.value, handleStreamMessage);
+    streamSubscribe(sessionId.value, wrappedStreamHandler);
   }
 }
 
@@ -179,6 +193,7 @@ async function sendToLLM(text: string): Promise<void> {
   lastPartialText = '';
   resetSentOffset();
   mute();
+  tts.stop();
   addUserMessage(text);
 
   const identity = buildIdentityPrefix();
@@ -215,8 +230,19 @@ async function sendToLLM(text: string): Promise<void> {
 
 watch(isStreaming, (val) => {
   if (!val) {
-    status.value = 'listening';
-    unmute();
+    // LLM 输出结束后，等 TTS 播放完再 unmute
+    if (tts.isSpeaking.value) {
+      const unwatch = watch(tts.isSpeaking, (speaking) => {
+        if (!speaking) {
+          unwatch();
+          status.value = 'listening';
+          unmute();
+        }
+      });
+    } else {
+      status.value = 'listening';
+      unmute();
+    }
   } else {
     status.value = 'thinking';
   }
@@ -284,6 +310,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   disconnect();
+  tts.dispose();
 });
 
 function toggleMic(): void {
