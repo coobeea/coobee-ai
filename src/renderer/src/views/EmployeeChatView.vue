@@ -8,10 +8,13 @@ import { useAudioRecorder } from '@/composables/useAudioRecorder';
 import { useStreamHandler, type StreamChatMessage } from '@/composables/useStreamHandler';
 import { gateway } from '@/plugins/gatewaySetup';
 import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs';
+import { useThreadsStore } from '@/stores/threads';
 
 const route = useRoute();
 const router = useRouter();
 const employeeId = route.params.id as string;
+
+const threadsStore = useThreadsStore();
 
 const employee = ref<DigitalEmployee | null>(null);
 const loading = ref(true);
@@ -20,21 +23,57 @@ const subtitle = ref('');
 const volume = ref(0);
 const textInput = ref('');
 
-// ---- Session 管理 ----
-const sessionId = ref(`chat-employee-${employeeId}`);
+const TARGET_AGENT_ID = 'app-copilot';
+
+// ---- Session / Thread 管理 ----
+const sessionId = ref<string | null>(null);
+const threadReady = ref(false);
 
 const { messages, isStreaming, handleStreamMessage, addUserMessage, addErrorMessage } = useStreamHandler({
   idPrefix: 'emp-chat',
-  maxMessages: 50
+  maxMessages: 200
 });
 
 function ensureSubscribed(): void {
-  streamSubscribe(sessionId.value, handleStreamMessage);
+  if (sessionId.value) {
+    streamSubscribe(sessionId.value, handleStreamMessage);
+  }
+}
+
+/**
+ * 创建或恢复 Thread
+ *
+ * 查找该员工是否已有活跃的 Thread（agentId=app-copilot），有则复用，无则创建。
+ */
+async function initThread(): Promise<void> {
+  await threadsStore.fetchThreads(TARGET_AGENT_ID);
+
+  // 查找该员工的活跃 Thread（metadata 或 title 中包含员工信息）
+  const existing = threadsStore.threads.find(
+    (t) => t.agentId === TARGET_AGENT_ID && t.status === 'active' && t.runStatus !== 'error'
+  );
+
+  if (existing) {
+    sessionId.value = existing.id;
+    console.log(`[EmployeeChat] Reusing thread: ${existing.id}`);
+  } else {
+    const empName = employee.value?.name || '员工';
+    const thread = await threadsStore.createThread(`${empName} 的对话`, TARGET_AGENT_ID);
+    if (thread) {
+      sessionId.value = thread.id;
+      console.log(`[EmployeeChat] Created thread: ${thread.id}`);
+    } else {
+      console.error('[EmployeeChat] Failed to create thread');
+      addErrorMessage('无法创建对话会话');
+      return;
+    }
+  }
+
+  threadReady.value = true;
+  ensureSubscribed();
 }
 
 onMounted(() => {
-  ensureSubscribed();
-  // Gateway 首次连接后也确保订阅生效
   const unregister = gateway.onConnect(() => {
     ensureSubscribed();
   });
@@ -79,26 +118,29 @@ watch(
 async function sendToLLM(text: string): Promise<void> {
   if (!text.trim()) return;
 
+  // Thread 未就绪时等待
+  if (!threadReady.value || !sessionId.value) {
+    console.warn('[EmployeeChat] Thread not ready, cannot send');
+    addErrorMessage('会话尚未就绪，请稍后再试');
+    return;
+  }
+
   status.value = 'thinking';
   subtitle.value = '';
   addUserMessage(text);
 
   try {
-    const targetAgentId = 'app-copilot';
-
-    // 发送前确保订阅已建立
     ensureSubscribed();
 
     const result = await gateway.request<{ sessionId: string; status: string }>('chat.send', {
       message: text,
       sessionId: sessionId.value,
       mode: 'agent',
-      agentId: targetAgentId
+      agentId: TARGET_AGENT_ID
     });
 
     console.log('[EmployeeChat] chat.send result:', result);
 
-    // 后端可能返回不同的 sessionId（自动创建 Thread 的场景）
     if (result && result.sessionId && result.sessionId !== sessionId.value) {
       console.log(`[EmployeeChat] SessionId changed: ${sessionId.value} → ${result.sessionId}`);
       streamUnsubscribe(sessionId.value);
@@ -146,16 +188,20 @@ const { startRecording, stopRecording, disconnect } = useAudioRecorder({
   }
 });
 
-// ---- 加载员工信息 ----
+// ---- 加载员工信息 + 初始化 Thread ----
 onMounted(async () => {
   try {
     employee.value = await employeeApi.getEmployee(employeeId);
   } catch (error) {
     console.error('Failed to load employee:', error);
     router.replace('/employee');
+    return;
   } finally {
     loading.value = false;
   }
+
+  // 员工加载成功后初始化 Thread
+  await initThread();
 });
 
 onUnmounted(() => {
@@ -266,10 +312,13 @@ function handleExit(): void {
           <input
             v-model="textInput"
             class="text-input"
-            placeholder="输入消息..."
-            :disabled="status === 'thinking'"
+            :placeholder="threadReady ? '输入消息...' : '会话准备中...'"
+            :disabled="!threadReady || status === 'thinking'"
             @keydown.enter="handleTextSend" />
-          <button class="send-btn" :disabled="!textInput.trim() || status === 'thinking'" @click="handleTextSend">
+          <button
+            class="send-btn"
+            :disabled="!threadReady || !textInput.trim() || status === 'thinking'"
+            @click="handleTextSend">
             <span class="i-carbon-send h-4 w-4" />
           </button>
         </div>
