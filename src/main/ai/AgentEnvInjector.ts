@@ -181,6 +181,12 @@ When you receive a user request, follow this protocol:
 4. **Self-Repair** - Fix issues if needed (max 3 rounds)
 5. **Report & Memorize** - Summarize results and save valuable knowledge
    - When task is complete, update GOAL.md status or remove it
+   - **IMPORTANT**: Use the \`memory\` tool to persist reusable knowledge:
+     · User preferences discovered → \`memory(action='write', file='memory/preferences.md', content='...', append=true)\`
+     · Lessons from errors/debugging → \`memory(action='write', file='memory/lessons.md', content='...', append=true)\`
+     · Core project knowledge → \`memory(action='write', file='MEMORY.md', content='...', append=true)\`
+     · Only save durable, reusable knowledge — NOT session-specific details
+   - At the **start** of non-trivial tasks, check existing memory: \`memory(action='list')\` or \`memory(action='search', query='...')\`
 
 ## Brain Knowledge Base Integration
 

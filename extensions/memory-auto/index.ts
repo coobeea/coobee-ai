@@ -23,15 +23,26 @@ const MAX_RECALL_RESULTS = 5;
 /** 搜索最低分数 */
 const MIN_RECALL_SCORE = 0.15;
 
-/** 记忆信号词（出现在 Agent 输出中触发自动记录） */
+/** 记忆信号词（出现在 Agent 输出中触发自动记录）
+ * 注意：中文匹配不使用 \b word boundary（\b 不适用于 CJK 字符） */
 const MEMORY_SIGNAL_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
   // 明确的记忆请求
-  { pattern: /\b(remember|记住|注意)\b/i, category: 'explicit' },
-  { pattern: /\b(always|总是|始终)\s+(use|prefer|用|使用)/i, category: 'preference' },
-  { pattern: /\b(never|不要|禁止)\s+(use|do|用|使用)/i, category: 'preference' },
-  { pattern: /\b(prefer|偏好|倾向)\b/i, category: 'preference' },
-  { pattern: /\b(important|重要|关键)\b.*\b(note|lesson|发现|教训)/i, category: 'lesson' },
-  { pattern: /\b(learned|学到|发现)\b.*\b(that|了)/i, category: 'lesson' },
+  { pattern: /(remember|记住|注意|备忘)/i, category: 'explicit' },
+  // 偏好类
+  { pattern: /(always|总是|始终)\s*(use|prefer|用|使用)/i, category: 'preference' },
+  { pattern: /(never|不要|禁止|避免)\s*(use|do|用|使用|这样)/i, category: 'preference' },
+  { pattern: /\b(prefer)\b/i, category: 'preference' },
+  { pattern: /(偏好|倾向)/i, category: 'preference' },
+  { pattern: /(用户|你)(喜欢|习惯|倾向于|偏好)/i, category: 'preference' },
+  // 经验教训类
+  { pattern: /(important|重要|关键).*(note|lesson|发现|教训|经验)/i, category: 'lesson' },
+  { pattern: /(learned|学到|总结|结论).*(that|了|到|是)/i, category: 'lesson' },
+  { pattern: /(经验|教训|注意事项|踩坑|bug|修复|解决)/i, category: 'lesson' },
+  { pattern: /\b(fix|resolve|debug|workaround|solution)\b/i, category: 'lesson' },
+  // 知识/决策类
+  { pattern: /(架构|设计方案|选型|规范|约定|标准)/i, category: 'knowledge' },
+  { pattern: /\b(architecture|convention|standard|pattern)\b/i, category: 'knowledge' },
+  { pattern: /(最终|确定|决定)(采用|选择|使用)/i, category: 'decision' },
   // 联系信息
   { pattern: /[\w.-]+@[\w.-]+\.\w{2,}/i, category: 'contact' },
   { pattern: /\+?\d[\d\s-]{7,}\d/i, category: 'contact' }
@@ -40,6 +51,12 @@ const MEMORY_SIGNAL_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
 /** 过滤条件：太短、太长、或明显是代码/格式化内容 */
 const MIN_SIGNAL_TEXT_LENGTH = 10;
 const MAX_SIGNAL_TEXT_LENGTH = 500;
+
+/** Agent 输出最小长度（低于此值不做任何记忆处理） */
+const MIN_OUTPUT_FOR_MEMORY = 30;
+
+/** 自动摘要阈值：输出达到此长度且无信号词匹配时，提取摘要 */
+const MIN_OUTPUT_FOR_SUMMARY = 200;
 
 // ==================== Extension 模块 ====================
 
@@ -91,7 +108,7 @@ export default {
       { priority: 30 } // 较低优先级，在其他 Hook 之后
     );
 
-    // ========== agent_end: 记忆信号检测 ==========
+    // ========== agent_end: 记忆信号检测 + 交互摘要 ==========
     api.on(
       'agent_end',
       async (event) => {
@@ -99,23 +116,39 @@ export default {
           const workspace = await getWorkspace(event.sessionId);
           if (!workspace) return;
 
-          const signals = detectMemorySignals(event.output);
-          if (signals.length === 0) return;
+          const output = (event.output || '').trim();
+          if (!output || output.length < MIN_OUTPUT_FOR_MEMORY) return;
 
-          // 追加到 memory/{date}.md
+          const entries: string[] = [];
+          const timestamp = new Date().toISOString().slice(11, 19);
+
+          // 1. 信号词匹配
+          const signals = detectMemorySignals(output);
+          for (const s of signals) {
+            entries.push(`- [${timestamp}] (${s.category}) ${s.text}\n`);
+          }
+
+          // 2. 自动摘要：对较长的有意义输出，提取首段作为交互记录
+          if (entries.length === 0 && output.length >= MIN_OUTPUT_FOR_SUMMARY) {
+            const summary = extractSummary(output);
+            if (summary) {
+              entries.push(`- [${timestamp}] (summary) ${summary}\n`);
+            }
+          }
+
+          if (entries.length === 0) return;
+
           const today = new Date().toISOString().slice(0, 10);
           const memoryDir = path.join(workspace, 'memory');
           fs.mkdirSync(memoryDir, { recursive: true });
           const memoryFile = path.join(memoryDir, `${today}.md`);
 
           const exists = fs.existsSync(memoryFile);
-          const timestamp = new Date().toISOString().slice(11, 19);
           const header = exists ? '' : `# Memory — ${today}\n\n`;
-          const entries = signals.map((s) => `- [${timestamp}] (${s.category}) ${s.text}\n`);
 
           fs.appendFileSync(memoryFile, header + entries.join(''), 'utf-8');
 
-          api.logger.info(`[memory-auto] Captured ${signals.length} memory signals → memory/${today}.md`);
+          api.logger.info(`[memory-auto] Captured ${entries.length} entries → memory/${today}.md`);
         } catch (err) {
           api.logger.warn(`Memory signal capture failed: ${err}`);
         }
@@ -360,6 +393,46 @@ function searchMemoryDir(
   }
 
   return results.sort((a, b) => b.score - a.score).slice(0, maxResults);
+}
+
+/**
+ * 从 Agent 输出中提取摘要（首个有意义的段落，截断到 200 字符）
+ * 跳过代码块、空行、纯标记行
+ */
+function extractSummary(output: string): string | null {
+  const lines = output.split('\n');
+  const meaningful: string[] = [];
+  let inCodeBlock = false;
+
+  for (const line of lines) {
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (meaningful.length > 0) break; // 遇到空行结束首段
+      continue;
+    }
+
+    // 跳过纯 Markdown 格式行
+    if (/^[-*]{3,}$/.test(trimmed)) continue; // hr
+    if (/^#{1,6}\s/.test(trimmed) && meaningful.length === 0) {
+      // 标题行作为摘要起始
+      meaningful.push(trimmed.replace(/^#+\s*/, ''));
+      continue;
+    }
+
+    meaningful.push(trimmed);
+  }
+
+  if (meaningful.length === 0) return null;
+
+  const text = meaningful.join(' ').trim();
+  if (text.length < MIN_SIGNAL_TEXT_LENGTH) return null;
+  return text.length > 200 ? text.slice(0, 200) + '...' : text;
 }
 
 /** 检测 Agent 输出中的记忆信号词 */
