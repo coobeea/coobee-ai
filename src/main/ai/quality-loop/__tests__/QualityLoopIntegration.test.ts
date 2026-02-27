@@ -236,94 +236,83 @@ describe('Quality Loop Integration Tests', () => {
     expect(result.summary.recommendations).toContain('汇总过程出现错误，请检查日志');
   });
 
-  it('验证失败应该返回默认低分结果', async () => {
-    // Mock LLM 失败
+  it('验证失败应该返回未通过结果', async () => {
     vi.mocked(mockLLMClient.chat).mockRejectedValueOnce(new Error('LLM API failed'));
 
-    // Validator 在失败时会返回保守的 fallback（passed: true, score: 70）
-    // 这是因为验证失败时无法判断输出的真实质量，70分保持中等水平
     const result = await validator.validate({
       userRequest: '测试',
       output: '测试输出'
     });
 
-    // Validator 的 fallback 是保守的（70分）
-    expect(result.passed).toBe(true);
-    expect(result.overallScore).toBe(70);
+    expect(result.passed).toBe(false);
+    expect(result.overallScore).toBe(0);
     expect(result.issues.length).toBeGreaterThan(0);
+    expect(result.issues[0].severity).toBe('critical');
     expect(result.issues[0].description).toContain('验证过程失败');
   });
 
-  it('多轮迭代测试: 30分 → 60分 → 85分 → 通过', async () => {
-    let round = 0;
+  it('多轮迭代测试: 55分 → 65分 → 85分 → 通过', async () => {
+    let callCount = 0;
 
-    // 配置 mock：每次验证返回更高的分数
+    // Mock 按调用顺序返回不同结果
+    // Repairer 在 50-80 分范围会调用 LLM（regenerate 策略）
     vi.mocked(mockLLMClient.chat).mockImplementation(async () => {
-      round++;
+      callCount++;
 
-      if (round === 1) {
-        // 第1轮验证：30分
-        return {
-          content: JSON.stringify({
-            passed: false,
-            overallScore: 30,
-            criteriaScores: [{ criterion: '质量', passed: false, score: 30, reason: '质量过低' }],
-            issues: [{ severity: 'critical', description: '质量过低', suggestedFix: '重新规划' }]
-          }),
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-        };
-      } else if (round === 2) {
-        // 第1轮修复
-        return {
-          content: JSON.stringify({
-            rootCause: '理解不足',
-            improvements: ['重新理解需求'],
-            repairInstructions: '请重新理解需求并输出'
-          }),
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-        };
-      } else if (round === 3) {
-        // 第2轮验证：60分
-        return {
-          content: JSON.stringify({
-            passed: false,
-            overallScore: 60,
-            criteriaScores: [{ criterion: '质量', passed: false, score: 60, reason: '质量改善但仍不足' }],
-            issues: [{ severity: 'major', description: '仍需改进', suggestedFix: '继续优化' }]
-          }),
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-        };
-      } else if (round === 4) {
-        // 第2轮修复
-        return {
-          content: JSON.stringify({
-            rootCause: '细节不足',
-            improvements: ['补充细节'],
-            repairInstructions: '请补充更多细节'
-          }),
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-        };
-      } else {
-        // 第3轮验证：85分，通过
-        return {
-          content: JSON.stringify({
-            passed: true,
-            overallScore: 85,
-            criteriaScores: [{ criterion: '质量', passed: true, score: 85, reason: '质量良好' }],
-            issues: []
-          }),
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-        };
+      switch (callCount) {
+        case 1:
+          // 第1轮验证：55分（50-80 范围，触发 regenerate）
+          return {
+            content: JSON.stringify({
+              passed: false,
+              overallScore: 55,
+              criteriaScores: [{ criterion: '质量', passed: false, score: 55, reason: '质量不足' }],
+              issues: [{ severity: 'major', description: '质量不足', suggestedFix: '优化内容' }]
+            }),
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
+          };
+        case 2:
+          // 第1轮修复 LLM 调用（regenerate 策略需要 LLM）
+          return {
+            content: '修复指令：1. 补充缺失内容 2. 提升表达质量',
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
+          };
+        case 3:
+          // 第2轮验证：65分
+          return {
+            content: JSON.stringify({
+              passed: false,
+              overallScore: 65,
+              criteriaScores: [{ criterion: '质量', passed: false, score: 65, reason: '质量改善但仍不足' }],
+              issues: [{ severity: 'major', description: '仍需改进', suggestedFix: '继续优化' }]
+            }),
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
+          };
+        case 4:
+          // 第2轮修复 LLM 调用
+          return {
+            content: '修复指令：补充更多细节和论据',
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
+          };
+        default:
+          // 第3轮验证：85分，通过
+          return {
+            content: JSON.stringify({
+              passed: true,
+              overallScore: 85,
+              criteriaScores: [{ criterion: '质量', passed: true, score: 85, reason: '质量良好' }],
+              issues: []
+            }),
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
+          };
       }
     });
 
-    // 模拟质量闭环
     const maxRounds = 3;
     let currentOutput = '初始低质量输出';
     let passed = false;
 
     for (let r = 1; r <= maxRounds && !passed; r++) {
-      // 验证
       const validationResult = await validator.validate({
         userRequest: '编写产品介绍',
         output: currentOutput
@@ -335,7 +324,6 @@ describe('Quality Loop Integration Tests', () => {
         break;
       }
 
-      // 生成修复计划
       const repairPlan = await repairer.generateRepairPlan({
         userRequest: '编写产品介绍',
         currentOutput,
@@ -346,11 +334,9 @@ describe('Quality Loop Integration Tests', () => {
       expect(repairPlan.shouldRepair).toBe(true);
       expect(repairPlan.repairInstructions).toBeTruthy();
 
-      // 模拟修复（实际应该由 Agent 重新生成）
       currentOutput = `${currentOutput} [第${r}轮优化]`;
     }
 
-    // 验证最终通过
     expect(passed).toBe(true);
   });
 

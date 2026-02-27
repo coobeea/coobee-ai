@@ -311,10 +311,10 @@ export class SwarmRuntime extends AbstractAgentRuntime {
 
           const aggregationResult = await aggregator.aggregate({
             userRequest: input,
-            subTaskResults: result.rolesUsed.map((role, idx) => ({
+            subTaskResults: (result.roleOutputs || []).map((ro, idx) => ({
               taskId: `${taskId}-${idx}`,
-              agentName: role,
-              output: idx === result.rolesUsed.length - 1 ? result.output : '...',
+              agentName: ro.roleId,
+              output: ro.output,
               status: 'success'
             })),
             collaborationContext: `Handoff 链路: ${result.rolesUsed.join(' → ')}`

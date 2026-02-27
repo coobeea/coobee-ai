@@ -198,7 +198,7 @@ describe('Quality Loop', () => {
       expect(result.issues[0].severity).toBe('major');
     });
 
-    it('should fallback on validation failure', async () => {
+    it('should fallback as NOT passed on validation failure', async () => {
       const validator = new Validator(mockLLMClient);
 
       vi.mocked(mockLLMClient.chat).mockRejectedValue(new Error('验证失败'));
@@ -208,8 +208,10 @@ describe('Quality Loop', () => {
         output: '测试输出'
       });
 
-      expect(result.passed).toBe(true);
-      expect(result.overallScore).toBe(70);
+      expect(result.passed).toBe(false);
+      expect(result.overallScore).toBe(0);
+      expect(result.issues.length).toBeGreaterThan(0);
+      expect(result.issues[0].severity).toBe('critical');
     });
   });
 

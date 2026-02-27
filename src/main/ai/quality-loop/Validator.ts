@@ -91,13 +91,13 @@ export class Validator {
       log.error('[Validator] 验证失败:', _error);
 
       return {
-        passed: true,
-        overallScore: 70,
+        passed: false,
+        overallScore: 0,
         criteriaScores: [],
         issues: [
           {
-            severity: 'major',
-            description: '验证过程失败',
+            severity: 'critical',
+            description: '验证过程失败，无法评估输出质量',
             suggestedFix: '请检查 Validator 配置和 LLM 连接'
           }
         ],
@@ -164,27 +164,34 @@ ${input.output}
       const jsonStr = jsonMatch ? jsonMatch[1] : llmOutput;
       const parsed = JSON.parse(jsonStr.trim());
 
+      const score = typeof parsed.overallScore === 'number' ? parsed.overallScore : 50;
       return {
-        passed: parsed.passed ?? true,
-        overallScore: parsed.overallScore ?? 70,
+        passed: typeof parsed.passed === 'boolean' ? parsed.passed : score >= 70,
+        overallScore: score,
         criteriaScores: parsed.criteriaScores || [],
         issues: parsed.issues || []
       };
     } catch (_error) {
-      log.warn('[Validator] 无法解析 LLM 输出为 JSON，默认通过');
+      log.warn('[Validator] 无法解析 LLM 输出为 JSON，标记为未通过');
 
       return {
-        passed: true,
-        overallScore: 75,
+        passed: false,
+        overallScore: 50,
         criteriaScores: [
           {
             criterion: '总体评估',
-            passed: true,
-            score: 75,
-            reason: '无法进行详细评估，默认通过'
+            passed: false,
+            score: 50,
+            reason: '无法解析验证结果，质量存疑'
           }
         ],
-        issues: []
+        issues: [
+          {
+            severity: 'major',
+            description: '验证结果无法解析为有效 JSON',
+            suggestedFix: '重试验证或检查 LLM 输出格式'
+          }
+        ]
       };
     }
   }

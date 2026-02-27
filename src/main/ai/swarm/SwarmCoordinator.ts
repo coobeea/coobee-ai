@@ -54,12 +54,19 @@ export type SwarmEventCallback = (event: SwarmEvent) => void;
 
 // ========== 协调结果 ==========
 
+export interface RoleOutput {
+  roleId: string;
+  output: string;
+}
+
 export interface CoordinationResult {
   output: string;
   state: SwarmState;
   rolesUsed: string[];
   handoffCount: number;
   duration: number;
+  /** 每个角色的独立输出（用于 Aggregator 汇总） */
+  roleOutputs?: RoleOutput[];
 }
 
 // ========== Triage 指令 ==========
@@ -193,6 +200,7 @@ export class SwarmCoordinator {
 
       await this.updateState({ status: 'executing' });
       let finalOutput = '';
+      const roleOutputs: RoleOutput[] = [];
 
       for (let depth = 0; depth <= this.config.maxHandoffDepth; depth++) {
         log.info(`[SwarmCoordinator] Loop depth=${depth}, roleId=${currentRoleId}, inputLength=${currentInput.length}`);
@@ -221,6 +229,8 @@ export class SwarmCoordinator {
 
         this.emit({ type: 'agent:done', data: { roleId: currentRoleId, output: output.substring(0, 200) } });
         log.info(`[SwarmCoordinator] Emitted agent:done for ${currentRoleId}`);
+
+        roleOutputs.push({ roleId: currentRoleId, output });
 
         const handoffTarget = this.detectHandoff(result);
 
@@ -297,6 +307,7 @@ export class SwarmCoordinator {
         state: { ...this.state },
         rolesUsed,
         handoffCount: routerStats.totalHandoffs,
+        roleOutputs,
         duration: Date.now() - startTime
       };
     } catch (error) {

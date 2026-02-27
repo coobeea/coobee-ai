@@ -154,6 +154,7 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
     let taskDone = false;
     let taskError: Error | null = null;
     let taskResult: TaskExecutionResult | null = null;
+    let qualityLoopOutput: string | null = null;
 
     const taskPromise = this.orchestrator.executeTask(task).then(
       async (result) => {
@@ -306,6 +307,7 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
           }
         }
 
+        qualityLoopOutput = resultOutput;
         pushChunk({ type: 'text:start', content: '' });
         pushChunk({
           type: 'text:delta',
@@ -348,12 +350,14 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
 
     const duration = Date.now() - startTime;
 
-    // 构建 ExecutionResult
-    const finalOutput = taskResult
-      ? typeof (taskResult as TaskExecutionResult).finalOutput === 'string'
-        ? String((taskResult as TaskExecutionResult).finalOutput)
-        : JSON.stringify((taskResult as TaskExecutionResult).finalOutput || '', null, 2)
-      : '';
+    // 构建 ExecutionResult — 优先使用质量闭环优化后的输出
+    const finalOutput =
+      qualityLoopOutput ??
+      (taskResult
+        ? typeof (taskResult as TaskExecutionResult).finalOutput === 'string'
+          ? String((taskResult as TaskExecutionResult).finalOutput)
+          : JSON.stringify((taskResult as TaskExecutionResult).finalOutput || '', null, 2)
+        : '');
 
     return {
       output: finalOutput,
