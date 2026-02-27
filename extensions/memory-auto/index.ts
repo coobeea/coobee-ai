@@ -2,10 +2,11 @@
  * memory-auto — 记忆自动化 Extension
  *
  * 两个核心功能：
- *   1. before_agent_start: 读取 MEMORY.md 摘要 + 相关记忆，注入到上下文
- *   2. agent_end: 检测输出中的记忆信号词，自动追加到 memory/{date}.md
+ *   1. before_agent_start: 从结构化记忆语义检索 + Markdown 兜底，注入到上下文
+ *   2. agent_end: 通过结构化记忆管线自动提取 + 信号词检测兜底
  *
- * 参考：OpenClaw memory-core 的 Memory Flush + memory-lancedb 的自动捕获
+ * 架构：优先使用 StructuredMemoryService，
+ * 若未初始化则降级到原有 Markdown 文件方式。
  */
 
 import fs from 'node:fs';
@@ -74,24 +75,31 @@ export default {
 
           const blocks: string[] = [];
 
-          // 1. 读取 MEMORY.md 摘要
-          const coreMemory = readMemoryMdHead(workspace, MAX_CORE_MEMORY_CHARS);
-          if (coreMemory) {
-            blocks.push(`<core_memory>\n${coreMemory}\n</core_memory>`);
+          // 尝试从结构化记忆系统检索
+          const structuredContext = await tryStructuredRetrieve(event.prompt);
+          if (structuredContext) {
+            blocks.push(`<memory_context>\n${structuredContext}\n</memory_context>`);
           }
 
-          // 2. 基于用户消息搜索相关记忆
-          const keywords = extractKeywords(event.prompt);
-          if (keywords.length > 0) {
-            const recalled = searchMemoryDir(
-              path.join(workspace, 'memory'),
-              keywords,
-              MAX_RECALL_RESULTS,
-              MIN_RECALL_SCORE
-            );
-            if (recalled.length > 0) {
-              const items = recalled.map((r) => `- [${r.file}] ${r.snippet}`).join('\n');
-              blocks.push(`<recalled_memories>\n${items}\n</recalled_memories>`);
+          // 降级：读取 MEMORY.md 摘要（结构化系统可能不含所有旧数据）
+          if (!structuredContext) {
+            const coreMemory = readMemoryMdHead(workspace, MAX_CORE_MEMORY_CHARS);
+            if (coreMemory) {
+              blocks.push(`<core_memory>\n${coreMemory}\n</core_memory>`);
+            }
+
+            const keywords = extractKeywords(event.prompt);
+            if (keywords.length > 0) {
+              const recalled = searchMemoryDir(
+                path.join(workspace, 'memory'),
+                keywords,
+                MAX_RECALL_RESULTS,
+                MIN_RECALL_SCORE
+              );
+              if (recalled.length > 0) {
+                const items = recalled.map((r) => `- [${r.file}] ${r.snippet}`).join('\n');
+                blocks.push(`<recalled_memories>\n${items}\n</recalled_memories>`);
+              }
             }
           }
 
@@ -105,7 +113,7 @@ export default {
           return;
         }
       },
-      { priority: 30 } // 较低优先级，在其他 Hook 之后
+      { priority: 30 }
     );
 
     // ========== agent_end: 记忆信号检测 + 交互摘要 ==========
@@ -119,16 +127,22 @@ export default {
           const output = (event.output || '').trim();
           if (!output || output.length < MIN_OUTPUT_FOR_MEMORY) return;
 
+          // 尝试通过结构化记忆管线提取
+          const structuredResult = await tryStructuredMemorize(output, event.sessionId);
+          if (structuredResult) {
+            api.logger.info(`[memory-auto] Structured memorize: ${structuredResult.itemCount} items extracted`);
+            // 仍然写入 Markdown 作为可读备份
+          }
+
+          // 同时继续 Markdown 记录（保持向后兼容）
           const entries: string[] = [];
           const timestamp = new Date().toISOString().slice(11, 19);
 
-          // 1. 信号词匹配
           const signals = detectMemorySignals(output);
           for (const s of signals) {
             entries.push(`- [${timestamp}] (${s.category}) ${s.text}\n`);
           }
 
-          // 2. 自动摘要：对较长的有意义输出，提取首段作为交互记录
           if (entries.length === 0 && output.length >= MIN_OUTPUT_FOR_SUMMARY) {
             const summary = extractSummary(output);
             if (summary) {
@@ -433,6 +447,57 @@ function extractSummary(output: string): string | null {
   const text = meaningful.join(' ').trim();
   if (text.length < MIN_SIGNAL_TEXT_LENGTH) return null;
   return text.length > 200 ? text.slice(0, 200) + '...' : text;
+}
+
+// ==================== 结构化记忆集成 ====================
+
+/**
+ * 尝试使用结构化记忆系统进行语义检索。
+ * 返回格式化的上下文字符串，或 null（系统未初始化时降级）。
+ */
+async function tryStructuredRetrieve(query: string): Promise<string | null> {
+  try {
+    const { StructuredMemoryService } = await import('../../src/main/ai/memory/structured/service');
+    const svc = StructuredMemoryService.getInstance();
+    if (!svc.initialized) return null;
+
+    const result = await svc.retrieve({
+      query,
+      topK: MAX_RECALL_RESULTS,
+      mode: 'salience'
+    });
+
+    if (!result.context || result.items.length === 0) return null;
+    return result.context;
+  } catch {
+    return null;
+  }
+}
+
+interface StructuredMemorizeResult {
+  itemCount: number;
+}
+
+/**
+ * 尝试通过结构化记忆管线提取并存储记忆。
+ * 返回提取结果，或 null（系统未初始化或 LLM 不可用时降级）。
+ */
+async function tryStructuredMemorize(output: string, _sessionId: string): Promise<StructuredMemorizeResult | null> {
+  try {
+    const { StructuredMemoryService } = await import('../../src/main/ai/memory/structured/service');
+    const svc = StructuredMemoryService.getInstance();
+    if (!svc.initialized) return null;
+
+    const result = await svc.memorizeContent({
+      content: output,
+      source: 'agent_end_auto'
+    });
+
+    if (!result) return null;
+    return { itemCount: result.items.length };
+  } catch {
+    return null;
+  }
 }
 
 /** 检测 Agent 输出中的记忆信号词 */

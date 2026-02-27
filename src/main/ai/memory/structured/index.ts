@@ -49,3 +49,11 @@ export type { RetrieveInput, RetrieveResult } from './retrieve';
 // Embedding
 export { OpenAIEmbeddingProvider, NoopEmbeddingProvider } from './embedding';
 export type { EmbeddingProvider } from './embedding';
+
+// Migration
+export { migrateFromMarkdown, exportToMarkdown } from './migration';
+export type { MigrationResult, MigrationOptions } from './migration';
+
+// Service (singleton facade)
+export { StructuredMemoryService } from './service';
+export type { StructuredMemoryServiceOptions } from './service';

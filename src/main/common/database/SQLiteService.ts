@@ -221,11 +221,18 @@ export class SQLiteService {
    */
   private async getConnection(): Promise<SQLiteConnection> {
     if (!this.connection) {
-      // 确保数据库目录存在
       await ensureSQLiteDir(this.dbPath);
       this.connection = new SQLiteConnection(this.dbPath);
     }
     return this.connection;
+  }
+
+  /**
+   * 获取共享的 SQLite 连接供记忆子系统等模块使用。
+   * 返回同一个 Connection 实例（共享 WAL 模式连接）。
+   */
+  async getConnectionForMemory(): Promise<SQLiteConnection> {
+    return this.getConnection();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
