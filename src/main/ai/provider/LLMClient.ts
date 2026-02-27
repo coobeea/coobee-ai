@@ -1,10 +1,17 @@
 /**
  * LLMClient - 简化的 LLM 客户端接口
  *
- * 用于质量闭环系统，提供统一的 LLM 调用接口
+ * 用于质量闭环、Swarm 协调器等内部模块。
+ * 支持 OpenAI 兼容 API（包括 DashScope、MiniMax 等）。
+ *
+ * API Key 解析优先级：
+ *   1. 显式传入 options.apiKey
+ *   2. 从 ConfigStore 读取项目配置的默认 Provider
+ *   3. 环境变量兜底（DASHSCOPE_API_KEY / OPENAI_API_KEY / VITE_LLM_API_KEY）
  */
 
 import OpenAI from 'openai';
+import { resolveApiKey } from './ApiKeyResolver';
 
 export interface LLMClientOptions {
   provider?: string;
@@ -34,20 +41,54 @@ export interface ChatCompletionResponse {
 }
 
 /**
- * 简化的 LLM 客户端
- * 目前仅支持 OpenAI API
+ * 从 ConfigStore 读取默认 Provider 的 apiKey / baseURL / model。
+ * 静默失败 — ConfigStore 未初始化时返回空对象。
+ */
+function resolveFromConfig(): { apiKey?: string; baseURL?: string; model?: string } {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { configStoreInstance } = require('@main/common/config/ConfigStore');
+    const config = configStoreInstance?.getAll?.();
+    if (!config?.models?.defaults?.model?.primary) return {};
+
+    const primary = config.models.defaults.model.primary as string;
+    const [providerId, modelId] = primary.includes('/') ? primary.split('/') : ['', primary];
+
+    if (!providerId || !config.models?.providers?.[providerId]) return { model: modelId };
+
+    const provider = config.models.providers[providerId];
+    const apiKey = resolveApiKey(provider.apiKey, providerId);
+    return {
+      apiKey,
+      baseURL: provider.baseUrl,
+      model: modelId || provider.models?.[0]?.id
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * 简化的 LLM 客户端（OpenAI 兼容）
  */
 export class LLMClient {
   private client: OpenAI;
   private model: string;
 
   constructor(options: LLMClientOptions) {
-    this.model = options.model || 'gpt-4o-mini';
+    const defaults = resolveFromConfig();
 
-    this.client = new OpenAI({
-      apiKey: options.apiKey || process.env.OPENAI_API_KEY,
-      baseURL: options.baseURL
-    });
+    const apiKey =
+      options.apiKey ||
+      defaults.apiKey ||
+      process.env.DASHSCOPE_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      process.env.VITE_LLM_API_KEY;
+
+    const baseURL = options.baseURL || defaults.baseURL;
+    this.model = options.model || defaults.model || 'gpt-4o-mini';
+
+    this.client = new OpenAI({ apiKey, baseURL });
   }
 
   /**
