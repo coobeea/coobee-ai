@@ -15,6 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createLogger } from '@main/common/logger';
+import { ensureCoreSkills } from '../skills/CoreSkills';
 import type { AgentDefinition, AgentIndexEntry, CreateAgentParams, UpdateAgentParams } from './types';
 
 const log = createLogger('agent-store');
@@ -133,17 +134,7 @@ export class AgentStore {
 
     const now = new Date().toISOString();
 
-    // 自动注入默认 Skills（所有 Agent 必备）
-    // - brain:             主动维护智库、经验沉淀与复用
-    // - dimension-architect: 将需求量化拆解为可评估维度
-    // - eval-refine-loop:  LLM 输出质量评估与自动优化闭环
-    const DEFAULT_SKILLS = ['brain', 'dimension-architect', 'eval-refine-loop'];
-    const skills = params.skills ? [...params.skills] : [];
-    for (const s of [...DEFAULT_SKILLS].reverse()) {
-      if (!skills.includes(s)) {
-        skills.unshift(s);
-      }
-    }
+    const skills = ensureCoreSkills(params.skills ? [...params.skills] : []);
 
     const definition: AgentDefinition = {
       id: params.id,
@@ -218,17 +209,7 @@ export class AgentStore {
       );
     }
 
-    // 如果 skills 被更新，确保默认 skills 不被丢失
-    let updatedSkills: string[] | undefined = undefined;
-    if (params.skills !== undefined) {
-      const DEFAULT_SKILLS = ['brain', 'dimension-architect', 'eval-refine-loop'];
-      updatedSkills = [...params.skills];
-      for (const s of [...DEFAULT_SKILLS].reverse()) {
-        if (!updatedSkills.includes(s)) {
-          updatedSkills.unshift(s);
-        }
-      }
-    }
+    const updatedSkills = params.skills !== undefined ? ensureCoreSkills([...params.skills]) : undefined;
 
     const updated: AgentDefinition = {
       ...existing,

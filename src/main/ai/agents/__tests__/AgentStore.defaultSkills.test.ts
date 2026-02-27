@@ -1,14 +1,15 @@
 /**
- * AgentStore — 默认 Skills 注入逻辑测试
+ * AgentStore — 核心 Skills 注入逻辑测试
  *
- * 验证 brain、dimension-architect、eval-refine-loop 三个 skills
- * 在创建和更新 Agent 时被自动注入，且不重复。
+ * 验证 5 个核心 skills (execution-protocol, self-reflection,
+ * eval-refine-loop, brain, dimension-architect) 在创建和更新 Agent 时被自动注入，且不重复。
  */
 
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CORE_SKILLS, ensureCoreSkills } from '../../skills/CoreSkills';
 
 vi.mock('@main/common/logger', () => ({
   createLogger: () => ({
@@ -32,12 +33,10 @@ let AgentStore: typeof import('../AgentStore').AgentStore;
 beforeEach(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-store-test-'));
 
-  // 重置单例
   vi.resetModules();
   const mod = await import('../AgentStore');
   AgentStore = mod.AgentStore;
 
-  // 强制注入临时目录
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (AgentStore as any).instance = null;
 });
@@ -47,70 +46,67 @@ afterEach(() => {
   vi.resetModules();
 });
 
-const DEFAULT_SKILLS = ['brain', 'dimension-architect', 'eval-refine-loop'];
-
-/** 直接测试注入逻辑（不依赖文件系统） */
-function applyDefaultSkills(inputSkills: string[]): string[] {
-  const skills = [...inputSkills];
-  for (const s of [...DEFAULT_SKILLS].reverse()) {
-    if (!skills.includes(s)) {
-      skills.unshift(s);
-    }
-  }
-  return skills;
-}
-
-describe('Default Skills 注入逻辑', () => {
-  it('空 skills 数组时注入全部 3 个默认 skills', () => {
-    const result = applyDefaultSkills([]);
-    expect(result).toEqual(DEFAULT_SKILLS);
+describe('CORE_SKILLS 常量验证', () => {
+  it('包含所有 5 个核心 skills', () => {
+    expect(CORE_SKILLS).toContain('execution-protocol');
+    expect(CORE_SKILLS).toContain('self-reflection');
+    expect(CORE_SKILLS).toContain('eval-refine-loop');
+    expect(CORE_SKILLS).toContain('brain');
+    expect(CORE_SKILLS).toContain('dimension-architect');
+    expect(CORE_SKILLS).toHaveLength(5);
   });
 
-  it('已有 brain 时不重复，补全其余两个', () => {
-    const result = applyDefaultSkills(['brain']);
+  it('没有重复项', () => {
+    expect(new Set(CORE_SKILLS).size).toBe(CORE_SKILLS.length);
+  });
+
+  it('execution-protocol 和 self-reflection 排在最前面', () => {
+    expect(CORE_SKILLS[0]).toBe('execution-protocol');
+    expect(CORE_SKILLS[1]).toBe('self-reflection');
+  });
+});
+
+describe('ensureCoreSkills 注入逻辑', () => {
+  it('空 skills 数组时注入全部核心 skills', () => {
+    const result = ensureCoreSkills([]);
+    expect(result).toEqual([...CORE_SKILLS]);
+  });
+
+  it('已有部分核心 skill 时不重复', () => {
+    const result = ensureCoreSkills(['brain', 'self-reflection']);
     expect(result).toContain('brain');
-    expect(result).toContain('dimension-architect');
+    expect(result).toContain('self-reflection');
+    expect(result).toContain('execution-protocol');
     expect(result).toContain('eval-refine-loop');
-    // 不重复
+    expect(result).toContain('dimension-architect');
     expect(result.filter((s) => s === 'brain').length).toBe(1);
+    expect(result.filter((s) => s === 'self-reflection').length).toBe(1);
   });
 
-  it('已有全部 3 个时不重复注入', () => {
-    const result = applyDefaultSkills(['brain', 'dimension-architect', 'eval-refine-loop']);
-    expect(result).toEqual(['brain', 'dimension-architect', 'eval-refine-loop']);
+  it('已有全部核心 skills 时不重复注入', () => {
+    const input = [...CORE_SKILLS];
+    const result = ensureCoreSkills(input);
+    expect(result).toEqual(input);
   });
 
-  it('保留用户自定义 skills，默认 skills 排在前面', () => {
-    const result = applyDefaultSkills(['my-custom-skill']);
-    expect(result.slice(0, 3)).toEqual(DEFAULT_SKILLS);
+  it('保留用户自定义 skills，核心 skills 排在前面', () => {
+    const result = ensureCoreSkills(['my-custom-skill']);
+    expect(result.slice(0, CORE_SKILLS.length)).toEqual([...CORE_SKILLS]);
     expect(result).toContain('my-custom-skill');
   });
 
   it('部分已有时只补全缺失的', () => {
-    const result = applyDefaultSkills(['dimension-architect', 'custom']);
-    expect(result).toContain('brain');
-    expect(result).toContain('eval-refine-loop');
-    expect(result).toContain('dimension-architect');
+    const result = ensureCoreSkills(['dimension-architect', 'custom']);
+    for (const s of CORE_SKILLS) {
+      expect(result).toContain(s);
+    }
     expect(result).toContain('custom');
-    // 不重复
     expect(result.filter((s) => s === 'dimension-architect').length).toBe(1);
   });
 
-  it('update 时 skills 更新也保护默认 skills', () => {
+  it('update 时也保护核心 skills', () => {
     const userProvided = ['custom-skill'];
-    const result = applyDefaultSkills(userProvided);
-    expect(DEFAULT_SKILLS.every((s) => result.includes(s))).toBe(true);
-  });
-});
-
-describe('DEFAULT_SKILLS 常量验证', () => {
-  it('包含所有必要的 3 个默认 skills', () => {
-    expect(DEFAULT_SKILLS).toContain('brain');
-    expect(DEFAULT_SKILLS).toContain('dimension-architect');
-    expect(DEFAULT_SKILLS).toContain('eval-refine-loop');
-  });
-
-  it('没有重复项', () => {
-    expect(new Set(DEFAULT_SKILLS).size).toBe(DEFAULT_SKILLS.length);
+    const result = ensureCoreSkills(userProvided);
+    expect([...CORE_SKILLS].every((s) => result.includes(s))).toBe(true);
   });
 });

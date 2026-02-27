@@ -19,6 +19,7 @@ import fs from 'node:fs';
 import { createLogger } from '@main/common/logger';
 import { formatRuntimePaths, buildAgentEnv, type AgentEnv } from './AgentEnv';
 import { SkillManager } from './skills';
+import { CORE_SKILLS } from './skills/CoreSkills';
 import { createPathOnlyContext, resolveSandboxContext } from './sandbox';
 import type { SandboxMode } from './sandbox';
 import type { ToolExecutionContext } from './tools/types';
@@ -70,12 +71,24 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
             `1. Use the \`read\` tool to read its SKILL.md file (path provided by skill_list)\n` +
             `2. Follow the instructions within the SKILL.md file\n` +
             `3. Do NOT attempt to use a Skill without reading its documentation first\n\n` +
-            `Key Skills for self-management:\n` +
-            `- **Knowledge base** → load "brain" Skill (search/publish solutions)\n` +
+            `### Core Skills (ALWAYS ACTIVE — use for every non-trivial task)\n\n` +
+            `These are your **mandatory quality assurance** skills:\n\n` +
+            `| Skill | Purpose | When to Use |\n` +
+            `|-------|---------|-------------|\n` +
+            `| **execution-protocol** | 五步工作法：目标提取→计划执行→自我评估→自我修复→报告沉淀 | Every task: decompose goals, write GOAL.md, track progress |\n` +
+            `| **self-reflection** | 自我评估与修复方法论：质量评分、过程评分、修复决策树 | After completing any complex task: verify output against criteria |\n` +
+            `| **eval-refine-loop** | 维度化评估→差距报告→诊断→优化→再评估的全自动闭环 | When output quality needs systematic verification |\n` +
+            `| **brain** | 知识库搜索与经验沉淀 | Before solving: search for existing solutions; After solving: publish reusable knowledge |\n` +
+            `| **dimension-architect** | 需求维度量化拆解 | When user requirements need structured dimensional analysis |\n\n` +
+            `**CRITICAL WORKFLOW**:\n` +
+            `1. **Before execution**: Load \`execution-protocol\` to decompose task and define verifiable criteria\n` +
+            `2. **After execution**: Load \`self-reflection\` to evaluate quality against criteria\n` +
+            `3. **If quality < 80**: Follow repair strategy in \`self-reflection\`, iterate until passing\n` +
+            `4. **For LLM output quality**: Use \`eval-refine-loop\` for systematic dimension-based evaluation\n\n` +
+            `### Other Useful Skills\n\n` +
             `- Configuration changes → load "system-config" Skill\n` +
             `- Creating new Skills → load "skill-creator" Skill\n` +
             `- Creating Extensions → load "extension-creator" Skill\n` +
-            `- Self-evaluation → load "self-reflection" Skill\n` +
             `- Environment info → load "runtime-env" Skill\n` +
             `\nYou can also use \`config_get\` to view current config and \`config_patch\` to modify it.\n` +
             `</skill_discovery>`
@@ -89,6 +102,18 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
         ...(skillDiscoveryHint ? [skillDiscoveryHint] : []),
         ...(agentDiscoveryHint ? [agentDiscoveryHint] : [])
       );
+
+      // 4b. 注入核心技能到 builder（确保子 Agent 也拥有核心技能）
+      //     builder.skills() 是累加模式，不会覆盖已有 skills
+      const coreSkillDefs = CORE_SKILLS.map((name) => skillManager.getByName(name)).filter(
+        (s): s is NonNullable<typeof s> => s !== null
+      );
+      if (coreSkillDefs.length > 0) {
+        builder.skills(coreSkillDefs);
+        log.info(
+          `[EnvInjector] Injected ${coreSkillDefs.length} core skills: ${coreSkillDefs.map((s) => s.name).join(', ')}`
+        );
+      }
 
       // 5. 构建工具执行上下文（由 Runtime 的 convertTools 注入到每个工具）
       //    包含沙箱信息 + Agent/Session 上下文
@@ -177,8 +202,12 @@ When you receive a user request, follow this protocol:
    - This ensures the goal survives across many conversation turns and context window truncation
    - If GOAL.md already exists (shown in <current_goal> above), review it — update if the user's intent has changed
 2. **Plan & Execute** - Create plan and execute step by step
-3. **Self-Evaluation** - Compare output against criteria (from GOAL.md)
-4. **Self-Repair** - Fix issues if needed (max 3 rounds)
+3. **Self-Evaluation (MANDATORY for complex tasks)** - Compare output against criteria (from GOAL.md)
+   - **You MUST actually verify** every criterion by running real checks (e.g., execute commands, inspect files, test outputs)
+   - Do NOT just claim "completed" — provide evidence for each criterion
+   - Load the \`self-reflection\` Skill for the detailed evaluation methodology (quality scoring, process scoring, repair decision tree)
+4. **Self-Repair** - Fix issues if evaluation score < 80 (max 3 rounds)
+   - Follow the repair priority: fix output → change strategy → re-analyze intent → ask user
 5. **Report & Memorize** - Summarize results and save valuable knowledge
    - When task is complete, update GOAL.md status or remove it
    - **IMPORTANT**: Use the \`memory\` tool to persist reusable knowledge:
@@ -187,6 +216,15 @@ When you receive a user request, follow this protocol:
      · Core project knowledge → \`memory(action='write', file='MEMORY.md', content='...', append=true)\`
      · Only save durable, reusable knowledge — NOT session-specific details
    - At the **start** of non-trivial tasks, check existing memory: \`memory(action='list')\` or \`memory(action='search', query='...')\`
+
+## Quality Assurance — NEVER Skip
+
+**Every goal must be verified with real data.** When your task produces outputs (files, code, analysis, etc.):
+
+1. **Test the output** — run commands, check file existence, validate content matches criteria
+2. **Score your work** — use the self-reflection methodology (quality × 60% + process × 40%)
+3. **Iterate if needed** — if score < 80, repair and re-evaluate before reporting to user
+4. **Be honest** — if you cannot verify a criterion, explicitly state it (don't fabricate results)
 
 ## Brain Knowledge Base Integration
 

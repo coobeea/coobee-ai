@@ -146,9 +146,15 @@ export class PiMonoBuilder {
     return this;
   }
 
-  /** 技能列表（累加模式，多次调用会合并） */
+  /** 技能列表（累加模式，多次调用会合并，自动按 name 去重） */
   skills(skills: SkillDefinition[]): this {
-    this._skills.push(...skills);
+    const existing = new Set(this._skills.map((s) => s.name));
+    for (const s of skills) {
+      if (!existing.has(s.name)) {
+        this._skills.push(s);
+        existing.add(s.name);
+      }
+    }
     return this;
   }
 
