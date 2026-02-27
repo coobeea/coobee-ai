@@ -28,3 +28,16 @@ export { StructuredMemoryStorage } from './storage';
 // 向量搜索
 export { cosineSimilarity, salienceScore, cosineTopK, cosineTopKSalience } from './vector';
 export type { VectorSearchResult } from './vector';
+
+// Prompts
+export {
+  ENABLED_MEMORY_TYPES,
+  buildExtractionPrompt,
+  formatCategoriesForPrompt,
+  parseExtractionResponse
+} from './prompts';
+export type { ExtractedMemory } from './prompts';
+
+// Memorize Pipeline
+export { MemorizePipeline } from './memorize';
+export type { MemorizeInput, MemorizeResult, MemorizeOptions } from './memorize';
