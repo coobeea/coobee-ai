@@ -10,9 +10,9 @@ import type { SwarmConfig, AgentRole } from '../types';
 import { SwarmContext } from '../SwarmContext';
 import { MessageBus } from '../MessageBus';
 
-vi.mock('@main/ai/provider/LLMClient', () => {
+vi.mock('@main/ai/provider/LLMService', () => {
   return {
-    LLMClient: class MockLLMClient {
+    LLMService: class MockLLMService {
       chat = vi.fn().mockResolvedValue({ content: '{}' });
     }
   };
@@ -22,8 +22,21 @@ describe('Swarm 质量闭环集成测试', () => {
   let coordinator: SwarmCoordinator;
   let config: SwarmConfig;
 
+  const mockAgentExecutor = {
+    piMono: () => ({
+      lightweight: () => ({
+        mode: () => ({ name: () => ({ sessionMode: () => ({ maxTurns: () => ({ instructions: vi.fn() }) }) }) })
+      }),
+      mode: vi.fn().mockReturnThis(),
+      name: vi.fn().mockReturnThis(),
+      sessionMode: vi.fn().mockReturnThis(),
+      maxTurns: vi.fn().mockReturnThis(),
+      instructions: vi.fn().mockReturnThis()
+    }),
+    stream: vi.fn()
+  };
+
   beforeEach(() => {
-    // 创建测试配置
     config = {
       id: 'test-swarm',
       name: 'Test Swarm',
@@ -34,6 +47,7 @@ describe('Swarm 质量闭环集成测试', () => {
       enableMonitoring: true,
       context: new SwarmContext(),
       messageBus: new MessageBus(),
+      agentExecutor: mockAgentExecutor,
       qualityLoop: {
         enabled: true,
         maxIterations: 2,

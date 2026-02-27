@@ -15,8 +15,8 @@ import type Router from '@koa/router';
 import type { Context } from 'koa';
 import { createLogger } from '@main/common/logger';
 import { getCronJobStore, getCronScheduler, type CreateCronJobParams, type UpdateCronJobParams } from '@main/ai/cron';
-import { LLMClient } from '@main/ai/provider/LLMClient';
-import { configStoreInstance } from '@main/common/config/ConfigStore';
+import { LLMService } from '@main/ai/provider/LLMService';
+import { agentExecutor } from '@main/ai/AgentExecutor';
 
 const log = createLogger('gateway-http-cron-jobs');
 
@@ -76,36 +76,9 @@ export function registerCronJobRoutes(router: Router): void {
         return;
       }
 
-      if (!configStoreInstance) {
-        ctx.status = 500;
-        ctx.body = { error: '配置未初始化' };
-        return;
-      }
-      const config = configStoreInstance.getAll();
-      const providers = (config as Record<string, unknown>).models as
-        | {
-            providers?: Record<string, { baseURL?: string; apiKey?: string; models?: Record<string, unknown> }>;
-            defaults?: { model?: { primary?: string } };
-          }
-        | undefined;
+      const llmService = new LLMService(agentExecutor);
 
-      const primaryModel = providers?.defaults?.model?.primary;
-      if (!primaryModel) {
-        ctx.status = 500;
-        ctx.body = { error: '未配置默认模型' };
-        return;
-      }
-
-      const [providerId, modelId] = primaryModel.includes('/') ? primaryModel.split('/') : ['', primaryModel];
-      const provider = providerId ? providers?.providers?.[providerId] : undefined;
-
-      const client = new LLMClient({
-        model: modelId,
-        apiKey: provider?.apiKey,
-        baseURL: provider?.baseURL
-      });
-
-      const result = await client.chat({
+      const result = await llmService.chat({
         messages: [
           {
             role: 'system',

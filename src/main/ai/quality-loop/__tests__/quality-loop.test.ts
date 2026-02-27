@@ -2,15 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Aggregator } from '../Aggregator';
 import { Validator } from '../Validator';
 import { Repairer } from '../Repairer';
-import type { LLMClient } from '@main/ai/provider/LLMClient';
+import type { LLMService } from '@main/ai/provider/LLMService';
 
 describe('Quality Loop', () => {
-  let mockLLMClient: LLMClient;
+  let mockLLMClient: LLMService;
 
   beforeEach(() => {
     mockLLMClient = {
       chat: vi.fn()
-    } as unknown as LLMClient;
+    } as unknown as LLMService;
 
     // Mock Date.now() to ensure duration > 0
     let mockTime = 1000;

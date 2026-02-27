@@ -1,4 +1,4 @@
-import { LLMClient } from '@main/ai/provider/LLMClient';
+import type { LLMService } from '@main/ai/provider/LLMService';
 import { log } from '@main/common/logger';
 
 export interface ValidationInput {
@@ -58,7 +58,7 @@ export interface ValidationResult {
  * 3. 诊断问题并提供修复建议
  */
 export class Validator {
-  constructor(private llmClient: LLMClient) {}
+  constructor(private llmClient: LLMService) {}
 
   /**
    * 验证输出质量

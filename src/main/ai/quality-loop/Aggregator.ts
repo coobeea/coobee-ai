@@ -1,4 +1,4 @@
-import { LLMClient } from '@main/ai/provider/LLMClient';
+import type { LLMService } from '@main/ai/provider/LLMService';
 import { log } from '@main/common/logger';
 
 export interface AggregationInput {
@@ -46,7 +46,7 @@ export interface AggregationResult {
  * 3. 识别缺失部分
  */
 export class Aggregator {
-  constructor(private llmClient: LLMClient) {}
+  constructor(private llmClient: LLMService) {}
 
   /**
    * 汇总多个子 Agent 的输出

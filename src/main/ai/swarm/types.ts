@@ -128,6 +128,8 @@ export interface SwarmConfig {
   messageBus?: MessageBus;
   /** 🆕 共享知识库（用于 Agent 上下文共享） */
   knowledgeBase?: KnowledgeBase;
+  /** AgentExecutor 实例（用于质量闭环的 LLM 调用，走统一 Runtime 体系） */
+  agentExecutor?: unknown;
 }
 
 /**

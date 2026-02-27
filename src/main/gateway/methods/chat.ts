@@ -264,7 +264,8 @@ export const chatMethods: MethodGroup = {
           const orchestrator = new OrchestratorRuntime({
             name: 'User Orchestrator',
             sessionId: sid,
-            orchestratorConfig: { parentSessionId: sid }
+            orchestratorConfig: { parentSessionId: sid },
+            agentExecutor
           });
           await orchestrator.initialize();
 
@@ -284,7 +285,8 @@ export const chatMethods: MethodGroup = {
         // ========== Swarm 模式 ==========
         if (mode === 'swarm') {
           const swarm = new SwarmRuntime(sid, sid, {
-            config: { parentSessionId: sid, name: 'User Swarm' }
+            config: { parentSessionId: sid, name: 'User Swarm' },
+            agentExecutor
           });
           await swarm.initialize();
 
@@ -304,7 +306,8 @@ export const chatMethods: MethodGroup = {
         // ========== Discussion 讨论模式 ==========
         if (mode === 'discussion') {
           const swarm = new SwarmRuntime(sid, sid, {
-            config: { parentSessionId: sid, name: 'Discussion' }
+            config: { parentSessionId: sid, name: 'Discussion' },
+            agentExecutor
           });
           await swarm.initialize();
 

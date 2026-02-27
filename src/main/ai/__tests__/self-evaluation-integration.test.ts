@@ -28,9 +28,9 @@ vi.mock('@main/common/logger', () => ({
   }
 }));
 
-vi.mock('@main/ai/provider/LLMClient', () => {
+vi.mock('@main/ai/provider/LLMService', () => {
   return {
-    LLMClient: class MockLLMClient {
+    LLMService: class MockLLMService {
       chat = vi.fn().mockResolvedValue({ content: '{}' });
     }
   };
@@ -45,6 +45,7 @@ describe('Stage 1: Skill 注入到子智能体', () => {
       const { SwarmContext } = await import('../swarm/SwarmContext');
       const { MessageBus } = await import('../swarm/MessageBus');
 
+      const mockAE = { piMono: vi.fn(), stream: vi.fn() };
       const coord = new SwarmCoordinator({
         id: 'test-swarm',
         name: 'Test',
@@ -54,6 +55,7 @@ describe('Stage 1: Skill 注入到子智能体', () => {
         enableSharedContext: true,
         enableMonitoring: true,
         qualityLoop: { enabled: true },
+        agentExecutor: mockAE,
         context: new SwarmContext(),
         messageBus: new MessageBus()
       });
@@ -66,7 +68,7 @@ describe('Stage 1: Skill 注入到子智能体', () => {
     });
 
     it('SwarmCoordinator 构造函数应正确初始化质量闭环组件', () => {
-      // 隐式验证：如果 qualityLoop.enabled=true 且 LLMClient mock 正常，
+      // 隐式验证：如果 qualityLoop.enabled=true 且 LLMService mock 正常，
       // 三个组件（aggregator/validator/repairer）都应被初始化
       // 已在上一个测试中验证
       expect(true).toBe(true);

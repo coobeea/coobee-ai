@@ -20,17 +20,19 @@ import type { AgentRuntimeOptions, ExecutionConfig, ExecutionResult, StreamChunk
 import { Aggregator } from '../quality-loop/Aggregator';
 import { Validator } from '../quality-loop/Validator';
 import { Repairer } from '../quality-loop/Repairer';
-import { LLMClient } from '../provider/LLMClient';
+import { LLMService } from '../provider/LLMService';
 
 const log = createLogger('swarm:runtime');
 
 export interface SwarmRuntimeOptions {
   config?: Partial<SwarmConfig>;
   customRoles?: AgentRole[];
-  /** 🆕 Workspace 目录（用于持久化） */
+  /** Workspace 目录（用于持久化） */
   workspaceDir?: string;
-  /** 🆕 是否启用持久化（默认 true） */
+  /** 是否启用持久化（默认 true） */
   enablePersistence?: boolean;
+  /** AgentExecutor 实例（用于质量闭环 LLM 调用） */
+  agentExecutor?: unknown;
 }
 
 export class SwarmRuntime extends AbstractAgentRuntime {
@@ -66,10 +68,10 @@ export class SwarmRuntime extends AbstractAgentRuntime {
       name: options?.config?.name || `Swarm-${swarmId}`,
       parentSessionId: this.sessionId,
       ...options?.config,
-      // 🆕 注入持久化实例
       context,
       messageBus,
-      knowledgeBase
+      knowledgeBase,
+      agentExecutor: options?.agentExecutor
     } as SwarmConfig;
 
     this._name = this.swarmConfig.name;
@@ -287,140 +289,132 @@ export class SwarmRuntime extends AbstractAgentRuntime {
         throw new Error(errorMsg);
       }
 
-      // 🆕 质量闭环：汇总 → 验证 → 修复（最多 3 轮）
       let finalOutput = result.output;
       let qualityScore = 100;
       let repairRounds = 0;
       const maxRepairRounds = 3;
 
-      // 创建 LLMClient（使用 SwarmCoordinator 的 provider 配置）
-      const llmClient = new LLMClient({
-        provider: this.coordinator['provider'] || 'openai',
-        model: this.coordinator['model'] || 'gpt-4o-mini',
-        apiKey: this.coordinator['apiKey'] || '',
-        baseURL: this.coordinator['baseURL']
-      });
+      const agentExec = this.swarmConfig.agentExecutor;
+      const llmService = agentExec ? new LLMService(agentExec) : null;
+      const aggregator = llmService ? new Aggregator(llmService) : null;
+      const validator = llmService ? new Validator(llmService) : null;
+      const repairer = llmService ? new Repairer(llmService) : null;
 
-      const aggregator = new Aggregator(llmClient);
-      const validator = new Validator(llmClient);
-      const repairer = new Repairer(llmClient);
-
-      // Step 1: 汇总多个 Agent 输出（如果有多个角色参与）
-      if (result.rolesUsed.length > 1) {
-        yield {
-          type: 'text:delta',
-          content: '\n\n[质量闭环] 正在汇总多 Agent 输出...\n',
-          data: { delta: '\n\n[质量闭环] 正在汇总多 Agent 输出...\n' }
-        };
-
-        const aggregationResult = await aggregator.aggregate({
-          userRequest: input,
-          subTaskResults: result.rolesUsed.map((role, idx) => ({
-            taskId: `${taskId}-${idx}`,
-            agentName: role,
-            output: idx === result.rolesUsed.length - 1 ? result.output : '...',
-            status: 'success'
-          })),
-          collaborationContext: `Handoff 链路: ${result.rolesUsed.join(' → ')}`
-        });
-
-        finalOutput = aggregationResult.finalOutput;
-        yield {
-          type: 'text:delta',
-          content: `[质量闭环] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n`,
-          data: { delta: `[质量闭环] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n` }
-        };
-      }
-
-      // Step 2: 验证输出质量
-      while (repairRounds < maxRepairRounds) {
-        yield {
-          type: 'text:delta',
-          content: `[质量闭环] 正在验证输出质量 (第 ${repairRounds + 1} 轮)...\n`,
-          data: {
-            delta: `[质量闭环] 正在验证输出质量 (第 ${repairRounds + 1} 轮)...\n`
-          }
-        };
-
-        const validationResult = await validator.validate({
-          userRequest: input,
-          output: finalOutput
-        });
-
-        qualityScore = validationResult.overallScore;
-
-        yield {
-          type: 'text:delta',
-          content: `[质量闭环] 验证完成，得分: ${qualityScore}/100 (${validationResult.passed ? '✅ 通过' : '❌ 未通过'})\n`,
-          data: {
-            delta: `[质量闭环] 验证完成，得分: ${qualityScore}/100 (${validationResult.passed ? '✅ 通过' : '❌ 未通过'})\n`
-          }
-        };
-
-        // 如果通过验证，跳出循环
-        if (validationResult.passed) {
-          break;
-        }
-
-        // Step 3: 生成修复计划
-        repairRounds++;
-
-        if (repairRounds >= maxRepairRounds) {
+      if (aggregator && validator && repairer && llmService) {
+        // Step 1: 汇总多个 Agent 输出（如果有多个角色参与）
+        if (result.rolesUsed.length > 1) {
           yield {
             type: 'text:delta',
-            content: `[质量闭环] ⚠️ 已达最大修复次数 (${maxRepairRounds})，使用当前输出\n`,
-            data: {
-              delta: `[质量闭环] ⚠️ 已达最大修复次数 (${maxRepairRounds})，使用当前输出\n`
-            }
+            content: '\n\n[质量闭环] 正在汇总多 Agent 输出...\n',
+            data: { delta: '\n\n[质量闭环] 正在汇总多 Agent 输出...\n' }
           };
-          break;
-        }
 
-        yield {
-          type: 'text:delta',
-          content: `[质量闭环] 正在生成修复计划...\n`,
-          data: { delta: `[质量闭环] 正在生成修复计划...\n` }
-        };
+          const aggregationResult = await aggregator.aggregate({
+            userRequest: input,
+            subTaskResults: result.rolesUsed.map((role, idx) => ({
+              taskId: `${taskId}-${idx}`,
+              agentName: role,
+              output: idx === result.rolesUsed.length - 1 ? result.output : '...',
+              status: 'success'
+            })),
+            collaborationContext: `Handoff 链路: ${result.rolesUsed.join(' → ')}`
+          });
 
-        const repairPlan = await repairer.generateRepairPlan({
-          userRequest: input,
-          currentOutput: finalOutput,
-          validationResult,
-          repairRound: repairRounds
-        });
-
-        if (!repairPlan.shouldRepair || repairPlan.strategy === 'abort') {
+          finalOutput = aggregationResult.finalOutput;
           yield {
             type: 'text:delta',
-            content: `[质量闭环] 修复建议: ${repairPlan.strategy}，停止修复\n`,
-            data: {
-              delta: `[质量闭环] 修复建议: ${repairPlan.strategy}，停止修复\n`
-            }
+            content: `[质量闭环] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n`,
+            data: { delta: `[质量闭环] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n` }
           };
-          break;
         }
 
-        // Step 4: 执行修复（简化版：使用 LLM 重新生成）
-        yield {
-          type: 'text:delta',
-          content: `[质量闭环] 正在修复输出 (策略: ${repairPlan.strategy})...\n`,
-          data: {
-            delta: `[质量闭环] 正在修复输出 (策略: ${repairPlan.strategy})...\n`
-          }
-        };
-
-        const repairResponse = await llmClient.chat({
-          messages: [
-            {
-              role: 'user',
-              content: `原始请求: ${input}\n\n当前输出:\n${finalOutput}\n\n修复指令:\n${repairPlan.repairInstructions}\n\n请根据修复指令优化输出。`
+        // Step 2: 验证输出质量
+        while (repairRounds < maxRepairRounds) {
+          yield {
+            type: 'text:delta',
+            content: `[质量闭环] 正在验证输出质量 (第 ${repairRounds + 1} 轮)...\n`,
+            data: {
+              delta: `[质量闭环] 正在验证输出质量 (第 ${repairRounds + 1} 轮)...\n`
             }
-          ],
-          temperature: 0.5,
-          maxTokens: 4000
-        });
+          };
 
-        finalOutput = repairResponse.content.trim();
+          const validationResult = await validator.validate({
+            userRequest: input,
+            output: finalOutput
+          });
+
+          qualityScore = validationResult.overallScore;
+
+          yield {
+            type: 'text:delta',
+            content: `[质量闭环] 验证完成，得分: ${qualityScore}/100 (${validationResult.passed ? '✅ 通过' : '❌ 未通过'})\n`,
+            data: {
+              delta: `[质量闭环] 验证完成，得分: ${qualityScore}/100 (${validationResult.passed ? '✅ 通过' : '❌ 未通过'})\n`
+            }
+          };
+
+          if (validationResult.passed) {
+            break;
+          }
+
+          repairRounds++;
+
+          if (repairRounds >= maxRepairRounds) {
+            yield {
+              type: 'text:delta',
+              content: `[质量闭环] ⚠️ 已达最大修复次数 (${maxRepairRounds})，使用当前输出\n`,
+              data: {
+                delta: `[质量闭环] ⚠️ 已达最大修复次数 (${maxRepairRounds})，使用当前输出\n`
+              }
+            };
+            break;
+          }
+
+          yield {
+            type: 'text:delta',
+            content: `[质量闭环] 正在生成修复计划...\n`,
+            data: { delta: `[质量闭环] 正在生成修复计划...\n` }
+          };
+
+          const repairPlan = await repairer.generateRepairPlan({
+            userRequest: input,
+            currentOutput: finalOutput,
+            validationResult,
+            repairRound: repairRounds
+          });
+
+          if (!repairPlan.shouldRepair || repairPlan.strategy === 'abort') {
+            yield {
+              type: 'text:delta',
+              content: `[质量闭环] 修复建议: ${repairPlan.strategy}，停止修复\n`,
+              data: {
+                delta: `[质量闭环] 修复建议: ${repairPlan.strategy}，停止修复\n`
+              }
+            };
+            break;
+          }
+
+          yield {
+            type: 'text:delta',
+            content: `[质量闭环] 正在修复输出 (策略: ${repairPlan.strategy})...\n`,
+            data: {
+              delta: `[质量闭环] 正在修复输出 (策略: ${repairPlan.strategy})...\n`
+            }
+          };
+
+          const repairResponse = await llmService.chat({
+            messages: [
+              {
+                role: 'user',
+                content: `原始请求: ${input}\n\n当前输出:\n${finalOutput}\n\n修复指令:\n${repairPlan.repairInstructions}\n\n请根据修复指令优化输出。`
+              }
+            ],
+            temperature: 0.5,
+            maxTokens: 4000
+          });
+
+          finalOutput = repairResponse.content.trim();
+        }
       }
 
       if (result.rolesUsed.length > 0) {

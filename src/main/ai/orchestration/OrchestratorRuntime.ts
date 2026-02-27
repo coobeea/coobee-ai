@@ -26,7 +26,7 @@ import type { Task, TaskExecutionResult } from './types';
 import { Aggregator } from '../quality-loop/Aggregator';
 import { Validator } from '../quality-loop/Validator';
 import { Repairer } from '../quality-loop/Repairer';
-import { LLMClient } from '../provider/LLMClient';
+import { LLMService } from '../provider/LLMService';
 
 const log = createLogger('orchestration:runtime');
 
@@ -40,6 +40,8 @@ export interface OrchestratorRuntimeOptions {
   orchestratorConfig?: OrchestratorConfig;
   /** 会话 ID */
   sessionId?: string;
+  /** AgentExecutor 实例（用于质量闭环 LLM 调用） */
+  agentExecutor?: unknown;
 }
 
 /**
@@ -57,6 +59,7 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
   private sessionId: string;
   private createdAt: number;
   private _orchestratorConfig: OrchestratorConfig;
+  private _agentExecutor: unknown;
 
   constructor(options?: OrchestratorRuntimeOptions) {
     super();
@@ -65,6 +68,7 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
     this.sessionId = options?.sessionId || `orch-${Date.now()}`;
     this.createdAt = Date.now();
     this._orchestratorConfig = options?.orchestratorConfig || {};
+    this._agentExecutor = options?.agentExecutor;
 
     this._options = {
       name: this._name,
@@ -167,155 +171,139 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
                   .map((r) => String(r.result))
                   .join('\n\n');
 
-        // 🆕 质量闭环：汇总 → 验证 → 修复
-        try {
-          const orchestratorConfig = (this.orchestrator as unknown as Record<string, unknown>)?.config as
-            | {
-                provider?: string;
-                model?: string;
-                apiKey?: string;
-                baseURL?: string;
-              }
-            | undefined;
+        if (this._agentExecutor) {
+          try {
+            const llmService = new LLMService(this._agentExecutor);
+            const aggregator = new Aggregator(llmService);
+            const validator = new Validator(llmService);
+            const repairer = new Repairer(llmService);
 
-          const llmClient = new LLMClient({
-            provider: orchestratorConfig?.provider || 'openai',
-            model: orchestratorConfig?.model || 'gpt-4o-mini',
-            apiKey: orchestratorConfig?.apiKey || process.env.OPENAI_API_KEY || '',
-            baseURL: orchestratorConfig?.baseURL
-          });
+            let qualityScore = 100;
+            let repairRounds = 0;
+            const maxRepairRounds = 3;
 
-          const aggregator = new Aggregator(llmClient);
-          const validator = new Validator(llmClient);
-          const repairer = new Repairer(llmClient);
-
-          let qualityScore = 100;
-          let repairRounds = 0;
-          const maxRepairRounds = 3;
-
-          // Step 1: 汇总多个子任务结果
-          if (result.subTaskResults.length > 1) {
-            pushChunk({
-              type: 'text:delta',
-              content: '\n[质量闭环] 正在汇总多子任务输出...\n',
-              data: { delta: '\n[质量闭环] 正在汇总多子任务输出...\n' }
-            });
-
-            const aggregationResult = await aggregator.aggregate({
-              userRequest: input,
-              subTaskResults: result.subTaskResults.map((subtask, idx) => ({
-                taskId: `subtask-${idx}`,
-                agentName: `agent-${idx}`,
-                output: String(subtask.result || ''),
-                status: subtask.status === 'completed' ? 'success' : 'failed',
-                error: subtask.error
-              }))
-            });
-
-            resultOutput = aggregationResult.finalOutput;
-            pushChunk({
-              type: 'text:delta',
-              content: `[质量闭环] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n`,
-              data: {
-                delta: `[质量闭环] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n`
-              }
-            });
-          }
-
-          // Step 2: 验证 + 修复循环
-          while (repairRounds < maxRepairRounds) {
-            pushChunk({
-              type: 'text:delta',
-              content: `[质量闭环] 正在验证输出质量 (第 ${repairRounds + 1} 轮)...\n`,
-              data: {
-                delta: `[质量闭环] 正在验证输出质量 (第 ${repairRounds + 1} 轮)...\n`
-              }
-            });
-
-            const validationResult = await validator.validate({
-              userRequest: input,
-              output: resultOutput
-            });
-
-            qualityScore = validationResult.overallScore;
-
-            pushChunk({
-              type: 'text:delta',
-              content: `[质量闭环] 验证完成，得分: ${qualityScore}/100 (${validationResult.passed ? '✅ 通过' : '❌ 未通过'})\n`,
-              data: {
-                delta: `[质量闭环] 验证完成，得分: ${qualityScore}/100 (${validationResult.passed ? '✅ 通过' : '❌ 未通过'})\n`
-              }
-            });
-
-            if (validationResult.passed) {
-              break;
-            }
-
-            repairRounds++;
-
-            if (repairRounds >= maxRepairRounds) {
+            if (result.subTaskResults.length > 1) {
               pushChunk({
                 type: 'text:delta',
-                content: `[质量闭环] ⚠️ 已达最大修复次数 (${maxRepairRounds})，使用当前输出\n`,
-                data: {
-                  delta: `[质量闭环] ⚠️ 已达最大修复次数 (${maxRepairRounds})，使用当前输出\n`
-                }
+                content: '\n[质量闭环] 正在汇总多子任务输出...\n',
+                data: { delta: '\n[质量闭环] 正在汇总多子任务输出...\n' }
               });
-              break;
-            }
 
-            pushChunk({
-              type: 'text:delta',
-              content: `[质量闭环] 正在生成修复计划...\n`,
-              data: { delta: `[质量闭环] 正在生成修复计划...\n` }
-            });
+              const aggregationResult = await aggregator.aggregate({
+                userRequest: input,
+                subTaskResults: result.subTaskResults.map((subtask, idx) => ({
+                  taskId: `subtask-${idx}`,
+                  agentName: `agent-${idx}`,
+                  output: String(subtask.result || ''),
+                  status: subtask.status === 'completed' ? 'success' : 'failed',
+                  error: subtask.error
+                }))
+              });
 
-            const repairPlan = await repairer.generateRepairPlan({
-              userRequest: input,
-              currentOutput: resultOutput,
-              validationResult,
-              repairRound: repairRounds
-            });
-
-            if (!repairPlan.shouldRepair || repairPlan.strategy === 'abort') {
+              resultOutput = aggregationResult.finalOutput;
               pushChunk({
                 type: 'text:delta',
-                content: `[质量闭环] 修复建议: ${repairPlan.strategy}，停止修复\n`,
+                content: `[质量闭环] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n`,
                 data: {
-                  delta: `[质量闭环] 修复建议: ${repairPlan.strategy}，停止修复\n`
+                  delta: `[质量闭环] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n`
                 }
               });
-              break;
             }
 
+            while (repairRounds < maxRepairRounds) {
+              pushChunk({
+                type: 'text:delta',
+                content: `[质量闭环] 正在验证输出质量 (第 ${repairRounds + 1} 轮)...\n`,
+                data: {
+                  delta: `[质量闭环] 正在验证输出质量 (第 ${repairRounds + 1} 轮)...\n`
+                }
+              });
+
+              const validationResult = await validator.validate({
+                userRequest: input,
+                output: resultOutput
+              });
+
+              qualityScore = validationResult.overallScore;
+
+              pushChunk({
+                type: 'text:delta',
+                content: `[质量闭环] 验证完成，得分: ${qualityScore}/100 (${validationResult.passed ? '✅ 通过' : '❌ 未通过'})\n`,
+                data: {
+                  delta: `[质量闭环] 验证完成，得分: ${qualityScore}/100 (${validationResult.passed ? '✅ 通过' : '❌ 未通过'})\n`
+                }
+              });
+
+              if (validationResult.passed) {
+                break;
+              }
+
+              repairRounds++;
+
+              if (repairRounds >= maxRepairRounds) {
+                pushChunk({
+                  type: 'text:delta',
+                  content: `[质量闭环] ⚠️ 已达最大修复次数 (${maxRepairRounds})，使用当前输出\n`,
+                  data: {
+                    delta: `[质量闭环] ⚠️ 已达最大修复次数 (${maxRepairRounds})，使用当前输出\n`
+                  }
+                });
+                break;
+              }
+
+              pushChunk({
+                type: 'text:delta',
+                content: `[质量闭环] 正在生成修复计划...\n`,
+                data: { delta: `[质量闭环] 正在生成修复计划...\n` }
+              });
+
+              const repairPlan = await repairer.generateRepairPlan({
+                userRequest: input,
+                currentOutput: resultOutput,
+                validationResult,
+                repairRound: repairRounds
+              });
+
+              if (!repairPlan.shouldRepair || repairPlan.strategy === 'abort') {
+                pushChunk({
+                  type: 'text:delta',
+                  content: `[质量闭环] 修复建议: ${repairPlan.strategy}，停止修复\n`,
+                  data: {
+                    delta: `[质量闭环] 修复建议: ${repairPlan.strategy}，停止修复\n`
+                  }
+                });
+                break;
+              }
+
+              pushChunk({
+                type: 'text:delta',
+                content: `[质量闭环] 正在修复输出 (策略: ${repairPlan.strategy})...\n`,
+                data: {
+                  delta: `[质量闭环] 正在修复输出 (策略: ${repairPlan.strategy})...\n`
+                }
+              });
+
+              const repairResponse = await llmService.chat({
+                messages: [
+                  {
+                    role: 'user',
+                    content: `原始请求: ${input}\n\n当前输出:\n${resultOutput}\n\n修复指令:\n${repairPlan.repairInstructions}\n\n请根据修复指令优化输出。`
+                  }
+                ],
+                temperature: 0.5,
+                maxTokens: 4000
+              });
+
+              resultOutput = repairResponse.content.trim();
+            }
+          } catch (error) {
+            log.error('[OrchestratorRuntime] 质量闭环失败:', error);
             pushChunk({
               type: 'text:delta',
-              content: `[质量闭环] 正在修复输出 (策略: ${repairPlan.strategy})...\n`,
-              data: {
-                delta: `[质量闭环] 正在修复输出 (策略: ${repairPlan.strategy})...\n`
-              }
+              content: `[质量闭环] ⚠️ 质量检查失败，使用原始输出\n`,
+              data: { delta: `[质量闭环] ⚠️ 质量检查失败，使用原始输出\n` }
             });
-
-            const repairResponse = await llmClient.chat({
-              messages: [
-                {
-                  role: 'user',
-                  content: `原始请求: ${input}\n\n当前输出:\n${resultOutput}\n\n修复指令:\n${repairPlan.repairInstructions}\n\n请根据修复指令优化输出。`
-                }
-              ],
-              temperature: 0.5,
-              maxTokens: 4000
-            });
-
-            resultOutput = repairResponse.content.trim();
           }
-        } catch (error) {
-          log.error('[OrchestratorRuntime] 质量闭环失败:', error);
-          pushChunk({
-            type: 'text:delta',
-            content: `[质量闭环] ⚠️ 质量检查失败，使用原始输出\n`,
-            data: { delta: `[质量闭环] ⚠️ 质量检查失败，使用原始输出\n` }
-          });
         }
 
         pushChunk({ type: 'text:start', content: '' });

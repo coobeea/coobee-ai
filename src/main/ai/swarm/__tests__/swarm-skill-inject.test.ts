@@ -22,8 +22,8 @@ vi.mock('@main/common/logger', () => ({
   }
 }));
 
-vi.mock('@main/ai/provider/LLMClient', () => ({
-  LLMClient: class MockLLMClient {
+vi.mock('@main/ai/provider/LLMService', () => ({
+  LLMService: class MockLLMService {
     chat = vi.fn().mockResolvedValue({ content: '{}' });
   }
 }));
@@ -79,6 +79,7 @@ describe('Swarm Skill 注入测试', () => {
       enableSharedContext: true,
       enableMonitoring: true,
       qualityLoop: { enabled: true },
+      agentExecutor: { piMono: vi.fn(), stream: vi.fn() },
       context: new SwarmContext(),
       messageBus: new MessageBus()
     };

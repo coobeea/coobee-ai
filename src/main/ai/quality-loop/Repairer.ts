@@ -1,4 +1,4 @@
-import { LLMClient } from '@main/ai/provider/LLMClient';
+import type { LLMService } from '@main/ai/provider/LLMService';
 import { log } from '@main/common/logger';
 import type { ValidationResult } from './Validator';
 
@@ -45,7 +45,7 @@ export interface RepairPlan {
  * 3. 提供修复指令
  */
 export class Repairer {
-  constructor(private llmClient: LLMClient) {}
+  constructor(private llmClient: LLMService) {}
 
   /**
    * 生成修复计划

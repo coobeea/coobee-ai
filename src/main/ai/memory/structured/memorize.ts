@@ -5,7 +5,7 @@
  * 替代原有 regex 信号词检测。
  */
 
-import type { LLMClient, ChatMessage } from '@main/ai/provider/LLMClient';
+import type { LLMService, ChatMessage } from '@main/ai/provider/LLMService';
 import type { StructuredMemoryItem, MemoryResource, MemoryType } from './models';
 import { computeContentHash, nowISO, DEFAULT_CATEGORIES } from './models';
 import type { StructuredMemoryStorage } from './storage';
@@ -46,7 +46,7 @@ export class MemorizePipeline {
 
   constructor(
     private storage: StructuredMemoryStorage,
-    private llmClient: LLMClient,
+    private llmClient: LLMService,
     private options: MemorizeOptions = {}
   ) {
     this.categoriesPrompt = formatCategoriesForPrompt(

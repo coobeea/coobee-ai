@@ -17,14 +17,14 @@ import { MemorizePipeline } from './memorize';
 import { RetrievePipeline } from './retrieve';
 import { OpenAIEmbeddingProvider, NoopEmbeddingProvider } from './embedding';
 import type { EmbeddingProvider } from './embedding';
-import type { LLMClient } from '../../provider/LLMClient';
+import type { LLMService } from '../../provider/LLMService';
 import type { MemorizeResult } from './memorize';
 import type { RetrieveResult } from './retrieve';
 import type { MemoryType, StructuredMemoryItem } from './models';
 import type { MigrationResult, MigrationOptions } from './migration';
 
 export interface StructuredMemoryServiceOptions {
-  llmClient?: LLMClient;
+  llmClient?: LLMService;
   embeddingApiKey?: string;
   embeddingModel?: string;
 }

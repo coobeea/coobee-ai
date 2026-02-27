@@ -12,19 +12,18 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Aggregator } from '../Aggregator';
 import { Validator } from '../Validator';
 import { Repairer } from '../Repairer';
-import type { LLMClient } from '@main/ai/provider/LLMClient';
+import type { LLMService } from '@main/ai/provider/LLMService';
 
 describe('Quality Loop Integration Tests', () => {
-  let mockLLMClient: LLMClient;
+  let mockLLMClient: LLMService;
   let aggregator: Aggregator;
   let validator: Validator;
   let repairer: Repairer;
 
   beforeEach(() => {
-    // Mock LLM client
     mockLLMClient = {
       chat: vi.fn()
-    } as unknown as LLMClient;
+    } as unknown as LLMService;
 
     aggregator = new Aggregator(mockLLMClient);
     validator = new Validator(mockLLMClient);

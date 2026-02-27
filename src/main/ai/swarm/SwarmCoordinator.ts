@@ -29,7 +29,7 @@ import { RoleRegistry } from './roles';
 import { Aggregator } from '../quality-loop/Aggregator';
 import { Validator, type ValidationInput } from '../quality-loop/Validator';
 import { Repairer, type RepairInput } from '../quality-loop/Repairer';
-import { LLMClient } from '../provider/LLMClient';
+import { LLMService } from '../provider/LLMService';
 import { injectEnv } from '../AgentEnvInjector';
 
 const log = createLogger('swarm:coordinator');
@@ -104,9 +104,10 @@ export class SwarmCoordinator {
   readonly concurrency: ConcurrencyManager;
   readonly roleRegistry: RoleRegistry;
   readonly knowledgeBase?: KnowledgeBase; // 🆕 共享知识库
-  private aggregator?: Aggregator; // 🆕 质量闭环组件
+  private aggregator?: Aggregator;
   private validator?: Validator;
   private repairer?: Repairer;
+  private llmService?: LLMService;
 
   private state: SwarmState = createInitialSwarmState();
   private onEvent: SwarmEventCallback | null = null;
@@ -122,15 +123,14 @@ export class SwarmCoordinator {
     this.concurrency = new ConcurrencyManager(config);
     this.roleRegistry = new RoleRegistry();
 
-    // 🆕 初始化质量闭环组件
-    if (config.qualityLoop?.enabled) {
-      const llmClient = new LLMClient({
-        model: config.triageModel
-      });
-      this.aggregator = new Aggregator(llmClient);
-      this.validator = new Validator(llmClient);
-      this.repairer = new Repairer(llmClient);
+    if (config.qualityLoop?.enabled && config.agentExecutor) {
+      this.llmService = new LLMService(config.agentExecutor);
+      this.aggregator = new Aggregator(this.llmService);
+      this.validator = new Validator(this.llmService);
+      this.repairer = new Repairer(this.llmService);
       log.info('[SwarmCoordinator] 质量闭环已启用');
+    } else if (config.qualityLoop?.enabled) {
+      log.warn('[SwarmCoordinator] 质量闭环已启用但缺少 agentExecutor，跳过初始化');
     }
 
     this.setupMonitoringBridge();
@@ -954,9 +954,9 @@ ${contextSection}
    * 应用修复（调用 LLM 优化输出）
    */
   private async applyRepair(currentOutput: string, repairInstructions: string, task: SwarmTask): Promise<string> {
-    const llmClient = new LLMClient({
-      model: this.config.triageModel
-    });
+    if (!this.llmService) {
+      throw new Error('LLMService not initialized — agentExecutor missing from config');
+    }
 
     const prompt = `你是一个输出优化专家。请根据修复指令改进以下输出。
 
@@ -976,7 +976,7 @@ ${repairInstructions}
 
 请改进输出，使其符合修复指令的要求。直接输出改进后的内容，不要添加额外说明。`;
 
-    const response = await llmClient.chat({
+    const response = await this.llmService.chat({
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3,
       maxTokens: 4000
