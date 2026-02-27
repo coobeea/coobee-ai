@@ -41,3 +41,11 @@ export type { ExtractedMemory } from './prompts';
 // Memorize Pipeline
 export { MemorizePipeline } from './memorize';
 export type { MemorizeInput, MemorizeResult, MemorizeOptions } from './memorize';
+
+// Retrieve Pipeline
+export { RetrievePipeline } from './retrieve';
+export type { RetrieveInput, RetrieveResult } from './retrieve';
+
+// Embedding
+export { OpenAIEmbeddingProvider, NoopEmbeddingProvider } from './embedding';
+export type { EmbeddingProvider } from './embedding';
