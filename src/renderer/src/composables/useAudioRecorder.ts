@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import { useWorkerStore } from '@/stores/worker';
+import configManager from '@/config';
 
 export interface AsrMeta {
   lang?: string | null;
@@ -115,7 +116,7 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}): UseAudioRe
       }
     }
 
-    const url = `ws://127.0.0.1:${workerStore.asrPort}/ws/asr`;
+    const url = `ws://${configManager.getHost()}:${workerStore.asrPort}/ws/asr`;
 
     ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';

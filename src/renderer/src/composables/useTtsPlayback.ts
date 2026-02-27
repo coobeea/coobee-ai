@@ -13,6 +13,7 @@
  */
 
 import { ref, type Ref } from 'vue';
+import configManager from '@/config';
 import { useWorkerStore } from '@/stores/worker';
 
 const SENTENCE_DELIMITERS = /([。！？；\n!?;])/;
@@ -103,7 +104,7 @@ export function useTtsPlayback(options: TtsPlaybackOptions = {}): UseTtsPlayback
     const port = workerStore.ttsPort;
     if (!port) return null;
 
-    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws/tts`);
+    const socket = new WebSocket(`ws://${configManager.getHost()}:${port}/ws/tts`);
     socket.binaryType = 'arraybuffer';
 
     socket.onclose = () => {

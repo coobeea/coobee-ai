@@ -398,7 +398,7 @@ export class WorkerManager extends EventEmitter {
       throw new Error(`Worker 入口文件不存在: ${entryPath}`);
     }
 
-    const args = [entryPath, '--port', String(config.port), ...(config.args || [])];
+    const args = [entryPath, '--port', String(config.port), '--host', Env.main.serverHost, ...(config.args || [])];
 
     // 模型目录：统一由 .env VITE_MODEL_DIR 管理（Env.paths.modelsDir 已读取）
     const modelDir = Env.paths.modelsDir;
@@ -446,7 +446,7 @@ export class WorkerManager extends EventEmitter {
     const modelDir = config.modelDir || Env.paths.modelsDir;
 
     // 构建启动参数，替换 ${MODEL_DIR} 等变量
-    const rawArgs = [...(config.args || []), '--port', String(config.port)];
+    const rawArgs = [...(config.args || []), '--port', String(config.port), '--host', Env.main.serverHost];
     const args = rawArgs.map((arg) => arg.replace(/\$\{MODEL_DIR\}/g, modelDir));
 
     const env: Record<string, string> = {

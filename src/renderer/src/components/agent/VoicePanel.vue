@@ -18,6 +18,7 @@
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
 import { useWorkerStore } from '@/stores/worker';
 import { useChatStore } from '@/stores/chat';
+import configManager from '@/config';
 
 const workerStore = useWorkerStore();
 const chatStore = useChatStore();
@@ -166,7 +167,7 @@ function sendPcmBuffer(): void {
 function connectASRWebSocket(port: number): void {
   if (asrWs.value) return;
 
-  const url = `ws://127.0.0.1:${port}/ws/asr`;
+  const url = `ws://${configManager.getHost()}:${port}/ws/asr`;
   console.log(`[VoicePanel] 连接 ASR WebSocket: ${url}`);
 
   const ws = new WebSocket(url);
@@ -350,7 +351,7 @@ watch(
 
 function connectTTS(port: number): void {
   if (ttsWs.value) return;
-  const url = `ws://127.0.0.1:${port}/ws/tts`;
+  const url = `ws://${configManager.getHost()}:${port}/ws/tts`;
   const ws = new WebSocket(url);
   ws.onopen = () => {
     ttsConnected.value = true;

@@ -22,6 +22,8 @@ export const Env = {
     openDevTools: process.env.VITE_OPEN_DEVTOOLS,
     /** 统一服务端口（HTTP + WebSocket 共享），默认 8765 */
     serverPort: process.env.VITE_SERVER_PORT,
+    /** 服务绑定地址，默认 127.0.0.1（设为 0.0.0.0 可开启局域网访问） */
+    serverHost: process.env.VITE_SERVER_HOST || '127.0.0.1',
     /** 模型存储目录（环境变量优先，未设置则用默认路径） */
     modelDir: process.env.VITE_MODEL_DIR
   },

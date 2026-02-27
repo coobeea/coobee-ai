@@ -384,17 +384,18 @@ def get_stats():
 def main():
     parser = argparse.ArgumentParser(description="Tavern Worker")
     parser.add_argument("--port", type=int, help="Port to run on", default=9010)
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="绑定地址")
     args = parser.parse_args()
     
     port = args.port
-    log("INFO", f"Tavern Worker starting on port {port}")
+    log("INFO", f"Tavern Worker starting on {args.host}:{port}")
     
     # 禁用 Werkzeug 的请求日志（健康检查每 30s 一次会刷屏控制台）
     import logging
     werkzeug_logger = logging.getLogger('werkzeug')
     werkzeug_logger.setLevel(logging.ERROR)
     
-    app.run(host="127.0.0.1", port=port, debug=False)
+    app.run(host=args.host, port=port, debug=False)
 
 
 if __name__ == "__main__":

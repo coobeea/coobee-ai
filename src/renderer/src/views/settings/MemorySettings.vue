@@ -7,6 +7,7 @@
  */
 
 import { ref, onMounted } from 'vue';
+import configManager from '@/config';
 
 interface MemoryFile {
   name: string;
@@ -16,7 +17,7 @@ interface MemoryFile {
   scope: string;
 }
 
-const GATEWAY_BASE = 'http://localhost:42068/gateway';
+const GATEWAY_BASE = `${configManager.getBaseUrl()}/gateway`;
 
 const files = ref<MemoryFile[]>([]);
 const loading = ref(true);
