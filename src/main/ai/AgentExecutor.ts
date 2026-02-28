@@ -13,6 +13,7 @@
  *   - 事件写入 → AgentEventWriter.ts
  *   - 执行协议 → AgentEnvInjector.ts (buildExecutionProtocol)
  *   - HITL 审批 → extensions/tool-approval（通过 before_tool_call Hook）
+ *   - 块处理（指标/ Hook/ suspendReason）→ runtime/ChunkProcessor.ts
  *
  * 设计哲学（参考 OpenClaw pi-integration-architecture）：
  *   - 消息驱动：每条用户消息触发完整的 "创建 → 推理 → 销毁" 流程
@@ -24,6 +25,7 @@ import { createLogger } from '@main/common/logger';
 
 const log = createLogger('ai');
 
+import { SessionStatusManager, type SessionStatus } from './runtime/SessionStatusManager';
 import type { AgentRuntime } from './runtime/AgentRuntime';
 import type { AgentMode, ExecutionResult, StreamChunk } from './runtime/types';
 import { PiMonoBuilder } from './runtime/pimono/PiMonoBuilder';
@@ -32,17 +34,18 @@ import { createStreamEmitter, type IStreamEmitter } from './streaming/StreamEmit
 import type { StreamSource } from './streaming/types';
 import { injectEnv } from './AgentEnvInjector';
 import { AgentEventWriter } from './AgentEventWriter';
-import { resolveApiKey } from './provider/ApiKeyResolver';
-import type { ProviderRegistry } from './provider/ProviderRegistry';
-import type { ModelSelector } from './provider/ModelSelector';
+import { ProviderInjector, type ProviderSystem } from './provider/ProviderInjector';
+import { fireHooks, parseSuspendReason, recordMetrics } from './runtime/ChunkProcessor';
 import { MessagePipeline } from './pipeline/MessagePipeline';
 import type { QueueSettings, SubmitResult } from './pipeline/types';
 import { SkillManager } from './skills/SkillManager';
 import { CheckpointManager } from './threads/CheckpointManager';
 import { WorkspaceManager } from './storage/WorkspaceManager';
-import { getMetricsCollector } from '@main/metrics/MetricsCollector';
 
 // ==================== 类型定义 ====================
+
+/** Provider 系统接口（从 ProviderInjector re-export） */
+export type { ProviderSystem } from './provider/ProviderInjector';
 
 /** 支持的 Builder 类型 */
 export type AgentBuilder = PiMonoBuilder | OpenAIBuilder;
@@ -70,25 +73,14 @@ export interface ExecuteRequest {
   executionConfig?: import('./runtime/types').ExecutionConfig;
 }
 
-/** 执行状态 */
-export interface SessionStatus {
-  /** 是否正在执行 */
-  busy: boolean;
-  /** 开始时间（busy 时有值） */
-  startedAt?: number;
-}
+/** 执行状态（从 SessionStatusManager re-export） */
+export type { SessionStatus } from './runtime/SessionStatusManager';
 
 // ==================== AgentExecutor ====================
 
-/** Provider 系统接口 */
-export interface ProviderSystem {
-  registry: ProviderRegistry;
-  selector: ModelSelector;
-}
-
 class AgentExecutor {
-  /** 正在执行的 session 集合 */
-  private busySessions = new Map<string, { startedAt: number }>();
+  /** 活跃会话状态管理 */
+  private sessionStatus = new SessionStatusManager();
 
   /** 有待审批的 session（hitl:required 已触发，checkpoint 保持 approval-pending） */
   private pendingApprovalSessions = new Map<string, { addedAt: number }>();
@@ -99,8 +91,8 @@ class AgentExecutor {
   /** 上次清理时间 */
   private lastApprovalCleanupTime = Date.now();
 
-  /** Provider 系统（初始化后注入） */
-  private providerSystem: ProviderSystem | null = null;
+  /** Provider 配置注入器（初始化后通过 setProviderSystem 注入） */
+  private providerInjector = new ProviderInjector();
 
   /** 消息管线（可选，初始化后注入） */
   private pipeline: MessagePipeline | null = null;
@@ -117,70 +109,33 @@ class AgentExecutor {
    * 注入 Provider 系统（应用初始化时调用）
    */
   setProviderSystem(system: ProviderSystem): void {
-    this.providerSystem = system;
+    this.providerInjector.setProviderSystem(system);
   }
 
   /**
    * 获取 Provider 系统（chat.ts 等消费者使用）
    */
   getProviderSystem(): ProviderSystem | null {
-    return this.providerSystem;
+    return this.providerInjector.getProviderSystem();
   }
 
   /**
    * 注入 Provider 配置到 Builder（API Key + 模型 + baseURL）
    *
    * 供 chat.ts、Orchestrator Worker、Swarm Role 等所有创建 Agent 的地方使用。
-   * 支持 @group-name 和 auto 格式，通过 ModelGroupResolver 解析为具体模型。
-   * 如果 Provider 系统未就绪或无可用配置，静默回退。
-   *
-   * @param builder Builder 实例
-   * @param opts 可选：modelOverride（Agent 的 model 字段）、sessionId、agentId
    */
   applyProviderConfig(
     builder: PiMonoBuilder,
     opts?: { modelOverride?: string; sessionId?: string; agentId?: string }
   ): void {
-    try {
-      if (!this.providerSystem) return;
-      const { selector, registry } = this.providerSystem;
-      const ref = selector.resolve({
-        modelOverride: opts?.modelOverride,
-        sessionId: opts?.sessionId,
-        agentId: opts?.agentId
-      });
-      const provider = registry.get(ref.provider);
-      if (!provider) return;
-
-      const apiKey = resolveApiKey(provider.apiKey, provider.id);
-      if (!apiKey) return;
-
-      builder.fromProviderConfig(provider, ref.model);
-    } catch {
-      // Provider 系统未就绪，静默回退
-    }
+    this.providerInjector.applyProviderConfig(builder, opts);
   }
 
   /**
    * 注入默认思维链级别到 Builder
-   *
-   * 从 coobee.json5 读取 models.defaults.thinkingLevel，默认 'medium'。
-   * 注意：这是同步方法，使用延迟导入避免循环依赖。
    */
   applyThinkingLevel(builder: PiMonoBuilder): void {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { configStoreInstance } = require('@main/common/config/ConfigStore');
-      const config = configStoreInstance?.getAll?.();
-      const level = config?.models?.defaults?.thinkingLevel;
-      if (level) {
-        builder.thinkingLevel(level);
-        return;
-      }
-    } catch {
-      // 静默回退
-    }
-    builder.thinkingLevel('medium');
+    this.providerInjector.applyThinkingLevel(builder);
   }
 
   // ========== 消息管线 ==========
@@ -235,11 +190,11 @@ class AgentExecutor {
       const builder = this.builderFactory(mode);
       const request: ExecuteRequest = { sessionId, message, builder, signal };
 
-      this.busySessions.set(sessionId, { startedAt: Date.now() });
+      this.sessionStatus.register(sessionId);
       try {
         await this.execute(request);
       } finally {
-        this.busySessions.delete(sessionId);
+        this.sessionStatus.unregister(sessionId);
         this.sessionModes.delete(sessionId);
       }
     }, settings);
@@ -276,9 +231,7 @@ class AgentExecutor {
       return this.pipeline.abort(sessionId);
     }
     // 无管线时，仅标记为非 busy
-    const existed = this.busySessions.has(sessionId);
-    this.busySessions.delete(sessionId);
-    return existed;
+    return this.sessionStatus.abort(sessionId);
   }
 
   // ========== Builder 工厂 ==========
@@ -314,19 +267,19 @@ class AgentExecutor {
   submit(request: ExecuteRequest): { status: 'accepted'; sessionId: string } | { status: 'busy'; sessionId: string } {
     const { sessionId } = request;
 
-    if (this.busySessions.has(sessionId)) {
+    if (this.sessionStatus.isRunning(sessionId)) {
       log.warn(`[AgentExecutor] Session busy: ${sessionId}`);
       return { status: 'busy', sessionId };
     }
 
-    this.busySessions.set(sessionId, { startedAt: Date.now() });
+    this.sessionStatus.register(sessionId);
 
     this.execute(request)
       .catch((error: unknown) => {
         log.error(`[AgentExecutor] Execution failed: sessionId=${sessionId}`, error);
       })
       .finally(() => {
-        this.busySessions.delete(sessionId);
+        this.sessionStatus.unregister(sessionId);
       });
 
     return { status: 'accepted', sessionId };
@@ -373,15 +326,15 @@ class AgentExecutor {
   async submitAndWait(request: ExecuteRequest): Promise<ExecutionResult> {
     const { sessionId } = request;
 
-    if (this.busySessions.has(sessionId)) {
+    if (this.sessionStatus.isRunning(sessionId)) {
       throw new Error(`Session ${sessionId} is busy`);
     }
 
-    this.busySessions.set(sessionId, { startedAt: Date.now() });
+    this.sessionStatus.register(sessionId);
     try {
       return await this.execute(request);
     } finally {
-      this.busySessions.delete(sessionId);
+      this.sessionStatus.unregister(sessionId);
     }
   }
 
@@ -392,26 +345,22 @@ class AgentExecutor {
     if (this.pipeline) {
       const status = this.pipeline.getQueueStatus(sessionId);
       if (status.isRunning) {
-        // pipeline is running, try to get startedAt from busySessions if it's there
-        const info = this.busySessions.get(sessionId);
+        // pipeline is running, try to get startedAt from sessionStatus if it's there
+        const info = this.sessionStatus.getInfo(sessionId);
         return { busy: true, startedAt: info?.startedAt };
       }
     }
 
-    const info = this.busySessions.get(sessionId);
-    return info ? { busy: true, startedAt: info.startedAt } : { busy: false };
+    return this.sessionStatus.getStatus(sessionId);
   }
 
   /** 获取所有活跃 session */
   getActiveSessions(): Array<{ sessionId: string; startedAt: number }> {
-    // If pipeline is used, we should ideally combine pipeline active sessions and busySessions.
+    // If pipeline is used, we should ideally combine pipeline active sessions and sessionStatus.
     // However, pipeline's getQueueStatus doesn't provide a way to list ALL active sessions easily.
-    // Given the architecture, busySessions is populated during execute(), which pipeline also calls.
-    // So busySessions should still be the source of truth for "currently executing" sessions.
-    return Array.from(this.busySessions.entries()).map(([sessionId, info]) => ({
-      sessionId,
-      startedAt: info.startedAt
-    }));
+    // Given the architecture, sessionStatus is populated during execute(), which pipeline also calls.
+    // So sessionStatus should still be the source of truth for "currently executing" sessions.
+    return this.sessionStatus.getActiveList();
   }
 
   // ========== 流式执行（SSE 透传） ==========
@@ -430,11 +379,11 @@ class AgentExecutor {
       throw new Error('stream() requires a builder. Use submit() with runtime for pre-built runtimes.');
     }
 
-    if (this.busySessions.has(sessionId)) {
+    if (this.sessionStatus.isRunning(sessionId)) {
       throw new Error(`Session ${sessionId} is busy`);
     }
 
-    this.busySessions.set(sessionId, { startedAt: Date.now() });
+    this.sessionStatus.register(sessionId);
     let runtime: AgentRuntime | null = null;
 
     // 检查是否轻量模式
@@ -476,8 +425,9 @@ class AgentExecutor {
       }
 
       // 模型组故障转移：获取候选模型列表
+      const providerSystem = this.providerInjector.getProviderSystem();
       const candidates =
-        modelSourceRef && this.providerSystem ? this.providerSystem.selector.getGroupCandidates(modelSourceRef) : null;
+        modelSourceRef && providerSystem ? providerSystem.selector.getGroupCandidates(modelSourceRef) : null;
       const failedModels: string[] = [];
       let yieldedCount = 0;
 
@@ -507,7 +457,7 @@ class AgentExecutor {
             log.warn(`[AgentExecutor] Model ${currentModel} failed, retrying with next in group: ${nextModel}`);
             await this.destroyRuntime(runtime);
             runtime = null;
-            this.applyProviderConfig(piBuilder, { modelOverride: nextModel });
+            this.providerInjector.applyProviderConfig(piBuilder, { modelOverride: nextModel });
             continue;
           }
         }
@@ -533,7 +483,7 @@ class AgentExecutor {
 
         // Extension Hook 触发（轻量模式下跳过）
         if (!isLightweight) {
-          this.fireChunkHooks(chunk, sessionId, {
+          fireHooks(chunk, sessionId, {
             getTurnStartTime: () => turnStartTime,
             getTurnToolCallCount: () => turnToolCallCount
           });
@@ -573,7 +523,7 @@ class AgentExecutor {
 
       await this.destroyRuntime(runtime);
       runtime = null;
-      this.busySessions.delete(sessionId);
+      this.sessionStatus.unregister(sessionId);
     }
   }
 
@@ -631,7 +581,7 @@ class AgentExecutor {
       }
 
       // === Extension Hook 触发（fire-and-forget，不阻塞流） ===
-      this.fireChunkHooks(chunk, sessionId, {
+      fireHooks(chunk, sessionId, {
         getTurnStartTime: () => turnStartTime,
         getTurnToolCallCount: () => turnToolCallCount
       });
@@ -645,7 +595,7 @@ class AgentExecutor {
       }
 
       // === 指标采集（fire-and-forget，不阻塞流） ===
-      this.recordChunkMetrics(chunk, sessionId);
+      recordMetrics(chunk, sessionId);
 
       onChunk?.(chunk);
 
@@ -759,91 +709,6 @@ class AgentExecutor {
     }
   }
 
-  /**
-   * 指标采集：从 stream chunk 中提取 token 用量和压缩事件，写入 MetricsCollector
-   * fire-and-forget，不影响流式响应
-   */
-  private recordChunkMetrics(chunk: StreamChunk, sessionId: string): void {
-    try {
-      const collector = getMetricsCollector();
-
-      if (chunk.type === 'llm:done') {
-        const data = chunk.data as
-          | {
-              usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
-              responseId?: string;
-            }
-          | undefined;
-        if (data?.usage && (data.usage.totalTokens ?? 0) > 0) {
-          collector
-            .recordTokenUsage({
-              sessionId,
-              model: 'unknown',
-              promptTokens: data.usage.inputTokens ?? 0,
-              completionTokens: data.usage.outputTokens ?? 0,
-              totalTokens: data.usage.totalTokens ?? 0
-            })
-            .catch(() => {});
-        }
-      }
-
-      if (chunk.type === 'compression:done') {
-        const data = chunk.data as
-          | {
-              originalTokens?: number;
-              summaryTokens?: number;
-              compressionRatio?: number;
-              duration?: number;
-            }
-          | undefined;
-        if (data) {
-          const before = data.originalTokens ?? 0;
-          const after = data.summaryTokens ?? 0;
-          if (before > 0) {
-            collector
-              .recordCompression({
-                sessionId,
-                beforeTokens: before,
-                afterTokens: after,
-                compressionRatio: data.compressionRatio ?? (before > 0 ? 1 - after / before : 0),
-                duration: data.duration ?? 0
-              })
-              .catch(() => {});
-          }
-        }
-      }
-
-      if (chunk.type === 'tool:done') {
-        const data = chunk.data as
-          | {
-              toolName?: string;
-              toolArgs?: Record<string, unknown>;
-            }
-          | undefined;
-        const toolName = data?.toolName ?? '';
-        if (toolName === 'memory') {
-          const action = (data?.toolArgs?.action as string) || 'unknown';
-          const operationMap: Record<string, 'store' | 'retrieve' | 'search'> = {
-            write: 'store',
-            get: 'retrieve',
-            list: 'retrieve',
-            search: 'search'
-          };
-          collector
-            .recordMemoryTool({
-              sessionId,
-              operation: operationMap[action] || 'store',
-              success: true,
-              duration: 0
-            })
-            .catch(() => {});
-        }
-      }
-    } catch {
-      // MetricsCollector 未初始化时静默忽略
-    }
-  }
-
   private updateCheckpoint(sessionId: string, chunk: StreamChunk, workspaceDir?: string): void {
     switch (chunk.type) {
       case 'tool:start':
@@ -858,7 +723,7 @@ class AgentExecutor {
           this.pendingApprovalSessions.set(sessionId, { addedAt: Date.now() });
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const suspendReason = (chunk.data as any)?.suspendReason;
-          const pendingOp = this.parseSuspendReason(suspendReason, sessionId);
+          const pendingOp = parseSuspendReason(suspendReason, sessionId);
           this.updateSessionStatus(sessionId, 'approval-pending', workspaceDir, pendingOp);
           log.info(`[AgentExecutor] Tool suspended (approval-pending): ${sessionId}, tool=${pendingOp?.toolName}`);
         } else if (!this.pendingApprovalSessions.has(sessionId)) {
@@ -897,42 +762,6 @@ class AgentExecutor {
   }
 
   /**
-   * 从 suspendReason 中解析出 pendingOperation
-   *
-   * suspendReason 格式（来自 ToolExecutionPipeline）: "approval-pending:{approvalId}:{toolName}"
-   * 例如: "approval-pending:282850582706069504:0:write"
-   */
-  private parseSuspendReason(
-    suspendReason: string,
-    sessionId: string
-  ):
-    | { type: 'approval'; approvalId: string; toolName: string; toolCallId: string; agentSessionId: string }
-    | undefined {
-    if (!suspendReason) return undefined;
-
-    // 去除可能的前缀（如果有的话）
-    const reason = suspendReason.replace(/^suspended:\s*/i, '').trim();
-
-    // 匹配格式: approval-pending:{approvalId}:{toolName}
-    const match = reason.match(/^approval-pending:([^:]+:[^:]+):(.+)$/);
-    if (!match) {
-      log.warn(`[AgentExecutor] Failed to parse suspendReason: ${suspendReason}`);
-      return undefined;
-    }
-
-    const approvalId = match[1]; // "sessionId:index"
-    const toolName = match[2]; // "write"
-
-    return {
-      type: 'approval',
-      approvalId,
-      toolName,
-      toolCallId: '',
-      agentSessionId: sessionId
-    };
-  }
-
-  /**
    * 同步 Thread 的 runStatus（fire-and-forget）
    *
    * 仅在 sessionId 对应已有 Thread 时更新（子 Agent sessionId 含 ':' 不会匹配 Thread）。
@@ -943,91 +772,6 @@ class AgentExecutor {
       .then(({ ThreadStore }) => ThreadStore.getInstance())
       .then((store) => store.update(sessionId, { runStatus }))
       .catch(() => {});
-  }
-
-  /**
-   * 根据 StreamChunk 类型触发对应的 Extension Hook
-   *
-   * 全部 fire-and-forget（不阻塞流式输出）。
-   *
-   * before_compaction：
-   *   - 在此仅作为通知（PiMono 的 SDK 内置压缩无法拦截）
-   *   - OpenAI Runtime 在 compressSessionWithChunks 中单独处理 modifying 逻辑
-   *   - 为避免重复触发，OpenAI 会在 chunk.data 中标记 hookHandled: true
-   */
-  private fireChunkHooks(
-    chunk: StreamChunk,
-    sessionId: string,
-    turnState: {
-      getTurnStartTime: () => number;
-      getTurnToolCallCount: () => number;
-    }
-  ): void {
-    // 只关心这 4 种事件类型
-    if (
-      chunk.type !== 'turn:start' &&
-      chunk.type !== 'turn:done' &&
-      chunk.type !== 'compression:start' &&
-      chunk.type !== 'compression:done'
-    ) {
-      return;
-    }
-
-    const fire = async (): Promise<void> => {
-      const { ExtensionManager } = await import('../common/extension');
-      const runner = ExtensionManager.getHookRunner();
-      if (!runner) return;
-
-      const data = chunk.data as Record<string, unknown> | undefined;
-
-      switch (chunk.type) {
-        case 'turn:start':
-          await runner.runVoidHook('turn_start', {
-            sessionId,
-            turnIndex: (data?.turnIndex as number) || 1
-          });
-          break;
-
-        case 'turn:done':
-          await runner.runVoidHook('turn_end', {
-            sessionId,
-            turnIndex: (data?.turnIndex as number) || 1,
-            durationMs: Date.now() - turnState.getTurnStartTime(),
-            toolCallCount: turnState.getTurnToolCallCount()
-          });
-          break;
-
-        case 'compression:start': {
-          // 如果 OpenAI Runtime 已在压缩前调用过 modifying Hook，跳过
-          if (data?.hookHandled) break;
-          // 通知型：扩展可在此做 Memory Flush 等操作
-          // 注意：对 PiMono 来说 skipDefault 无效（SDK 自行管理压缩）
-          await runner.run('before_compaction', {
-            sessionId,
-            messageCount: 0, // PiMono 不提供此信息
-            totalTokens: (data?.totalTokens as number) || 0,
-            threshold: (data?.threshold as number) || 0
-          });
-          break;
-        }
-
-        case 'compression:done': {
-          await runner.runVoidHook('after_compaction', {
-            sessionId,
-            originalTokens: (data?.originalTokens as number) || 0,
-            compressedTokens: (data?.summaryTokens as number) || 0,
-            compressionRatio: (data?.compressionRatio as number) || 0,
-            duration: (data?.duration as number) || 0
-          });
-          break;
-        }
-      }
-    };
-
-    // Fire-and-forget：Hook 执行不阻塞流式输出
-    fire().catch((err) => {
-      log.warn(`[AgentExecutor] Chunk hook failed for ${chunk.type}:`, err);
-    });
   }
 
   /**
