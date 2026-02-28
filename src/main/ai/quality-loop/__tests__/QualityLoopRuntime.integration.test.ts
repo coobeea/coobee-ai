@@ -83,7 +83,6 @@ vi.mock('../../runtime/ContextSnapshot', () => ({
 
 import { PiMonoAgentRuntime } from '../../runtime/pimono/PiMonoAgentRuntime';
 import { QualityLoopRuntime, type QualityLoopConfig } from '../QualityLoopRuntime';
-import { initLLMService, resetLLMService } from '../../provider/LLMService';
 import type { StreamChunk, ExecutionResult } from '../../runtime/types';
 import type { AcceptanceCriteria } from '../Validator';
 
@@ -280,8 +279,6 @@ function createAgentExecutorLike() {
 // ========== 测试 ==========
 
 describe.skipIf(!RUN)('QualityLoopRuntime 集成测试（真实 API）', () => {
-  let llmServiceExecutor: ReturnType<typeof createAgentExecutorLike>;
-
   beforeAll(() => {
     if (!apiConfig) return;
     const now = new Date();
@@ -298,15 +295,10 @@ describe.skipIf(!RUN)('QualityLoopRuntime 集成测试（真实 API）', () => {
     );
 
     testLog(`${LOG_PREFIX} API: model=${apiConfig.model}, baseURL=${apiConfig.baseURL}`);
-
-    // 注入 LLMService，使 Validator 和 Repairer 能使用真实 LLM
-    llmServiceExecutor = createAgentExecutorLike();
-    initLLMService(llmServiceExecutor);
   });
 
   afterAll(() => {
     if (!RUN) return;
-    resetLLMService();
     appendTestLog(`\n========== 集成测试结束 ${new Date().toISOString()} ==========`);
     console.log(`\n测试日志: ${currentTestLogFile}`);
   });

@@ -13,6 +13,7 @@ import { ref, onMounted, nextTick } from 'vue';
 import { useAgentsStore } from '@/stores/agents';
 import configManager from '@/config';
 import ErrorDisplay from '@/components/common/ErrorDisplay.vue';
+import { quickChat } from '@/composables/useQuickChat';
 
 interface CronJobDefinition {
   id: string;
@@ -112,19 +113,30 @@ async function handleParse(): Promise<void> {
   parsedResult.value = null;
 
   try {
-    const res = await fetch(`${BASE_URL}/parse`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input })
-    });
+    const prompt = `你是一个定时任务解析助手。用户会用自然语言描述一个定时任务，你需要解析为结构化参数。
+必须严格输出 JSON 对象，不要有其他文字。字段如下：
+- name: 简短的任务名称（4-10字）
+- description: 任务详细描述
+- cronExpression: 标准 cron 表达式（5位：分 时 日 月 周）
+- task: 执行的具体指令（智能体收到的提示词）
+- cronHumanReadable: cron 表达式的中文解释
 
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || 'AI 解析失败');
-    }
+示例：
+输入："每天早上9点帮我汇总项目进度"
+输出：{"name":"每日进度汇总","description":"每天早上自动汇总项目进度并生成报告","cronExpression":"0 9 * * *","task":"请汇总今天的项目进度，整理成报告格式输出","cronHumanReadable":"每天上午 9:00"}
 
-    const data = await res.json();
-    parsedResult.value = data.parsed;
+当前时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
+
+用户输入：${input}`;
+
+    const result = await quickChat('task-analyzer', prompt);
+    if (!result) throw new Error('AI 未返回结果');
+
+    const jsonStr = result
+      .replace(/```json?\s*\n?/g, '')
+      .replace(/```\s*$/g, '')
+      .trim();
+    parsedResult.value = JSON.parse(jsonStr);
   } catch (err) {
     parseError.value = err instanceof Error ? err.message : 'AI 解析失败';
   } finally {

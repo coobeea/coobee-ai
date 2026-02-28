@@ -24,7 +24,7 @@ import type { AgentRuntimeOptions, ExecutionConfig, ExecutionResult, StreamChunk
 import { Orchestrator, createOrchestrator, type OrchestratorConfig, type OrchestratorEvent } from './Orchestrator';
 import type { Task, TaskExecutionResult } from './types';
 import { Aggregator } from '../quality-loop/Aggregator';
-import { getLLMService } from '../provider/LLMService';
+import { createLLMChat, type AgentExecutorLike } from '../quality-loop/llm-chat';
 
 const log = createLogger('orchestration:runtime');
 
@@ -172,7 +172,7 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
 
         if (this._agentExecutor) {
           try {
-            const aggregator = new Aggregator(getLLMService());
+            const aggregator = new Aggregator(createLLMChat(this._agentExecutor as AgentExecutorLike));
 
             if (result.subTaskResults.length > 1) {
               pushChunk({

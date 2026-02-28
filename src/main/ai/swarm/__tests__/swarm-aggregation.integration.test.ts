@@ -83,7 +83,7 @@ vi.mock('../../runtime/ContextSnapshot', () => ({
 
 import { PiMonoAgentRuntime } from '../../runtime/pimono/PiMonoAgentRuntime';
 import { Aggregator, type AggregationInput } from '../../quality-loop/Aggregator';
-import { initLLMService, getLLMService, resetLLMService, type LLMService } from '../../provider/LLMService';
+import { createLLMChat, type LLMChatFn, type AgentExecutorLike } from '../../quality-loop/llm-chat';
 import type { StreamChunk, ExecutionResult } from '../../runtime/types';
 
 // ========== API 配置 ==========
@@ -171,7 +171,7 @@ function createFluentBuilderProxy(): Record<string, unknown> {
 }
 
 /**
- * 创建用于 LLMService 注入的 AgentExecutorLike
+ * 创建用于 createLLMChat 注入的 AgentExecutorLike
  */
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function createAgentExecutorLike() {
@@ -225,7 +225,7 @@ function createAgentExecutorLike() {
 // ========== 测试 ==========
 
 describe.skipIf(!RUN)('Swarm/Orchestrator 聚合回归集成测试（真实 API）', () => {
-  let llmService: LLMService;
+  let llmChat: LLMChatFn;
 
   beforeAll(() => {
     if (!apiConfig) return;
@@ -245,13 +245,11 @@ describe.skipIf(!RUN)('Swarm/Orchestrator 聚合回归集成测试（真实 API�
     testLog(`${LOG_PREFIX} API: model=${apiConfig.model}, baseURL=${apiConfig.baseURL}`);
 
     const executorLike = createAgentExecutorLike();
-    initLLMService(executorLike);
-    llmService = getLLMService();
+    llmChat = createLLMChat(executorLike as AgentExecutorLike);
   });
 
   afterAll(() => {
     if (!RUN) return;
-    resetLLMService();
     appendTestLog(`\n========== 集成测试结束 ${new Date().toISOString()} ==========`);
     console.log(`\n测试日志: ${currentTestLogFile}`);
   });
@@ -261,7 +259,7 @@ describe.skipIf(!RUN)('Swarm/Orchestrator 聚合回归集成测试（真实 API�
   it('场景 D：多角色聚合 — 合并多个专家输出', { timeout: 300_000 }, async () => {
     testLog(`\n${LOG_PREFIX} ========== 场景 D：多角色聚合 ==========`);
 
-    const aggregator = new Aggregator(llmService);
+    const aggregator = new Aggregator(llmChat);
 
     const input: AggregationInput = {
       userRequest: '请分析 TypeScript 和 Python 的优缺点，帮我选择后端开发语言',
@@ -344,7 +342,7 @@ Python 的劣势：
   it('场景 E：含失败子任务 — 容错处理', { timeout: 300_000 }, async () => {
     testLog(`\n${LOG_PREFIX} ========== 场景 E：含失败子任务 ==========`);
 
-    const aggregator = new Aggregator(llmService);
+    const aggregator = new Aggregator(llmChat);
 
     const input: AggregationInput = {
       userRequest: '请从三个角度分析远程工作的利弊',
@@ -403,7 +401,7 @@ Python 的劣势：
   it('场景 F：单子任务 — 验证单输出聚合', { timeout: 300_000 }, async () => {
     testLog(`\n${LOG_PREFIX} ========== 场景 F：单子任务 ==========`);
 
-    const aggregator = new Aggregator(llmService);
+    const aggregator = new Aggregator(llmChat);
 
     const input: AggregationInput = {
       userRequest: '什么是微服务架构？',

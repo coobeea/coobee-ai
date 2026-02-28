@@ -1,4 +1,4 @@
-import type { LLMService } from '@main/ai/provider/LLMService';
+import type { LLMChatFn, ChatMessage } from './llm-chat';
 import { log } from '@main/common/logger';
 
 export interface ValidationInput {
@@ -58,7 +58,7 @@ export interface ValidationResult {
  * 3. 诊断问题并提供修复建议
  */
 export class Validator {
-  constructor(private llmClient: LLMService) {}
+  constructor(private llmChat: LLMChatFn) {}
 
   /**
    * 验证输出质量
@@ -71,13 +71,8 @@ export class Validator {
 
       const prompt = this.buildValidationPrompt(input);
 
-      const response = await this.llmClient.chat({
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
-        maxTokens: 3000
-      });
-
-      const llmOutput = response.content.trim();
+      const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
+      const llmOutput = (await this.llmChat({ messages, temperature: 0.1, maxTokens: 3000 })).trim();
       const parsed = this.parseLLMOutput(llmOutput);
       const duration = Date.now() - startTime;
 

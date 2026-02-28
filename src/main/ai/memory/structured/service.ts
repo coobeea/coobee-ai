@@ -17,14 +17,14 @@ import { MemorizePipeline } from './memorize';
 import { RetrievePipeline } from './retrieve';
 import { OpenAIEmbeddingProvider, NoopEmbeddingProvider } from './embedding';
 import type { EmbeddingProvider } from './embedding';
-import type { LLMService } from '../../provider/LLMService';
+import type { LLMChatFn } from '../../quality-loop/llm-chat';
 import type { MemorizeResult } from './memorize';
 import type { RetrieveResult } from './retrieve';
 import type { MemoryType, StructuredMemoryItem } from './models';
 import type { MigrationResult, MigrationOptions } from './migration';
 
 export interface StructuredMemoryServiceOptions {
-  llmClient?: LLMService;
+  llmChat?: LLMChatFn;
   embeddingApiKey?: string;
   embeddingModel?: string;
 }
@@ -63,7 +63,7 @@ export class StructuredMemoryService {
    * 初始化结构化记忆服务
    *
    * 使用已有的 SQLiteService 单例获取数据库连接，
-   * 并根据是否提供 LLM client 和 API key 来决定功能范围。
+   * 并根据是否提供 llmChat 函数和 API key 来决定功能范围。
    */
   async initialize(options: StructuredMemoryServiceOptions = {}): Promise<void> {
     if (this._initialized) return;
@@ -87,9 +87,9 @@ export class StructuredMemoryService {
         log.info('[StructuredMemory] No embedding API key, using NoopEmbeddingProvider');
       }
 
-      // Memorize pipeline: 需要 LLM client
-      if (options.llmClient) {
-        this.memorize = new MemorizePipeline(this.storage, options.llmClient);
+      // Memorize pipeline: 需要 LLM 对话函数
+      if (options.llmChat) {
+        this.memorize = new MemorizePipeline(this.storage, options.llmChat);
       }
 
       // Retrieve pipeline: 需要 embedding provider
@@ -108,7 +108,7 @@ export class StructuredMemoryService {
    */
   async memorizeContent(input: { content: string; source?: string; userId?: string }): Promise<MemorizeResult | null> {
     if (!this.memorize || !this.storage) {
-      log.warn('[StructuredMemory] Memorize not available (LLM client not configured)');
+      log.warn('[StructuredMemory] Memorize not available (llmChat not configured)');
       return null;
     }
 

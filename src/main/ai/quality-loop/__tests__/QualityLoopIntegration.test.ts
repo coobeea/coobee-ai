@@ -12,35 +12,31 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Aggregator } from '../Aggregator';
 import { Validator } from '../Validator';
 import { Repairer } from '../Repairer';
-import type { LLMService } from '@main/ai/provider/LLMService';
+import type { LLMChatFn } from '../llm-chat';
 
 describe('Quality Loop Integration Tests', () => {
-  let mockLLMClient: LLMService;
+  let mockLLMChat: LLMChatFn;
   let aggregator: Aggregator;
   let validator: Validator;
   let repairer: Repairer;
 
   beforeEach(() => {
-    mockLLMClient = {
-      chat: vi.fn()
-    } as unknown as LLMService;
+    mockLLMChat = vi.fn();
 
-    aggregator = new Aggregator(mockLLMClient);
-    validator = new Validator(mockLLMClient);
-    repairer = new Repairer(mockLLMClient);
+    aggregator = new Aggregator(mockLLMChat);
+    validator = new Validator(mockLLMChat);
+    repairer = new Repairer(mockLLMChat);
 
-    // Mock Date.now() to ensure duration > 0
     let mockTime = 1000;
     vi.spyOn(Date, 'now').mockImplementation(() => {
-      mockTime += 50; // 每次调用增加 50ms
+      mockTime += 50;
       return mockTime;
     });
   });
 
   it('完整质量闭环: 汇总 → 验证低分 → 修复 → 验证达标', async () => {
-    // 第1轮: Aggregator 汇总
-    vi.mocked(mockLLMClient.chat).mockResolvedValueOnce({
-      content: JSON.stringify({
+    vi.mocked(mockLLMChat).mockResolvedValueOnce(
+      JSON.stringify({
         finalOutput: '这是初步汇总的输出',
         summary: {
           completedTasks: ['任务1', '任务2'],
@@ -48,13 +44,11 @@ describe('Quality Loop Integration Tests', () => {
           keyFindings: ['发现1'],
           recommendations: ['建议1']
         }
-      }),
-      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-    });
+      })
+    );
 
-    // 第1轮: Validator 返回低分
-    vi.mocked(mockLLMClient.chat).mockResolvedValueOnce({
-      content: JSON.stringify({
+    vi.mocked(mockLLMChat).mockResolvedValueOnce(
+      JSON.stringify({
         passed: false,
         overallScore: 55,
         criteriaScores: [
@@ -66,23 +60,19 @@ describe('Quality Loop Integration Tests', () => {
           { severity: 'major', description: '内容不完整', suggestedFix: '补充缺失内容' },
           { severity: 'minor', description: '表达不清晰', suggestedFix: '优化表达' }
         ]
-      }),
-      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-    });
+      })
+    );
 
-    // 第1轮: Repairer 生成修复计划
-    vi.mocked(mockLLMClient.chat).mockResolvedValueOnce({
-      content: JSON.stringify({
+    vi.mocked(mockLLMChat).mockResolvedValueOnce(
+      JSON.stringify({
         rootCause: '内容完整性和表达清晰度不足',
         improvements: ['补充缺失内容', '优化表达清晰度'],
         repairInstructions: '请补充缺失的内容，并优化表达的清晰度'
-      }),
-      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-    });
+      })
+    );
 
-    // 第2轮: Validator 返回达标分数
-    vi.mocked(mockLLMClient.chat).mockResolvedValueOnce({
-      content: JSON.stringify({
+    vi.mocked(mockLLMChat).mockResolvedValueOnce(
+      JSON.stringify({
         passed: true,
         overallScore: 85,
         criteriaScores: [
@@ -91,9 +81,8 @@ describe('Quality Loop Integration Tests', () => {
           { criterion: '清晰度', passed: true, score: 80, reason: '表达清晰' }
         ],
         issues: []
-      }),
-      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-    });
+      })
+    );
 
     // === 执行完整流程 ===
 
@@ -153,15 +142,14 @@ describe('Quality Loop Integration Tests', () => {
 
   it('低质量输出应该建议 replan 策略', async () => {
     // Validator 返回极低分
-    vi.mocked(mockLLMClient.chat).mockResolvedValueOnce({
-      content: JSON.stringify({
+    vi.mocked(mockLLMChat).mockResolvedValueOnce(
+      JSON.stringify({
         passed: false,
         overallScore: 30,
         criteriaScores: [{ criterion: '完整性', passed: false, score: 20, reason: '内容严重缺失' }],
         issues: [{ severity: 'critical', description: '核心内容缺失', suggestedFix: '重新理解需求' }]
-      }),
-      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-    });
+      })
+    );
 
     // Validator 验证
     const validationResult = await validator.validate({
@@ -186,15 +174,14 @@ describe('Quality Loop Integration Tests', () => {
 
   it('修复轮次过多应该中止', async () => {
     // Validator 返回中等分数
-    vi.mocked(mockLLMClient.chat).mockResolvedValueOnce({
-      content: JSON.stringify({
+    vi.mocked(mockLLMChat).mockResolvedValueOnce(
+      JSON.stringify({
         passed: false,
         overallScore: 60,
         criteriaScores: [{ criterion: '完整性', passed: false, score: 60, reason: '仍有改进空间' }],
         issues: [{ severity: 'minor', description: '小问题', suggestedFix: '微调' }]
-      }),
-      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-    });
+      })
+    );
 
     const validationResult = await validator.validate({
       userRequest: '测试',
@@ -216,7 +203,7 @@ describe('Quality Loop Integration Tests', () => {
 
   it('汇总失败应该返回 fallback 输出', async () => {
     // Mock LLM 失败
-    vi.mocked(mockLLMClient.chat).mockRejectedValueOnce(new Error('LLM API failed'));
+    vi.mocked(mockLLMChat).mockRejectedValueOnce(new Error('LLM API failed'));
 
     // Aggregator 应该返回 fallback
     const result = await aggregator.aggregate({
@@ -237,7 +224,7 @@ describe('Quality Loop Integration Tests', () => {
   });
 
   it('验证失败应该返回未通过结果', async () => {
-    vi.mocked(mockLLMClient.chat).mockRejectedValueOnce(new Error('LLM API failed'));
+    vi.mocked(mockLLMChat).mockRejectedValueOnce(new Error('LLM API failed'));
 
     const result = await validator.validate({
       userRequest: '测试',
@@ -256,55 +243,40 @@ describe('Quality Loop Integration Tests', () => {
 
     // Mock 按调用顺序返回不同结果
     // Repairer 在 50-80 分范围会调用 LLM（regenerate 策略）
-    vi.mocked(mockLLMClient.chat).mockImplementation(async () => {
+    vi.mocked(mockLLMChat).mockImplementation(async () => {
       callCount++;
 
       switch (callCount) {
         case 1:
           // 第1轮验证：55分（50-80 范围，触发 regenerate）
-          return {
-            content: JSON.stringify({
-              passed: false,
-              overallScore: 55,
-              criteriaScores: [{ criterion: '质量', passed: false, score: 55, reason: '质量不足' }],
-              issues: [{ severity: 'major', description: '质量不足', suggestedFix: '优化内容' }]
-            }),
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-          };
+          return JSON.stringify({
+            passed: false,
+            overallScore: 55,
+            criteriaScores: [{ criterion: '质量', passed: false, score: 55, reason: '质量不足' }],
+            issues: [{ severity: 'major', description: '质量不足', suggestedFix: '优化内容' }]
+          });
         case 2:
           // 第1轮修复 LLM 调用（regenerate 策略需要 LLM）
-          return {
-            content: '修复指令：1. 补充缺失内容 2. 提升表达质量',
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-          };
+          return '修复指令：1. 补充缺失内容 2. 提升表达质量';
         case 3:
           // 第2轮验证：65分
-          return {
-            content: JSON.stringify({
-              passed: false,
-              overallScore: 65,
-              criteriaScores: [{ criterion: '质量', passed: false, score: 65, reason: '质量改善但仍不足' }],
-              issues: [{ severity: 'major', description: '仍需改进', suggestedFix: '继续优化' }]
-            }),
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-          };
+          return JSON.stringify({
+            passed: false,
+            overallScore: 65,
+            criteriaScores: [{ criterion: '质量', passed: false, score: 65, reason: '质量改善但仍不足' }],
+            issues: [{ severity: 'major', description: '仍需改进', suggestedFix: '继续优化' }]
+          });
         case 4:
           // 第2轮修复 LLM 调用
-          return {
-            content: '修复指令：补充更多细节和论据',
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-          };
+          return '修复指令：补充更多细节和论据';
         default:
           // 第3轮验证：85分，通过
-          return {
-            content: JSON.stringify({
-              passed: true,
-              overallScore: 85,
-              criteriaScores: [{ criterion: '质量', passed: true, score: 85, reason: '质量良好' }],
-              issues: []
-            }),
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-          };
+          return JSON.stringify({
+            passed: true,
+            overallScore: 85,
+            criteriaScores: [{ criterion: '质量', passed: true, score: 85, reason: '质量良好' }],
+            issues: []
+          });
       }
     });
 
@@ -342,8 +314,8 @@ describe('Quality Loop Integration Tests', () => {
 
   it('高分输出应该建议 patch 策略', async () => {
     // Validator 返回高分但未通过
-    vi.mocked(mockLLMClient.chat).mockResolvedValueOnce({
-      content: JSON.stringify({
+    vi.mocked(mockLLMChat).mockResolvedValueOnce(
+      JSON.stringify({
         passed: false,
         overallScore: 85,
         criteriaScores: [
@@ -351,9 +323,8 @@ describe('Quality Loop Integration Tests', () => {
           { criterion: '格式', passed: false, score: 75, reason: '格式有小问题' }
         ],
         issues: [{ severity: 'minor', description: '格式小问题', suggestedFix: '调整格式' }]
-      }),
-      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-    });
+      })
+    );
 
     // Validator 验证
     const validationResult = await validator.validate({
@@ -377,8 +348,8 @@ describe('Quality Loop Integration Tests', () => {
 
   it('包含失败子任务的汇总应该标记为不完整', async () => {
     // Aggregator 汇总
-    vi.mocked(mockLLMClient.chat).mockResolvedValueOnce({
-      content: JSON.stringify({
+    vi.mocked(mockLLMChat).mockResolvedValueOnce(
+      JSON.stringify({
         finalOutput: '部分完成的汇总',
         summary: {
           completedTasks: ['任务1'],
@@ -386,9 +357,8 @@ describe('Quality Loop Integration Tests', () => {
           keyFindings: ['发现1'],
           recommendations: ['需要重新执行任务2']
         }
-      }),
-      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-    });
+      })
+    );
 
     const result = await aggregator.aggregate({
       userRequest: '完成两个任务',

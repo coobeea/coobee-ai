@@ -1,4 +1,4 @@
-import type { LLMService } from '@main/ai/provider/LLMService';
+import type { LLMChatFn, ChatMessage } from './llm-chat';
 import { log } from '@main/common/logger';
 
 export interface AggregationInput {
@@ -46,7 +46,7 @@ export interface AggregationResult {
  * 3. 识别缺失部分
  */
 export class Aggregator {
-  constructor(private llmClient: LLMService) {}
+  constructor(private llmChat: LLMChatFn) {}
 
   /**
    * 汇总多个子 Agent 的输出
@@ -60,17 +60,10 @@ export class Aggregator {
       const successResults = input.subTaskResults.filter((r) => r.status === 'success');
       const failedResults = input.subTaskResults.filter((r) => r.status === 'failed');
 
-      // 构建 LLM 提示词
       const prompt = this.buildAggregationPrompt(input, successResults, failedResults);
 
-      // 调用 LLM 进行智能汇总
-      const response = await this.llmClient.chat({
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        maxTokens: 4000
-      });
-
-      const llmOutput = response.content.trim();
+      const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
+      const llmOutput = (await this.llmChat({ messages, temperature: 0.3, maxTokens: 4000 })).trim();
 
       // 解析 LLM 输出（尝试提取 JSON）
       const parsed = this.parseLLMOutput(llmOutput);

@@ -18,7 +18,7 @@ import env from '@main/common/env';
 import { join } from 'path';
 import type { AgentRuntimeOptions, ExecutionConfig, ExecutionResult, StreamChunk, SessionInfo } from '../runtime/types';
 import { Aggregator } from '../quality-loop/Aggregator';
-import { getLLMService } from '../provider/LLMService';
+import { createLLMChat, type AgentExecutorLike } from '../quality-loop/llm-chat';
 
 const log = createLogger('swarm:runtime');
 
@@ -289,9 +289,8 @@ export class SwarmRuntime extends AbstractAgentRuntime {
 
       let finalOutput = result.output;
 
-      const agentExec = this.swarmConfig.agentExecutor;
-      const llmService = agentExec ? getLLMService() : null;
-      const aggregator = llmService ? new Aggregator(llmService) : null;
+      const agentExec = this.swarmConfig.agentExecutor as AgentExecutorLike | undefined;
+      const aggregator = agentExec ? new Aggregator(createLLMChat(agentExec)) : null;
 
       // 汇总多个 Agent 输出（如果有多个角色参与）
       if (aggregator && result.rolesUsed.length > 1) {

@@ -19,7 +19,7 @@
 import { AbstractAgentRuntime, createRuntimeLogger, generateRuntimeId } from '../runtime/AbstractAgentRuntime';
 import type { AgentRuntimeOptions, ExecutionConfig, ExecutionResult, StreamChunk } from '../runtime/types';
 import type { SessionInfo } from '../runtime/types';
-import { getLLMService } from '../provider/LLMService';
+import { createLLMChat, type AgentExecutorLike } from './llm-chat';
 import { Validator, type AcceptanceCriteria, type ValidationResult } from './Validator';
 import { Repairer } from './Repairer';
 
@@ -27,22 +27,22 @@ const log = createRuntimeLogger('QualityLoopRuntime');
 
 // ==================== 配置 ====================
 
-export interface QualityLoopConfig {
-  sessionId: string;
-  agentExecutor: AgentExecutorLike;
-  maxIterations?: number;
-  passThreshold?: number;
-  acceptanceCriteria?: AcceptanceCriteria[];
-}
-
-/** AgentExecutor 的最小接口（避免循环依赖） */
-interface AgentExecutorLike {
+/** QualityLoopRuntime 使用的 AgentExecutor 最小接口（需支持完整 agent 模式） */
+interface QualityLoopAgentExecutor {
   stream(request: {
     sessionId: string;
     message: string;
     builder?: unknown;
   }): AsyncGenerator<StreamChunk, ExecutionResult, unknown>;
   piMono(): { name(n: string): { mode(m: string): { lightweight(l: boolean): unknown } } };
+}
+
+export interface QualityLoopConfig {
+  sessionId: string;
+  agentExecutor: QualityLoopAgentExecutor;
+  maxIterations?: number;
+  passThreshold?: number;
+  acceptanceCriteria?: AcceptanceCriteria[];
 }
 
 // ==================== Runtime ====================
@@ -55,7 +55,7 @@ export class QualityLoopRuntime extends AbstractAgentRuntime {
   private _name: string;
   private _interrupted = false;
   private _sessionId: string;
-  private _agentExecutor: AgentExecutorLike;
+  private _agentExecutor: QualityLoopAgentExecutor;
   private _maxIterations: number;
   private _passThreshold: number;
   private _acceptanceCriteria?: AcceptanceCriteria[];
@@ -146,9 +146,9 @@ export class QualityLoopRuntime extends AbstractAgentRuntime {
     }
 
     // ── Step 2-4: 验证→修复循环 ──
-    const llmService = getLLMService();
-    const validator = new Validator(llmService);
-    const repairer = new Repairer(llmService);
+    const llmChat = createLLMChat(this._agentExecutor as AgentExecutorLike);
+    const validator = new Validator(llmChat);
+    const repairer = new Repairer(llmChat);
 
     let finalScore = 0;
     let passed = false;
@@ -234,14 +234,14 @@ export class QualityLoopRuntime extends AbstractAgentRuntime {
       try {
         const repairMessage = this.buildRepairPrompt(input, currentOutput, validation, repairPlan.repairInstructions);
 
-        const repairResponse = await llmService.chat({
+        const repairOutput = await llmChat({
           messages: [{ role: 'user', content: repairMessage }],
           temperature: 0.5,
           maxTokens: 4000
         });
 
-        if (repairResponse.content.trim()) {
-          currentOutput = repairResponse.content.trim();
+        if (repairOutput.trim()) {
+          currentOutput = repairOutput.trim();
           yield { type: 'text:delta', content: currentOutput };
         }
       } catch (error) {

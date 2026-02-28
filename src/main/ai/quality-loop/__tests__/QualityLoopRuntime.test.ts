@@ -32,10 +32,10 @@ vi.mock('../Repairer', () => ({
   }
 }));
 
-// Mock getLLMService - used for repair execution (llmService.chat)
-const mockChat = vi.hoisted(() => vi.fn());
-vi.mock('../../provider/LLMService', () => ({
-  getLLMService: () => ({ chat: mockChat })
+// Mock createLLMChat - used for repair execution
+const mockLLMChat = vi.hoisted(() => vi.fn());
+vi.mock('../llm-chat', () => ({
+  createLLMChat: () => mockLLMChat
 }));
 
 // Mock saveContextSnapshot to avoid side effects
@@ -157,10 +157,7 @@ describe('QualityLoopRuntime', () => {
         duration: 5
       });
 
-      mockChat.mockResolvedValueOnce({
-        content: 'Fixed output with more content',
-        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
-      });
+      mockLLMChat.mockResolvedValueOnce('Fixed output with more content');
 
       const { QualityLoopRuntime } = await import('../QualityLoopRuntime');
       const runtime = new QualityLoopRuntime({
@@ -210,10 +207,7 @@ describe('QualityLoopRuntime', () => {
         duration: 5
       });
 
-      mockChat.mockResolvedValue({
-        content: 'Still bad output',
-        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
-      });
+      mockLLMChat.mockResolvedValue('Still bad output');
 
       const { QualityLoopRuntime } = await import('../QualityLoopRuntime');
       const runtime = new QualityLoopRuntime({
@@ -277,7 +271,7 @@ describe('QualityLoopRuntime', () => {
 
       expect(mockValidate).toHaveBeenCalledTimes(1);
       expect(mockGenerateRepairPlan).toHaveBeenCalledTimes(1);
-      expect(mockChat).not.toHaveBeenCalled();
+      expect(mockLLMChat).not.toHaveBeenCalled();
 
       const repairingChunk = chunks.find((c) => c.type === 'quality:repairing');
       expect(repairingChunk?.data).toMatchObject({ strategy: 'abort', rootCause: 'Unfixable' });

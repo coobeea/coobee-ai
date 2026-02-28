@@ -2,30 +2,27 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Aggregator } from '../Aggregator';
 import { Validator } from '../Validator';
 import { Repairer } from '../Repairer';
-import type { LLMService } from '@main/ai/provider/LLMService';
+import type { LLMChatFn } from '../llm-chat';
 
 describe('Quality Loop', () => {
-  let mockLLMClient: LLMService;
+  let mockLLMChat: LLMChatFn;
 
   beforeEach(() => {
-    mockLLMClient = {
-      chat: vi.fn()
-    } as unknown as LLMService;
+    mockLLMChat = vi.fn();
 
-    // Mock Date.now() to ensure duration > 0
     let mockTime = 1000;
     vi.spyOn(Date, 'now').mockImplementation(() => {
-      mockTime += 100; // 每次调用增加 100ms
+      mockTime += 100;
       return mockTime;
     });
   });
 
   describe('Aggregator', () => {
     it('should aggregate multiple agent outputs', async () => {
-      const aggregator = new Aggregator(mockLLMClient);
+      const aggregator = new Aggregator(mockLLMChat);
 
-      vi.mocked(mockLLMClient.chat).mockResolvedValue({
-        content: JSON.stringify({
+      vi.mocked(mockLLMChat).mockResolvedValue(
+        JSON.stringify({
           finalOutput: '汇总后的最终输出',
           summary: {
             completedTasks: ['任务1', '任务2'],
@@ -33,9 +30,8 @@ describe('Quality Loop', () => {
             keyFindings: ['发现1', '发现2'],
             recommendations: ['建议1']
           }
-        }),
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-      });
+        })
+      );
 
       const result = await aggregator.aggregate({
         userRequest: '测试请求',
@@ -62,10 +58,10 @@ describe('Quality Loop', () => {
     });
 
     it('should handle failed subtasks', async () => {
-      const aggregator = new Aggregator(mockLLMClient);
+      const aggregator = new Aggregator(mockLLMChat);
 
-      vi.mocked(mockLLMClient.chat).mockResolvedValue({
-        content: JSON.stringify({
+      vi.mocked(mockLLMChat).mockResolvedValue(
+        JSON.stringify({
           finalOutput: '部分汇总输出',
           summary: {
             completedTasks: ['任务1'],
@@ -73,9 +69,8 @@ describe('Quality Loop', () => {
             keyFindings: ['发现1'],
             recommendations: ['建议1']
           }
-        }),
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-      });
+        })
+      );
 
       const result = await aggregator.aggregate({
         userRequest: '测试请求',
@@ -101,9 +96,9 @@ describe('Quality Loop', () => {
     });
 
     it('should fallback gracefully on LLM failure', async () => {
-      const aggregator = new Aggregator(mockLLMClient);
+      const aggregator = new Aggregator(mockLLMChat);
 
-      vi.mocked(mockLLMClient.chat).mockRejectedValue(new Error('LLM API 失败'));
+      vi.mocked(mockLLMChat).mockRejectedValue(new Error('LLM API 失败'));
 
       const result = await aggregator.aggregate({
         userRequest: '测试请求',
@@ -124,10 +119,10 @@ describe('Quality Loop', () => {
 
   describe('Validator', () => {
     it('should validate output quality and return scores', async () => {
-      const validator = new Validator(mockLLMClient);
+      const validator = new Validator(mockLLMChat);
 
-      vi.mocked(mockLLMClient.chat).mockResolvedValue({
-        content: JSON.stringify({
+      vi.mocked(mockLLMChat).mockResolvedValue(
+        JSON.stringify({
           passed: true,
           overallScore: 85,
           criteriaScores: [
@@ -145,9 +140,8 @@ describe('Quality Loop', () => {
             }
           ],
           issues: []
-        }),
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-      });
+        })
+      );
 
       const result = await validator.validate({
         userRequest: '测试请求',
@@ -162,10 +156,10 @@ describe('Quality Loop', () => {
     });
 
     it('should detect quality issues', async () => {
-      const validator = new Validator(mockLLMClient);
+      const validator = new Validator(mockLLMChat);
 
-      vi.mocked(mockLLMClient.chat).mockResolvedValue({
-        content: JSON.stringify({
+      vi.mocked(mockLLMChat).mockResolvedValue(
+        JSON.stringify({
           passed: false,
           overallScore: 65,
           criteriaScores: [
@@ -183,9 +177,8 @@ describe('Quality Loop', () => {
               suggestedFix: '补充缺失的内容'
             }
           ]
-        }),
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-      });
+        })
+      );
 
       const result = await validator.validate({
         userRequest: '测试请求',
@@ -199,9 +192,9 @@ describe('Quality Loop', () => {
     });
 
     it('should fallback as NOT passed on validation failure', async () => {
-      const validator = new Validator(mockLLMClient);
+      const validator = new Validator(mockLLMChat);
 
-      vi.mocked(mockLLMClient.chat).mockRejectedValue(new Error('验证失败'));
+      vi.mocked(mockLLMChat).mockRejectedValue(new Error('验证失败'));
 
       const result = await validator.validate({
         userRequest: '测试请求',
@@ -217,12 +210,9 @@ describe('Quality Loop', () => {
 
   describe('Repairer', () => {
     it('should generate repair plan for failed validation', async () => {
-      const repairer = new Repairer(mockLLMClient);
+      const repairer = new Repairer(mockLLMChat);
 
-      vi.mocked(mockLLMClient.chat).mockResolvedValue({
-        content: '修复指令：\n1. 补充缺失的内容\n2. 修正错误',
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-      });
+      vi.mocked(mockLLMChat).mockResolvedValue('修复指令：\n1. 补充缺失的内容\n2. 修正错误');
 
       const result = await repairer.generateRepairPlan({
         userRequest: '测试请求',
@@ -256,7 +246,7 @@ describe('Quality Loop', () => {
     });
 
     it('should suggest replan for very low scores', async () => {
-      const repairer = new Repairer(mockLLMClient);
+      const repairer = new Repairer(mockLLMChat);
 
       const result = await repairer.generateRepairPlan({
         userRequest: '测试请求',
@@ -282,7 +272,7 @@ describe('Quality Loop', () => {
     });
 
     it('should suggest patch for high scores', async () => {
-      const repairer = new Repairer(mockLLMClient);
+      const repairer = new Repairer(mockLLMChat);
 
       const result = await repairer.generateRepairPlan({
         userRequest: '测试请求',
@@ -308,7 +298,7 @@ describe('Quality Loop', () => {
     });
 
     it('should abort after max repair rounds', async () => {
-      const repairer = new Repairer(mockLLMClient);
+      const repairer = new Repairer(mockLLMChat);
 
       const result = await repairer.generateRepairPlan({
         userRequest: '测试请求',
@@ -330,13 +320,12 @@ describe('Quality Loop', () => {
 
   describe('Integration: Quality Loop', () => {
     it('should complete full quality loop: aggregate → validate → repair', async () => {
-      const aggregator = new Aggregator(mockLLMClient);
-      const validator = new Validator(mockLLMClient);
-      const repairer = new Repairer(mockLLMClient);
+      const aggregator = new Aggregator(mockLLMChat);
+      const validator = new Validator(mockLLMChat);
+      const repairer = new Repairer(mockLLMChat);
 
-      // Mock aggregation
-      vi.mocked(mockLLMClient.chat).mockResolvedValueOnce({
-        content: JSON.stringify({
+      vi.mocked(mockLLMChat).mockResolvedValueOnce(
+        JSON.stringify({
           finalOutput: '初始汇总输出',
           summary: {
             completedTasks: ['任务1'],
@@ -344,13 +333,11 @@ describe('Quality Loop', () => {
             keyFindings: [],
             recommendations: []
           }
-        }),
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-      });
+        })
+      );
 
-      // Mock validation (failed)
-      vi.mocked(mockLLMClient.chat).mockResolvedValueOnce({
-        content: JSON.stringify({
+      vi.mocked(mockLLMChat).mockResolvedValueOnce(
+        JSON.stringify({
           passed: false,
           overallScore: 65,
           criteriaScores: [],
@@ -361,15 +348,10 @@ describe('Quality Loop', () => {
               suggestedFix: '优化内容'
             }
           ]
-        }),
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-      });
+        })
+      );
 
-      // Mock repair instructions
-      vi.mocked(mockLLMClient.chat).mockResolvedValueOnce({
-        content: '修复指令：优化内容质量',
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 }
-      });
+      vi.mocked(mockLLMChat).mockResolvedValueOnce('修复指令：优化内容质量');
 
       const aggregationResult = await aggregator.aggregate({
         userRequest: '测试请求',

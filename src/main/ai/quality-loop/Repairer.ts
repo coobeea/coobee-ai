@@ -1,4 +1,4 @@
-import type { LLMService } from '@main/ai/provider/LLMService';
+import type { LLMChatFn, ChatMessage } from './llm-chat';
 import { log } from '@main/common/logger';
 import type { ValidationResult } from './Validator';
 
@@ -45,7 +45,7 @@ export interface RepairPlan {
  * 3. 提供修复指令
  */
 export class Repairer {
-  constructor(private llmClient: LLMService) {}
+  constructor(private llmChat: LLMChatFn) {}
 
   /**
    * 生成修复计划
@@ -103,13 +103,8 @@ export class Repairer {
 
       const prompt = this.buildRepairPrompt(input);
 
-      const response = await this.llmClient.chat({
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        maxTokens: 2000
-      });
-
-      const llmOutput = response.content.trim();
+      const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
+      const llmOutput = (await this.llmChat({ messages, temperature: 0.3, maxTokens: 2000 })).trim();
 
       return {
         shouldRepair: true,

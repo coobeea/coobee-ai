@@ -28,16 +28,9 @@ vi.mock('@main/common/logger', () => ({
   }
 }));
 
-const mockSelfEvalChat = vi.fn().mockResolvedValue({ content: '{}' });
-vi.mock('@main/ai/provider/LLMService', () => {
-  return {
-    LLMService: class MockLLMService {
-      chat = mockSelfEvalChat;
-    },
-    getLLMService: () => ({ chat: mockSelfEvalChat }),
-    resetLLMService: vi.fn()
-  };
-});
+vi.mock('@main/ai/quality-loop/llm-chat', () => ({
+  createLLMChat: () => vi.fn().mockResolvedValue('{}')
+}));
 
 // ========== Stage 1 Tests: Skill Injection ==========
 
@@ -71,9 +64,8 @@ describe('Stage 1: Skill 注入到子智能体', () => {
     });
 
     it('SwarmCoordinator 构造函数应正确初始化质量闭环组件', () => {
-      // 隐式验证：如果 qualityLoop.enabled=true 且 LLMService mock 正常，
+      // 隐式验证：如果 qualityLoop.enabled=true 且 llm-chat mock 正常，
       // 三个组件（aggregator/validator/repairer）都应被初始化
-      // 已在上一个测试中验证
       expect(true).toBe(true);
     });
   });

@@ -6,8 +6,7 @@
  * - 记录执行日志
  * - 更新作业状态
  *
- * AgentExecutor 通过 getAgentExecutor() 延迟获取（与 getLLMService 模式一致），
- * 避免循环依赖，无需外部注入。
+ * AgentExecutor 通过 getAgentExecutor() 延迟获取，避免循环依赖。
  */
 
 import { nanoid } from 'nanoid';
