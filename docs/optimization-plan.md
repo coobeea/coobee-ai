@@ -30,33 +30,23 @@
 
 ### 🔴 P0 — 架构性问题（必须修复）
 
-#### P0-1: 删除程序化质量闭环，回归技能包驱动
+#### P0-1: ~~删除程序化质量闭环~~ → 保留，后续封装
 
-**问题：** Aggregator / Validator / Repairer 用硬编码方式重复了 `execution-protocol` + `self-reflection` + `eval-refine-loop` 三个技能包已经提供的能力。导致 SwarmRuntime（28%）和 OrchestratorRuntime（36%）的代码被质量闭环侵入，每新增一个运行模式就要复制一遍。
+**状态：❌ 跳过（用户决定保留 quality-loop 组件用于后续封装）**
 
-**方案：**
-
-- 删除 `src/main/ai/quality-loop/` 整个目录（669 行 + 804 行测试）
-- 清理 SwarmRuntime（~130 行）、OrchestratorRuntime（~140 行）、SwarmCoordinator（~120 行）中的质量闭环代码
-- 运行时只负责调度和流式输出，质量保证完全由常驻技能包负责
-- 多智能体汇总：由主 Agent 通过系统提示词引导完成（而不是程序调 LLM）
-
-**预计清理：~1,960 行代码**
+质量闭环组件（Aggregator / Validator / Repairer）保留不动，后续会做进一步封装优化。
 
 ---
 
-#### P0-2: 删除 LLMService
+#### P0-2: ~~删除 LLMService~~ → 单例化简化
 
-**问题：** `LLMService` 是质量闭环的副产品，将 `agentExecutor.piMono().lightweight(true)` 包装成 `chat(messages)` 接口。删除质量闭环后，6 个调用方消失，仅剩 `cron-jobs.ts` 和 `memorize.ts` 两处需要辅助 LLM 调用。
+**状态：✅ 已完成（2026-02-28）**
 
-**方案：**
+由于保留了质量闭环，LLMService 仍有存在价值。改为单例模式：
 
-- 删除 `src/main/ai/provider/LLMService.ts`（88 行）
-- `cron-jobs.ts`：直接内联 `agentExecutor.piMono().lightweight(true).instructions(...).stream(...)` 几行代码
-- `memorize.ts`：同上，直接用 Builder 链路
-- 删除所有相关测试中的 LLMService mock
-
-**预计清理：~200 行代码**
+- 新增 `getLLMService()` 全局单例函数，自动获取 agentExecutor
+- 消除到处 `new LLMService(agentExecutor)` 的冗余用法
+- SwarmCoordinator / SwarmRuntime / OrchestratorRuntime / cron-jobs 全部改用 `getLLMService()`
 
 ---
 
@@ -124,41 +114,33 @@ workspaces/{threadId}/
 
 #### P1-1: Builder 基类提取
 
-**问题：** `PiMonoBuilder`（350 行）和 `OpenAIBuilder`（212 行）有大量重复方法：`name()`、`mode()`、`instructions()`、`appendInstructions()`、`tools()`、`skills()`、`model()` 等。
+**状态：✅ 已完成（2026-02-28）**
 
-**方案：**
-
-- 创建 `BaseAgentBuilder` 抽象类，包含所有共享字段和方法
-- `PiMonoBuilder` 和 `OpenAIBuilder` 继承基类，只实现差异化的 `build()` 方法
-
-**预计减少：~100 行重复代码**
+- 创建 `BaseAgentBuilder` 抽象基类（188 行），包含所有共享字段和方法
+- PiMonoBuilder 从 350 行缩减至 179 行
+- OpenAIBuilder 从 212 行缩减至 70 行
+- 总代码量从 562 行降至 437 行，减少 ~125 行
 
 ---
 
 #### P1-2: chat.ts 入口简化
 
-**问题：** `chat.ts` 406 行，5 种模式分支，`createBuilder` 和 `createBuilderFromDefinition` 中工具合并逻辑重复。
+**状态：✅ 已完成（2026-02-28）**
 
-**方案：**
-
-- 提取 `mergeTools(builtinTools, extensionTools, agentTools)` 工具函数
-- 提取 `createAgentBuilder(executor, agentDef, tools, skills)` 统一构建函数
-- 模式分发改为策略映射 `{ orchestrator: createOrchestratorRuntime, swarm: ... }`
+- 提取 `mergeTools()` 消除 builtin+Extension 工具合并重复
+- 提取 `filterToolsByMode()` 统一 chat/agent 模式工具过滤
+- 提取 `createMultiAgentRuntime()` 合并 orchestrator/swarm/discussion 模式创建逻辑
+- 精简 `loadSkillDefinitions` 冗余日志
+- 总行数从 415 行降至 339 行
 
 ---
 
 #### P1-3: 统一日志——消灭 console.log
 
-**问题：** 以下模块使用 `console.log/console.error` 而非项目统一的 `createLogger`：
+**状态：✅ 已完成（2026-02-28）**
 
-- SwarmMonitor（4 处）
-- FileSwarmContext（6 处）
-- KnowledgeBase（1 处）
-- RoleRegistry（2 处）
-- ShortTermMemory
-- LongTermMemoryStore
-
-**方案：** 全部替换为 `createLogger`。
+替换了 15 个生产文件中的 console.log/error/warn 为 `createLogger()`：
+SwarmMonitor、RoleRegistry、LongTermMemoryStore、SessionAdapter、tokenCounter、ContextSnapshot、ChannelManager、ShortTermMemory、KnowledgeBase、SessionMemoryStore、SessionFileManager、FileSwarmContext、FileMessageBus、CompressionService、SessionService。
 
 ---
 
@@ -176,7 +158,12 @@ workspaces/{threadId}/
 
 #### P1-5: 消除动态导入 (await import)
 
-**问题：** `SwarmCoordinator`、`Planner`、`ThreadWaker`、`ToolExecutionPipeline` 使用 `await import('../AgentExecutor')` 规避循环依赖。这使测试困难、隐藏依赖关系。
+**状态：🟡 部分完成（2026-02-28）**
+
+- `files.ts` 已清理 6 处冗余的 `await import('@main/common/env')`，改为顶层导入
+- 其余动态导入（`AgentExecutor`、`ExtensionManager`、`windowManager` 等）属于合理的循环依赖规避或延迟加载，暂不修改
+
+**原问题：** `SwarmCoordinator`、`Planner`、`ThreadWaker`、`ToolExecutionPipeline` 使用 `await import('../AgentExecutor')` 规避循环依赖。这使测试困难、隐藏依赖关系。
 
 **方案：** 通过构造函数注入或工厂函数传入 `AgentExecutor` 引用，消除循环依赖。
 
