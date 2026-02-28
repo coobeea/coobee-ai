@@ -5,109 +5,23 @@
  * 通过 agentExecutor.piMono() 获取。
  */
 
-import path from 'node:path';
-
-import type { ProviderConfig } from '@main/ai/provider/types';
-
 import type { AgentRuntime } from '../AgentRuntime';
-import type { AgentMode, ToolDefinition, SkillDefinition } from '../types';
+import { BaseAgentBuilder, getDefaultSessionDir } from '../BaseAgentBuilder';
 import type { PiMonoAgentRuntimeOptions, ThinkingLevel } from './types';
 
-export class PiMonoBuilder {
-  private _name = 'agent';
-  private _mode: AgentMode = 'agent';
-  private _instructions = '你是一个 AI 助手。';
-  private _appendInstructions: string[] = [];
-  private _model?: string;
+export class PiMonoBuilder extends BaseAgentBuilder {
   private _apiKey?: string;
   private _baseURL?: string;
-  private _sessionId?: string;
   private _sessionMode?: 'memory' | 'file';
-  private _tools?: ToolDefinition[];
-  private _skills: SkillDefinition[] = [];
-  private _maxTurns?: number;
-  private _cwd?: string;
   private _thinkingLevel?: ThinkingLevel;
-  private _sdkTools?: unknown[];
-  private _sessionDir?: string;
   private _compaction?: { enabled?: boolean };
   private _retry?: { enabled?: boolean; maxRetries?: number; baseDelayMs?: number };
-  private _contextDir?: string;
-  private _sandboxContext?: import('../../tools/types').ToolExecutionContext;
-  private _providerConfig?: ProviderConfig;
-  private _providerModelId?: string;
-  private _lightweight = false;
-
-  /** Agent 名称 */
-  name(name: string): this {
-    this._name = name;
-    return this;
-  }
-
-  /**
-   * 运行模式
-   *   - 'chat': 纯对话（无工具、无执行协议、无 Skill）
-   *   - 'agent': 完整 Agent（工具 + 执行协议 + Skill + HITL）
-   */
-  mode(m: AgentMode): this {
-    this._mode = m;
-    return this;
-  }
-
-  /** 获取当前运行模式（供 AgentEnvInjector 读取） */
-  getMode(): AgentMode {
-    return this._mode;
-  }
-
-  /** 获取 Agent 名称（供 AgentEnvInjector 读取） */
-  getName(): string {
-    return this._name;
-  }
-
-  /**
-   * 轻量模式（默认 false）
-   *
-   * 启用后，AgentExecutor.stream() 将跳过：
-   * - 工作空间创建
-   * - EventBus 事件广播
-   * - Workspace Extensions 加载
-   * - 完整 AgentEnv 注入
-   *
-   * 适用于临时、一次性的 LLM 调用（如标题生成、任务分析）
-   */
-  lightweight(enabled: boolean): this {
-    this._lightweight = enabled;
-    return this;
-  }
-
-  /** 获取轻量模式标志（供 AgentExecutor 读取） */
-  getLightweight(): boolean {
-    return this._lightweight;
-  }
 
   /** 获取已解析的模型引用（"provider/model" 格式，供故障转移重试使用） */
   getResolvedModelRef(): string | undefined {
     const modelId = this._providerModelId || this._model;
     if (!modelId || !this._providerConfig) return undefined;
     return `${this._providerConfig.id}/${modelId}`;
-  }
-
-  /** 系统指令 */
-  instructions(text: string): this {
-    this._instructions = text;
-    return this;
-  }
-
-  /** 追加指令片段 */
-  appendInstructions(...texts: string[]): this {
-    this._appendInstructions.push(...texts);
-    return this;
-  }
-
-  /** 模型名称（默认从 VITE_LLM_MODEL 读取，兜底 MiniMax-M2.1） */
-  model(model: string): this {
-    this._model = model;
-    return this;
   }
 
   /** API Key（默认从 VITE_LLM_API_KEY 读取） */
@@ -122,74 +36,27 @@ export class PiMonoBuilder {
     return this;
   }
 
-  /** 会话 ID（由 Executor 自动设置，一般不需要手动调用） */
-  sessionId(id: string): this {
-    this._sessionId = id;
-    return this;
-  }
-
   /** 会话持久化模式（默认 memory） */
   sessionMode(mode: 'memory' | 'file'): this {
     this._sessionMode = mode;
     return this;
   }
 
-  /** 会话存储根目录（不传则由 Executor 注入默认值） */
-  sessionDir(dir: string): this {
-    this._sessionDir = dir;
-    return this;
-  }
-
-  /** 统一工具列表 */
-  tools(tools: ToolDefinition[]): this {
-    this._tools = tools;
-    return this;
-  }
-
-  /** 技能列表（累加模式，多次调用会合并，自动按 name 去重） */
-  skills(skills: SkillDefinition[]): this {
-    const existing = new Set(this._skills.map((s) => s.name));
-    for (const s of skills) {
-      if (!existing.has(s.name)) {
-        this._skills.push(s);
-        existing.add(s.name);
-      }
-    }
-    return this;
-  }
-
-  /** 最大执行轮次 */
-  maxTurns(n: number): this {
-    this._maxTurns = n;
-    return this;
-  }
-
   /** 工作目录（与 OpenAIBuilder.workspaceRoot() 对齐） */
   cwd(dir: string): this {
-    this._cwd = dir;
+    this._workspaceRoot = dir;
     return this;
   }
 
   /** 工作区根目录（cwd 的别名，统一 Builder API） */
-  workspaceRoot(dir: string): this {
-    this._cwd = dir;
+  override workspaceRoot(dir: string): this {
+    this._workspaceRoot = dir;
     return this;
-  }
-
-  /** 获取当前设置的工作区根目录 */
-  getWorkspaceRoot(): string | undefined {
-    return this._cwd;
   }
 
   /** 思考级别 */
   thinkingLevel(level: ThinkingLevel): this {
     this._thinkingLevel = level;
-    return this;
-  }
-
-  /** SDK 原生工具（与 OpenAI Builder 的 sdkTools 命名统一） */
-  sdkTools(tools: unknown[]): this {
-    this._sdkTools = tools;
     return this;
   }
 
@@ -205,32 +72,8 @@ export class PiMonoBuilder {
     return this;
   }
 
-  /** 上下文快照目录（由 injectEnv 自动设置） */
-  contextDir(dir: string): this {
-    this._contextDir = dir;
-    return this;
-  }
-
-  /** 工具执行上下文（由 EnvInjector 自动设置） */
-  sandboxContext(ctx: import('../../tools/types').ToolExecutionContext): this {
-    this._sandboxContext = ctx;
-    return this;
-  }
-
-  /**
-   * 从 ProviderConfig 设置模型参数
-   *
-   * 自动设置 apiKey、baseURL、model（从 ProviderConfig 中提取）。
-   * 优先级高于 .env 环境变量。
-   */
-  fromProviderConfig(config: ProviderConfig, modelId?: string): this {
-    this._providerConfig = config;
-    this._providerModelId = modelId;
-    return this;
-  }
-
   /** 构建并初始化 Runtime（内部方法，由 Executor 调用） */
-  async build(defaultSessionDir?: string): Promise<AgentRuntime> {
+  override async build(defaultSessionDir?: string): Promise<AgentRuntime> {
     // 解析 API Key: providerConfig > 显式设置 > 环境变量
     const apiKey = this.resolveApiKey();
     if (!apiKey) {
@@ -256,9 +99,9 @@ export class PiMonoBuilder {
     if (this._tools) opts.tools = this._tools;
     if (this._skills.length) opts.skills = this._skills;
     if (this._maxTurns !== undefined) opts.maxTurns = this._maxTurns;
-    if (this._cwd) {
-      opts.cwd = this._cwd;
-      opts.workspaceRoot = this._cwd;
+    if (this._workspaceRoot) {
+      opts.cwd = this._workspaceRoot;
+      opts.workspaceRoot = this._workspaceRoot;
     }
     if (this._thinkingLevel) opts.thinkingLevel = this._thinkingLevel;
     // 从 ProviderConfig 提取模型元数据，透传给 Runtime 用于构造 pi-SDK Model 对象
@@ -332,19 +175,5 @@ export class PiMonoBuilder {
       maxThinkingTokens: (modelCfg.maxThinkingTokens as number) ?? undefined,
       functionCalling: (modelCfg.functionCalling as boolean) ?? undefined
     };
-  }
-}
-
-/**
- * 获取默认 session 存储目录
- */
-function getDefaultSessionDir(): string {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const env = require('@main/common/env') as { Env: { paths: { userData: string } } };
-    return path.join(env.Env.paths.userData, 'sessions');
-  } catch {
-    const home = process.env.HOME || '/tmp';
-    return path.join(home, '.coobee-ai', 'sessions');
   }
 }
