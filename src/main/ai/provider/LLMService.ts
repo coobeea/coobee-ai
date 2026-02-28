@@ -22,7 +22,15 @@ export interface ChatMessage {
 
 export interface ChatCompletionOptions {
   messages: ChatMessage[];
+  /**
+   * 温度参数（0-1）
+   *
+   * 注意：当前 PiMono 后端不支持 per-request temperature，
+   * 此参数仅在 prompt 中以自然语言方式暗示（如 "请精确回答"）。
+   * 未来切换到 OpenAI runtime 后可通过 modelSettings 传递。
+   */
   temperature?: number;
+  /** 最大输出 token 数（同上，PiMono 后端暂不支持 per-request 设置） */
   maxTokens?: number;
 }
 
