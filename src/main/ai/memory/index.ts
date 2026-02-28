@@ -24,7 +24,7 @@ export { LongTermMemoryType } from './types';
 export { SessionMemoryStore } from './SessionMemoryStore';
 
 // Short-Term Memory（短期记忆 - 上下文窗口）
-export { TrimmingSession, SummarizingSession } from './ShortTermMemory';
+export { TrimmingSession } from './ShortTermMemory';
 
 // Working Memory / State（工作记忆 / 状态）
 export { WorkingMemoryStore } from './WorkingMemoryStore';

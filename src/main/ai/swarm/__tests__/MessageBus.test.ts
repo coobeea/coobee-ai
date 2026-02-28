@@ -3,7 +3,7 @@
  *
  * 测试点对点、广播、话题订阅、未读消息、统计
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { MessageBus } from '../MessageBus';
 
 describe('MessageBus', () => {
@@ -132,65 +132,16 @@ describe('MessageBus', () => {
     });
   });
 
-  // ========== 话题订阅 ==========
+  // ========== 话题过滤 ==========
 
-  describe('话题订阅', () => {
-    it('subscribe 收到话题消息', () => {
-      const callback = vi.fn();
-      bus.subscribe('debug', 'bob', callback);
-
-      bus.send('alice', 'bob', 'found bug', { topic: 'debug' });
-
-      expect(callback).toHaveBeenCalledWith(expect.objectContaining({ content: 'found bug', topic: 'debug' }));
-    });
-
-    it('订阅者是发送者时不触发', () => {
-      const callback = vi.fn();
-      bus.subscribe('debug', 'alice', callback);
-
-      bus.send('alice', 'bob', 'msg', { topic: 'debug' });
-
-      expect(callback).not.toHaveBeenCalled();
-    });
-
-    it('unsubscribe 取消后不再收到', () => {
-      const callback = vi.fn();
-      bus.subscribe('debug', 'bob', callback);
-      bus.unsubscribe('debug', 'bob');
-
-      bus.send('alice', 'bob', 'msg', { topic: 'debug' });
-
-      expect(callback).not.toHaveBeenCalled();
-    });
-
-    it('getMessagesByTopic 按话题过滤', () => {
+  describe('getMessagesByTopic', () => {
+    it('按话题过滤消息', () => {
       bus.send('a', 'b', 'm1', { topic: 'alpha' });
       bus.send('a', 'b', 'm2', { topic: 'beta' });
       bus.send('a', 'b', 'm3', { topic: 'alpha' });
 
       expect(bus.getMessagesByTopic('alpha')).toHaveLength(2);
       expect(bus.getMessagesByTopic('beta')).toHaveLength(1);
-    });
-  });
-
-  // ========== 全局监听器 ==========
-
-  describe('全局监听器', () => {
-    it('addGlobalListener 接收所有消息', () => {
-      const listener = vi.fn();
-      bus.addGlobalListener(listener);
-
-      bus.send('a', 'b', 'msg');
-      expect(listener).toHaveBeenCalledTimes(1);
-    });
-
-    it('removeGlobalListener 移除后不再接收', () => {
-      const listener = vi.fn();
-      bus.addGlobalListener(listener);
-      bus.removeGlobalListener(listener);
-
-      bus.send('a', 'b', 'msg');
-      expect(listener).not.toHaveBeenCalled();
     });
   });
 
@@ -254,15 +205,11 @@ describe('MessageBus', () => {
       expect(bus.getStats().totalMessages).toBe(0);
     });
 
-    it('destroy 清理所有资源', () => {
-      const listener = vi.fn();
-      bus.addGlobalListener(listener);
-
-      bus.destroy();
+    it('destroy 清空消息和监听器', () => {
       bus.send('a', 'b', 'msg');
+      bus.destroy();
 
-      // 全局监听器已被清理，不应触发
-      expect(listener).not.toHaveBeenCalled();
+      expect(bus.getStats().totalMessages).toBe(0);
     });
   });
 });

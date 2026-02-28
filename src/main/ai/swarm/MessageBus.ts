@@ -4,7 +4,7 @@
  * 提供 Agent 间的异步通信机制：
  * - 点对点消息：指定发送给某个角色
  * - 广播消息：发送给所有 Agent
- * - 话题订阅：按话题过滤消息
+ * - 话题过滤：getMessagesByTopic 按话题查询
  * - 消息历史：查询历史消息
  * - 消息队列：未读消息自动累积
  */
@@ -12,6 +12,9 @@
 import { createLogger } from '@main/common/logger';
 
 const log = createLogger('MessageBus');
+
+/** 消息历史最大条数，防止内存泄漏 */
+const MAX_MESSAGES = 1000;
 
 // ========== 类型定义 ==========
 
@@ -45,20 +48,10 @@ export interface SwarmMessage {
 }
 
 /**
- * 话题订阅
- */
-interface TopicSubscription {
-  /** 订阅者角色 ID */
-  roleId: string;
-  /** 回调函数 */
-  callback: (message: SwarmMessage) => void;
-}
-
-/**
  * 消息总线事件
  */
 export interface MessageBusEvent {
-  type: 'message_sent' | 'message_read' | 'topic_subscribed' | 'topic_unsubscribed';
+  type: 'message_sent' | 'message_read';
   message?: SwarmMessage;
   roleId?: string;
   topic?: string;
@@ -76,12 +69,6 @@ export class MessageBus {
 
   /** 消息 ID 计数器 */
   private messageCounter = 0;
-
-  /** 话题订阅映射：topic -> subscriptions[] */
-  private topicSubscriptions = new Map<string, TopicSubscription[]>();
-
-  /** 全局消息监听器（监听所有消息） */
-  private globalListeners: Array<(message: SwarmMessage) => void> = [];
 
   /** 事件监听器 */
   private eventListeners: MessageBusEventListener[] = [];
@@ -103,14 +90,9 @@ export class MessageBus {
   ): SwarmMessage {
     const message = this.createMessage(fromRoleId, toRoleId, content, options);
     this.messages.push(message);
-
-    // 触发话题订阅
-    if (message.topic) {
-      this.notifyTopicSubscribers(message);
+    if (this.messages.length > MAX_MESSAGES) {
+      this.messages.shift();
     }
-
-    // 触发全局监听
-    this.notifyGlobalListeners(message);
 
     this.emitEvent({
       type: 'message_sent',
@@ -219,61 +201,6 @@ export class MessageBus {
     }
   }
 
-  // ========== 话题订阅 ==========
-
-  /**
-   * 订阅某个话题
-   */
-  subscribe(topic: string, roleId: string, callback: (message: SwarmMessage) => void): void {
-    if (!this.topicSubscriptions.has(topic)) {
-      this.topicSubscriptions.set(topic, []);
-    }
-
-    this.topicSubscriptions.get(topic)!.push({ roleId, callback });
-
-    this.emitEvent({
-      type: 'topic_subscribed',
-      roleId,
-      topic,
-      timestamp: Date.now()
-    });
-  }
-
-  /**
-   * 取消订阅
-   */
-  unsubscribe(topic: string, roleId: string): void {
-    const subs = this.topicSubscriptions.get(topic);
-    if (subs) {
-      const filtered = subs.filter((s) => s.roleId !== roleId);
-      this.topicSubscriptions.set(topic, filtered);
-    }
-
-    this.emitEvent({
-      type: 'topic_unsubscribed',
-      roleId,
-      topic,
-      timestamp: Date.now()
-    });
-  }
-
-  /**
-   * 添加全局消息监听器
-   */
-  addGlobalListener(listener: (message: SwarmMessage) => void): void {
-    this.globalListeners.push(listener);
-  }
-
-  /**
-   * 移除全局消息监听器
-   */
-  removeGlobalListener(listener: (message: SwarmMessage) => void): void {
-    const index = this.globalListeners.indexOf(listener);
-    if (index !== -1) {
-      this.globalListeners.splice(index, 1);
-    }
-  }
-
   // ========== 格式化（用于注入 Agent 指令） ==========
 
   /**
@@ -341,13 +268,34 @@ export class MessageBus {
     return {
       totalMessages: this.messages.length,
       unreadCount,
-      topicCount: this.topicSubscriptions.size,
+      topicCount: Object.keys(messagesByTopic).length,
       messagesByRole,
       messagesByTopic
     };
   }
 
   // ========== 内部方法 ==========
+
+  /**
+   * 将消息推入历史（不触发通知）
+   * 供子类恢复持久化消息时使用
+   */
+  protected pushMessage(msg: SwarmMessage): void {
+    this.messages.push(msg);
+    if (this.messages.length > MAX_MESSAGES) {
+      this.messages.shift();
+    }
+  }
+
+  /** 获取当前消息 ID 计数器 */
+  protected getMessageCounter(): number {
+    return this.messageCounter;
+  }
+
+  /** 设置消息 ID 计数器（恢复时同步） */
+  protected setMessageCounter(value: number): void {
+    this.messageCounter = value;
+  }
 
   private createMessage(
     fromRoleId: string,
@@ -367,31 +315,6 @@ export class MessageBus {
       read: false,
       data: options?.data
     };
-  }
-
-  private notifyTopicSubscribers(message: SwarmMessage): void {
-    const subs = this.topicSubscriptions.get(message.topic!);
-    if (subs) {
-      for (const sub of subs) {
-        if (sub.roleId !== message.fromRoleId) {
-          try {
-            sub.callback(message);
-          } catch (error) {
-            log.error('Topic subscriber error:', error);
-          }
-        }
-      }
-    }
-  }
-
-  private notifyGlobalListeners(message: SwarmMessage): void {
-    for (const listener of this.globalListeners) {
-      try {
-        listener(message);
-      } catch (error) {
-        log.error('Global listener error:', error);
-      }
-    }
   }
 
   // ========== 事件系统 ==========
@@ -432,8 +355,6 @@ export class MessageBus {
    */
   destroy(): void {
     this.clear();
-    this.topicSubscriptions.clear();
-    this.globalListeners = [];
     this.eventListeners = [];
   }
 }

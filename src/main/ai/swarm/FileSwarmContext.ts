@@ -202,21 +202,9 @@ export class FileSwarmContext extends SwarmContext {
         type
       };
       writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
-
-      // 🆕 触发产物创建事件（供外部监听，如 KnowledgeBase）
-      this.emitArtifactCreated(name, createdBy, type);
     } catch (error) {
       log.error('Failed to write artifact:', name, error);
     }
-  }
-
-  /**
-   * 🆕 触发产物创建事件
-   * 供 SwarmCoordinator 监听并记录到 KnowledgeBase
-   */
-  private emitArtifactCreated(_name: string, _createdBy: string, _type?: string): void {
-    // 使用父类的 changeListeners 机制
-    // SwarmCoordinator 会监听这些事件
   }
 
   // ========== 覆盖方法：进度持久化 ==========

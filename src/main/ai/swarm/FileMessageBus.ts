@@ -80,20 +80,13 @@ export class FileMessageBus extends MessageBus {
 
   /**
    * 恢复单条消息到内存（不触发持久化）
-   *
-   * 注意：这是内部方法，直接访问父类的 private 成员
-   * 如果父类结构变化，需要调整
    */
   private restoreMessage(message: SwarmMessage): void {
-    // 使用 any 绕过 TypeScript 检查，直接访问 private 成员
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bus = this as any;
-    bus.messages.push(message);
+    this.pushMessage(message);
 
-    // 更新计数器
     const idNum = parseInt(message.id.split('-')[1]);
-    if (!isNaN(idNum) && idNum >= bus.messageCounter) {
-      bus.messageCounter = idNum + 1;
+    if (!isNaN(idNum) && idNum >= this.getMessageCounter()) {
+      this.setMessageCounter(idNum + 1);
     }
   }
 

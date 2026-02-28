@@ -1,9 +1,9 @@
 /**
  * ShortTermMemory 测试
- * TrimmingSession 和 SummarizingSession
+ * TrimmingSession
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TrimmingSession, SummarizingSession } from '../ShortTermMemory';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { TrimmingSession } from '../ShortTermMemory';
 
 describe('TrimmingSession', () => {
   let session: TrimmingSession;
@@ -74,61 +74,5 @@ describe('TrimmingSession', () => {
     const msgs = await session.getMessagesForSession();
     expect(msgs).toHaveLength(1);
     expect(msgs[0].content).toBe('test');
-  });
-});
-
-describe('SummarizingSession', () => {
-  let session: SummarizingSession;
-  const mockClient = {
-    chat: {
-      completions: {
-        create: vi.fn().mockResolvedValue({
-          choices: [{ message: { content: 'Summary of conversation' } }]
-        })
-      }
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    session = new SummarizingSession(mockClient, { summaryThreshold: 5 });
-  });
-
-  it('基本添加消息', async () => {
-    await session.addSystemMessage('sys');
-    await session.addUserMessage('hello');
-    await session.addAssistantMessage('hi');
-
-    expect(session.getMessages()).toHaveLength(3);
-  });
-
-  it('超过阈值时触发摘要', async () => {
-    await session.addSystemMessage('sys');
-
-    // 添加超过阈值的消息
-    for (let i = 0; i < 15; i++) {
-      await session.addUserMessage(`msg-${i}`);
-      await session.addAssistantMessage(`reply-${i}`);
-    }
-
-    // 应该调用过 LLM 生成摘要
-    expect(mockClient.chat.completions.create).toHaveBeenCalled();
-  });
-
-  it('clearHistory 重置摘要状态', async () => {
-    await session.addSystemMessage('sys');
-    await session.addUserMessage('hello');
-    await session.clearHistory();
-
-    const msgs = session.getMessages();
-    expect(msgs).toHaveLength(1);
-    expect(msgs[0].role).toBe('system');
-  });
-
-  it('reset 完全清空', async () => {
-    await session.addSystemMessage('sys');
-    await session.reset();
-    expect(session.getMessages()).toHaveLength(0);
   });
 });

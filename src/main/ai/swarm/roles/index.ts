@@ -127,25 +127,6 @@ export class RoleRegistry {
   }
 
   /**
-   * 根据能力标签匹配角色
-   * @param capabilities 需要的能力列表
-   * @returns 匹配的角色列表（按匹配度排序）
-   */
-  matchByCapabilities(capabilities: string[]): AgentRole[] {
-    const capSet = new Set(capabilities.map((c) => c.toLowerCase()));
-
-    const scored = Array.from(this.registry.values()).map((entry) => {
-      const matchCount = entry.role.capabilities.filter((c) => capSet.has(c.toLowerCase())).length;
-      return { role: entry.role, score: matchCount };
-    });
-
-    return scored
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map((item) => item.role);
-  }
-
-  /**
    * 检查角色是否存在
    */
   has(roleId: string): boolean {

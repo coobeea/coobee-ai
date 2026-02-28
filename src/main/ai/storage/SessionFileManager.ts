@@ -558,6 +558,9 @@ export class SessionFileManager {
   }
 }
 
+/** 会话管理器缓存最大实例数，防止内存泄漏 */
+const MAX_SESSION_CACHE = 50;
+
 /**
  * 会话文件管理器工厂
  * 维护会话管理器实例的缓存
@@ -570,6 +573,12 @@ class SessionFileManagerFactory {
    */
   static getInstance(sessionId: string): SessionFileManager {
     if (!this.instances.has(sessionId)) {
+      if (this.instances.size >= MAX_SESSION_CACHE) {
+        const oldestKey = this.instances.keys().next().value;
+        if (oldestKey !== undefined) {
+          this.instances.delete(oldestKey);
+        }
+      }
       this.instances.set(sessionId, new SessionFileManager(sessionId));
     }
     return this.instances.get(sessionId)!;

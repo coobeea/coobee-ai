@@ -13,6 +13,9 @@ import type { SwarmArtifact, SwarmContextData } from './types';
 
 const log = createLogger('SwarmContext');
 
+/** 变更历史最大条数，防止内存泄漏 */
+const MAX_CHANGE_HISTORY = 500;
+
 /**
  * 上下文变更事件
  */
@@ -304,6 +307,9 @@ export class SwarmContext {
    */
   private emitChange(event: ContextChangeEvent): void {
     this.changeHistory.push(event);
+    if (this.changeHistory.length > MAX_CHANGE_HISTORY) {
+      this.changeHistory.shift();
+    }
 
     for (const listener of this.changeListeners) {
       try {
