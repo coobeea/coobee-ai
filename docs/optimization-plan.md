@@ -131,21 +131,19 @@ workspaces/{threadId}/
 
 ---
 
-#### P1-4: 记忆系统整合
+#### P1-4: 记忆系统清理
 
-**状态：✅ 分析完成（2026-02-28）**
+**状态：✅ 已完成（2026-02-28）**
 
-结论：`LongTermMemoryStore` 和 `StructuredMemoryStorage` 用途不同、数据模型不同，且均未在生产中使用。暂不合并。
-
-- `LongTermMemoryStore`：简单的关键词搜索 + 重要性评分（5 种类型）
-- `StructuredMemoryStorage`：MemU 模式的 Resource→Item→Category + 向量搜索（6 种类型）
-- 两者共享同一 SQLite 数据库但使用不同表
+- 删除 `LongTermMemoryStore`（302 行）及其测试（260 行），功能与 StructuredMemory 重叠且未投产
+- 清理 types.ts 中相关类型（LongTermMemoryEntry / MemoryQuery / LongTermMemoryType）
+- 保留 `StructuredMemoryStorage`（功能更完善，后续投产使用）
 
 ---
 
 #### P1-5: 消除动态导入
 
-**状态：🟡 部分完成（2026-02-22）**
+**状态：✅ 已完成（2026-02-28）**
 
 - `files.ts` 清理了 6 处冗余 `await import`
 - 其余为合理的循环依赖规避，暂不修改
@@ -176,15 +174,24 @@ workspaces/{threadId}/
 
 #### P2-3: OpenAIAgentRuntime 方法拆分
 
-**状态：⏳ 待处理**
+**状态：✅ 已完成（2026-02-28）**
 
-`generateStreamEvents` 约 200 行，包含大型 switch 语句。
+`generateStreamEvents` 拆为 4 个 handler 方法：
+
+- `handleRawModelStreamEvent` — 原始模型流事件
+- `handleRunItemStreamEvent` — 运行项事件（tool/handoff）
+- `handleAgentUpdatedStreamEvent` — Agent 切换通知
+- `logStreamEvent` — Debug 日志
 
 ---
 
 #### P2-4: Cron 系统完善
 
-**状态：⏳ 待处理**
+**状态：✅ 已完成（2026-02-28）**
+
+- CronJobExecutor 改用 `getAgentExecutor()` 单例，消除注入时序问题
+- CronJobStore 执行记录改为 `executions/{jobId}/` 分目录，查询 O(n)→O(m)
+- 保留旧扁平结构向后兼容
 
 ---
 
@@ -204,18 +211,22 @@ workspaces/{threadId}/
 
 ## 三、完成统计
 
-| 指标                     | 改动前         | 改动后           |
-| ------------------------ | -------------- | ---------------- |
-| AgentExecutor            | 1,244 行       | 987 行           |
-| Builder 重复代码         | ~100 行        | 0 行             |
-| console.log 残留         | 13+ 处         | 0 处             |
-| 无界数据结构             | 4 处           | 0 处             |
-| `(this as any)` 封装违规 | 1 处           | 0 处             |
-| 死代码                   | 5 处 ~1,000 行 | 已清理           |
-| 工作空间对用户透明度     | 低             | 高（双空间架构） |
-| 辩证质量验证             | 无             | 系统提示词引导   |
+| 指标                     | 改动前          | 改动后                      |
+| ------------------------ | --------------- | --------------------------- |
+| AgentExecutor            | 1,244 行        | 987 行（-257 行）           |
+| Builder 重复代码         | ~100 行         | 0 行                        |
+| console.log 残留         | 13+ 处          | 0 处                        |
+| 无界数据结构             | 4 处            | 0 处（全部加上限）          |
+| `(this as any)` 封装违规 | 1 处            | 0 处                        |
+| 死代码                   | 5 处 ~1,000 行  | 已清理                      |
+| 未投产冗余记忆模块       | 2 个            | 1 个（删除 LongTermMemory） |
+| 冗余动态导入             | 10+ 处          | 0 处（安全的全部改为顶层）  |
+| OpenAI 流处理            | 1 个 200 行方法 | 4 个聚焦 handler            |
+| Cron 执行查询            | O(n)            | O(m)（分目录索引）          |
+| 工作空间对用户透明度     | 低              | 高（双空间架构）            |
+| 辩证质量验证             | 无              | 系统提示词引导              |
 
-**总计完成：11/15 项，4 项待处理（P1-5 部分、P2-3、P2-4 为低优先级）**
+**总计完成：15/15 项 ✅**
 
 ---
 
@@ -224,4 +235,5 @@ workspaces/{threadId}/
 1. **质量闭环封装**：将 Aggregator/Validator/Repairer 封装为可复用的 SDK 或工具
 2. **技能软链接**：在 `user/skills/` 中为激活的技能创建软链接，实现运行时可编辑
 3. **多智能体端到端质量测试**：实际运行 Swarm/Orchestrator 模式验证辩证质量验证效果
-4. **记忆系统投产**：选择一个记忆存储方案正式启用
+4. **StructuredMemory 投产**：接入 StructuredMemoryService 到应用生命周期
+5. **AgentExecutor 继续瘦身**：`updateCheckpoint` 等与 CheckpointManager/WorkspaceManager 强耦合的逻辑可进一步提取
