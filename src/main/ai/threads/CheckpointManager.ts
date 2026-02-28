@@ -44,7 +44,7 @@ export class CheckpointManager {
 
   private async getCheckpointPath(threadId: string): Promise<string> {
     const dir = await this.getWorkspacesDir();
-    return path.join(dir, threadId, 'checkpoint.json');
+    return path.join(dir, threadId, '.runtime', 'checkpoint.json');
   }
 
   /**
@@ -124,7 +124,7 @@ export class CheckpointManager {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        const cpPath = path.join(dir, entry.name, 'checkpoint.json');
+        const cpPath = path.join(dir, entry.name, '.runtime', 'checkpoint.json');
         if (!fs.existsSync(cpPath)) continue;
 
         try {

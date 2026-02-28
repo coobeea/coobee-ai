@@ -158,22 +158,27 @@ export interface ToolExecutionContext extends SandboxContext {
    */
   cwd: string;
 
-  // === 工作空间子目录（必填，由 workspaceRoot 派生） ===
+  // === 用户空间（user/）===
 
-  /** 会话存储目录 — {workspace}/sessions/ */
-  sessionsDir: string;
+  /** 用户空间根目录 — {workspace}/user/ */
+  userDir: string;
 
-  /** 上下文快照目录 — {workspace}/contexts/ */
-  contextsDir: string;
-
-  /** 事件记录目录 — {workspace}/events/ */
-  eventsDir: string;
+  /** 工具输出目录 — {workspace}/user/output/ */
+  outputDir: string;
 
   /** 多 Agent 任务目录 — {workspace}/tasks/ */
   tasksDir: string;
 
-  /** 工具输出目录 — {workspace}/output/ */
-  outputDir: string;
+  // === 系统空间（.runtime/）===
+
+  /** 会话存储目录 — {workspace}/.runtime/sessions/ */
+  sessionsDir: string;
+
+  /** 上下文快照目录 — {workspace}/.runtime/contexts/ */
+  contextsDir: string;
+
+  /** 事件记录目录 — {workspace}/.runtime/events/ */
+  eventsDir: string;
 
   // === 系统路径（必填，避免工具动态 import Env） ===
 

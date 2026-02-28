@@ -285,26 +285,30 @@ export const Env = {
    *
    * 返回 {workspacesDir}/{id}，id 通常为 sessionId。
    *
-   * 结构：
+   * 结构（双空间架构）：
    *   {workspacesDir}/{id}/
-   *   ├── GOAL.md       目标文件（系统初始化时创建，Agent 填写）
-   *   ├── sessions/     会话持久化
-   *   ├── contexts/     LLM 请求上下文快照
-   *   ├── events/       流式事件记录（完整时间线）
-   *   ├── skills/       Agent 自生成的 Skill
-   *   ├── output/       Agent 输出文件
-   *   ├── logs/         Agent 运行日志
-   *   └── tasks/        [多 Agent] 委托任务目录（按需创建）
+   *   ├── GOAL.md                  目标文件（Agent 在意图提取阶段填写）
+   *   │
+   *   ├── user/                    ← 用户空间（前端默认展示，用户可直接操作）
+   *   │   ├── data/                   用户输入文件、参考资料
+   *   │   ├── output/                 Agent 产出
+   *   │   ├── skills/                 当前激活的技能（软链接，可查看、可修改）
+   *   │   └── knowledge/              知识库文档
+   *   │
+   *   ├── .runtime/                ← 系统空间（隐藏，用户不需关注）
+   *   │   ├── sessions/               会话持久化
+   *   │   ├── contexts/               LLM 请求上下文快照
+   *   │   ├── events/                 流式事件记录
+   *   │   ├── logs/                   Agent 运行日志
+   *   │   └── checkpoint.json         执行断点
+   *   │
+   *   └── tasks/                   [多 Agent] 委托任务目录（按需创建）
    *       └── {taskId}/
-   *           ├── plan.md         任务计划（task_plan 工具写入）
-   *           ├── status.json     任务状态（task_plan 工具更新）
-   *           ├── agents/         子 Agent 工作目录
-   *           │   └── {agentId}/  子 Agent 完整工作空间
-   *           ├── results/        子 Agent 的汇总结果
-   *           └── experiences/    共享执行经验
-   *
-   * 注：tasks/ 目录由 task_plan 和 delegate_to_agent 工具按需创建，
-   * 不在 workspace 初始化时创建。
+   *           ├── plan.md             任务计划
+   *           ├── status.json         任务状态
+   *           ├── agents/             子 Agent 工作空间
+   *           ├── results/            子 Agent 汇总结果
+   *           └── experiences/        共享执行经验
    *
    * @param id 工作空间标识（通常为 sessionId）
    * @returns 工作空间根路径
@@ -313,24 +317,85 @@ export const Env = {
     const workspace = path.join(this.paths.workspacesDir, id);
     const subDirs = [
       workspace,
-      path.join(workspace, 'sessions'),
-      path.join(workspace, 'contexts'),
-      path.join(workspace, 'events'),
-      path.join(workspace, 'skills'),
-      path.join(workspace, 'output'),
-      path.join(workspace, 'logs')
+      // 用户空间
+      path.join(workspace, 'user'),
+      path.join(workspace, 'user', 'data'),
+      path.join(workspace, 'user', 'output'),
+      path.join(workspace, 'user', 'skills'),
+      path.join(workspace, 'user', 'knowledge'),
+      // 系统空间
+      path.join(workspace, '.runtime'),
+      path.join(workspace, '.runtime', 'sessions'),
+      path.join(workspace, '.runtime', 'contexts'),
+      path.join(workspace, '.runtime', 'events'),
+      path.join(workspace, '.runtime', 'logs')
     ];
     for (const dir of subDirs) {
       if (!fs.existsSync(dir)) {
         await mkdirp(dir);
       }
     }
-    // 初始化 GOAL.md（工作空间标准文件，Agent 在意图提取阶段填写内容）
+    // 兼容旧工作空间：如果旧目录结构存在，迁移到新结构
+    await this._migrateWorkspaceIfNeeded(workspace);
+    // 初始化 GOAL.md（工作空间标准文件）
     const goalPath = path.join(workspace, 'GOAL.md');
     if (!fs.existsSync(goalPath)) {
       fs.writeFileSync(goalPath, '', 'utf-8');
     }
     return workspace;
+  },
+
+  /**
+   * 惰性迁移旧工作空间到新的双空间结构
+   *
+   * 如果根目录下存在旧的 sessions/contexts/events/logs 目录，
+   * 把它们移动到 .runtime/ 下。如果根目录下有 output/，移到 user/output/。
+   */
+  async _migrateWorkspaceIfNeeded(workspace: string): Promise<void> {
+    const runtimeDir = path.join(workspace, '.runtime');
+    const userDir = path.join(workspace, 'user');
+
+    const runtimeMigrations = ['sessions', 'contexts', 'events', 'logs'];
+    for (const name of runtimeMigrations) {
+      const oldDir = path.join(workspace, name);
+      const newDir = path.join(runtimeDir, name);
+      if (fs.existsSync(oldDir) && !fs.existsSync(path.join(oldDir, '.migrated'))) {
+        // 旧目录存在且未标记迁移——将内容复制到新位置
+        try {
+          const entries = fs.readdirSync(oldDir);
+          for (const entry of entries) {
+            const src = path.join(oldDir, entry);
+            const dst = path.join(newDir, entry);
+            if (!fs.existsSync(dst)) {
+              fs.renameSync(src, dst);
+            }
+          }
+          // 标记已迁移（保留旧目录避免破坏正在运行的会话）
+          fs.writeFileSync(path.join(oldDir, '.migrated'), 'migrated to .runtime/', 'utf-8');
+        } catch {
+          // 迁移失败时静默，不阻塞正常流程
+        }
+      }
+    }
+
+    // output/ → user/output/
+    const oldOutput = path.join(workspace, 'output');
+    const newOutput = path.join(userDir, 'output');
+    if (fs.existsSync(oldOutput) && !fs.existsSync(path.join(oldOutput, '.migrated'))) {
+      try {
+        const entries = fs.readdirSync(oldOutput);
+        for (const entry of entries) {
+          const src = path.join(oldOutput, entry);
+          const dst = path.join(newOutput, entry);
+          if (!fs.existsSync(dst)) {
+            fs.renameSync(src, dst);
+          }
+        }
+        fs.writeFileSync(path.join(oldOutput, '.migrated'), 'migrated to user/output/', 'utf-8');
+      } catch {
+        // 迁移失败时静默
+      }
+    }
   },
 
   /**
@@ -357,7 +422,7 @@ export const Env = {
     ];
     const skillPaths = [this.paths.builtinSkillsDir, this.paths.userSkillsDir];
     if (workspace) {
-      const wsSkills = path.join(workspace, 'skills');
+      const wsSkills = path.join(workspace, 'user', 'skills');
       coreDirs.push(wsSkills);
       skillPaths.push(wsSkills);
     }

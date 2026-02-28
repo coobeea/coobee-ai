@@ -127,14 +127,14 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
 
     // ====== Chat & Agent 共享：基础环境设置 ======
 
-    // 6. 设置会话存储目录（指向 workspace 内的 sessions/）
-    builder.sessionDir(path.join(workspace, 'sessions'));
+    // 6. 设置会话存储目录（指向 .runtime/ 系统空间）
+    builder.sessionDir(path.join(workspace, '.runtime', 'sessions'));
 
     // 7. 设置工作目录（统一 API：两个 Builder 都支持 workspaceRoot()）
     builder.workspaceRoot(workspace);
 
-    // 8. 设置上下文快照目录（Runtime 层写入）
-    builder.contextDir(path.join(workspace, 'contexts'));
+    // 8. 设置上下文快照目录（.runtime/ 系统空间）
+    builder.contextDir(path.join(workspace, '.runtime', 'contexts'));
 
     log.info(`[EnvInjector] Injected: sessionId=${sessionId}, mode=${mode}, workspace=${workspace}`);
     return workspace;
@@ -415,12 +415,15 @@ async function buildToolExecutionContext(
     // 工作目录
     cwd,
 
-    // 工作空间子目录
-    sessionsDir: path.join(workspace, 'sessions'),
-    contextsDir: path.join(workspace, 'contexts'),
-    eventsDir: path.join(workspace, 'events'),
+    // 用户空间
+    outputDir: path.join(workspace, 'user', 'output'),
+    userDir: path.join(workspace, 'user'),
     tasksDir: path.join(workspace, 'tasks'),
-    outputDir: path.join(workspace, 'output'),
+
+    // 系统空间（.runtime/）
+    sessionsDir: path.join(workspace, '.runtime', 'sessions'),
+    contextsDir: path.join(workspace, '.runtime', 'contexts'),
+    eventsDir: path.join(workspace, '.runtime', 'events'),
 
     // 系统路径
     userHome,

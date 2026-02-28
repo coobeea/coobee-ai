@@ -236,19 +236,25 @@ Your Runtime Environment:
 - Model: ${env.defaultModel} (thinking=${env.thinkingLevel})
 - Extensions: ${extensionsList}
 
-Key Directories:
+Workspace Structure (Dual-Space Architecture):
+- User Space: ${env.workspace}/user/       ← user-facing data, outputs, editable skills
+  - data/       — user input files, reference materials
+  - output/     — your output files go here
+  - skills/     — active skills (symlinked, viewable and editable)
+  - knowledge/  — knowledge base documents
+- System Space: ${env.workspace}/.runtime/  ← internal, hidden from user
+  - sessions/, contexts/, events/, logs/
+- GOAL.md at workspace root
+
+Key System Directories:
 - Config: ${env.configDir}
 - Memory: ${env.memoryDir}
-- Threads: ${env.threadsDir}
 - Skills: builtin=${env.builtinSkillsDir}, user=${env.userSkillsDir}
 - Agents: builtin=${env.builtinAgentsDir}, user=${env.userAgentsDir}
 
-Multi-Agent Tasks Convention:
-When using delegate_to_agent or multi-agent workflows, write all data under {workspace}/tasks/{taskId}/:
-- plan.md (task plan), status.json (status tracking)
-- agents/{agentId}/ (sub-agent workspace)
-- results/{agentId}.md (final output)
-
-Use delegate_to_agent to invoke registered agents. For simple delegations, taskId is auto-generated.
+File Output Convention:
+- Write user-facing outputs to {workspace}/user/output/
+- Write intermediate/system data to {workspace}/.runtime/
+- For multi-agent tasks: {workspace}/tasks/{taskId}/
 </runtime_environment>`;
 }

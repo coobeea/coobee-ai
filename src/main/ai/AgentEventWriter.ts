@@ -41,7 +41,7 @@ export class AgentEventWriter {
   private emitter: IStreamEmitter | null = null;
 
   constructor(workspace: string | undefined) {
-    this.eventsFile = workspace ? path.join(workspace, 'events', 'events.jsonl') : null;
+    this.eventsFile = workspace ? path.join(workspace, '.runtime', 'events', 'events.jsonl') : null;
   }
 
   /** 彻底清理当前实例（供异常销毁时备用） */
