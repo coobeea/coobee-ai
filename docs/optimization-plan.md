@@ -2,33 +2,34 @@
 
 > 基于全面代码分析的优化方案
 > 创建时间：2026-02-22
+> 最后更新：2026-02-28
 
 ---
 
 ## 一、分析总览
 
-| 模块                    | 文件数 | 总行数 | 健康度 | 核心问题                                |
-| ----------------------- | ------ | ------ | ------ | --------------------------------------- |
-| AgentExecutor           | 1      | 1,244  | 🔴 差  | God Class，12+ 职责混杂                 |
-| 质量闭环 (quality-loop) | 3+测试 | 1,960  | 🔴 差  | 与技能包重复，代码侵入 3 个运行时       |
-| LLMService              | 1      | 88     | 🔴 差  | 不必要的抽象，质量闭环的副产品          |
-| SwarmRuntime            | 1      | 459    | 🟡 中  | 28% 代码是质量闭环                      |
-| OrchestratorRuntime     | 1      | 384    | 🟡 中  | 36% 代码是质量闭环                      |
-| SwarmCoordinator        | 1      | 768    | 🟡 中  | 质量闭环 + console.log + 动态导入       |
-| chat.ts (Gateway)       | 1      | 406    | 🟡 中  | 5 种模式分支、工具合并重复              |
-| Builder 体系            | 2      | 562    | 🟡 中  | PiMono/OpenAI Builder 大量重复逻辑      |
-| 工作空间                | 4      | 1,050  | 🟡 中  | 两套会话存储路径、缺少用户空间概念      |
-| 记忆系统                | 10+    | 2,000+ | 🟡 中  | LongTermMemory 和 StructuredMemory 重叠 |
-| 工具系统                | 17     | ~4,000 | 🟢 好  | 结构清晰，个别小问题                    |
-| 技能系统                | 2+18个 | ~400   | 🟢 好  | 结构合理                                |
-| 沙箱安全                | 5      | ~750   | 🟢 好  | 分层设计得当                            |
-| 线程管理                | 3      | ~530   | 🟢 好  | 职责清晰                                |
+| 模块                    | 文件数 | 总行数        | 健康度 | 核心问题                    |
+| ----------------------- | ------ | ------------- | ------ | --------------------------- |
+| AgentExecutor           | 1      | ~~1,244~~ 987 | 🟡 中  | 已拆分 3 组件，仍有优化空间 |
+| 质量闭环 (quality-loop) | 3+测试 | 1,960         | 🟡 中  | 保留，待后续封装            |
+| LLMService              | 1      | 125           | 🟢 好  | 已单例化                    |
+| SwarmRuntime            | 1      | 459           | 🟡 中  | 28% 代码是质量闭环          |
+| OrchestratorRuntime     | 1      | 384           | 🟡 中  | 36% 代码是质量闭环          |
+| SwarmCoordinator        | 1      | 768           | 🟢 好  | console.log 已替换          |
+| chat.ts (Gateway)       | 1      | 339           | 🟢 好  | 已简化                      |
+| Builder 体系            | 3      | 437           | 🟢 好  | BaseAgentBuilder 已提取     |
+| 工作空间                | 4      | 1,050         | 🟢 好  | 双空间架构已实现            |
+| 记忆系统                | 10+    | 2,000+        | 🟡 中  | 两模块用途不同，均未投产    |
+| 工具系统                | 17     | ~4,000        | 🟢 好  | 结构清晰                    |
+| 技能系统                | 2+18个 | ~400          | 🟢 好  | 结构合理                    |
+| 沙箱安全                | 5      | ~750          | 🟢 好  | 分层设计得当                |
+| 线程管理                | 3      | ~530          | 🟢 好  | 职责清晰                    |
 
 ---
 
 ## 二、优化项目清单
 
-### 🔴 P0 — 架构性问题（必须修复）
+### 🔴 P0 — 架构性问题
 
 #### P0-1: ~~删除程序化质量闭环~~ → 保留，后续封装
 
@@ -40,241 +41,187 @@
 
 #### P0-2: ~~删除 LLMService~~ → 单例化简化
 
-**状态：✅ 已完成（2026-02-28）**
+**状态：✅ 已完成（2026-02-22）**
 
-由于保留了质量闭环，LLMService 仍有存在价值。改为单例模式：
-
-- 新增 `getLLMService()` 全局单例函数，自动获取 agentExecutor
-- 消除到处 `new LLMService(agentExecutor)` 的冗余用法
+- 新增 `getLLMService()` 全局单例函数
 - SwarmCoordinator / SwarmRuntime / OrchestratorRuntime / cron-jobs 全部改用 `getLLMService()`
 
 ---
 
 #### P0-3: 拆分 AgentExecutor（God Class）
 
-**问题：** AgentExecutor 有 1,244 行、32 个方法、12+ 职责。包括：执行调度、Provider 配置、消息管线、会话状态、HITL 审批、指标统计、扩展 Hook、工作空间扩展加载、模型故障转移等。
+**状态：✅ 已完成（2026-02-28）**
 
-**方案：** 逐步拆分为 5 个聚焦组件：
+从 AgentExecutor 提取了 3 个独立组件：
 
-| 组件                      | 从 AgentExecutor 提取的方法                                                                             | 预计行数 |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- | -------- |
-| `SessionStatusManager`    | updateSessionStatus, updateCheckpoint, syncThreadRunStatus, parseSuspendReason, pendingApprovalSessions | ~200     |
-| `ChunkProcessor`          | consumeAndForward, recordChunkMetrics, fireChunkHooks, runExtensionHooks, runExtensionEndHooks          | ~150     |
-| `ProviderInjector`        | applyProviderConfig, applyThinkingLevel                                                                 | ~80      |
-| `ExecutionPreparer`       | prepareExecution（统一 stream/execute 的前置步骤：工作空间、扩展、eventWriter）                         | ~100     |
-| `AgentExecutor`（瘦身后） | piMono, openai, submit, stream, abort                                                                   | ~500     |
+| 组件                   | 文件                                          | 职责                                  |
+| ---------------------- | --------------------------------------------- | ------------------------------------- |
+| `ProviderInjector`     | `src/main/ai/provider/ProviderInjector.ts`    | API key / model / baseURL 注入        |
+| `SessionStatusManager` | `src/main/ai/runtime/SessionStatusManager.ts` | 会话活跃状态跟踪                      |
+| `ChunkProcessor`       | `src/main/ai/runtime/ChunkProcessor.ts`       | 流式块 metrics / hooks / suspend 解析 |
 
-**预计：AgentExecutor 从 1,244 行减至 ~500 行**
+AgentExecutor 从 1,244 行减至 987 行。对外 API 零改动，保持向后兼容。
 
 ---
 
 #### P0-4: 工作空间重构——用户空间 vs 系统空间
 
-**问题：**
+**状态：✅ 已完成（2026-02-28）**
 
-1. 当前工作空间结构面向系统设计，用户看到的都是 `sessions/`、`contexts/`、`events/` 等系统目录
-2. 两套会话存储路径：`~/.coobee-ai/sessions/`（SessionFileManager）和 `~/.coobee-ai/workspaces/`（ThreadStore），同一会话数据分散两处
-3. 用户的数据文件、技能包、产出物没有统一的可见空间
-4. 运行时激活的技能不在工作空间中可见、不可修改
-
-**方案：**
+新的双空间架构：
 
 ```
 workspaces/{threadId}/
+├── GOAL.md
 ├── user/                    ← 用户空间（前端默认展示）
-│   ├── data/                ←   用户输入文件、参考资料
-│   ├── output/              ←   Agent 产出
-│   ├── skills/              ←   软链接：当前激活的技能（可查看、可修改）
-│   └── knowledge/           ←   知识库文档
-│
-├── .runtime/                ← 系统空间（隐藏，用户不需关注）
+│   ├── data/                   用户输入文件
+│   ├── output/                 Agent 产出
+│   ├── skills/                 当前激活的技能
+│   └── knowledge/              知识库文档
+├── .runtime/                ← 系统空间（隐藏）
 │   ├── sessions/
 │   ├── contexts/
 │   ├── events/
 │   ├── logs/
-│   ├── tasks/
 │   └── checkpoint.json
-│
-└── GOAL.md
+└── tasks/                   多 Agent 任务目录
 ```
 
-需要修改：
-
-- `Env.ts` — 目录创建逻辑
-- `AgentEnvInjector.ts` — 系统提示词告知路径
-- `WorkspaceManager.ts` — 子 Agent 工作空间
-- `SessionFileManager.ts` — 统一到工作空间下
-- 前端目录树组件 — 默认打开 `user/` 目录
-- `SkillManager.ts` — 支持工作空间 `user/skills/` 软链接
-- `path-guard.ts` — 更新沙箱边界
+修改了 9 个文件：env.ts、AgentEnvInjector.ts、AgentEnv.ts、AgentEventWriter.ts、WorkspaceManager.ts、CheckpointManager.ts、ToolExecutionPipeline.ts、types.ts、ThreadView.vue。含旧工作空间惰性迁移。
 
 ---
 
-### 🟡 P1 — 重要优化（应该修复）
-
-#### P1-1: Builder 基类提取
+#### P0-5: 辩证质量验证
 
 **状态：✅ 已完成（2026-02-28）**
 
-- 创建 `BaseAgentBuilder` 抽象基类（188 行），包含所有共享字段和方法
-- PiMonoBuilder 从 350 行缩减至 179 行
-- OpenAIBuilder 从 212 行缩减至 70 行
-- 总代码量从 562 行降至 437 行，减少 ~125 行
+在执行协议的 Quality Assurance 部分新增 Dialectical Verification 章节：
+
+- 复杂任务通过 `delegate_to_agent` 委派子 Agent 做独立验证
+- 验证者拥有全新上下文，消除实现偏见
+- 多智能体模式下主 Agent 必须聚合验证子 Agent 结果
+
+---
+
+### 🟡 P1 — 重要优化
+
+#### P1-1: Builder 基类提取
+
+**状态：✅ 已完成（2026-02-22）**
+
+- BaseAgentBuilder 抽象基类 188 行
+- PiMonoBuilder 350→179 行，OpenAIBuilder 212→70 行
 
 ---
 
 #### P1-2: chat.ts 入口简化
 
-**状态：✅ 已完成（2026-02-28）**
+**状态：✅ 已完成（2026-02-22）**
 
-- 提取 `mergeTools()` 消除 builtin+Extension 工具合并重复
-- 提取 `filterToolsByMode()` 统一 chat/agent 模式工具过滤
-- 提取 `createMultiAgentRuntime()` 合并 orchestrator/swarm/discussion 模式创建逻辑
-- 精简 `loadSkillDefinitions` 冗余日志
-- 总行数从 415 行降至 339 行
+- 提取 `mergeTools()`、`filterToolsByMode()`、`createMultiAgentRuntime()`
+- 415→339 行
 
 ---
 
-#### P1-3: 统一日志——消灭 console.log
+#### P1-3: 统一日志
 
-**状态：✅ 已完成（2026-02-28）**
+**状态：✅ 已完成（2026-02-22）**
 
-替换了 15 个生产文件中的 console.log/error/warn 为 `createLogger()`：
-SwarmMonitor、RoleRegistry、LongTermMemoryStore、SessionAdapter、tokenCounter、ContextSnapshot、ChannelManager、ShortTermMemory、KnowledgeBase、SessionMemoryStore、SessionFileManager、FileSwarmContext、FileMessageBus、CompressionService、SessionService。
+替换 15 个生产文件中的 console.log 为 `createLogger()`。
 
 ---
 
 #### P1-4: 记忆系统整合
 
-**问题：** `LongTermMemoryStore`（302 行）和 `structured/storage.ts`（497 行）都在 SQLite 中存储长期记忆，功能重叠但互不关联。
+**状态：✅ 分析完成（2026-02-28）**
 
-**方案：**
+结论：`LongTermMemoryStore` 和 `StructuredMemoryStorage` 用途不同、数据模型不同，且均未在生产中使用。暂不合并。
 
-- 评估是否合并为单一长期记忆存储
-- 或明确分工：`LongTermMemoryStore` 负责关键词搜索，`StructuredMemory` 负责向量搜索
-- 统一 API，消除混淆
-
----
-
-#### P1-5: 消除动态导入 (await import)
-
-**状态：🟡 部分完成（2026-02-28）**
-
-- `files.ts` 已清理 6 处冗余的 `await import('@main/common/env')`，改为顶层导入
-- 其余动态导入（`AgentExecutor`、`ExtensionManager`、`windowManager` 等）属于合理的循环依赖规避或延迟加载，暂不修改
-
-**原问题：** `SwarmCoordinator`、`Planner`、`ThreadWaker`、`ToolExecutionPipeline` 使用 `await import('../AgentExecutor')` 规避循环依赖。这使测试困难、隐藏依赖关系。
-
-**方案：** 通过构造函数注入或工厂函数传入 `AgentExecutor` 引用，消除循环依赖。
+- `LongTermMemoryStore`：简单的关键词搜索 + 重要性评分（5 种类型）
+- `StructuredMemoryStorage`：MemU 模式的 Resource→Item→Category + 向量搜索（6 种类型）
+- 两者共享同一 SQLite 数据库但使用不同表
 
 ---
 
-### 🟢 P2 — 改进项（锦上添花）
+#### P1-5: 消除动态导入
 
-#### P2-1: 有界集合——防止内存泄漏
+**状态：🟡 部分完成（2026-02-22）**
 
-以下数据结构无限增长：
+- `files.ts` 清理了 6 处冗余 `await import`
+- 其余为合理的循环依赖规避，暂不修改
 
-- `SwarmContext.changeHistory` — 无上限
-- `HandoffRouter.history` — 跨任务累积
-- `MessageBus.messages` — 无 TTL 或最大数量
-- `SessionFileManagerFactory` — 无淘汰策略
+---
 
-**方案：** 添加 LRU / TTL / 最大条目限制。
+### 🟢 P2 — 改进项
+
+#### P2-1: 有界集合
+
+**状态：✅ 已完成（2026-02-28）**
+
+- SwarmContext.changeHistory: max 500
+- HandoffRouter.history: max 200
+- MessageBus.messages: max 1000
+- SessionFileManagerFactory: max 50 (LRU eviction)
 
 ---
 
 #### P2-2: FileMessageBus 封装修复
 
-**问题：** `FileMessageBus.restoreMessage` 使用 `(this as any)` 访问父类私有字段 `messages` 和 `messageCounter`。
+**状态：✅ 已完成（2026-02-28）**
 
-**方案：** 在 `MessageBus` 中添加 `protected restoreMessage()` 方法。
+- MessageBus 新增 `protected pushMessage/getMessageCounter/setMessageCounter`
+- FileMessageBus 移除所有 `(this as any)` 访问
 
 ---
 
 #### P2-3: OpenAIAgentRuntime 方法拆分
 
-**问题：** `generateStreamEvents` 约 200 行，包含大型 switch 语句。
+**状态：⏳ 待处理**
 
-**方案：** 拆分为 `handleRawModelEvent`、`handleRunItemEvent` 等小方法。
+`generateStreamEvents` 约 200 行，包含大型 switch 语句。
 
 ---
 
 #### P2-4: Cron 系统完善
 
-**问题：**
-
-- `AgentExecutor` 注入时机不明确
-- 执行历史查询 O(n) 无索引
-- `initializeCronSystem()` 未启动调度器
-
-**方案：** 在生命周期 Hook 中正确注入和启动。
+**状态：⏳ 待处理**
 
 ---
 
 #### P2-5: 清理死代码
 
-- `RoleRegistry.matchByCapabilities` — 无调用方
-- `FileSwarmContext.emitArtifactCreated` — 空方法
-- `MessageBus` 的 topic 订阅系统 — 未被使用
-- `HitlApprovalManager` 的批量审批 API — 已标记 deprecated
-- `ShortTermMemory.SummarizingSession` — 使用旧版 OpenAI 客户端，可能失效
+**状态：✅ 已完成（2026-02-28）**
+
+移除：
+
+- `RoleRegistry.matchByCapabilities`
+- `FileSwarmContext.emitArtifactCreated`
+- `MessageBus` 话题订阅系统
+- `HitlApprovalManager` 批量审批 API
+- `ShortTermMemory.SummarizingSession`
 
 ---
 
-## 三、实施优先级和排期建议
+## 三、完成统计
 
-```
-Phase 1 — 清理多余抽象（预计 1 天）
-├── P0-1: 删除程序化质量闭环
-├── P0-2: 删除 LLMService
-└── P1-3: 统一日志
+| 指标                     | 改动前         | 改动后           |
+| ------------------------ | -------------- | ---------------- |
+| AgentExecutor            | 1,244 行       | 987 行           |
+| Builder 重复代码         | ~100 行        | 0 行             |
+| console.log 残留         | 13+ 处         | 0 处             |
+| 无界数据结构             | 4 处           | 0 处             |
+| `(this as any)` 封装违规 | 1 处           | 0 处             |
+| 死代码                   | 5 处 ~1,000 行 | 已清理           |
+| 工作空间对用户透明度     | 低             | 高（双空间架构） |
+| 辩证质量验证             | 无             | 系统提示词引导   |
 
-Phase 2 — 工作空间重构（预计 1-2 天）
-└── P0-4: 用户空间 vs 系统空间
-
-Phase 3 — AgentExecutor 拆分（预计 1-2 天）
-├── P0-3: 拆分 God Class
-├── P1-1: Builder 基类提取
-└── P1-5: 消除动态导入
-
-Phase 4 — 入口简化 + 记忆整合（预计 1 天）
-├── P1-2: chat.ts 入口简化
-└── P1-4: 记忆系统整合
-
-Phase 5 — 细节改进（按需）
-├── P2-1: 有界集合
-├── P2-2: 封装修复
-├── P2-3: 方法拆分
-├── P2-4: Cron 完善
-└── P2-5: 清理死代码
-```
+**总计完成：11/15 项，4 项待处理（P1-5 部分、P2-3、P2-4 为低优先级）**
 
 ---
 
-## 四、预期收益
+## 四、后续方向
 
-| 指标                             | 当前                 | 优化后             |
-| -------------------------------- | -------------------- | ------------------ |
-| 质量闭环代码                     | ~1,960 行            | 0 行               |
-| LLMService                       | 88 行 + 大量 mock    | 0 行               |
-| AgentExecutor                    | 1,244 行             | ~500 行            |
-| SwarmRuntime 质量闭环占比        | 28%                  | 0%                 |
-| OrchestratorRuntime 质量闭环占比 | 36%                  | 0%                 |
-| Builder 重复代码                 | ~100 行              | 0 行               |
-| console.log 残留                 | 13+ 处               | 0 处               |
-| 工作空间对用户透明度             | 低                   | 高                 |
-| 技能包可见可改                   | 否                   | 是                 |
-| 新增运行模式成本                 | 高（需复制质量闭环） | 低（只需调度逻辑） |
-
----
-
-## 五、风险和注意事项
-
-1. **质量闭环删除后的质量保证** — 完全依赖技能包意味着 LLM 自行决定何时评估、何时修复。需要确保 `execution-protocol` 和 `self-reflection` 的提示词足够强，能引导 Agent 真正执行自评。可能需要在实际使用中迭代优化技能包内容。
-
-2. **AgentExecutor 拆分的兼容性** — 外部调用方（chat.ts、ThreadWaker、cron 等）通过 AgentExecutor 访问 submit/stream/abort。拆分内部实现时需保持这些公共 API 不变。
-
-3. **工作空间迁移** — 已有的工作空间目录需要迁移。建议：新创建的工作空间用新结构，已有的在首次访问时惰性迁移。
-
-4. **软链接安全** — `user/skills/` 中的技能软链接需要确保 `path-guard` 允许对链接目标的读写访问。
+1. **质量闭环封装**：将 Aggregator/Validator/Repairer 封装为可复用的 SDK 或工具
+2. **技能软链接**：在 `user/skills/` 中为激活的技能创建软链接，实现运行时可编辑
+3. **多智能体端到端质量测试**：实际运行 Swarm/Orchestrator 模式验证辩证质量验证效果
+4. **记忆系统投产**：选择一个记忆存储方案正式启用
