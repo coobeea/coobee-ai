@@ -28,11 +28,14 @@ vi.mock('@main/common/logger', () => ({
   }
 }));
 
+const mockSelfEvalChat = vi.fn().mockResolvedValue({ content: '{}' });
 vi.mock('@main/ai/provider/LLMService', () => {
   return {
     LLMService: class MockLLMService {
-      chat = vi.fn().mockResolvedValue({ content: '{}' });
-    }
+      chat = mockSelfEvalChat;
+    },
+    getLLMService: () => ({ chat: mockSelfEvalChat }),
+    resetLLMService: vi.fn()
   };
 });
 

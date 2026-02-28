@@ -15,8 +15,7 @@ import type Router from '@koa/router';
 import type { Context } from 'koa';
 import { createLogger } from '@main/common/logger';
 import { getCronJobStore, getCronScheduler, type CreateCronJobParams, type UpdateCronJobParams } from '@main/ai/cron';
-import { LLMService } from '@main/ai/provider/LLMService';
-import { agentExecutor } from '@main/ai/AgentExecutor';
+import { getLLMService } from '@main/ai/provider/LLMService';
 
 const log = createLogger('gateway-http-cron-jobs');
 
@@ -76,9 +75,7 @@ export function registerCronJobRoutes(router: Router): void {
         return;
       }
 
-      const llmService = new LLMService(agentExecutor);
-
-      const result = await llmService.chat({
+      const result = await getLLMService().chat({
         messages: [
           {
             role: 'system',

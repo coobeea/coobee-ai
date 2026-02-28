@@ -22,10 +22,13 @@ vi.mock('@main/common/logger', () => ({
   }
 }));
 
+const mockLLMChat = vi.fn().mockResolvedValue({ content: '{}' });
 vi.mock('@main/ai/provider/LLMService', () => ({
   LLMService: class MockLLMService {
-    chat = vi.fn().mockResolvedValue({ content: '{}' });
-  }
+    chat = mockLLMChat;
+  },
+  getLLMService: () => ({ chat: mockLLMChat }),
+  resetLLMService: vi.fn()
 }));
 
 // 跟踪 injectEnv 是否被调用

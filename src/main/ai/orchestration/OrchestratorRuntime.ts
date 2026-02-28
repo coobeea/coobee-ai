@@ -26,7 +26,7 @@ import type { Task, TaskExecutionResult } from './types';
 import { Aggregator } from '../quality-loop/Aggregator';
 import { Validator } from '../quality-loop/Validator';
 import { Repairer } from '../quality-loop/Repairer';
-import { LLMService } from '../provider/LLMService';
+import { getLLMService } from '../provider/LLMService';
 
 const log = createLogger('orchestration:runtime');
 
@@ -174,7 +174,7 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
 
         if (this._agentExecutor) {
           try {
-            const llmService = new LLMService(this._agentExecutor);
+            const llmService = getLLMService();
             const aggregator = new Aggregator(llmService);
             const validator = new Validator(llmService);
             const repairer = new Repairer(llmService);

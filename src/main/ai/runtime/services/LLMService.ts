@@ -64,6 +64,6 @@ export class LLMService {
 
     // SDK Agent 不支持动态更新模型，需要重建
     // 这里只是一个占位，实际需要调用方重新调用 createAgent
-    console.warn('[LLMService] SDK Agent 不支持动态更新模型，需要重新创建');
+    // SDK Agent 不支持动态更新模型，需要调用方重新创建
   }
 }

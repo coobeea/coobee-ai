@@ -12,34 +12,30 @@ vi.mock('@main/common/logger', () => {
   return { log: mockLog, default: mockLog, createLogger: vi.fn(() => mockLog) };
 });
 
+const mockChat = vi.fn();
 vi.mock('@main/ai/provider/LLMService', () => ({
   LLMService: class MockLLMService {
-    async chat(opts: {
-      messages: { role: string; content: string }[];
-    }): Promise<{ content: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
-      const userMsg = opts.messages.find((m) => m.role === 'user')?.content || '';
-      if (userMsg.includes('每天早上9点')) {
-        return {
-          content: JSON.stringify({
-            name: '每日进度汇总',
-            description: '每天早上自动汇总项目进度',
-            cronExpression: '0 9 * * *',
-            task: '请汇总今天的项目进度',
-            cronHumanReadable: '每天上午 9:00'
-          }),
-          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
-        };
-      }
-      throw new Error('Unexpected input');
-    }
-  }
+    chat = mockChat;
+  },
+  getLLMService: () => ({ chat: mockChat }),
+  resetLLMService: vi.fn()
 }));
 
 describe('cron-jobs/parse API 逻辑', () => {
-  it('LLMService mock 应返回正确的解析结果', async () => {
-    const { LLMService } = await import('@main/ai/provider/LLMService');
-    const service = new LLMService({} as never);
-    const result = await service.chat({
+  it('getLLMService mock 应返回正确的解析结果', async () => {
+    mockChat.mockResolvedValueOnce({
+      content: JSON.stringify({
+        name: '每日进度汇总',
+        description: '每天早上自动汇总项目进度',
+        cronExpression: '0 9 * * *',
+        task: '请汇总今天的项目进度',
+        cronHumanReadable: '每天上午 9:00'
+      }),
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+    });
+
+    const { getLLMService } = await import('@main/ai/provider/LLMService');
+    const result = await getLLMService().chat({
       messages: [
         { role: 'system', content: 'test' },
         { role: 'user', content: '每天早上9点汇总进度' }

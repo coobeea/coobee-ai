@@ -10,13 +10,14 @@ import type { SwarmConfig, AgentRole } from '../types';
 import { SwarmContext } from '../SwarmContext';
 import { MessageBus } from '../MessageBus';
 
-vi.mock('@main/ai/provider/LLMService', () => {
-  return {
-    LLMService: class MockLLMService {
-      chat = vi.fn().mockResolvedValue({ content: '{}' });
-    }
-  };
-});
+const mockChat = vi.fn().mockResolvedValue({ content: '{}' });
+vi.mock('@main/ai/provider/LLMService', () => ({
+  LLMService: class MockLLMService {
+    chat = mockChat;
+  },
+  getLLMService: () => ({ chat: mockChat }),
+  resetLLMService: vi.fn()
+}));
 
 describe('Swarm 质量闭环集成测试', () => {
   let coordinator: SwarmCoordinator;

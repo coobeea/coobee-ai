@@ -29,7 +29,8 @@ import { RoleRegistry } from './roles';
 import { Aggregator } from '../quality-loop/Aggregator';
 import { Validator, type ValidationInput } from '../quality-loop/Validator';
 import { Repairer, type RepairInput } from '../quality-loop/Repairer';
-import { LLMService } from '../provider/LLMService';
+import type { LLMService } from '../provider/LLMService';
+import { getLLMService } from '../provider/LLMService';
 import { injectEnv } from '../AgentEnvInjector';
 
 const log = createLogger('swarm:coordinator');
@@ -131,7 +132,7 @@ export class SwarmCoordinator {
     this.roleRegistry = new RoleRegistry();
 
     if (config.qualityLoop?.enabled && config.agentExecutor) {
-      this.llmService = new LLMService(config.agentExecutor);
+      this.llmService = getLLMService();
       this.aggregator = new Aggregator(this.llmService);
       this.validator = new Validator(this.llmService);
       this.repairer = new Repairer(this.llmService);
@@ -871,7 +872,7 @@ ${contextSection}
           });
         }
       } catch (error) {
-        console.error('[SwarmCoordinator] Failed to record to knowledge base:', error);
+        log.error('Failed to record to knowledge base:', error);
       }
     });
   }

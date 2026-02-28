@@ -20,7 +20,7 @@ import type { AgentRuntimeOptions, ExecutionConfig, ExecutionResult, StreamChunk
 import { Aggregator } from '../quality-loop/Aggregator';
 import { Validator } from '../quality-loop/Validator';
 import { Repairer } from '../quality-loop/Repairer';
-import { LLMService } from '../provider/LLMService';
+import { getLLMService } from '../provider/LLMService';
 
 const log = createLogger('swarm:runtime');
 
@@ -295,7 +295,7 @@ export class SwarmRuntime extends AbstractAgentRuntime {
       const maxRepairRounds = 3;
 
       const agentExec = this.swarmConfig.agentExecutor;
-      const llmService = agentExec ? new LLMService(agentExec) : null;
+      const llmService = agentExec ? getLLMService() : null;
       const aggregator = llmService ? new Aggregator(llmService) : null;
       const validator = llmService ? new Validator(llmService) : null;
       const repairer = llmService ? new Repairer(llmService) : null;
