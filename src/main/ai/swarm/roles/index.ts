@@ -4,8 +4,11 @@
  * 管理所有可用的 Agent 角色（内置 + 自定义）
  */
 
+import { createLogger } from '@main/common/logger';
 import type { AgentRole, RoleRegistryEntry } from '../types';
 import { builtinRoles } from './builtin';
+
+const log = createLogger('swarm:roles');
 
 export { builtinRoles, builtinRoleMap } from './builtin';
 export { coderRole, researcherRole, reviewerRole, writerRole, analystRole } from './builtin';
@@ -52,7 +55,7 @@ export class RoleRegistry {
       registeredAt: Date.now()
     });
 
-    console.log(`[RoleRegistry] Registered custom role: ${role.id}`);
+    log.info(`Registered custom role: ${role.id}`);
   }
 
   /**
@@ -80,7 +83,7 @@ export class RoleRegistry {
     }
 
     this.registry.delete(roleId);
-    console.log(`[RoleRegistry] Unregistered custom role: ${roleId}`);
+    log.info(`Unregistered custom role: ${roleId}`);
     return true;
   }
 

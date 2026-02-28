@@ -17,29 +17,10 @@
 
 import fs from 'fs';
 import path from 'path';
+import { createLogger } from '@main/common/logger';
 import type { AgentRuntimeOptions, ExecutionResult } from './types';
 
-// ==================== Logger ====================
-
-interface SnapshotLogger {
-  info(message: string, ...args: unknown[]): void;
-  warn(message: string, ...args: unknown[]): void;
-}
-
-const createSnapshotLogger = (): SnapshotLogger => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createLogger } = require('@main/common/logger');
-    return createLogger('context-snapshot') as SnapshotLogger;
-  } catch {
-    return {
-      info: (msg: string, ...args: unknown[]) => console.log(`[ContextSnapshot] ${msg}`, ...args),
-      warn: (msg: string, ...args: unknown[]) => console.warn(`[ContextSnapshot] ${msg}`, ...args)
-    };
-  }
-};
-
-const log = createSnapshotLogger();
+const log = createLogger('runtime:context-snapshot');
 
 // ==================== 类型定义 ====================
 

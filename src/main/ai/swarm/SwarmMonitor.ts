@@ -8,8 +8,11 @@
  * - 角色使用分析
  */
 
+import { createLogger } from '@main/common/logger';
 import type { SwarmMetrics } from './types';
 import { createInitialSwarmMetrics } from './types';
+
+const log = createLogger('swarm:monitor');
 
 /**
  * 执行记录
@@ -97,7 +100,7 @@ export class SwarmMonitor {
     };
 
     this.metrics.totalExecutions++;
-    console.log(`[SwarmMonitor] Execution started: ${taskId}`);
+    log.info(`Execution started: ${taskId}`);
   }
 
   /**
@@ -156,8 +159,8 @@ export class SwarmMonitor {
     // 记录到历史
     this.executionRecords.push({ ...this.currentExecution });
 
-    console.log(
-      `[SwarmMonitor] Execution completed: ${this.currentExecution.taskId}`,
+    log.info(
+      `Execution completed: ${this.currentExecution.taskId}`,
       `(success: ${success}, duration: ${this.currentExecution.duration}ms,`,
       `handoffs: ${this.currentExecution.handoffCount})`
     );
@@ -273,13 +276,13 @@ export class SwarmMonitor {
     this.alerts.push(alert);
 
     const prefix = alert.severity === 'error' ? 'ERROR' : 'WARN';
-    console.log(`[SwarmMonitor] [${prefix}] ${alert.message}`);
+    log.info(`[${prefix}] ${alert.message}`);
 
     for (const listener of this.alertListeners) {
       try {
         listener(alert);
       } catch (error) {
-        console.error('[SwarmMonitor] Alert listener error:', error);
+        log.error('Alert listener error:', error);
       }
     }
   }

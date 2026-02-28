@@ -13,8 +13,11 @@
  */
 
 import type { Session, AgentInputItem } from '@openai/agents';
+import { createLogger } from '@main/common/logger';
 import type { SessionMemoryStore } from './SessionMemoryStore';
 import type { Message } from './types';
+
+const log = createLogger('memory:session-adapter');
 
 /**
  * 将项目 Message 转换为 SDK AgentInputItem
@@ -126,7 +129,7 @@ export class SessionAdapter implements Session {
   async popItem(): Promise<AgentInputItem | undefined> {
     // SessionMemoryStore 目前不支持 pop 操作
     // 返回 undefined 表示无法弹出
-    console.warn('[SessionAdapter] popItem not fully supported, returning undefined');
+    log.warn('popItem not fully supported, returning undefined');
     return undefined;
   }
 

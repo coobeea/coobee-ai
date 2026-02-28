@@ -7,6 +7,9 @@
 
 import { estimateTokenCount, isWithinTokenLimit } from 'tokenx';
 import type { AgentInputItem } from '@openai/agents';
+import { createLogger } from '@main/common/logger';
+
+const log = createLogger('runtime:token-counter');
 
 /**
  * 估算文本的 token 数量
@@ -20,7 +23,7 @@ export function countTokens(text: string | null | undefined): number {
   try {
     return estimateTokenCount(text);
   } catch (error) {
-    console.error('[TokenCounter] 计算失败，降级到简单估算:', error);
+    log.error('计算失败，降级到简单估算:', error);
     return estimateFallback(text);
   }
 }
@@ -40,7 +43,7 @@ export function countItemTokens(item: AgentInputItem): number {
     const text = JSON.stringify(item);
     return countTokens(text);
   } catch (error) {
-    console.error('[TokenCounter] Item 序列化失败:', error);
+    log.error('Item 序列化失败:', error);
     return 0;
   }
 }

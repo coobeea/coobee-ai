@@ -1,5 +1,8 @@
+import { createLogger } from '@main/common/logger';
 import type { ChannelConfig, ExtensionLogger } from '../common/extension/types';
 import type { ManagedChannel, ChannelStatus } from './types';
+
+const log = createLogger('channels') as ExtensionLogger;
 
 /**
  * 通道管理器
@@ -10,15 +13,10 @@ import type { ManagedChannel, ChannelStatus } from './types';
 export class ChannelManager {
   private static instance: ChannelManager;
   private channels: Map<string, ManagedChannel> = new Map();
-  private logger: ExtensionLogger;
+  private logger: ExtensionLogger = log;
 
   private constructor() {
-    this.logger = {
-      info: (msg, ...args) => console.log(`[ChannelManager] ${msg}`, ...args),
-      warn: (msg, ...args) => console.warn(`[ChannelManager] ${msg}`, ...args),
-      error: (msg, ...args) => console.error(`[ChannelManager] ${msg}`, ...args),
-      debug: (msg, ...args) => console.debug(`[ChannelManager] ${msg}`, ...args)
-    };
+    // Singleton - use getInstance()
   }
 
   public static getInstance(): ChannelManager {

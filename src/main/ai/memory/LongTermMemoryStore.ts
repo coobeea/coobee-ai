@@ -6,8 +6,11 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import type { SQLiteConnection } from '@main/common/database';
+import { createLogger } from '@main/common/logger';
 import { generateSnowflakeId } from '@main/utils';
 import type { LongTermMemoryEntry, LongTermMemoryType, MemoryQuery } from './types';
+
+const log = createLogger('memory:longterm');
 
 /**
  * 长期记忆存储
@@ -27,7 +30,7 @@ export class LongTermMemoryStore {
 
     await this.createSchema();
     this.initialized = true;
-    console.log('[LongTermMemoryStore] Initialized');
+    log.info('Initialized');
   }
 
   /**
@@ -39,7 +42,7 @@ export class LongTermMemoryStore {
       const schema = await readFile(schemaPath, 'utf-8');
       await this.db.execute(schema);
     } catch (_error) {
-      console.warn('[LongTermMemoryStore] Schema file not found, creating inline');
+      log.warn('Schema file not found, creating inline');
       await this.db.execute(`
         CREATE TABLE IF NOT EXISTS long_term_memory (
           id TEXT PRIMARY KEY,
@@ -102,7 +105,7 @@ export class LongTermMemoryStore {
       ]
     );
 
-    console.log(`[LongTermMemoryStore] Saved memory: ${id}`);
+    log.info(`Saved memory: ${id}`);
     return id;
   }
 
@@ -227,7 +230,7 @@ export class LongTermMemoryStore {
       [cutoffTime]
     );
 
-    console.log(`[LongTermMemoryStore] Cleaned up ${deletedCount} old memories`);
+    log.info(`Cleaned up ${deletedCount} old memories`);
 
     return deletedCount;
   }
