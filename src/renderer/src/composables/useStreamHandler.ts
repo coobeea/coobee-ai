@@ -51,7 +51,8 @@ export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'thinking'; text: string }
   | { type: 'tool'; tool: ToolCallInfo }
-  | { type: 'delegate'; delegate: DelegateInfo };
+  | { type: 'delegate'; delegate: DelegateInfo }
+  | { type: 'quality'; status: string; detail?: string };
 
 export type MessageStatus = 'sending' | 'streaming' | 'done' | 'error' | 'interrupted';
 
@@ -361,6 +362,26 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
               break;
             }
           }
+        }
+        break;
+      }
+
+      case 'quality:round_start':
+      case 'quality:validating':
+      case 'quality:score':
+      case 'quality:repairing':
+      case 'quality:done': {
+        if (!assistantMsg) assistantMsg = createAssistantMessage();
+        const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1];
+        if (lastBlock && lastBlock.type === 'quality') {
+          lastBlock.status = msg.content;
+          lastBlock.detail = msg.data ? JSON.stringify(msg.data) : undefined;
+        } else {
+          assistantMsg.blocks.push({
+            type: 'quality',
+            status: msg.content,
+            detail: msg.data ? JSON.stringify(msg.data) : undefined
+          });
         }
         break;
       }

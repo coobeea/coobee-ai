@@ -100,6 +100,8 @@ function getAgentTypeLabel(type?: AgentType): string | null {
       return '编排';
     case 'swarm':
       return '蜂群';
+    case 'quality-loop':
+      return '质量循环';
     default:
       return null;
   }

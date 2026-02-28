@@ -6,6 +6,7 @@ import BlockText from '../blocks/BlockText.vue';
 import BlockThinking from '../blocks/BlockThinking.vue';
 import BlockTool from '../blocks/BlockTool.vue';
 import BlockDelegate from '../blocks/BlockDelegate.vue';
+import BlockQuality from '../blocks/BlockQuality.vue';
 import HitlApprovalCard from '../HitlApprovalCard.vue';
 
 defineProps<{
@@ -36,6 +37,7 @@ const emit = defineEmits<{
           <BlockThinking v-else-if="block.type === 'thinking'" :block="block" />
           <BlockTool v-else-if="block.type === 'tool'" :block="block" />
           <BlockDelegate v-else-if="block.type === 'delegate'" :block="block" />
+          <BlockQuality v-else-if="block.type === 'quality'" :block="block" />
         </template>
       </template>
 
