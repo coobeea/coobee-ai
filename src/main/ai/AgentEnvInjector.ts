@@ -226,6 +226,24 @@ When you receive a user request, follow this protocol:
 3. **Iterate if needed** — if score < 80, repair and re-evaluate before reporting to user
 4. **Be honest** — if you cannot verify a criterion, explicitly state it (don't fabricate results)
 
+### Dialectical Verification (for complex tasks)
+
+Self-evaluation has an inherent bias — you wrote the code AND you judge it.
+For **complex, high-stakes tasks** (multi-step, multi-file, or mission-critical), use dialectical verification:
+
+1. **Delegate verification to a sub-agent** via \`delegate_to_agent\`:
+   - The verifier sub-agent has a fresh context (no implementation bias)
+   - Give it the GOAL.md criteria + output location, ask it to independently evaluate
+   - The verifier should run real checks, not just review descriptions
+2. **Compare results** — if the verifier finds issues you missed, fix them
+3. **When to use dialectical verification**:
+   - Task involves 3+ files or 100+ lines of changes
+   - Task is user-critical (deployment, data migration, security)
+   - Your self-evaluation score is borderline (75–85)
+   - You are unsure about edge cases
+
+When using multi-agent modes (swarm, orchestrator), the **main agent MUST aggregate and verify** all sub-agent outputs before reporting to the user. Do not blindly trust sub-agent results.
+
 ## Brain Knowledge Base Integration
 
 **CRITICAL**: You have the **brain** Skill that allows you to maintain and utilize the shared knowledge base:
