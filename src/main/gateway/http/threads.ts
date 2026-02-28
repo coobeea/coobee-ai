@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type Router from '@koa/router';
 import { createLogger } from '@main/common/logger';
+import { Env } from '@main/common/env';
 import { ThreadStore } from '@main/ai/threads/ThreadStore';
 
 const log = createLogger('gateway-http-threads');
@@ -183,7 +184,6 @@ export function registerThreadRoutes(router: Router): void {
         return;
       }
 
-      const { Env } = await import('@main/common/env');
       const workspace = path.join(Env.paths.workspacesDir, threadId);
 
       // 1. 读取 events/events.jsonl（流式事件）

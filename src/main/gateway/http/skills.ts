@@ -20,6 +20,7 @@ import fs from 'fs';
 import path from 'path';
 import type Router from '@koa/router';
 import { createLogger } from '@main/common/logger';
+import { Env } from '@main/common/env';
 import { SkillManager } from '@main/ai/skills';
 import { aiCreateSkill } from '@main/ai/services/SkillCreatorService';
 
@@ -33,18 +34,11 @@ interface SkillSummary {
   filePath?: string;
 }
 
-/** 获取 Env（延迟导入，避免循环依赖） */
-async function getEnv(): Promise<typeof import('@main/common/env').Env> {
-  const { Env } = await import('@main/common/env');
-  return Env;
-}
-
 export function registerSkillRoutes(router: Router): void {
   // ==================== LIST ====================
 
   router.get('/skills', async (ctx) => {
     try {
-      const Env = await getEnv();
       const searchPaths = await Env.getSkillSearchPaths();
 
       const manager = new SkillManager();
@@ -90,7 +84,6 @@ export function registerSkillRoutes(router: Router): void {
         return;
       }
 
-      const Env = await getEnv();
       const userSkillsDir = Env.paths.userSkillsDir;
 
       // 确保用户技能目录存在
@@ -199,7 +192,6 @@ export function registerSkillRoutes(router: Router): void {
     };
 
     try {
-      const Env = await getEnv();
       const userSkillsDir = Env.paths.userSkillsDir;
 
       // 确保用户技能目录存在
@@ -237,7 +229,6 @@ export function registerSkillRoutes(router: Router): void {
         return;
       }
 
-      const Env = await getEnv();
       const userSkillsDir = Env.paths.userSkillsDir;
 
       // 先扫描获取完整信息

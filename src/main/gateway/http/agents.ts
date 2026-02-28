@@ -16,6 +16,7 @@
  *   - 错误统一返回 { error: string } + 对应 HTTP 状态码
  */
 
+import { PassThrough } from 'stream';
 import type Router from '@koa/router';
 import { createLogger } from '@main/common/logger';
 import { AgentStore } from '@main/ai/agents/AgentStore';
@@ -173,7 +174,6 @@ export function registerAgentRoutes(router: Router): void {
     ctx.set('Connection', 'keep-alive');
     ctx.set('X-Accel-Buffering', 'no');
 
-    const { PassThrough } = await import('stream');
     const stream = new PassThrough();
     ctx.body = stream;
     ctx.status = 200;
@@ -350,7 +350,6 @@ export function registerAgentRoutes(router: Router): void {
     ctx.set('Connection', 'keep-alive');
     ctx.set('X-Accel-Buffering', 'no');
 
-    const { PassThrough } = await import('stream');
     const stream = new PassThrough();
     ctx.body = stream;
     ctx.status = 200;

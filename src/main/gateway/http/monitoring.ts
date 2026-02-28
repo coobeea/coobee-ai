@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Context } from 'koa';
 import type Router from '@koa/router';
+import { Env } from '@main/common/env';
 import { getMetricsCollector } from '@main/metrics/MetricsCollector';
 
 /**
@@ -106,7 +107,6 @@ export function registerMonitoringRoutes(router: Router): void {
   // GET /monitoring/memory-files - 列出记忆文件（全局 + 工作空间）
   router.get('/monitoring/memory-files', async (ctx: Context) => {
     try {
-      const { Env } = await import('@main/common/env');
       const files: Array<{ name: string; path: string; size: number; mtime: string; scope: string }> = [];
 
       // 全局记忆目录
@@ -156,7 +156,6 @@ export function registerMonitoringRoutes(router: Router): void {
       }
 
       // 安全检查：只允许读取 .home 下的记忆文件
-      const { Env } = await import('@main/common/env');
       const resolved = path.resolve(filePath);
       if (!resolved.startsWith(Env.paths.userHome)) {
         ctx.status = 403;
