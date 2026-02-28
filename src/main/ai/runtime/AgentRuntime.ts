@@ -32,7 +32,7 @@ export interface AgentRuntime {
   // ========== 身份 ==========
 
   /** 运行时类型 */
-  readonly type: 'agent' | 'orchestrator' | 'swarm';
+  readonly type: 'agent' | 'orchestrator' | 'swarm' | 'quality-loop';
   /** 运行时 ID */
   readonly id: string;
   /** 名称 */

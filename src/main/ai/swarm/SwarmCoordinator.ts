@@ -26,11 +26,6 @@ import { KnowledgeBase } from './KnowledgeBase';
 import { ConcurrencyManager, type SwarmSubTask } from './ConcurrencyManager';
 import { createSwarmTools } from './tools';
 import { RoleRegistry } from './roles';
-import { Aggregator } from '../quality-loop/Aggregator';
-import { Validator, type ValidationInput } from '../quality-loop/Validator';
-import { Repairer, type RepairInput } from '../quality-loop/Repairer';
-import type { LLMService } from '../provider/LLMService';
-import { getLLMService } from '../provider/LLMService';
 import { injectEnv } from '../AgentEnvInjector';
 
 const log = createLogger('swarm:coordinator');
@@ -66,7 +61,7 @@ export interface CoordinationResult {
   rolesUsed: string[];
   handoffCount: number;
   duration: number;
-  /** 每个角色的独立输出（用于 Aggregator 汇总） */
+  /** 每个角色的独立输出 */
   roleOutputs?: RoleOutput[];
 }
 
@@ -112,10 +107,6 @@ export class SwarmCoordinator {
   readonly concurrency: ConcurrencyManager;
   readonly roleRegistry: RoleRegistry;
   readonly knowledgeBase?: KnowledgeBase; // 🆕 共享知识库
-  private aggregator?: Aggregator;
-  private validator?: Validator;
-  private repairer?: Repairer;
-  private llmService?: LLMService;
 
   private state: SwarmState = createInitialSwarmState();
   private onEvent: SwarmEventCallback | null = null;
@@ -130,16 +121,6 @@ export class SwarmCoordinator {
     this.knowledgeBase = config.knowledgeBase; // 🆕 可选的知识库
     this.concurrency = new ConcurrencyManager(config);
     this.roleRegistry = new RoleRegistry();
-
-    if (config.qualityLoop?.enabled && config.agentExecutor) {
-      this.llmService = getLLMService();
-      this.aggregator = new Aggregator(this.llmService);
-      this.validator = new Validator(this.llmService);
-      this.repairer = new Repairer(this.llmService);
-      log.info('[SwarmCoordinator] 质量闭环已启用');
-    } else if (config.qualityLoop?.enabled) {
-      log.warn('[SwarmCoordinator] 质量闭环已启用但缺少 agentExecutor，跳过初始化');
-    }
 
     this.setupMonitoringBridge();
     this.setupKnowledgeBaseRecording(); // 🆕 设置知识库自动记录
@@ -292,19 +273,13 @@ export class SwarmCoordinator {
       const routerStats = this.router.getStats();
       const rolesUsed = this.router.getCurrentChain();
 
-      // 🆕 质量闭环
-      let improvedOutput = finalOutput;
-      if (this.config.qualityLoop?.enabled && this.aggregator && this.validator && this.repairer) {
-        improvedOutput = await this.runQualityLoop(task, finalOutput, rolesUsed);
-      }
-
       this.emit({
         type: 'complete',
-        data: { output: improvedOutput, handoffCount: routerStats.totalHandoffs, rolesUsed }
+        data: { output: finalOutput, handoffCount: routerStats.totalHandoffs, rolesUsed }
       });
 
       return {
-        output: improvedOutput,
+        output: finalOutput,
         state: { ...this.state },
         rolesUsed,
         handoffCount: routerStats.totalHandoffs,
@@ -884,117 +859,6 @@ ${contextSection}
     const importantKeywords = ['decision', 'result', 'conclusion', 'final', 'status', 'outcome'];
     const lowerKey = key.toLowerCase();
     return importantKeywords.some((keyword) => lowerKey.includes(keyword));
-  }
-
-  // ========== 质量闭环 ==========
-
-  /**
-   * 运行质量闭环：汇总 → 验证 → 修复（迭代）
-   */
-  private async runQualityLoop(task: SwarmTask, output: string, _rolesUsed: string[]): Promise<string> {
-    if (!this.aggregator || !this.validator || !this.repairer) {
-      return output;
-    }
-
-    const maxIterations = this.config.qualityLoop?.maxIterations || 3;
-    const passThreshold = this.config.qualityLoop?.passThreshold || 70;
-
-    log.info('[SwarmCoordinator] 启动质量闭环，最大迭代次数:', maxIterations);
-
-    let currentOutput = output;
-    let iteration = 0;
-
-    while (iteration < maxIterations) {
-      iteration++;
-      log.info(`[SwarmCoordinator] 质量闭环 - 迭代 ${iteration}/${maxIterations}`);
-
-      // Step 1: 验证
-      const validationInput: ValidationInput = {
-        userRequest: task.input,
-        output: currentOutput,
-        acceptanceCriteria: this.config.qualityLoop?.acceptanceCriteria
-      };
-
-      const validationResult = await this.validator.validate(validationInput);
-      log.info(
-        `[SwarmCoordinator] 验证完成: 得分 ${validationResult.overallScore}/100, 通过: ${validationResult.passed}`
-      );
-
-      // Step 2: 检查是否通过
-      if (validationResult.overallScore >= passThreshold) {
-        log.info('[SwarmCoordinator] 输出质量达标，质量闭环结束');
-        return currentOutput;
-      }
-
-      // Step 3: 生成修复计划
-      const repairInput: RepairInput = {
-        userRequest: task.input,
-        currentOutput,
-        validationResult,
-        repairRound: iteration
-      };
-
-      const repairPlan = await this.repairer.generateRepairPlan(repairInput);
-      log.info(`[SwarmCoordinator] 修复策略: ${repairPlan.strategy}, 建议修复: ${repairPlan.shouldRepair}`);
-
-      // Step 4: 根据策略执行修复
-      if (!repairPlan.shouldRepair || repairPlan.strategy === 'abort') {
-        log.warn('[SwarmCoordinator] 质量闭环中止，返回当前输出');
-        return currentOutput;
-      }
-
-      if (repairPlan.strategy === 'replan') {
-        log.warn('[SwarmCoordinator] 建议重新规划任务，但当前不支持，返回原输出');
-        return currentOutput;
-      }
-
-      // Step 5: 执行修复（重新生成或修补）
-      try {
-        currentOutput = await this.applyRepair(currentOutput, repairPlan.repairInstructions, task);
-        log.info('[SwarmCoordinator] 修复完成，进入下一轮验证');
-      } catch (error) {
-        log.error('[SwarmCoordinator] 修复失败:', error);
-        return currentOutput;
-      }
-    }
-
-    log.warn('[SwarmCoordinator] 达到最大迭代次数，返回当前输出');
-    return currentOutput;
-  }
-
-  /**
-   * 应用修复（调用 LLM 优化输出）
-   */
-  private async applyRepair(currentOutput: string, repairInstructions: string, task: SwarmTask): Promise<string> {
-    if (!this.llmService) {
-      throw new Error('LLMService not initialized — agentExecutor missing from config');
-    }
-
-    const prompt = `你是一个输出优化专家。请根据修复指令改进以下输出。
-
-## 用户原始请求
-
-${task.input}
-
-## 当前输出
-
-${currentOutput}
-
-## 修复指令
-
-${repairInstructions}
-
-## 你的任务
-
-请改进输出，使其符合修复指令的要求。直接输出改进后的内容，不要添加额外说明。`;
-
-    const response = await this.llmService.chat({
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
-      maxTokens: 4000
-    });
-
-    return response.content.trim();
   }
 
   // ========== 生命周期 ==========

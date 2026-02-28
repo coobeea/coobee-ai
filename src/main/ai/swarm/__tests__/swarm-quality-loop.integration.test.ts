@@ -1,40 +1,31 @@
 /**
- * Swarm 质量闭环集成测试
+ * Swarm 质量闭环配置测试
  *
- * 验证质量闭环（Aggregator → Validator → Repairer）是否正确集成到 SwarmCoordinator
+ * 验证 SwarmCoordinator 接受 qualityLoop 配置但不执行嵌入式质量闭环。
+ * 质量闭环已迁移至 QualityLoopRuntime 独立运行模式。
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { SwarmCoordinator } from '../SwarmCoordinator';
 import type { SwarmConfig, AgentRole } from '../types';
 import { SwarmContext } from '../SwarmContext';
 import { MessageBus } from '../MessageBus';
 
-const mockChat = vi.fn().mockResolvedValue({ content: '{}' });
-vi.mock('@main/ai/provider/LLMService', () => ({
-  LLMService: class MockLLMService {
-    chat = mockChat;
-  },
-  getLLMService: () => ({ chat: mockChat }),
-  resetLLMService: vi.fn()
-}));
-
-describe('Swarm 质量闭环集成测试', () => {
-  let coordinator: SwarmCoordinator;
+describe('Swarm 质量闭环配置测试', () => {
   let config: SwarmConfig;
 
   const mockAgentExecutor = {
     piMono: () => ({
       lightweight: () => ({
-        mode: () => ({ name: () => ({ sessionMode: () => ({ maxTurns: () => ({ instructions: vi.fn() }) }) }) })
+        mode: () => ({ name: () => ({ sessionMode: () => ({ maxTurns: () => ({ instructions: () => ({}) }) }) }) })
       }),
-      mode: vi.fn().mockReturnThis(),
-      name: vi.fn().mockReturnThis(),
-      sessionMode: vi.fn().mockReturnThis(),
-      maxTurns: vi.fn().mockReturnThis(),
-      instructions: vi.fn().mockReturnThis()
+      mode: () => ({}),
+      name: () => ({}),
+      sessionMode: () => ({}),
+      maxTurns: () => ({}),
+      instructions: () => ({})
     }),
-    stream: vi.fn()
+    stream: () => {}
   };
 
   beforeEach(() => {
@@ -67,38 +58,23 @@ describe('Swarm 质量闭环集成测试', () => {
         ]
       }
     };
-
-    coordinator = new SwarmCoordinator(config);
   });
 
-  it('应该在构造函数中初始化质量闭环组件', () => {
+  it('应接受 qualityLoop 配置且不初始化嵌入式质量闭环组件', () => {
+    const coordinator = new SwarmCoordinator(config);
+
+    // SwarmCoordinator 不再有 aggregator/validator/repairer（已迁移至 QualityLoopRuntime）
     // @ts-expect-error - 访问私有属性进行测试
-    expect(coordinator.aggregator).toBeDefined();
+    expect(coordinator.aggregator).toBeUndefined();
     // @ts-expect-error - 访问私有属性进行测试
-    expect(coordinator.validator).toBeDefined();
+    expect(coordinator.validator).toBeUndefined();
     // @ts-expect-error - 访问私有属性进行测试
-    expect(coordinator.repairer).toBeDefined();
+    expect(coordinator.repairer).toBeUndefined();
   });
 
-  it('质量闭环禁用时不应初始化组件', () => {
-    const configDisabled: SwarmConfig = {
-      ...config,
-      qualityLoop: {
-        enabled: false
-      }
-    };
+  it('应能访问 qualityLoop 配置（外部传入的 config 仍被保留）', () => {
+    const coordinator = new SwarmCoordinator(config);
 
-    const coordDisabled = new SwarmCoordinator(configDisabled);
-
-    // @ts-expect-error - 访问私有属性进行测试
-    expect(coordDisabled.aggregator).toBeUndefined();
-    // @ts-expect-error - 访问私有属性进行测试
-    expect(coordDisabled.validator).toBeUndefined();
-    // @ts-expect-error - 访问私有属性进行测试
-    expect(coordDisabled.repairer).toBeUndefined();
-  });
-
-  it('应该能访问质量闭环配置', () => {
     // @ts-expect-error - 访问私有属性进行测试
     const qualityConfig = coordinator.config.qualityLoop;
 
@@ -121,11 +97,12 @@ describe('Swarm 质量闭环集成测试', () => {
 
     const defaultCoord = new SwarmCoordinator(defaultConfig);
 
+    // 无嵌入式质量闭环
     // @ts-expect-error - 访问私有属性进行测试
     expect(defaultCoord.aggregator).toBeUndefined();
   });
 
-  it('显式 qualityLoop.enabled=false 时关闭质量闭环', () => {
+  it('显式 qualityLoop.enabled=false 时无嵌入式质量闭环', () => {
     const noQualityConfig: SwarmConfig = {
       id: 'no-quality-swarm',
       name: 'No Quality Swarm',
@@ -143,7 +120,7 @@ describe('Swarm 质量闭环集成测试', () => {
     expect(coord.aggregator).toBeUndefined();
   });
 
-  it('质量闭环配置应该支持自定义参数', () => {
+  it('qualityLoop 配置应该支持自定义参数', () => {
     const customConfig: SwarmConfig = {
       ...config,
       qualityLoop: {
@@ -170,8 +147,8 @@ describe('Swarm 质量闭环集成测试', () => {
     expect(qualityConfig?.acceptanceCriteria?.[0].weight).toBe(10);
   });
 
-  it('质量闭环应该在 coordinate 方法中被调用', async () => {
-    // 注册一个简单的测试角色
+  it('coordinate 应正常执行（无嵌入式质量闭环）', async () => {
+    const coordinator = new SwarmCoordinator(config);
     const testRole: AgentRole = {
       id: 'test-role',
       name: 'Test Role',
@@ -184,11 +161,8 @@ describe('Swarm 质量闭环集成测试', () => {
     await coordinator.registerRole(testRole);
     await coordinator.initialize();
 
-    // 由于实际执行需要真实的 LLM，我们只验证方法存在
-    // @ts-expect-error - 访问私有方法进行测试
-    expect(typeof coordinator.runQualityLoop).toBe('function');
-    // @ts-expect-error - 访问私有方法进行测试
-    expect(typeof coordinator.applyRepair).toBe('function');
+    // 验证 coordinate 可被调用（实际执行需要 mock runtime，此处仅验证初始化成功）
+    expect(coordinator.getAvailableRoleList()).toContainEqual(expect.objectContaining({ id: 'test-role' }));
 
     await coordinator.destroy();
   });

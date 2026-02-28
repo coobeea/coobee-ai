@@ -27,6 +27,7 @@ import type { MethodGroup } from '../protocol';
 import type { AgentMode, SkillDefinition } from '@main/ai/runtime/types';
 import { OrchestratorRuntime } from '@main/ai/orchestration/OrchestratorRuntime';
 import { SwarmRuntime } from '@main/ai/swarm/SwarmRuntime';
+import { QualityLoopRuntime } from '@main/ai/quality-loop/QualityLoopRuntime';
 import { SkillManager } from '@main/ai/skills';
 
 /** Chat 模式禁用的工具名称列表 */
@@ -159,9 +160,19 @@ function loadSkillDefinitions(skillNames: string[]): SkillDefinition[] {
 // ==================== 多智能体运行时工厂 ====================
 
 async function createMultiAgentRuntime(
-  mode: 'orchestrator' | 'swarm' | 'discussion',
+  mode: 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop',
   sid: string
-): Promise<OrchestratorRuntime | SwarmRuntime> {
+): Promise<OrchestratorRuntime | SwarmRuntime | QualityLoopRuntime> {
+  if (mode === 'quality-loop') {
+    // agentExecutor 满足 AgentExecutorLike 接口但类型系统无法自动推断
+    const rt = new QualityLoopRuntime({
+      sessionId: sid,
+      agentExecutor: agentExecutor as never
+    });
+    await rt.initialize();
+    return rt;
+  }
+
   if (mode === 'orchestrator') {
     const rt = new OrchestratorRuntime({
       name: 'User Orchestrator',
@@ -208,7 +219,7 @@ export const chatMethods: MethodGroup = {
       }
 
       // 校验 mode 参数
-      const validModes = ['chat', 'agent', 'orchestrator', 'swarm', 'discussion'];
+      const validModes = ['chat', 'agent', 'orchestrator', 'swarm', 'discussion', 'quality-loop'];
       if (!validModes.includes(mode)) {
         throw new GatewayMethodError(
           GatewayErrorCode.INVALID_PARAMS,
@@ -220,15 +231,10 @@ export const chatMethods: MethodGroup = {
       let sid = sessionId;
       if (!sid) {
         const threadStore = await ThreadStore.getInstance();
-        const agentType =
-          mode === 'orchestrator'
-            ? 'orchestrator'
-            : mode === 'swarm'
-              ? 'swarm'
-              : mode === 'discussion'
-                ? 'discussion'
-                : 'agent';
-        const agentMode = mode === 'orchestrator' || mode === 'swarm' || mode === 'discussion' ? 'agent' : mode;
+        const multiAgentModes: AgentMode[] = ['orchestrator', 'swarm', 'discussion', 'quality-loop'];
+        const isMultiAgent = multiAgentModes.includes(mode);
+        const agentType = isMultiAgent ? (mode as 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop') : 'agent';
+        const agentMode = isMultiAgent ? ('agent' as AgentMode) : mode;
         const thread = await threadStore.create({
           title: message.slice(0, 50),
           agentId: agentId || 'default',
@@ -242,8 +248,8 @@ export const chatMethods: MethodGroup = {
       log.info(`[chat.send] sessionId=${sid}, mode=${mode}${agentId ? `, agentId=${agentId}` : ''}`);
 
       try {
-        // ========== 多智能体模式（Orchestrator / Swarm / Discussion） ==========
-        if (mode === 'orchestrator' || mode === 'swarm' || mode === 'discussion') {
+        // ========== 多智能体模式（Orchestrator / Swarm / Discussion / Quality-Loop） ==========
+        if (mode === 'orchestrator' || mode === 'swarm' || mode === 'discussion' || mode === 'quality-loop') {
           const runtime = await createMultiAgentRuntime(mode, sid);
           const execConfig = mode === 'discussion' ? { executionMode: 'discussion' as const } : undefined;
           const result = agentExecutor.submit({ sessionId: sid, message, runtime, executionConfig: execConfig });

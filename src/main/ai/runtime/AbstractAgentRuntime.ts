@@ -83,7 +83,7 @@ export function generateRuntimeId(prefix: string): string {
  * 子类继承后只需聚焦于 stream() 的 SDK 特定逻辑。
  */
 export abstract class AbstractAgentRuntime implements AgentRuntime {
-  abstract readonly type: 'agent' | 'orchestrator' | 'swarm';
+  abstract readonly type: 'agent' | 'orchestrator' | 'swarm' | 'quality-loop';
   abstract readonly id: string;
   abstract readonly name: string;
   abstract readonly options: AgentRuntimeOptions;

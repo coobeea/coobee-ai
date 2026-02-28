@@ -77,10 +77,12 @@ export interface SkillDefinition {
  *
  *   - chat: 纯对话模式 — 不提供工具，不注入执行协议和 Skill，响应快、成本低
  *   - agent: 完整 Agent 模式 — 提供工具、注入执行协议和 Skill，支持 HITL
+ *   - orchestrator / swarm / discussion: 多智能体模式
+ *   - quality-loop: 质量循环模式 — 执行→验证→修复闭环
  *
  * 模式在 Builder 上设置，AgentEnvInjector 根据模式决定注入内容。
  */
-export type AgentMode = 'chat' | 'agent' | 'orchestrator' | 'swarm' | 'discussion';
+export type AgentMode = 'chat' | 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop';
 
 // ========== Agent 运行时通用选项 ==========
 
@@ -359,7 +361,13 @@ export type StreamChunkType =
   | 'compression:done' // 压缩完成（含统计信息）
   // ⑩ delegate: 子 Agent 委托
   | 'delegate:start' // 委托开始
-  | 'delegate:done'; // 委托完成
+  | 'delegate:done' // 委托完成
+  // ⑪ quality: 质量循环
+  | 'quality:round_start' // 验证轮开始
+  | 'quality:validating' // 正在验证
+  | 'quality:score' // 验证评分
+  | 'quality:repairing' // 正在修复
+  | 'quality:done'; // 质量循环完成
 
 /**
  * StreamChunk 额外数据（联合类型，根据 StreamChunkType 变化）
@@ -379,6 +387,10 @@ export type StreamChunkData =
   | HandoffData
   | CompressionStartData
   | CompressionDoneData
+  | QualityRoundStartData
+  | QualityScoreData
+  | QualityRepairingData
+  | QualityDoneData
   | Record<string, unknown>;
 
 // ---- ① run: ----
@@ -543,4 +555,32 @@ export interface SessionInfo {
   messageCount: number;
   /** 元数据 */
   metadata?: Record<string, unknown>;
+}
+
+// ---- ⑪ quality: 质量循环 ----
+
+/** quality:round_start 数据 */
+export interface QualityRoundStartData {
+  round: number;
+  maxRounds: number;
+}
+
+/** quality:score 数据 */
+export interface QualityScoreData {
+  score: number;
+  passed: boolean;
+  issues?: Array<{ severity: string; description: string }>;
+}
+
+/** quality:repairing 数据 */
+export interface QualityRepairingData {
+  strategy: string;
+  rootCause: string;
+}
+
+/** quality:done 数据 */
+export interface QualityDoneData {
+  finalScore: number;
+  rounds: number;
+  passed: boolean;
 }
