@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type Router from '@koa/router';
 import { createLogger } from '@main/common/logger';
+import { Env } from '@main/common/env';
 
 const log = createLogger('gateway-http-files');
 
@@ -119,7 +120,6 @@ export function registerFileRoutes(router: Router): void {
       return;
     }
 
-    const { Env } = await import('@main/common/env');
     const workspacesDir = Env.paths.workspacesDir;
 
     if (!isPathSafe(dirPath, workspacesDir)) {
@@ -172,7 +172,6 @@ export function registerFileRoutes(router: Router): void {
       return;
     }
 
-    const { Env } = await import('@main/common/env');
     const workspacesDir = Env.paths.workspacesDir;
 
     if (!isPathSafe(filePath, workspacesDir)) {
@@ -310,7 +309,6 @@ export function registerFileRoutes(router: Router): void {
       return;
     }
 
-    const { Env } = await import('@main/common/env');
     const workspacesDir = Env.paths.workspacesDir;
 
     if (!isPathSafe(filePath, workspacesDir)) {
@@ -367,7 +365,6 @@ export function registerFileRoutes(router: Router): void {
       return;
     }
 
-    const { Env } = await import('@main/common/env');
     const workspacesDir = Env.paths.workspacesDir;
 
     // 验证路径安全
@@ -432,7 +429,6 @@ export function registerFileRoutes(router: Router): void {
       return;
     }
 
-    const { Env } = await import('@main/common/env');
     const workspacesDir = Env.paths.workspacesDir;
     const appHome = Env.paths.userHome;
     const systemHome = Env.paths.home;
@@ -523,7 +519,6 @@ export function registerFileRoutes(router: Router): void {
       return;
     }
 
-    const { Env } = await import('@main/common/env');
     const workspacesDir = Env.paths.workspacesDir;
 
     // 验证路径安全
