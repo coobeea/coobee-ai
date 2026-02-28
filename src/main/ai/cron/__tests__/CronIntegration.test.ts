@@ -15,6 +15,11 @@ import os from 'node:os';
 import { CronJobStore } from '../CronJobStore';
 import { CronScheduler } from '../CronScheduler';
 import { CronJobExecutor } from '../CronJobExecutor';
+import { getAgentExecutor } from '@main/ai/AgentExecutor';
+
+vi.mock('@main/ai/AgentExecutor', () => ({
+  getAgentExecutor: vi.fn()
+}));
 
 describe('Cron Integration Tests', () => {
   let tempDir: string;
@@ -22,7 +27,7 @@ describe('Cron Integration Tests', () => {
   let executor: CronJobExecutor;
   let scheduler: CronScheduler;
   let mockAgentExecutor: {
-    execute: ReturnType<typeof vi.fn>;
+    submitAndWait: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -49,25 +54,22 @@ describe('Cron Integration Tests', () => {
     executor = new CronJobExecutor(store);
     scheduler = new CronScheduler(store, executor);
 
-    // Mock AgentExecutor（完整 API）
+    // Mock AgentExecutor（完整 API，通过 getAgentExecutor 注入）
     const mockBuilder = {};
     mockAgentExecutor = {
-      execute: vi.fn().mockResolvedValue({
+      submitAndWait: vi.fn().mockResolvedValue({
         success: true,
         output: 'Task executed successfully'
       })
     };
 
-    // 添加 piMono 和 openai 方法
     const fullMockExecutor = {
       ...mockAgentExecutor,
       piMono: vi.fn().mockReturnValue(mockBuilder),
       openai: vi.fn().mockReturnValue(mockBuilder)
     };
 
-    // 注入 mock
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    executor.setAgentExecutor(fullMockExecutor as any);
+    vi.mocked(getAgentExecutor).mockReturnValue(fullMockExecutor as never);
   });
 
   afterEach(async () => {
@@ -111,8 +113,8 @@ describe('Cron Integration Tests', () => {
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
     // 4. 验证 AgentExecutor 被调用
-    expect(mockAgentExecutor.execute).toHaveBeenCalled();
-    const callCount = mockAgentExecutor.execute.mock.calls.length;
+    expect(mockAgentExecutor.submitAndWait).toHaveBeenCalled();
+    const callCount = mockAgentExecutor.submitAndWait.mock.calls.length;
     expect(callCount).toBeGreaterThanOrEqual(1);
 
     // 5. 验证任务状态已更新
@@ -131,7 +133,7 @@ describe('Cron Integration Tests', () => {
 
   it('应该记录失败任务的错误', async () => {
     // Mock AgentExecutor 返回失败
-    mockAgentExecutor.execute.mockRejectedValue(new Error('Execution failed'));
+    mockAgentExecutor.submitAndWait.mockRejectedValue(new Error('Execution failed'));
 
     // 创建任务
     const job = await store.create({
@@ -178,20 +180,20 @@ describe('Cron Integration Tests', () => {
     // 等待第一次执行（至少2秒）
     await new Promise((resolve) => setTimeout(resolve, 2500));
 
-    const firstCallCount = mockAgentExecutor.execute.mock.calls.length;
+    const firstCallCount = mockAgentExecutor.submitAndWait.mock.calls.length;
     expect(firstCallCount).toBeGreaterThan(0);
 
     // 暂停任务
     await scheduler.pauseJob(job.id);
 
     // 重置 mock
-    mockAgentExecutor.execute.mockClear();
+    mockAgentExecutor.submitAndWait.mockClear();
 
     // 等待2秒（期间不应执行）
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // 验证暂停期间没有执行
-    expect(mockAgentExecutor.execute).not.toHaveBeenCalled();
+    expect(mockAgentExecutor.submitAndWait).not.toHaveBeenCalled();
 
     // 验证状态已更新
     const pausedJob = await store.get(job.id);
@@ -214,7 +216,7 @@ describe('Cron Integration Tests', () => {
 
     // 等待（期间不应执行）
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    expect(mockAgentExecutor.execute).not.toHaveBeenCalled();
+    expect(mockAgentExecutor.submitAndWait).not.toHaveBeenCalled();
 
     // 恢复任务
     await scheduler.resumeJob(job.id);
@@ -223,7 +225,7 @@ describe('Cron Integration Tests', () => {
     await new Promise((resolve) => setTimeout(resolve, 2500));
 
     // 验证恢复后开始执行
-    expect(mockAgentExecutor.execute).toHaveBeenCalled();
+    expect(mockAgentExecutor.submitAndWait).toHaveBeenCalled();
 
     // 验证状态已更新
     const resumedJob = await store.get(job.id);
@@ -233,7 +235,7 @@ describe('Cron Integration Tests', () => {
   it('应该正确更新 runCount 和 failCount', async () => {
     let callIndex = 0;
     // 第1次成功，第2次失败，第3次成功
-    mockAgentExecutor.execute.mockImplementation(() => {
+    mockAgentExecutor.submitAndWait.mockImplementation(() => {
       callIndex++;
       if (callIndex === 2) {
         return Promise.reject(new Error('Second call failed'));
@@ -261,7 +263,7 @@ describe('Cron Integration Tests', () => {
     // node-cron 触发可能不精确，验证至少执行了多次
     expect(updatedJob!.runCount).toBeGreaterThanOrEqual(1);
     // 验证 mock 被调用了多次
-    const totalCalls = mockAgentExecutor.execute.mock.calls.length;
+    const totalCalls = mockAgentExecutor.submitAndWait.mock.calls.length;
     expect(totalCalls).toBeGreaterThanOrEqual(2);
     // 验证至少有一次失败（第2次调用）
     if (totalCalls >= 2) {

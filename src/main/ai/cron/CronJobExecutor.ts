@@ -5,20 +5,20 @@
  * - 执行 Cron 作业（调用 AgentExecutor）
  * - 记录执行日志
  * - 更新作业状态
+ *
+ * AgentExecutor 通过 getAgentExecutor() 延迟获取（与 getLLMService 模式一致），
+ * 避免循环依赖，无需外部注入。
  */
 
 import { nanoid } from 'nanoid';
 import { log } from '@main/common/logger';
+import { getAgentExecutor } from '@main/ai/AgentExecutor';
 
 import { CronJobStore } from './CronJobStore';
 import type { CronJobDefinition, CronJobExecution } from './types';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AgentExecutorType = any;
-
 export class CronJobExecutor {
   private store: CronJobStore;
-  private agentExecutor: AgentExecutorType | null = null;
   private runningExecutions = new Map<string, CronJobExecution>();
 
   constructor(store: CronJobStore) {
@@ -26,20 +26,10 @@ export class CronJobExecutor {
   }
 
   /**
-   * 设置 AgentExecutor（延迟注入，避免循环依赖）
-   */
-  setAgentExecutor(executor: AgentExecutorType): void {
-    this.agentExecutor = executor;
-  }
-
-  /**
    * 执行作业
    */
   async execute(job: CronJobDefinition): Promise<void> {
-    if (!this.agentExecutor) {
-      log.error('[CronJobExecutor] AgentExecutor 未初始化');
-      return;
-    }
+    const agentExecutor = getAgentExecutor();
 
     const executionId = nanoid();
     const execution: CronJobExecution = {
@@ -58,11 +48,11 @@ export class CronJobExecutor {
       // 创建临时会话
       const sessionId = `cron-${job.id}-${Date.now()}`;
 
-      // 构建执行请求
-      const builder = job.agentId ? this.agentExecutor.piMono(job.agentId) : this.agentExecutor.openai();
+      // 构建执行请求（agentId 作为 PiMono Agent 的 name 标识）
+      const builder = job.agentId ? agentExecutor.piMono().name(job.agentId) : agentExecutor.openai();
 
-      // 执行任务
-      const result = await this.agentExecutor.execute({
+      // 执行任务（submitAndWait 为同步等待结果的公开 API）
+      const result = await agentExecutor.submitAndWait({
         sessionId,
         message: job.task,
         builder

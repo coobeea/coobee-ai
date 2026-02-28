@@ -982,6 +982,13 @@ class AgentExecutor {
 
 export const agentExecutor = new AgentExecutor();
 
+/**
+ * 获取 AgentExecutor 单例（与 getLLMService 模式一致，便于延迟依赖注入）
+ */
+export function getAgentExecutor(): AgentExecutor {
+  return agentExecutor;
+}
+
 // Re-export builders for consumers
 export { PiMonoBuilder } from './runtime/pimono/PiMonoBuilder';
 export { OpenAIBuilder } from './runtime/openai/OpenAIBuilder';

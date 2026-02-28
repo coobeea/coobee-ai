@@ -160,18 +160,51 @@ export class CronJobStore {
   }
 
   /**
+   * 获取单次执行的存储路径（按 jobId 分目录，避免 getExecutions O(n) 全量扫描）
+   */
+  private getExecutionPath(execution: CronJobExecution): string {
+    return path.join(this.executionsDir, execution.jobId, `${execution.id}.json`);
+  }
+
+  /**
    * 记录执行日志
    */
   async saveExecution(execution: CronJobExecution): Promise<void> {
-    const filePath = path.join(this.executionsDir, `${execution.id}.json`);
+    const filePath = this.getExecutionPath(execution);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, JSON.stringify(execution, null, 2), 'utf-8');
   }
 
   /**
    * 获取作业的执行历史
+   *
+   * 新结构：executions/{jobId}/{executionId}.json，仅扫描该 job 目录，O(m) 其中 m 为该 job 的执行数。
+   * 兼容旧结构：若 jobId 目录不存在，回退到全量扫描（迁移期）。
    */
   async getExecutions(jobId: string, limit = 10): Promise<CronJobExecution[]> {
     try {
+      const jobDir = path.join(this.executionsDir, jobId);
+
+      try {
+        const files = await fs.readdir(jobDir);
+        const executions: CronJobExecution[] = [];
+
+        for (const file of files) {
+          if (file.endsWith('.json')) {
+            const content = await fs.readFile(path.join(jobDir, file), 'utf-8');
+            executions.push(JSON.parse(content));
+          }
+        }
+
+        return executions
+          .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+          .slice(0, limit);
+      } catch (dirErr) {
+        const err = dirErr as NodeJS.ErrnoException;
+        if (err.code !== 'ENOENT') throw dirErr;
+      }
+
+      // 回退：旧结构 executions/{executionId}.json，全量扫描
       const files = await fs.readdir(this.executionsDir);
       const executions: CronJobExecution[] = [];
 
@@ -179,10 +212,7 @@ export class CronJobStore {
         if (file.endsWith('.json')) {
           const content = await fs.readFile(path.join(this.executionsDir, file), 'utf-8');
           const execution: CronJobExecution = JSON.parse(content);
-
-          if (execution.jobId === jobId) {
-            executions.push(execution);
-          }
+          if (execution.jobId === jobId) executions.push(execution);
         }
       }
 

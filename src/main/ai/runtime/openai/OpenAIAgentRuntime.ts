@@ -336,11 +336,13 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
     streamResult: StreamedRunResult<unknown, any>,
     onTextDelta: (text: string) => void
   ): AsyncGenerator<StreamChunk, void, unknown> {
-    let turnIndex = 0;
-    let turnOpen = false;
-    let textStartEmitted = false;
-    let reasoningStartEmitted = false;
-    let fullReasoningText = '';
+    const state = {
+      turnIndex: 0,
+      turnOpen: false,
+      textStartEmitted: false,
+      reasoningStartEmitted: false,
+      fullReasoningText: ''
+    };
 
     // 同步缓冲：ThinkTagParser 回调产生的 chunk 先存这里，每轮 yield
     const buffer: StreamChunk[] = [];
@@ -351,8 +353,8 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
     // ---- ThinkTagParser：实时拆分 <think> 标签 ----
     const thinkParser = new ThinkTagParser({
       onText: (text) => {
-        if (!textStartEmitted) {
-          textStartEmitted = true;
+        if (!state.textStartEmitted) {
+          state.textStartEmitted = true;
           emit({ type: 'text:start', content: '' });
         }
         onTextDelta(text);
@@ -360,14 +362,14 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
       },
 
       onReasoningStart: () => {
-        if (!reasoningStartEmitted) {
-          reasoningStartEmitted = true;
+        if (!state.reasoningStartEmitted) {
+          state.reasoningStartEmitted = true;
           emit({ type: 'reasoning:start', content: '' });
         }
       },
 
       onReasoning: (text) => {
-        fullReasoningText += text;
+        state.fullReasoningText += text;
         emit({ type: 'reasoning:delta', content: text, data: { delta: text } });
       },
 
@@ -375,7 +377,7 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         emit({
           type: 'reasoning:done',
           content: '',
-          data: { rawContent: fullReasoningText }
+          data: { rawContent: state.fullReasoningText }
         });
       }
     });
@@ -385,169 +387,18 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
       buffer.length = 0;
 
       // ---- debug 日志：记录原始 SDK 事件 ----
-      if (event.type === 'raw_model_stream_event') {
-        const rawEvent = event.data as { type?: string; event?: { type?: string } } | undefined;
-        const rawType = rawEvent?.type;
-        const innerType = rawType === 'model' ? rawEvent?.event?.type : undefined;
-        log.debug(
-          `[SDK Event] ${event.type} | rawType=${rawType}${innerType ? ` | innerType=${innerType}` : ''}`,
-          JSON.stringify(event.data)
-        );
-      } else if (event.type === 'run_item_stream_event') {
-        const itemType = (event.item as { type?: string })?.type;
-        log.debug(
-          `[SDK Event] ${event.type} | name=${event.name} | itemType=${itemType}`,
-          JSON.stringify(event.item?.rawItem ?? event.item)
-        );
-      } else {
-        log.debug(`[SDK Event] ${event.type}`, JSON.stringify(event));
-      }
+      this.logStreamEvent(event);
 
       switch (event.type) {
-        // ===== raw_model_stream_event =====
-        case 'raw_model_stream_event': {
-          const rawEvent = event.data;
-          if (!rawEvent || typeof rawEvent !== 'object') break;
-          const rawType = (rawEvent as { type?: string }).type;
-
-          // response_started → 关上一轮 + 开新一轮 + llm:start
-          if (rawType === 'response_started') {
-            thinkParser.flush();
-
-            if (turnOpen) {
-              emit({ type: 'turn:done', content: '', data: { turnIndex } });
-            }
-            turnIndex++;
-            turnOpen = true;
-            textStartEmitted = false;
-            reasoningStartEmitted = false;
-            fullReasoningText = '';
-            thinkParser.reset();
-            emit({ type: 'turn:start', content: '', data: { turnIndex } });
-            emit({ type: 'llm:start', content: '' });
-          }
-
-          // output_text_delta → 通过 ThinkTagParser 分流
-          if (rawType === 'output_text_delta') {
-            const delta = (rawEvent as { delta?: string }).delta || '';
-            if (delta) {
-              thinkParser.feed(delta);
-            }
-          }
-
-          // response_done → 关闭 reasoning/text + llm:done（携带 usage）
-          if (rawType === 'response_done') {
-            thinkParser.flush();
-
-            const response = (rawEvent as { response?: Record<string, unknown> }).response;
-            const usage = response?.usage as
-              | { inputTokens?: number; outputTokens?: number; totalTokens?: number }
-              | undefined;
-
-            if (reasoningStartEmitted && thinkParser.isInThinking) {
-              emit({
-                type: 'reasoning:done',
-                content: '',
-                data: { rawContent: fullReasoningText }
-              });
-            }
-
-            if (textStartEmitted) {
-              const outputs = response?.output as
-                | Array<{
-                    type?: string;
-                    content?: Array<{ text?: string }>;
-                  }>
-                | undefined;
-              const msgOutput = outputs?.find((o) => o.type === 'message');
-              const rawFullText = msgOutput?.content?.map((c) => c.text || '').join('') || '';
-              const cleanText = stripThinkTags(rawFullText);
-              emit({ type: 'text:done', content: cleanText, data: { text: cleanText } });
-            }
-
-            emit({
-              type: 'llm:done',
-              content: '',
-              data: {
-                responseId: response?.id as string | undefined,
-                usage: usage
-                  ? {
-                      inputTokens: usage.inputTokens || 0,
-                      outputTokens: usage.outputTokens || 0,
-                      totalTokens: usage.totalTokens || 0
-                    }
-                  : undefined
-              }
-            });
-          }
-
+        case 'raw_model_stream_event':
+          this.handleRawModelStreamEvent(event, state, thinkParser, emit);
           break;
-        }
-
-        // ===== run_item_stream_event =====
-        case 'run_item_stream_event': {
-          const item = event.item;
-          if (!item) break;
-          const eventName = event.name;
-
-          // tool_called → tool:start
-          if (eventName === 'tool_called' && item.type === 'tool_call_item') {
-            const rawItem = item.rawItem;
-            const toolName = (rawItem as { name?: string }).name || 'unknown';
-            const callId = (rawItem as { call_id?: string }).call_id;
-            emit({ type: 'tool:start', content: toolName, data: { toolName, callId } });
-          }
-
-          // tool_output → tool:done
-          if (eventName === 'tool_output') {
-            const rawItem = (item as { rawItem?: Record<string, unknown> }).rawItem || {};
-            const toolName = (rawItem as { name?: string }).name || 'unknown';
-            const callId =
-              (rawItem as { callId?: string; call_id?: string }).callId || (rawItem as { call_id?: string }).call_id;
-            const output = (item as { output?: string }).output || (rawItem as { output?: string }).output || '';
-            emit({
-              type: 'tool:done',
-              content: typeof output === 'string' ? output : JSON.stringify(output),
-              data: { toolName, callId, output }
-            });
-          }
-
-          // handoff: 请求
-          if (eventName === 'handoff_requested') {
-            const agentName = (item as unknown as { agent?: { name?: string } }).agent?.name || 'unknown';
-            emit({
-              type: 'handoff:start',
-              content: `Handoff to ${agentName}`,
-              data: { toAgent: agentName }
-            });
-          }
-
-          // handoff: 完成
-          if (eventName === 'handoff_occurred') {
-            const targetAgent =
-              (item as unknown as { targetAgent?: { name?: string } }).targetAgent?.name ||
-              (item as unknown as { agent?: { name?: string } }).agent?.name ||
-              'unknown';
-            emit({
-              type: 'handoff:done',
-              content: `Switched to ${targetAgent}`,
-              data: { toAgent: targetAgent }
-            });
-          }
-
-          // hitl 审批现在由 tool-approval Extension 处理，不再在 SDK 事件层拦截
-
+        case 'run_item_stream_event':
+          this.handleRunItemStreamEvent(event, emit);
           break;
-        }
-
-        // ===== agent_updated_stream_event =====
-        case 'agent_updated_stream_event': {
-          const agentName = event.agent?.name || 'unknown';
-          await this.streamEmitter.emit('agent_updated', `Agent updated: ${agentName}`, {
-            agentName
-          });
+        case 'agent_updated_stream_event':
+          await this.handleAgentUpdatedStreamEvent(event);
           break;
-        }
       }
 
       // yield 本轮收集的所有 chunk
@@ -557,14 +408,200 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
     }
 
     // 关闭最后一轮
-    if (turnOpen) {
+    if (state.turnOpen) {
       thinkParser.flush();
       // flush 可能产生额外 chunk
       for (const chunk of buffer) {
         yield chunk;
       }
-      yield { type: 'turn:done', content: '', data: { turnIndex } };
+      yield { type: 'turn:done', content: '', data: { turnIndex: state.turnIndex } };
     }
+  }
+
+  /**
+   * 记录原始 SDK 事件的 debug 日志
+   */
+  private logStreamEvent(event: { type: string; data?: unknown; item?: unknown; name?: string }): void {
+    if (event.type === 'raw_model_stream_event') {
+      const rawEvent = event.data as { type?: string; event?: { type?: string } } | undefined;
+      const rawType = rawEvent?.type;
+      const innerType = rawType === 'model' ? rawEvent?.event?.type : undefined;
+      log.debug(
+        `[SDK Event] ${event.type} | rawType=${rawType}${innerType ? ` | innerType=${innerType}` : ''}`,
+        JSON.stringify(event.data)
+      );
+    } else if (event.type === 'run_item_stream_event') {
+      const itemType = (event.item as { type?: string })?.type;
+      log.debug(
+        `[SDK Event] ${event.type} | name=${event.name} | itemType=${itemType}`,
+        JSON.stringify((event.item as { rawItem?: unknown })?.rawItem ?? event.item)
+      );
+    } else {
+      log.debug(`[SDK Event] ${event.type}`, JSON.stringify(event));
+    }
+  }
+
+  /**
+   * 处理 raw_model_stream_event：response_started、output_text_delta、response_done
+   */
+  private handleRawModelStreamEvent(
+    event: { type: 'raw_model_stream_event'; data?: unknown },
+    state: {
+      turnIndex: number;
+      turnOpen: boolean;
+      textStartEmitted: boolean;
+      reasoningStartEmitted: boolean;
+      fullReasoningText: string;
+    },
+    thinkParser: ThinkTagParser,
+    emit: (chunk: StreamChunk) => void
+  ): void {
+    const rawEvent = event.data;
+    if (!rawEvent || typeof rawEvent !== 'object') return;
+    const rawType = (rawEvent as { type?: string }).type;
+
+    // response_started → 关上一轮 + 开新一轮 + llm:start
+    if (rawType === 'response_started') {
+      thinkParser.flush();
+
+      if (state.turnOpen) {
+        emit({ type: 'turn:done', content: '', data: { turnIndex: state.turnIndex } });
+      }
+      state.turnIndex++;
+      state.turnOpen = true;
+      state.textStartEmitted = false;
+      state.reasoningStartEmitted = false;
+      state.fullReasoningText = '';
+      thinkParser.reset();
+      emit({ type: 'turn:start', content: '', data: { turnIndex: state.turnIndex } });
+      emit({ type: 'llm:start', content: '' });
+    }
+
+    // output_text_delta → 通过 ThinkTagParser 分流
+    if (rawType === 'output_text_delta') {
+      const delta = (rawEvent as { delta?: string }).delta || '';
+      if (delta) {
+        thinkParser.feed(delta);
+      }
+    }
+
+    // response_done → 关闭 reasoning/text + llm:done（携带 usage）
+    if (rawType === 'response_done') {
+      thinkParser.flush();
+
+      const response = (rawEvent as { response?: Record<string, unknown> }).response;
+      const usage = response?.usage as
+        | { inputTokens?: number; outputTokens?: number; totalTokens?: number }
+        | undefined;
+
+      if (state.reasoningStartEmitted && thinkParser.isInThinking) {
+        emit({
+          type: 'reasoning:done',
+          content: '',
+          data: { rawContent: state.fullReasoningText }
+        });
+      }
+
+      if (state.textStartEmitted) {
+        const outputs = response?.output as
+          | Array<{
+              type?: string;
+              content?: Array<{ text?: string }>;
+            }>
+          | undefined;
+        const msgOutput = outputs?.find((o) => o.type === 'message');
+        const rawFullText = msgOutput?.content?.map((c) => c.text || '').join('') || '';
+        const cleanText = stripThinkTags(rawFullText);
+        emit({ type: 'text:done', content: cleanText, data: { text: cleanText } });
+      }
+
+      emit({
+        type: 'llm:done',
+        content: '',
+        data: {
+          responseId: response?.id as string | undefined,
+          usage: usage
+            ? {
+                inputTokens: usage.inputTokens || 0,
+                outputTokens: usage.outputTokens || 0,
+                totalTokens: usage.totalTokens || 0
+              }
+            : undefined
+        }
+      });
+    }
+  }
+
+  /**
+   * 处理 run_item_stream_event：tool_called、tool_output、handoff_requested、handoff_occurred
+   */
+  private handleRunItemStreamEvent(
+    event: { type: 'run_item_stream_event'; item?: unknown; name?: string },
+    emit: (chunk: StreamChunk) => void
+  ): void {
+    const item = event.item;
+    if (!item) return;
+    const eventName = event.name;
+
+    // tool_called → tool:start
+    if (eventName === 'tool_called' && (item as { type?: string }).type === 'tool_call_item') {
+      const rawItem = (item as { rawItem?: Record<string, unknown> }).rawItem;
+      const toolName = (rawItem as { name?: string })?.name || 'unknown';
+      const callId = (rawItem as { call_id?: string })?.call_id;
+      emit({ type: 'tool:start', content: toolName, data: { toolName, callId } });
+    }
+
+    // tool_output → tool:done
+    if (eventName === 'tool_output') {
+      const rawItem = (item as { rawItem?: Record<string, unknown> }).rawItem || {};
+      const toolName = (rawItem as { name?: string }).name || 'unknown';
+      const callId =
+        (rawItem as { callId?: string; call_id?: string }).callId || (rawItem as { call_id?: string }).call_id;
+      const output = (item as { output?: string }).output || (rawItem as { output?: string }).output || '';
+      emit({
+        type: 'tool:done',
+        content: typeof output === 'string' ? output : JSON.stringify(output),
+        data: { toolName, callId, output }
+      });
+    }
+
+    // handoff: 请求
+    if (eventName === 'handoff_requested') {
+      const agentName = (item as unknown as { agent?: { name?: string } }).agent?.name || 'unknown';
+      emit({
+        type: 'handoff:start',
+        content: `Handoff to ${agentName}`,
+        data: { toAgent: agentName }
+      });
+    }
+
+    // handoff: 完成
+    if (eventName === 'handoff_occurred') {
+      const targetAgent =
+        (item as unknown as { targetAgent?: { name?: string } }).targetAgent?.name ||
+        (item as unknown as { agent?: { name?: string } }).agent?.name ||
+        'unknown';
+      emit({
+        type: 'handoff:done',
+        content: `Switched to ${targetAgent}`,
+        data: { toAgent: targetAgent }
+      });
+    }
+
+    // hitl 审批现在由 tool-approval Extension 处理，不再在 SDK 事件层拦截
+  }
+
+  /**
+   * 处理 agent_updated_stream_event：Agent 切换通知
+   */
+  private async handleAgentUpdatedStreamEvent(event: {
+    type: 'agent_updated_stream_event';
+    agent?: { name?: string };
+  }): Promise<void> {
+    const agentName = event.agent?.name || 'unknown';
+    await this.streamEmitter.emit('agent_updated', `Agent updated: ${agentName}`, {
+      agentName
+    });
   }
 
   /**

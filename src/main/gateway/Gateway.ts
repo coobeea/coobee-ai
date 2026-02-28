@@ -116,12 +116,8 @@ export class Gateway implements GatewayApi {
    */
   private async startCronSystem(): Promise<void> {
     try {
-      const { initializeCronSystem, getCronScheduler, getCronJobExecutor } = await import('@main/ai/cron');
+      const { initializeCronSystem, getCronScheduler } = await import('@main/ai/cron');
       await initializeCronSystem();
-
-      const executor = getCronJobExecutor();
-      const { agentExecutor } = await import('@main/ai/AgentExecutor');
-      executor.setAgentExecutor(agentExecutor);
 
       const scheduler = getCronScheduler();
       await scheduler.start();

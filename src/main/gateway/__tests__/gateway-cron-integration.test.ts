@@ -128,9 +128,7 @@ vi.mock('@main/ai/cron', () => ({
     triggerJob: mockSchedulerTriggerJob,
     getStatus: vi.fn().mockReturnValue({ running: true, scheduledCount: 0, jobs: [] })
   })),
-  getCronJobExecutor: vi.fn(() => ({
-    setAgentExecutor: vi.fn()
-  })),
+  getCronJobExecutor: vi.fn(() => ({})),
   getCronJobStore: vi.fn(() => ({})),
   CronJobStore: vi.fn(),
   CronScheduler: vi.fn(),
