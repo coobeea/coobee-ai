@@ -3,8 +3,11 @@
  * 自己维护消息历史，解决 Session.messages 私有问题
  */
 
+import { createLogger } from '@main/common/logger';
 import type OpenAI from 'openai';
 import type { Message } from './types';
+
+const log = createLogger('ShortTermMemory');
 
 /**
  * Trimming 策略的短期记忆
@@ -108,7 +111,7 @@ export class TrimmingSession {
       // 重建消息列表
       this.messages = [...this.systemMessages, ...trimmedConversation];
 
-      console.log(`[TrimmingSession] Trimmed history: kept ${this.messages.length} messages (${this.maxTurns} turns)`);
+      log.info(`Trimmed history: kept ${this.messages.length} messages (${this.maxTurns} turns)`);
     }
   }
 
@@ -266,11 +269,9 @@ export class SummarizingSession {
       this.messages = [...this.systemMessages, summaryMsg, ...recentMessages];
       this.hasSummary = true;
 
-      console.log(
-        `[SummarizingSession] Summarized ${oldMessages.length} messages, kept ${recentMessages.length} recent messages`
-      );
+      log.info(`Summarized ${oldMessages.length} messages, kept ${recentMessages.length} recent messages`);
     } catch (error) {
-      console.error('[SummarizingSession] Failed to summarize history:', error);
+      log.error('Failed to summarize history:', error);
       // 失败时不修改消息列表
     }
   }

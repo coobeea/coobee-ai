@@ -3,8 +3,11 @@
  * 负责完整持久化对话历史（JSONL 格式）
  */
 
+import { createLogger } from '@main/common/logger';
 import type { SessionFileManager } from '../storage/SessionFileManager';
 import type { Message } from './types';
+
+const log = createLogger('SessionMemoryStore');
 
 /**
  * 会话记忆存储
@@ -19,7 +22,7 @@ export class SessionMemoryStore {
    * 初始化
    */
   async initialize(): Promise<void> {
-    console.log(`[SessionMemoryStore] Initialized for session: ${this.sessionId}`);
+    log.info(`Initialized for session: ${this.sessionId}`);
   }
 
   /**
@@ -108,6 +111,6 @@ export class SessionMemoryStore {
   async clearHistory(): Promise<void> {
     // 通过覆盖为空来清空（避免删除文件）
     // 注意：这里需要 SessionFileManager 支持清空操作
-    console.log(`[SessionMemoryStore] Clearing history for session: ${this.sessionId}`);
+    log.info(`Clearing history for session: ${this.sessionId}`);
   }
 }

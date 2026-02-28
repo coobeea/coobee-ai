@@ -7,7 +7,10 @@
  * 程序重启时自动从文件恢复消息历史。
  */
 
+import { createLogger } from '@main/common/logger';
 import { MessageBus } from './MessageBus';
+
+const log = createLogger('FileMessageBus');
 import type { SwarmMessage } from './MessageBus';
 import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -70,7 +73,7 @@ export class FileMessageBus extends MessageBus {
         // 直接添加到内存（不触发持久化）
         this.restoreMessage(message);
       } catch (error) {
-        console.error('[FileMessageBus] Failed to restore message:', line, error);
+        log.error('Failed to restore message:', line, error);
       }
     }
   }
@@ -120,7 +123,7 @@ export class FileMessageBus extends MessageBus {
       const line = JSON.stringify(message) + '\n';
       appendFileSync(this.messagesPath, line, 'utf-8');
     } catch (error) {
-      console.error('[FileMessageBus] Failed to append message:', error);
+      log.error('Failed to append message:', error);
     }
   }
 

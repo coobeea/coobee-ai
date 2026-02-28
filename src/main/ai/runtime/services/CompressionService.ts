@@ -8,7 +8,10 @@
  * - 生成压缩相关的 StreamChunk
  */
 
+import { createLogger } from '@main/common/logger';
 import { SessionCompressor } from '../openai/SessionCompressor';
+
+const log = createLogger('CompressionService');
 import type { FileSession } from '../openai/FileSession';
 import type { CompressionResult } from '../openai/types';
 import type { StreamChunk } from '../types';
@@ -108,7 +111,7 @@ export class CompressionService {
 
       return chunks;
     } catch (error) {
-      console.error('[CompressionService] 压缩失败:', error);
+      log.error('压缩失败:', error);
       return [];
     }
   }

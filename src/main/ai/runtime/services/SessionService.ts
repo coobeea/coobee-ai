@@ -7,7 +7,10 @@
  * - 提供会话清理功能
  */
 
+import { createLogger } from '@main/common/logger';
 import { FileSession } from '../openai/FileSession';
+
+const log = createLogger('SessionService');
 import type { SessionInfo } from '../types';
 
 /**
@@ -58,7 +61,7 @@ export class SessionService {
    * 清空会话
    */
   async clear(): Promise<void> {
-    console.log(`[SessionService] Clearing session: ${this.sessionId}`);
+    log.info(`Clearing session: ${this.sessionId}`);
     await this.session.clearSession();
   }
 

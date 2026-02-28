@@ -11,7 +11,10 @@
  * └── shared/          # 共享目录
  */
 
+import { createLogger } from '@main/common/logger';
 import { mkdir, writeFile, readFile, readdir, stat } from 'fs/promises';
+
+const log = createLogger('SessionFileManager');
 import { join } from 'path';
 import { app } from 'electron';
 import { existsSync } from 'fs';
@@ -71,7 +74,7 @@ export class SessionFileManager {
     }
 
     this.initialized = true;
-    console.log(`[SessionFileManager] Initialized session directory: ${this.basePath}`);
+    log.info(`Initialized session directory: ${this.basePath}`);
   }
 
   /**
@@ -514,7 +517,7 @@ export class SessionFileManager {
           planVersions = plans.filter((f) => f.endsWith('.json')).length;
         }
       } catch (error) {
-        console.error('[SessionFileManager] Failed to get stats:', error);
+        log.error('Failed to get stats:', error);
       }
     }
 
