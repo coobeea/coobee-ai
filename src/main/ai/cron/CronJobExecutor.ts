@@ -47,8 +47,9 @@ export class CronJobExecutor {
       // 创建临时会话
       const sessionId = `cron-${job.id}-${Date.now()}`;
 
-      // 构建执行请求（agentId 作为 PiMono Agent 的 name 标识）
-      const builder = job.agentId ? agentExecutor.piMono().name(job.agentId) : agentExecutor.openai();
+      // 构建执行请求：使用指定 Agent 或默认应用管家
+      const agentName = job.agentId || 'app-copilot';
+      const builder = agentExecutor.piMono().name(agentName);
 
       // 执行任务（submitAndWait 为同步等待结果的公开 API）
       const result = await agentExecutor.submitAndWait({
