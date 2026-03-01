@@ -186,8 +186,12 @@ export function registerThreadRoutes(router: Router): void {
 
       const workspace = path.join(Env.paths.workspacesDir, threadId);
 
-      // 1. 读取 events/events.jsonl（流式事件）
-      const eventsFile = path.join(workspace, 'events', 'events.jsonl');
+      // 1. 读取 events.jsonl（流式事件）
+      //    优先 .runtime/ 路径（当前写入路径），回退旧路径兼容迁移前数据
+      const runtimeEventsFile = path.join(workspace, '.runtime', 'events', 'events.jsonl');
+      const legacyEventsFile = path.join(workspace, 'events', 'events.jsonl');
+      const eventsFile = fs.existsSync(runtimeEventsFile) ? runtimeEventsFile : legacyEventsFile;
+
       let events: Record<string, unknown>[] = [];
       if (fs.existsSync(eventsFile)) {
         const content = await fs.promises.readFile(eventsFile, 'utf-8');
@@ -197,7 +201,7 @@ export function registerThreadRoutes(router: Router): void {
           .map((line) => JSON.parse(line) as Record<string, unknown>);
       }
 
-      // 2. 提取用户消息（从 session 文件）
+      // 2. 提取用户消息（从 session 文件，同样优先 .runtime/ 路径）
       const userMessages = await extractUserMessages(workspace, thread.sessionId);
 
       ctx.body = { events, userMessages };
@@ -222,7 +226,9 @@ async function extractUserMessages(
   workspace: string,
   sessionId: string
 ): Promise<{ content: string; timestamp: number }[]> {
-  const sessionDir = path.join(workspace, 'sessions', sessionId);
+  const runtimeSessionDir = path.join(workspace, '.runtime', 'sessions', sessionId);
+  const legacySessionDir = path.join(workspace, 'sessions', sessionId);
+  const sessionDir = fs.existsSync(runtimeSessionDir) ? runtimeSessionDir : legacySessionDir;
   if (!fs.existsSync(sessionDir)) return [];
 
   const userMsgs: { content: string; timestamp: number }[] = [];
