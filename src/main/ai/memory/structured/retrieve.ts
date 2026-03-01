@@ -34,7 +34,7 @@ export class RetrievePipeline {
   ) {}
 
   /**
-   * 执行语义检索
+   * 执行检索：优先语义检索，embedding 不可用时降级到关键词搜索
    */
   async retrieve(input: RetrieveInput): Promise<RetrieveResult> {
     const topK = input.topK ?? 10;
@@ -44,7 +44,7 @@ export class RetrievePipeline {
     // 1. 生成 query embedding
     const queryEmbeddings = await this.embeddingProvider.embed([input.query]);
     if (!queryEmbeddings.length || !queryEmbeddings[0].length) {
-      return { items: [], context: '' };
+      return this.fallbackKeywordRetrieve(input.query, topK);
     }
     const queryVec = queryEmbeddings[0];
 
@@ -102,6 +102,34 @@ export class RetrievePipeline {
     const context = this.formatContext(scoredItems);
 
     return { items: scoredItems, context };
+  }
+
+  /**
+   * Embedding 不可用时，降级到关键词搜索
+   */
+  private async fallbackKeywordRetrieve(query: string, topK: number): Promise<RetrieveResult> {
+    const keywords = query
+      .toLowerCase()
+      .split(/[\s,;.!?，。；！？]+/)
+      .filter((k) => k.length >= 2);
+    if (keywords.length === 0) return { items: [], context: '' };
+
+    const allItems = await this.storage.listItems();
+    const scored = allItems
+      .map((item) => {
+        const lower = item.summary.toLowerCase();
+        let hits = 0;
+        for (const kw of keywords) {
+          if (lower.includes(kw)) hits++;
+        }
+        return { ...item, score: hits / keywords.length };
+      })
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK);
+
+    const context = this.formatContext(scored);
+    return { items: scored, context };
   }
 
   /**

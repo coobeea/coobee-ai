@@ -200,20 +200,15 @@ const XML_RESPONSE_ARCH = `<item>
 const XML_EMPTY = '<item></item>';
 
 /**
- * Mock LLM — 根据 prompt 中的关键词返回固定 XML。
- * 每个关键词映射到唯一的响应，避免跨类型误匹配。
+ * Mock LLMChatFn — 根据 prompt 中的关键词返回固定 XML。
  */
-function createMockLLMClient(): {
-  chat: (opts: { messages: Array<{ role: string; content: string }> }) => Promise<{ content: string }>;
-} {
-  return {
-    async chat(opts) {
-      const text = opts.messages.map((m) => m.content).join('\n');
-      if (text.includes('TypeScript')) return { content: XML_RESPONSE_TYPESCRIPT };
-      if (text.includes('咖啡')) return { content: XML_RESPONSE_COFFEE };
-      if (text.includes('三层架构')) return { content: XML_RESPONSE_ARCH };
-      return { content: XML_EMPTY };
-    }
+function createMockLLMChat(): (opts: { messages: Array<{ role: string; content: string }> }) => Promise<string> {
+  return async (opts) => {
+    const text = opts.messages.map((m) => m.content).join('\n');
+    if (text.includes('TypeScript')) return XML_RESPONSE_TYPESCRIPT;
+    if (text.includes('咖啡')) return XML_RESPONSE_COFFEE;
+    if (text.includes('三层架构')) return XML_RESPONSE_ARCH;
+    return XML_EMPTY;
   };
 }
 
@@ -251,7 +246,7 @@ describe('结构化记忆系统集成测试', () => {
     storage = new StructuredMemoryStorage(conn as never);
     await storage.initialize();
 
-    memorize = new MemorizePipeline(storage, createMockLLMClient() as never);
+    memorize = new MemorizePipeline(storage, createMockLLMChat() as never);
     retrieve = new RetrievePipeline(storage, new MockEmbeddingProvider() as never);
   });
 

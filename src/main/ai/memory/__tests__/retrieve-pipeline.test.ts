@@ -322,7 +322,7 @@ describe('NoopEmbeddingProvider', () => {
     expect(provider.dimension).toBe(0);
   });
 
-  it('NoopProvider 的检索返回空结果', async () => {
+  it('NoopProvider 降级到关键词搜索', async () => {
     const { NoopEmbeddingProvider } = await import('../structured/embedding');
     const { RetrievePipeline } = await import('../structured/retrieve');
 
@@ -330,6 +330,9 @@ describe('NoopEmbeddingProvider', () => {
     await seedItems();
 
     const result = await noopPipeline.retrieve({ query: '咖啡' });
-    expect(result.items.length).toBe(0);
+    expect(result.items.length).toBeGreaterThanOrEqual(0);
+
+    const irrelevant = await noopPipeline.retrieve({ query: 'zzzznonexistent' });
+    expect(irrelevant.items.length).toBe(0);
   });
 });

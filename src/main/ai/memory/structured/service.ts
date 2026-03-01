@@ -26,6 +26,7 @@ import type { MigrationResult, MigrationOptions } from './migration';
 export interface StructuredMemoryServiceOptions {
   llmChat?: LLMChatFn;
   embeddingApiKey?: string;
+  embeddingBaseURL?: string;
   embeddingModel?: string;
 }
 
@@ -76,10 +77,11 @@ export class StructuredMemoryService {
       this.storage = new StructuredMemoryStorage(conn);
       await this.storage.initialize();
 
-      // Embedding provider: 有 API key 时用 OpenAI，否则 Noop
+      // Embedding provider: 有 API key 时用 OpenAI 兼容，否则 Noop
       if (options.embeddingApiKey) {
         this.embeddingProvider = new OpenAIEmbeddingProvider({
           apiKey: options.embeddingApiKey,
+          baseURL: options.embeddingBaseURL,
           model: options.embeddingModel
         });
       } else {

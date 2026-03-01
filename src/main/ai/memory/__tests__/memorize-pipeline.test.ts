@@ -167,24 +167,24 @@ class MockSQLiteConnection {
   }
 }
 
-// ==================== Mock LLM Client ====================
+// ==================== Mock LLM Chat Function ====================
 
-function createMockLLMClient(responses: Record<string, string> = {}): {
-  chat: ReturnType<typeof vi.fn>;
-} {
-  return {
-    chat: vi.fn(async ({ messages }) => {
-      const userMsg = messages.find((m: { role: string }) => m.role === 'user')?.content || '';
+function createMockLLMChat(
+  responses: Record<string, string> = {}
+): (options: {
+  messages: Array<{ role: string; content: string }>;
+  temperature?: number;
+  maxTokens?: number;
+}) => Promise<string> {
+  return vi.fn(async ({ messages }) => {
+    const userMsg = messages.find((m: { role: string }) => m.role === 'user')?.content || '';
 
-      // Match response based on content
-      for (const [key, response] of Object.entries(responses)) {
-        if (userMsg.includes(key))
-          return { content: response, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
-      }
+    for (const [key, response] of Object.entries(responses)) {
+      if (userMsg.includes(key)) return response;
+    }
 
-      return { content: '<item></item>', usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
-    })
-  };
+    return '<item></item>';
+  });
 }
 
 // ==================== XML Parse Tests ====================
@@ -321,7 +321,7 @@ describe('MemorizePipeline', () => {
     storage = new StructuredMemoryStorage(conn as never);
     await storage.initialize();
 
-    const mockLLM = createMockLLMClient({
+    const mockLLM = createMockLLMChat({
       长期稳定信息: profileXml,
       具体事件和经历: eventXml,
       事实知识: knowledgeXml
@@ -367,7 +367,7 @@ describe('MemorizePipeline', () => {
   });
 
   it('空输出的 LLM 不产生记忆', async () => {
-    const mockLLM = createMockLLMClient({});
+    const mockLLM = createMockLLMChat({});
     const { MemorizePipeline } = await import('../structured/memorize');
     const emptyPipeline = new MemorizePipeline(storage, mockLLM as never);
 
