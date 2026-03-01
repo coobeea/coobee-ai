@@ -1402,10 +1402,8 @@ export class WindowManager implements IWindowManager {
     }
 
     const openDevTools = Env.main.openDevTools;
-    log.debug(`[WindowManager] openDevTools 值: "${openDevTools}", 类型: ${typeof openDevTools}`);
 
-    if (!openDevTools) {
-      log.debug(`[WindowManager] openDevTools 为空，跳过`);
+    if (!openDevTools || openDevTools === 'false') {
       return;
     }
 
@@ -1413,11 +1411,9 @@ export class WindowManager implements IWindowManager {
       type DevToolsMode = 'right' | 'bottom' | 'undocked' | 'detach';
 
       if (openDevTools === 'true') {
-        // 默认在右侧打开
         view.webContents.openDevTools({ mode: 'right' });
         log.info(`[WindowManager] DevTools 已打开: tabId=${tabId}, mode=right`);
       } else if (['bottom', 'right', 'undocked', 'detach'].includes(openDevTools)) {
-        // 使用指定的模式
         view.webContents.openDevTools({ mode: openDevTools as DevToolsMode });
         log.info(`[WindowManager] DevTools 已打开: tabId=${tabId}, mode=${openDevTools}`);
       } else {
