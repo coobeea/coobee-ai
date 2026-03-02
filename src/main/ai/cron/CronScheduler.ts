@@ -88,10 +88,16 @@ export class CronScheduler {
     // 如果已存在，先停止旧任务
     await this.unscheduleJob(job.id);
 
-    // 创建新任务
+    // 创建新任务（回调中重新读取最新 job 数据，避免闭包快照过期）
+    const jobId = job.id;
     const task = cron.schedule(job.cronExpression, async () => {
-      log.info(`[CronScheduler] 触发作业: ${job.id} - ${job.name}`);
-      await this.executor.execute(job);
+      const latestJob = await this.store.get(jobId);
+      if (!latestJob || latestJob.status !== 'active') {
+        log.warn(`[CronScheduler] 作业 ${jobId} 已不活跃，跳过执行`);
+        return;
+      }
+      log.info(`[CronScheduler] 触发作业: ${latestJob.id} - ${latestJob.name}`);
+      await this.executor.execute(latestJob);
     });
 
     // 任务自动启动
