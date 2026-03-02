@@ -3,15 +3,18 @@
  *
  * 职责：
  * - 使用 node-cron 管理定时任务
+ * - 支持两种作业来源：动态 JSON 配置 + 声明式代码定义
  * - 启动/停止/暂停作业
  * - 触发作业执行
  */
 
 import * as cron from 'node-cron';
 import { log } from '@main/common/logger';
+import { scanCronJobs } from '@main/common/scan';
 
 import { CronJobStore } from './CronJobStore';
 import { CronJobExecutor } from './CronJobExecutor';
+import { BaseCronJob } from './types';
 import type { CronJobDefinition } from './types';
 
 export class CronScheduler {
@@ -37,7 +40,10 @@ export class CronScheduler {
     log.info('[CronScheduler] 启动调度器');
     this.running = true;
 
-    // 加载所有活跃作业
+    // 1. 扫描并注册声明式 Job
+    await this.loadDeclarativeJobs();
+
+    // 2. 加载动态配置的 Job
     const jobs = await this.store.list();
     for (const job of jobs) {
       if (job.status === 'active') {
@@ -46,6 +52,67 @@ export class CronScheduler {
     }
 
     log.info(`[CronScheduler] 已调度 ${this.tasks.size} 个作业`);
+  }
+
+  /**
+   * 扫描并注册声明式 Job
+   */
+  private async loadDeclarativeJobs(): Promise<void> {
+    try {
+      const modules = scanCronJobs();
+
+      let count = 0;
+      for (const { path: modulePath, module: mod } of modules) {
+        try {
+          const defaultExport = (mod as Record<string, unknown>).default;
+          if (!defaultExport || typeof defaultExport !== 'function') {
+            continue;
+          }
+
+          const instance = new (defaultExport as new () => BaseCronJob)();
+          if (!(instance instanceof BaseCronJob)) {
+            log.warn(`[CronScheduler] ${modulePath} 的默认导出不是 BaseCronJob 子类，跳过`);
+            continue;
+          }
+
+          if (!cron.validate(instance.cronExpression)) {
+            log.error(`[CronScheduler] 声明式 Job ${instance.name} 的 cron 表达式无效: ${instance.cronExpression}`);
+            continue;
+          }
+
+          // 注册实例到 executor
+          this.executor.registerDeclarativeJob(instance);
+
+          // 转换为 CronJobDefinition 并调度
+          const definition = instance.toDefinition();
+
+          // 如果 store 中已有同 id 的记录，使用持久化的状态（用户可能手动暂停过）
+          const existing = await this.store.get(definition.id);
+          if (existing) {
+            if (existing.status !== 'active') {
+              log.info(`[CronScheduler] 声明式 Job ${instance.name} 状态为 ${existing.status}，跳过调度`);
+              continue;
+            }
+            definition.runCount = existing.runCount;
+            definition.failCount = existing.failCount;
+            definition.lastRunAt = existing.lastRunAt;
+          } else {
+            await this.store.save(definition);
+          }
+
+          await this.scheduleJob(definition);
+          count++;
+        } catch (err) {
+          log.error(`[CronScheduler] 加载声明式 Job 失败: ${modulePath}`, err);
+        }
+      }
+
+      if (count > 0) {
+        log.info(`[CronScheduler] 已注册 ${count} 个声明式 Job`);
+      }
+    } catch (err) {
+      log.warn('[CronScheduler] 声明式 Job 扫描失败（可能没有 cron-jobs 目录）', err);
+    }
   }
 
   /**
@@ -59,7 +126,6 @@ export class CronScheduler {
 
     log.info('[CronScheduler] 停止调度器');
 
-    // 停止所有任务
     for (const [jobId, task] of this.tasks) {
       task.stop();
       log.debug(`[CronScheduler] 停止作业: ${jobId}`);
@@ -75,7 +141,6 @@ export class CronScheduler {
    * 调度单个作业
    */
   async scheduleJob(job: CronJobDefinition): Promise<boolean> {
-    // 验证 cron 表达式
     if (!cron.validate(job.cronExpression)) {
       log.error(`[CronScheduler] 无效的 cron 表达式: ${job.cronExpression}`);
       await this.store.update(job.id, {
@@ -85,10 +150,9 @@ export class CronScheduler {
       return false;
     }
 
-    // 如果已存在，先停止旧任务
     await this.unscheduleJob(job.id);
 
-    // 创建新任务（回调中重新读取最新 job 数据，避免闭包快照过期）
+    // 回调中重新读取最新 job 数据，避免闭包快照过期
     const jobId = job.id;
     const task = cron.schedule(job.cronExpression, async () => {
       const latestJob = await this.store.get(jobId);
@@ -100,7 +164,6 @@ export class CronScheduler {
       await this.executor.execute(latestJob);
     });
 
-    // 任务自动启动
     task.start();
     this.tasks.set(job.id, task);
 

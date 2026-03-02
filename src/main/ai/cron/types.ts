@@ -1,9 +1,16 @@
 /**
  * Cron Job 类型定义
+ *
+ * 支持两种来源：
+ * 1. 动态 Job — 用户通过页面/API 创建，以 JSON 文件持久化在 .home/cron/jobs/
+ * 2. 声明式 Job — 开发者通过代码定义，放在 src/main/cron-jobs/ 目录下，启动时自动扫描注册
  */
 
 /** Cron 作业状态 */
 export type CronJobStatus = 'active' | 'paused' | 'disabled' | 'error';
+
+/** 作业来源 */
+export type CronJobSource = 'dynamic' | 'declarative';
 
 /** Cron 作业定义 */
 export interface CronJobDefinition {
@@ -51,6 +58,9 @@ export interface CronJobDefinition {
 
   /** 扩展元数据 */
   metadata?: Record<string, unknown>;
+
+  /** 作业来源（默认 dynamic） */
+  source?: CronJobSource;
 }
 
 /** 创建 Cron 作业的参数 */
@@ -101,4 +111,84 @@ export interface CronJobExecution {
 
   /** 执行日志 */
   logs?: string[];
+}
+
+// ==================== 声明式 Job ====================
+
+/** 声明式 Job 的执行上下文 */
+export interface CronJobContext {
+  jobId: string;
+  jobName: string;
+  startTime: Date;
+}
+
+/**
+ * 声明式 CronJob 抽象基类
+ *
+ * 开发者在 src/main/cron-jobs/ 目录下创建继承此基类的类并默认导出，
+ * 应用启动时会自动扫描注册。
+ *
+ * @example
+ * ```typescript
+ * import { BaseCronJob, CronJobContext } from '@main/ai/cron/types';
+ *
+ * export default class HealthCheckJob extends BaseCronJob {
+ *   readonly name = 'health-check';
+ *   readonly description = '定期检查各 Worker 健康状态';
+ *   readonly cronExpression = '0 *\/10 * * *'; // 每 10 分钟
+ *
+ *   async execute(ctx: CronJobContext): Promise<string> {
+ *     // 自定义逻辑，返回执行结果摘要
+ *     return 'All workers healthy';
+ *   }
+ * }
+ * ```
+ */
+export abstract class BaseCronJob {
+  /** 全局唯一标识（默认使用 name，也可覆盖） */
+  get id(): string {
+    return `declarative:${this.name}`;
+  }
+
+  /** Job 名称（英文标识符，不能重复） */
+  abstract readonly name: string;
+
+  /** Job 描述 */
+  abstract readonly description: string;
+
+  /** Cron 表达式（5 段标准格式：分 时 日 月 周） */
+  abstract readonly cronExpression: string;
+
+  /** 是否默认启用（默认 true） */
+  readonly enabled: boolean = true;
+
+  /** 关联的 Agent ID（可选，默认无需 Agent，由 execute 自行处理） */
+  readonly agentId?: string;
+
+  /**
+   * 执行逻辑
+   * @returns 结果摘要字符串
+   */
+  abstract execute(ctx: CronJobContext): Promise<string>;
+
+  /**
+   * 将声明式 Job 转换为标准 CronJobDefinition（供调度器统一管理）
+   */
+  toDefinition(): CronJobDefinition {
+    const now = new Date().toISOString();
+    return {
+      id: this.id,
+      name: this.name,
+      description: this.description,
+      cronExpression: this.cronExpression,
+      status: this.enabled ? 'active' : 'paused',
+      agentId: this.agentId,
+      task: '',
+      createdAt: now,
+      updatedAt: now,
+      runCount: 0,
+      failCount: 0,
+      source: 'declarative'
+    };
+  }
 }

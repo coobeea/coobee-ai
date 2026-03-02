@@ -189,6 +189,28 @@ export function scanGatewayEventBridges(): DiscoveredModule[] {
 }
 
 /**
+ * 扫描声明式 CronJob 文件
+ * 扫描 @main/cron-jobs 目录下所有 *Job.ts 文件
+ *
+ * Job 命名规范：
+ * - 文件名以 Job.ts 结尾（如 HealthCheckJob.ts、DataSyncJob.ts）
+ * - 必须默认导出一个继承 BaseCronJob 的类
+ */
+export function scanCronJobs(): DiscoveredModule[] {
+  log.info('[Scan] 开始扫描声明式 CronJob 文件...');
+
+  const modules = import.meta.glob('@main/cron-jobs/**/*Job.ts', { eager: true });
+  const totalFound = Object.keys(modules).length;
+
+  const filteredModules = filterModules(modules, ['BaseCronJob', '__tests__', '.test.ts', '.spec.ts']);
+  const filteredCount = filteredModules.length;
+
+  log.info(`[Scan] 声明式 CronJob 扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`);
+
+  return filteredModules;
+}
+
+/**
  * 通用过滤函数 - 过滤掉指定的文件
  * @param modules 扫描结果对象 (使用 eager: true 时，值直接是模块内容)
  * @param excludePatterns 要排除的文件名模式数组

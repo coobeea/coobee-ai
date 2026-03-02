@@ -31,7 +31,7 @@ export { IconManager, getAppIcon, getTrayNativeImage } from './icons';
 export { BrowserWindowEvents } from './window';
 
 // 模块扫描
-export { scanProcessors, scanJobs, scanApis, scanLifeCycleHooks, filterModules } from './scan';
+export { scanProcessors, scanJobs, scanApis, scanLifeCycleHooks, scanCronJobs, filterModules } from './scan';
 
 // 数据库模块
 export * from './database';

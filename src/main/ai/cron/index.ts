@@ -6,9 +6,13 @@ export type {
   CronJobDefinition,
   CronJobStatus,
   CronJobExecution,
+  CronJobSource,
+  CronJobContext,
   CreateCronJobParams,
   UpdateCronJobParams
 } from './types';
+
+export { BaseCronJob } from './types';
 
 export { CronJobStore } from './CronJobStore';
 export { CronScheduler } from './CronScheduler';

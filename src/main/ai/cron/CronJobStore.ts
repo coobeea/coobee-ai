@@ -228,7 +228,7 @@ export class CronJobStore {
   /**
    * 保存作业到文件
    */
-  private async save(job: CronJobDefinition): Promise<void> {
+  async save(job: CronJobDefinition): Promise<void> {
     const filePath = this.getJobPath(job.id);
     await fs.writeFile(filePath, JSON.stringify(job, null, 2), 'utf-8');
   }
