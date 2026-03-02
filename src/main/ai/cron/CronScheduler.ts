@@ -5,7 +5,7 @@
  * - 使用 node-cron 管理定时任务
  * - 支持三种作业来源：
  *   1. 动态 Job — 用户通过页面/API 创建（JSON 持久化）
- *   2. 声明式 Job — src/main/cron-jobs/ 下的 TypeScript 代码定义（编译时 glob）
+ *   2. 声明式 Job — src/main/jobs/ 下的 TypeScript 代码定义（编译时 glob）
  *   3. 外部 Job — workers/、extensions/ 等目录下的 cron-job.json（运行时 fs 扫描）
  * - 启动/停止/暂停作业
  * - 触发作业执行
@@ -82,7 +82,7 @@ export class CronScheduler {
   }
 
   /**
-   * 扫描并注册声明式 Job（编译时 glob，src/main/cron-jobs/）
+   * 扫描并注册声明式 Job（编译时 glob，src/main/jobs/）
    */
   private async loadDeclarativeJobs(): Promise<void> {
     try {

@@ -136,7 +136,7 @@ export function scanGatewayEventBridges(): DiscoveredModule[] {
 
 /**
  * 扫描声明式 CronJob 文件
- * 扫描 @main/cron-jobs 目录下所有 *Job.ts 文件
+ * 扫描 @main/jobs 目录下所有 *Job.ts 文件
  *
  * Job 命名规范：
  * - 文件名以 Job.ts 结尾（如 HealthCheckJob.ts、DataSyncJob.ts）
@@ -145,7 +145,7 @@ export function scanGatewayEventBridges(): DiscoveredModule[] {
 export function scanCronJobs(): DiscoveredModule[] {
   log.info('[Scan] 开始扫描声明式 CronJob 文件...');
 
-  const modules = import.meta.glob('@main/cron-jobs/**/*Job.ts', { eager: true });
+  const modules = import.meta.glob('@main/jobs/**/*Job.ts', { eager: true });
   const totalFound = Object.keys(modules).length;
 
   const filteredModules = filterModules(modules, ['BaseCronJob', '__tests__', '.test.ts', '.spec.ts']);
