@@ -6,40 +6,19 @@
  * - 支持三种作业来源：
  *   1. 动态 Job — 用户通过页面/API 创建（JSON 持久化）
  *   2. 声明式 Job — src/main/jobs/ 下的 TypeScript 代码定义（编译时 glob）
- *   3. 外部 Job — workers/、extensions/ 等目录下的 cron-job.json（运行时 fs 扫描）
+ *   3. Extension Job — Extension 通过 api.registerCronJob() 注册（热插拔）
  * - 启动/停止/暂停作业
  * - 触发作业执行
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
 import * as cron from 'node-cron';
 import { log } from '@main/common/logger';
-import { Env } from '@main/common/env';
 import { scanCronJobs } from '@main/common/scan';
 
 import { CronJobStore } from './CronJobStore';
 import { CronJobExecutor } from './CronJobExecutor';
 import { BaseCronJob } from './types';
 import type { CronJobDefinition } from './types';
-
-// cron-job.json 文件格式（外部目录定义）
-// {
-//   "name": "tavern-sync",
-//   "description": "定时同步酒馆数据",
-//   "cronExpression": "0 */6 * * *",
-//   "task": "请同步酒馆最新数据到本地缓存",
-//   "agentId": "app-copilot",
-//   "enabled": true
-// }
-interface ExternalCronJobConfig {
-  name: string;
-  description: string;
-  cronExpression: string;
-  task: string;
-  agentId?: string;
-  enabled?: boolean;
-}
 
 export class CronScheduler {
   private store: CronJobStore;
@@ -67,10 +46,7 @@ export class CronScheduler {
     // 1. 扫描并注册声明式 Job（编译时 glob）
     await this.loadDeclarativeJobs();
 
-    // 2. 扫描并注册外部目录 Job（运行时 fs 扫描）
-    await this.loadExternalJobs();
-
-    // 3. 加载动态配置的 Job（用户通过页面创建的）
+    // 2. 加载所有已持久化的 Job（动态 + Extension 注册的）
     const jobs = await this.store.list();
     for (const job of jobs) {
       if (job.status === 'active' && !this.tasks.has(job.id)) {
@@ -135,95 +111,6 @@ export class CronScheduler {
       }
     } catch (err) {
       log.warn('[CronScheduler] 声明式 Job 扫描失败', err);
-    }
-  }
-
-  /**
-   * 运行时 fs 扫描外部目录中的 cron-job.json 文件
-   *
-   * 扫描规则（类似 WorkerManager 的 worker.json 模式）：
-   * - 遍历 scanDirs 中每个顶级子目录
-   * - 查找 cron-job.json 文件
-   * - 解析为 CronJobDefinition 并注册
-   */
-  private async loadExternalJobs(): Promise<void> {
-    const scanDirs = [Env.paths.workersDir, Env.paths.builtinExtensionsDir, Env.paths.userExtensionsDir];
-
-    let totalCount = 0;
-
-    for (const baseDir of scanDirs) {
-      if (!fs.existsSync(baseDir)) continue;
-
-      let entries: fs.Dirent[];
-      try {
-        entries = fs.readdirSync(baseDir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-
-        const configPath = path.join(baseDir, entry.name, 'cron-job.json');
-        if (!fs.existsSync(configPath)) continue;
-
-        try {
-          const raw = fs.readFileSync(configPath, 'utf-8');
-          const config = JSON.parse(raw) as ExternalCronJobConfig;
-
-          if (!config.name || !config.cronExpression || !config.task) {
-            log.warn(`[CronScheduler] 外部 Job 配置不完整: ${configPath}`);
-            continue;
-          }
-
-          if (!cron.validate(config.cronExpression)) {
-            log.error(`[CronScheduler] 外部 Job ${config.name} 的 cron 表达式无效: ${config.cronExpression}`);
-            continue;
-          }
-
-          const jobId = `external:${entry.name}:${config.name}`;
-
-          const existing = await this.store.get(jobId);
-          if (existing) {
-            if (existing.status !== 'active') {
-              log.info(`[CronScheduler] 外部 Job ${config.name} 状态为 ${existing.status}，跳过调度`);
-              continue;
-            }
-            await this.scheduleJob(existing);
-          } else {
-            const now = new Date().toISOString();
-            const definition: CronJobDefinition = {
-              id: jobId,
-              name: config.name,
-              description: config.description || '',
-              cronExpression: config.cronExpression,
-              status: config.enabled !== false ? 'active' : 'paused',
-              agentId: config.agentId,
-              task: config.task,
-              createdAt: now,
-              updatedAt: now,
-              runCount: 0,
-              failCount: 0,
-              source: 'external',
-              metadata: { configPath, directory: entry.name }
-            };
-
-            await this.store.save(definition);
-
-            if (definition.status === 'active') {
-              await this.scheduleJob(definition);
-            }
-          }
-
-          totalCount++;
-        } catch (err) {
-          log.error(`[CronScheduler] 加载外部 Job 失败: ${configPath}`, err);
-        }
-      }
-    }
-
-    if (totalCount > 0) {
-      log.info(`[CronScheduler] 已注册 ${totalCount} 个外部 Job`);
     }
   }
 

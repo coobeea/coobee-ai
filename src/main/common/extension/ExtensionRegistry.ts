@@ -15,7 +15,9 @@ import type {
   RegisteredExtensionSkillDir,
   RegisteredChannel,
   RegisteredHttpRoute,
-  RegisteredBackgroundService
+  RegisteredBackgroundService,
+  RegisteredCronJob,
+  CronJobConfig
 } from './types';
 
 /** 受保护的 Gateway 核心命名空间，Extension 不可覆盖 */
@@ -29,6 +31,7 @@ export class ExtensionRegistry {
   private channels: RegisteredChannel[] = [];
   private httpRoutes: RegisteredHttpRoute[] = [];
   private backgroundServices: RegisteredBackgroundService[] = [];
+  private cronJobs: RegisteredCronJob[] = [];
   /** 失败的 Extension（extensionId → 错误信息） */
   private failedExtensions = new Map<string, string>();
 
@@ -202,6 +205,32 @@ export class ExtensionRegistry {
     return [...this.backgroundServices];
   }
 
+  // --- CronJob ---
+
+  registerCronJob(extensionId: string, config: CronJobConfig): void {
+    const jobKey = `${extensionId}:${config.name}`;
+    if (this.cronJobs.some((j) => `${j.extensionId}:${j.config.name}` === jobKey)) {
+      throw new Error(`[ExtensionRegistry] CronJob "${config.name}" already registered by "${extensionId}"`);
+    }
+    this.cronJobs.push({ extensionId, config });
+  }
+
+  unregisterCronJobsByExtension(extensionId: string): string[] {
+    const removed: string[] = [];
+    this.cronJobs = this.cronJobs.filter((j) => {
+      if (j.extensionId === extensionId) {
+        removed.push(j.config.name);
+        return false;
+      }
+      return true;
+    });
+    return removed;
+  }
+
+  getCronJobs(): RegisteredCronJob[] {
+    return [...this.cronJobs];
+  }
+
   // --- 整体 ---
 
   unregisterAll(extensionId: string): void {
@@ -212,6 +241,7 @@ export class ExtensionRegistry {
     this.unregisterChannelsByExtension(extensionId);
     this.unregisterHttpRoutesByExtension(extensionId);
     this.unregisterServicesByExtension(extensionId);
+    this.unregisterCronJobsByExtension(extensionId);
   }
 
   getExtensionIds(): string[] {
@@ -223,6 +253,7 @@ export class ExtensionRegistry {
     for (const c of this.channels) ids.add(c.extensionId);
     for (const r of this.httpRoutes) ids.add(r.extensionId);
     for (const s of this.backgroundServices) ids.add(s.extensionId);
+    for (const j of this.cronJobs) ids.add(j.extensionId);
     return [...ids];
   }
 
@@ -234,6 +265,7 @@ export class ExtensionRegistry {
     this.channels = [];
     this.httpRoutes = [];
     this.backgroundServices = [];
+    this.cronJobs = [];
     this.failedExtensions.clear();
   }
 

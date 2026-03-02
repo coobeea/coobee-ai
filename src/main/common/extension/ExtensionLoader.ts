@@ -199,6 +199,52 @@ export class ExtensionLoader {
       }
     }
 
+    // 将该 Extension 注册的 CronJob 同步到 CronScheduler
+    const extCronJobs = this.registry.getCronJobs().filter((j) => j.extensionId === manifest.id);
+    if (extCronJobs.length > 0) {
+      try {
+        const { getCronScheduler, getCronJobStore } = await import('../../ai/cron');
+        const cronScheduler = getCronScheduler();
+        const cronStore = getCronJobStore();
+
+        for (const { config } of extCronJobs) {
+          const jobId = `ext:${manifest.id}:${config.name}`;
+          const now = new Date().toISOString();
+          const definition = {
+            id: jobId,
+            name: config.name,
+            description: config.description,
+            cronExpression: config.cronExpression,
+            status: (config.enabled !== false ? 'active' : 'paused') as 'active' | 'paused',
+            agentId: config.agentId,
+            task: config.task,
+            createdAt: now,
+            updatedAt: now,
+            runCount: 0,
+            failCount: 0,
+            source: 'external' as const,
+            metadata: { extensionId: manifest.id }
+          };
+
+          const existing = await cronStore.get(jobId);
+          if (existing) {
+            definition.runCount = existing.runCount;
+            definition.failCount = existing.failCount;
+            if (existing.lastRunAt) (definition as Record<string, unknown>).lastRunAt = existing.lastRunAt;
+          } else {
+            await cronStore.save(definition);
+          }
+
+          if (definition.status === 'active') {
+            await cronScheduler.scheduleJob(definition);
+          }
+        }
+        log.info(`[ExtensionLoader] Synced ${extCronJobs.length} CronJob(s) for "${manifest.id}"`);
+      } catch {
+        // CronScheduler 未初始化时静默（应用启动早期阶段）
+      }
+    }
+
     log.info(`[ExtensionLoader] Loaded "${manifest.id}" (${origin}) from ${dir}`);
   }
 
@@ -247,15 +293,35 @@ export class ExtensionLoader {
       }
     }
 
-    // 4. 清理 ExtensionRegistry 所有关联的注册信息
+    // 4. 从 CronScheduler 取消该 Extension 注册的定时任务
+    const extCronJobs = this.registry.getCronJobs().filter((j) => j.extensionId === extensionId);
+    if (extCronJobs.length > 0) {
+      try {
+        const { getCronScheduler, getCronJobStore } = await import('../../ai/cron');
+        const cronScheduler = getCronScheduler();
+        const cronStore = getCronJobStore();
+
+        for (const { config } of extCronJobs) {
+          const jobId = `ext:${extensionId}:${config.name}`;
+          await cronScheduler.unscheduleJob(jobId);
+          await cronStore.delete(jobId);
+        }
+        log.info(`[ExtensionLoader] Removed ${extCronJobs.length} CronJob(s) for "${extensionId}"`);
+      } catch {
+        // CronScheduler 未初始化时静默
+      }
+    }
+
+    // 5. 清理 ExtensionRegistry 所有关联的注册信息
     this.registry.unregisterHooksByExtension(extensionId);
     this.registry.unregisterGatewayMethodsByExtension(extensionId);
     this.registry.unregisterSkillDirsByExtension(extensionId);
     this.registry.unregisterChannelsByExtension(extensionId);
     this.registry.unregisterHttpRoutesByExtension(extensionId);
     this.registry.unregisterServicesByExtension(extensionId);
+    this.registry.unregisterCronJobsByExtension(extensionId);
 
-    // 4. 同步清理 ToolRegistry（动态 import 避免 common→ai 编译时依赖）
+    // 6. 同步清理 ToolRegistry（动态 import 避免 common→ai 编译时依赖）
     if (removedTools.length > 0) {
       try {
         const { ToolRegistry } = await import('../../ai/tools/registry');
@@ -270,7 +336,7 @@ export class ExtensionLoader {
       }
     }
 
-    // 5. 清理本地记录
+    // 7. 清理本地记录
     this.loadedExtensions.delete(extensionId);
     this.loadedModules.delete(extensionId);
 

@@ -13,7 +13,8 @@ import type {
   ExtensionServices,
   ExtensionEventBus,
   ExtensionHookName,
-  ExtensionHookHandler
+  ExtensionHookHandler,
+  CronJobConfig
 } from './types';
 
 /**
@@ -68,6 +69,9 @@ export function createExtensionApi(
     },
     registerService(service) {
       registry.registerService(extensionId, service);
+    },
+    registerCronJob(config: CronJobConfig) {
+      registry.registerCronJob(extensionId, config);
     }
   };
 }

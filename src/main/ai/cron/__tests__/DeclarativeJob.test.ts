@@ -1,18 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import fsSync from 'node:fs';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { CronJobStore } from '../CronJobStore';
 import { CronJobExecutor } from '../CronJobExecutor';
-import { CronScheduler } from '../CronScheduler';
 import { BaseCronJob } from '../types';
-import type { CronJobContext, CronJobDefinition } from '../types';
+import type { CronJobContext } from '../types';
+import { ExtensionRegistry } from '@main/common/extension/ExtensionRegistry';
 
 const mockEnvPaths = vi.hoisted(() => ({
-  workersDir: '',
-  builtinExtensionsDir: '',
-  userExtensionsDir: '',
   userHome: ''
 }));
 
@@ -184,139 +180,123 @@ describe('Declarative CronJob', () => {
   });
 });
 
-describe('External CronJob (cron-job.json)', () => {
-  let tempDir: string;
-  let workersDir: string;
-  let extensionsDir: string;
-  let store: CronJobStore;
-  let executor: CronJobExecutor;
-  let scheduler: CronScheduler;
+describe('Extension CronJob 注册', () => {
+  let registry: ExtensionRegistry;
 
-  beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cron-external-'));
-    workersDir = path.join(tempDir, 'workers');
-    extensionsDir = path.join(tempDir, 'extensions');
+  beforeEach(() => {
+    registry = new ExtensionRegistry();
+  });
 
-    await fs.mkdir(workersDir, { recursive: true });
-    await fs.mkdir(extensionsDir, { recursive: true });
-
-    mockEnvPaths.userHome = tempDir;
-    mockEnvPaths.workersDir = workersDir;
-    mockEnvPaths.builtinExtensionsDir = extensionsDir;
-    mockEnvPaths.userExtensionsDir = path.join(tempDir, 'user-extensions');
-
-    store = new CronJobStore();
-    Object.defineProperty(store, 'jobsDir', {
-      value: path.join(tempDir, 'jobs'),
-      writable: false
+  it('应该注册 Extension CronJob', () => {
+    registry.registerCronJob('tavern-integration', {
+      name: 'tavern-sync',
+      description: '定时同步酒馆数据',
+      cronExpression: '0 */6 * * *',
+      task: '请同步酒馆最新数据到本地缓存',
+      agentId: 'app-copilot'
     });
-    Object.defineProperty(store, 'executionsDir', {
-      value: path.join(tempDir, 'executions'),
-      writable: false
+
+    const jobs = registry.getCronJobs();
+    expect(jobs.length).toBe(1);
+    expect(jobs[0].extensionId).toBe('tavern-integration');
+    expect(jobs[0].config.name).toBe('tavern-sync');
+    expect(jobs[0].config.task).toBe('请同步酒馆最新数据到本地缓存');
+  });
+
+  it('同一 Extension 不能注册重名 Job', () => {
+    registry.registerCronJob('my-ext', {
+      name: 'job-a',
+      description: 'test',
+      cronExpression: '* * * * *',
+      task: 'do something'
     });
-    await store.initialize();
 
-    executor = new CronJobExecutor(store);
-    scheduler = new CronScheduler(store, executor);
-  });
-
-  afterEach(async () => {
-    if (scheduler) await scheduler.stop();
-    await fs.rm(tempDir, { recursive: true, force: true });
-    vi.restoreAllMocks();
-  });
-
-  it('应该从 workers 目录扫描 cron-job.json', async () => {
-    const tavernDir = path.join(workersDir, 'tavern');
-    fsSync.mkdirSync(tavernDir, { recursive: true });
-    fsSync.writeFileSync(
-      path.join(tavernDir, 'cron-job.json'),
-      JSON.stringify({
-        name: 'tavern-sync',
-        description: '定时同步酒馆数据',
-        cronExpression: '0 */6 * * *',
-        task: '请同步酒馆最新数据到本地缓存',
-        agentId: 'app-copilot',
-        enabled: true
+    expect(() =>
+      registry.registerCronJob('my-ext', {
+        name: 'job-a',
+        description: 'duplicate',
+        cronExpression: '* * * * *',
+        task: 'do something else'
       })
-    );
-
-    // 直接调用 loadExternalJobs（通过 start，但 mock 了 scanCronJobs 返回空）
-    await scheduler.start();
-
-    const allJobs = await store.list();
-    const externalJob = allJobs.find((j: CronJobDefinition) => j.source === 'external');
-    expect(externalJob).toBeDefined();
-    expect(externalJob!.name).toBe('tavern-sync');
-    expect(externalJob!.task).toBe('请同步酒馆最新数据到本地缓存');
-    expect(externalJob!.agentId).toBe('app-copilot');
-    expect(externalJob!.id).toBe('external:tavern:tavern-sync');
+    ).toThrow('already registered');
   });
 
-  it('应该跳过 enabled=false 的外部 Job', async () => {
-    const disabledDir = path.join(workersDir, 'disabled-worker');
-    fsSync.mkdirSync(disabledDir, { recursive: true });
-    fsSync.writeFileSync(
-      path.join(disabledDir, 'cron-job.json'),
-      JSON.stringify({
-        name: 'disabled-job',
-        description: '已禁用的 Job',
-        cronExpression: '0 * * * *',
-        task: '这个不应该被调度',
-        enabled: false
-      })
-    );
+  it('不同 Extension 可以注册同名 Job', () => {
+    registry.registerCronJob('ext-a', {
+      name: 'sync',
+      description: 'sync a',
+      cronExpression: '* * * * *',
+      task: 'sync a'
+    });
 
-    await scheduler.start();
+    registry.registerCronJob('ext-b', {
+      name: 'sync',
+      description: 'sync b',
+      cronExpression: '* * * * *',
+      task: 'sync b'
+    });
 
-    const allJobs = await store.list();
-    const externalJob = allJobs.find((j: CronJobDefinition) => j.id === 'external:disabled-worker:disabled-job');
-    expect(externalJob).toBeDefined();
-    expect(externalJob!.status).toBe('paused');
+    expect(registry.getCronJobs().length).toBe(2);
   });
 
-  it('应该跳过无效 cron 表达式的外部 Job', async () => {
-    const badDir = path.join(workersDir, 'bad-cron');
-    fsSync.mkdirSync(badDir, { recursive: true });
-    fsSync.writeFileSync(
-      path.join(badDir, 'cron-job.json'),
-      JSON.stringify({
-        name: 'bad-cron-job',
-        description: '无效 cron',
-        cronExpression: 'not a cron',
-        task: 'should fail validation'
-      })
-    );
+  it('卸载 Extension 时应清除其 CronJob', () => {
+    registry.registerCronJob('ext-a', {
+      name: 'job-1',
+      description: 'test',
+      cronExpression: '* * * * *',
+      task: 'task 1'
+    });
+    registry.registerCronJob('ext-b', {
+      name: 'job-2',
+      description: 'test',
+      cronExpression: '* * * * *',
+      task: 'task 2'
+    });
 
-    await scheduler.start();
-
-    const allJobs = await store.list();
-    const badJob = allJobs.find((j: CronJobDefinition) => j.name === 'bad-cron-job');
-    expect(badJob).toBeUndefined();
+    const removed = registry.unregisterCronJobsByExtension('ext-a');
+    expect(removed).toEqual(['job-1']);
+    expect(registry.getCronJobs().length).toBe(1);
+    expect(registry.getCronJobs()[0].extensionId).toBe('ext-b');
   });
 
-  it('应该跳过缺少必要字段的外部 Job', async () => {
-    const incompleteDir = path.join(workersDir, 'incomplete');
-    fsSync.mkdirSync(incompleteDir, { recursive: true });
-    fsSync.writeFileSync(
-      path.join(incompleteDir, 'cron-job.json'),
-      JSON.stringify({
-        name: 'no-task-job',
-        cronExpression: '* * * * *'
-      })
-    );
+  it('unregisterAll 应包含 CronJob 清理', () => {
+    registry.registerCronJob('ext-a', {
+      name: 'job-x',
+      description: 'test',
+      cronExpression: '* * * * *',
+      task: 'task x'
+    });
 
-    await scheduler.start();
-
-    const allJobs = await store.list();
-    const incompleteJob = allJobs.find((j: CronJobDefinition) => j.name === 'no-task-job');
-    expect(incompleteJob).toBeUndefined();
+    registry.unregisterAll('ext-a');
+    expect(registry.getCronJobs().length).toBe(0);
   });
 
-  it('应该忽略不存在的扫描目录', async () => {
-    await fs.rm(workersDir, { recursive: true, force: true });
-    await fs.rm(extensionsDir, { recursive: true, force: true });
+  it('getExtensionIds 应包含 CronJob 注册者', () => {
+    registry.registerCronJob('cron-only-ext', {
+      name: 'my-job',
+      description: 'test',
+      cronExpression: '* * * * *',
+      task: 'my task'
+    });
 
-    await expect(scheduler.start()).resolves.not.toThrow();
+    expect(registry.getExtensionIds()).toContain('cron-only-ext');
+  });
+
+  it('clear 应清除所有 CronJob', () => {
+    registry.registerCronJob('ext-a', {
+      name: 'j1',
+      description: 'test',
+      cronExpression: '* * * * *',
+      task: 't1'
+    });
+    registry.registerCronJob('ext-b', {
+      name: 'j2',
+      description: 'test',
+      cronExpression: '* * * * *',
+      task: 't2'
+    });
+
+    registry.clear();
+    expect(registry.getCronJobs().length).toBe(0);
   });
 });

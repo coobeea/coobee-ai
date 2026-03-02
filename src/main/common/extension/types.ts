@@ -163,6 +163,8 @@ export interface ExtensionApi {
   registerHttpRoute(config: HttpRouteConfig): void;
   /** 注册后台服务 */
   registerService(service: BackgroundService): void;
+  /** 注册定时任务（通过 CronScheduler 调度） */
+  registerCronJob(config: CronJobConfig): void;
 }
 
 // ==================== Extension Hook ====================
@@ -471,4 +473,27 @@ export interface RegisteredHttpRoute {
 export interface RegisteredBackgroundService {
   extensionId: string;
   service: BackgroundService;
+}
+
+// ==================== CronJob ====================
+
+/** Extension 注册定时任务的配置 */
+export interface CronJobConfig {
+  /** 任务名称（英文标识符，同一 Extension 内不能重复） */
+  name: string;
+  /** 任务描述 */
+  description: string;
+  /** Cron 表达式（5 段标准格式：分 时 日 月 周） */
+  cronExpression: string;
+  /** 要执行的任务（自然语言描述，交给 Agent 执行） */
+  task: string;
+  /** 关联的 Agent ID（可选，默认使用 app-copilot） */
+  agentId?: string;
+  /** 是否启用（默认 true） */
+  enabled?: boolean;
+}
+
+export interface RegisteredCronJob {
+  extensionId: string;
+  config: CronJobConfig;
 }
