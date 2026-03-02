@@ -2,60 +2,6 @@ import { log } from './logger';
 import { DiscoveredModule } from './types';
 
 /**
- * 扫描所有处理器文件
- */
-export function scanProcessors(): DiscoveredModule[] {
-  log.info('[Scan] 开始扫描处理器文件...');
-
-  const modules = import.meta.glob('@main/jobs/**/*Processor.ts', { eager: true });
-  const totalFound = Object.keys(modules).length;
-
-  log.info(`[Scan] 发现 ${totalFound} 个潜在的处理器文件:`);
-  Object.keys(modules).forEach((path, index) => {
-    log.info(`[Scan]   ${index + 1}. ${path}`);
-  });
-
-  const filteredModules = filterModules(modules, ['ProcessorRegistry', 'BaseProcessor']);
-  const filteredCount = filteredModules.length;
-
-  log.info(`[Scan] 过滤后剩余 ${filteredCount} 个处理器文件:`);
-  filteredModules.forEach((discoveredModule, index) => {
-    log.info(`[Scan]   ${index + 1}. ${discoveredModule.path}`);
-  });
-
-  log.info('[Scan] 处理器文件扫描完成');
-
-  return filteredModules;
-}
-
-/**
- * 扫描作业文件
- */
-export function scanJobs(): DiscoveredModule[] {
-  log.info('[Scan] 开始扫描作业文件...');
-
-  const modules = import.meta.glob('@main/jobs/**/*Job.ts', { eager: true });
-  const totalFound = Object.keys(modules).length;
-
-  log.info(`[Scan] 发现 ${totalFound} 个潜在的作业文件:`);
-  Object.keys(modules).forEach((path, index) => {
-    log.info(`[Scan]   ${index + 1}. ${path}`);
-  });
-
-  const filteredModules = filterModules(modules, ['JobRegistry', 'BaseJob']);
-  const filteredCount = filteredModules.length;
-
-  log.info(`[Scan] 过滤后剩余 ${filteredCount} 个作业文件:`);
-  filteredModules.forEach((discoveredModule, index) => {
-    log.info(`[Scan]   ${index + 1}. ${discoveredModule.path}`);
-  });
-
-  log.info('[Scan] 作业文件扫描完成');
-
-  return filteredModules;
-}
-
-/**
  * 扫描 API 文件
  */
 export function scanApis(): DiscoveredModule[] {

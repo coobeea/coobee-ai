@@ -1,16 +1,17 @@
 /**
  * Cron Job 类型定义
  *
- * 支持两种来源：
+ * 支持三种来源：
  * 1. 动态 Job — 用户通过页面/API 创建，以 JSON 文件持久化在 .home/cron/jobs/
  * 2. 声明式 Job — 开发者通过代码定义，放在 src/main/cron-jobs/ 目录下，启动时自动扫描注册
+ * 3. 外部 Job — 由 workers/、extensions/ 等外部目录通过 cron-job.json 定义，运行时 fs 扫描注册
  */
 
 /** Cron 作业状态 */
 export type CronJobStatus = 'active' | 'paused' | 'disabled' | 'error';
 
 /** 作业来源 */
-export type CronJobSource = 'dynamic' | 'declarative';
+export type CronJobSource = 'dynamic' | 'declarative' | 'external';
 
 /** Cron 作业定义 */
 export interface CronJobDefinition {
