@@ -90,6 +90,21 @@ export const Env = {
       /** Agent 级记忆（按 Agent 隔离） */
       agentMemoryDir: path.join(_userHome, 'memory', 'agent'),
 
+      // === 共享网盘目录（SharedDrive）===
+      /**
+       * 多智能体共享网盘
+       *
+       * 结构：
+       *   shared-drive/
+       *   ├── index.jsonl        全局索引
+       *   ├── {agentId}/         按智能体分区
+       *   │   └── {date}/{topic}/
+       *   └── _shared/           公共区域
+       *
+       * @example 开发: <项目>/.home/shared-drive | 生产: ~/.coobee-ai/shared-drive
+       */
+      sharedDriveDir: path.join(_userHome, 'shared-drive'),
+
       // === Agent 定义目录（Agents）===
       /**
        * 内置 Agent 目录（只读，随应用分发）

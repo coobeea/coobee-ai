@@ -64,8 +64,11 @@ export const ReadyExtensionHook: LifecycleHook = {
         }
       }
 
-      // 7. 并发启动所有已注册的 Channel
+      // 7. 将 Registry 中的 Channel 同步到 ChannelManager 并启动
       const channelManager = ChannelManager.getInstance();
+      for (const { channel } of registry.getChannels()) {
+        channelManager.registerChannel(channel);
+      }
       await channelManager.startAll();
 
       // 8. 启动 fs.watch 热插拔（只监听全局目录）

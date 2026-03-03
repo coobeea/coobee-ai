@@ -825,11 +825,30 @@ class AgentExecutor {
         runtime = request.runtime;
         eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
 
+        // agent:start 事件
+        await this.emitAgentLifecycleEvent('agent:start', {
+          sessionId,
+          agentId: runtime.id,
+          agentName: runtime.name,
+          task: message.substring(0, 200)
+        });
+
         const streamConfig = { signal, ...request.executionConfig };
         const gen = runtime.stream(message, streamConfig);
         const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal, workspaceDir);
 
         const duration = Date.now() - startTime;
+
+        // agent:done 事件
+        await this.emitAgentLifecycleEvent('agent:done', {
+          sessionId,
+          agentId: runtime.id,
+          agentName: runtime.name,
+          success: true,
+          durationMs: duration,
+          summary: result.output?.substring(0, 500)
+        });
+
         this.logCompletion(sessionId, result, duration);
         return result;
       }
@@ -855,6 +874,14 @@ class AgentExecutor {
       runtime = await builder.sessionId(sessionId).build();
       eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
 
+      // agent:start 事件
+      await this.emitAgentLifecycleEvent('agent:start', {
+        sessionId,
+        agentId: runtime.id,
+        agentName: runtime.name,
+        task: message.substring(0, 200)
+      });
+
       // 2. 流式执行（HITL 在 before_tool_call Hook 中自动处理），传入 signal
       const gen = runtime.stream(message, { signal });
       const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal, workspaceDir);
@@ -864,10 +891,33 @@ class AgentExecutor {
       // === Extension Hooks: agent_end + session_end ===
       await this.runExtensionEndHooks(sessionId, result, duration);
 
+      // agent:done 事件
+      await this.emitAgentLifecycleEvent('agent:done', {
+        sessionId,
+        agentId: runtime.id,
+        agentName: runtime.name,
+        success: true,
+        durationMs: duration,
+        summary: result.output?.substring(0, 500)
+      });
+
       this.logCompletion(sessionId, result, duration);
       return result;
     } catch (error: unknown) {
       const duration = Date.now() - startTime;
+
+      // agent:done 事件（失败）
+      if (runtime) {
+        await this.emitAgentLifecycleEvent('agent:done', {
+          sessionId,
+          agentId: runtime.id,
+          agentName: runtime.name,
+          success: false,
+          durationMs: duration,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+
       log.error(`[AgentExecutor] Error: sessionId=${sessionId}, duration=${duration}ms`, error);
       throw error;
     } finally {
@@ -886,6 +936,16 @@ class AgentExecutor {
   }
 
   // ========== 辅助方法 ==========
+
+  /** 发射 Agent 生命周期事件到 EventBus（静默失败，不影响主流程） */
+  private async emitAgentLifecycleEvent(event: string, payload: Record<string, unknown>): Promise<void> {
+    try {
+      const { eventBus } = await import('@main/common/eventbus');
+      eventBus.emit(event, { ...payload, timestamp: Date.now() });
+    } catch {
+      // EventBus 不可用时静默
+    }
+  }
 
   /** 创建 StreamEmitter */
   private createEmitter(sessionId: string, runtime: AgentRuntime): IStreamEmitter {

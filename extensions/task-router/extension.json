@@ -1,0 +1,7 @@
+{
+  "id": "task-router",
+  "name": "Task Router",
+  "version": "1.0.0",
+  "description": "Event-driven task routing between agents. Listens to agent:done events and triggers follow-up tasks based on configurable routing rules.",
+  "enabled": true
+}
