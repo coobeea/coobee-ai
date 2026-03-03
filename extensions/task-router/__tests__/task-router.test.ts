@@ -80,14 +80,6 @@ vi.mock('@main/ai/skills', () => ({
   }))
 }));
 
-vi.mock('@main/ai/shared-drive/SharedDriveStore', () => ({
-  SharedDriveStore: {
-    getInstance: vi.fn().mockResolvedValue({
-      list: vi.fn().mockResolvedValue([])
-    })
-  }
-}));
-
 vi.mock('@main/common/eventbus', () => ({
   eventBus: {
     on: vi.fn(),
@@ -98,10 +90,24 @@ vi.mock('@main/common/eventbus', () => ({
 
 import taskRouterModule from '../index';
 
-describe('TaskRouter (方案 B: LLM 驱动分发)', () => {
+describe('TaskRouter (方案 B: 监听 shared-drive:entry-created)', () => {
   let tempDir: string;
   let mockApi: Record<string, unknown>;
   let registeredEventHandlers: Map<string, ((...args: unknown[]) => void)[]>;
+
+  function makeEntryPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      entryId: 'entry-001',
+      agentId: 'researcher',
+      topic: 'market-analysis-q1',
+      date: '2026-03-03',
+      tags: ['market', 'q1'],
+      summary: '市场调研报告已完成',
+      path: 'researcher/2026-03-03/market-analysis-q1',
+      timestamp: Date.now(),
+      ...overrides
+    };
+  }
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'task-router-test-'));
@@ -139,11 +145,13 @@ describe('TaskRouter (方案 B: LLM 驱动分发)', () => {
   });
 
   describe('register/unregister', () => {
-    it('should register event listener on agent:done', async () => {
+    it('should register event listener on shared-drive:entry-created', async () => {
       await taskRouterModule.register(mockApi as never);
 
-      expect(mockApi.eventBus).toBeDefined();
-      expect((mockApi.eventBus as Record<string, unknown>).on).toHaveBeenCalledWith('agent:done', expect.any(Function));
+      expect((mockApi.eventBus as Record<string, unknown>).on).toHaveBeenCalledWith(
+        'shared-drive:entry-created',
+        expect.any(Function)
+      );
     });
 
     it('should unregister event listener on unregister', async () => {
@@ -151,7 +159,7 @@ describe('TaskRouter (方案 B: LLM 驱动分发)', () => {
       taskRouterModule.unregister();
 
       expect((mockApi.eventBus as Record<string, unknown>).off).toHaveBeenCalledWith(
-        'agent:done',
+        'shared-drive:entry-created',
         expect.any(Function)
       );
     });
@@ -168,81 +176,61 @@ describe('TaskRouter (方案 B: LLM 驱动分发)', () => {
     });
   });
 
-  describe('shouldDispatch (filtering logic)', () => {
-    it('should skip failed events', async () => {
+  describe('shouldDispatch (filtering)', () => {
+    it('should skip task-dispatcher own entries (loop prevention)', async () => {
       await taskRouterModule.register(mockApi as never);
-      const handlers = registeredEventHandlers.get('agent:done') || [];
-      expect(handlers.length).toBe(1);
+      const handler = registeredEventHandlers.get('shared-drive:entry-created')![0];
 
-      const handler = handlers[0];
-      handler({ agentId: 'test', success: false, summary: 'some long summary text here' });
-
-      // 不应 dispatch（no setTimeout called）
-      await new Promise((r) => setTimeout(r, 100));
-      expect(mockSubmit).not.toHaveBeenCalled();
-    });
-
-    it('should skip task-dispatcher events (loop prevention)', async () => {
-      await taskRouterModule.register(mockApi as never);
-      const handler = registeredEventHandlers.get('agent:done')![0];
-
-      handler({
-        agentId: 'task-dispatcher',
-        success: true,
-        summary: 'A long enough summary to pass the length check'
-      });
+      handler(makeEntryPayload({ agentId: 'task-dispatcher' }));
 
       await new Promise((r) => setTimeout(r, 100));
       expect(mockSubmit).not.toHaveBeenCalled();
     });
 
-    it('should skip events with short summary', async () => {
+    it('should skip entries with too-short topic', async () => {
       await taskRouterModule.register(mockApi as never);
-      const handler = registeredEventHandlers.get('agent:done')![0];
+      const handler = registeredEventHandlers.get('shared-drive:entry-created')![0];
 
-      handler({ agentId: 'researcher', success: true, summary: 'short' });
+      handler(makeEntryPayload({ topic: 'ab' }));
 
       await new Promise((r) => setTimeout(r, 100));
       expect(mockSubmit).not.toHaveBeenCalled();
     });
 
-    it('should skip delegate sub-sessions', async () => {
+    it('should accept valid entry-created events', async () => {
+      vi.useFakeTimers();
+
       await taskRouterModule.register(mockApi as never);
-      const handler = registeredEventHandlers.get('agent:done')![0];
+      const handler = registeredEventHandlers.get('shared-drive:entry-created')![0];
 
-      handler({
-        agentId: 'researcher',
-        sessionId: 'abc:delegate:xyz',
-        success: true,
-        summary: 'A long enough summary to pass the length check'
-      });
+      handler(makeEntryPayload());
 
-      await new Promise((r) => setTimeout(r, 100));
-      expect(mockSubmit).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(3000);
+      vi.useRealTimers();
+
+      await new Promise((r) => setTimeout(r, 200));
+      expect(mockSubmit).toHaveBeenCalled();
     });
   });
 
   describe('dispatch to task-dispatcher', () => {
-    it('should create Thread and submit to task-dispatcher', async () => {
+    it('should create Thread and submit with entry info', async () => {
       vi.useFakeTimers();
 
       await taskRouterModule.register(mockApi as never);
-      const handler = registeredEventHandlers.get('agent:done')![0];
+      const handler = registeredEventHandlers.get('shared-drive:entry-created')![0];
 
-      handler({
-        agentId: 'researcher',
-        agentName: '研究员',
-        sessionId: '2839494949',
-        success: true,
-        durationMs: 5000,
-        summary: '市场调研报告已完成，包含 Q1 数据分析和竞品对比'
-      });
+      handler(
+        makeEntryPayload({
+          entryId: 'entry-42',
+          agentId: 'researcher',
+          topic: 'competitive-analysis'
+        })
+      );
 
-      // 快进到 delay 完成
-      vi.advanceTimersByTime(4000);
+      vi.advanceTimersByTime(3000);
       vi.useRealTimers();
 
-      // 等待异步完成
       await new Promise((r) => setTimeout(r, 200));
 
       const { ThreadStore } = await import('@main/ai/threads/ThreadStore');
@@ -250,7 +238,7 @@ describe('TaskRouter (方案 B: LLM 驱动分发)', () => {
       expect(threadStore.create).toHaveBeenCalledWith(
         expect.objectContaining({
           agentId: 'task-dispatcher',
-          title: expect.stringContaining('研究员')
+          title: expect.stringContaining('researcher')
         })
       );
 
@@ -258,7 +246,32 @@ describe('TaskRouter (方案 B: LLM 驱动分发)', () => {
       expect(mockSubmit).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId: '123456789',
-          message: expect.stringContaining('市场调研报告已完成')
+          message: expect.stringContaining('entry-42')
+        })
+      );
+    });
+
+    it('should include summary and tags in dispatch message', async () => {
+      vi.useFakeTimers();
+
+      await taskRouterModule.register(mockApi as never);
+      const handler = registeredEventHandlers.get('shared-drive:entry-created')![0];
+
+      handler(
+        makeEntryPayload({
+          summary: '这是一份详细的市场分析报告',
+          tags: ['market', 'report']
+        })
+      );
+
+      vi.advanceTimersByTime(3000);
+      vi.useRealTimers();
+
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(mockSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining('市场分析报告')
         })
       );
     });
@@ -266,50 +279,15 @@ describe('TaskRouter (方案 B: LLM 驱动分发)', () => {
 
   describe('config disabling', () => {
     it('should respect enabled=false in config', async () => {
-      const config = { enabled: false };
-      fs.writeFileSync(path.join(tempDir, 'task-routes.json'), JSON.stringify(config), 'utf-8');
+      fs.writeFileSync(path.join(tempDir, 'task-routes.json'), JSON.stringify({ enabled: false }), 'utf-8');
 
       await taskRouterModule.register(mockApi as never);
-      const handler = registeredEventHandlers.get('agent:done')![0];
+      const handler = registeredEventHandlers.get('shared-drive:entry-created')![0];
 
-      handler({
-        agentId: 'researcher',
-        success: true,
-        summary: 'Long enough summary for dispatch check'
-      });
+      handler(makeEntryPayload());
 
       await new Promise((r) => setTimeout(r, 100));
       expect(mockSubmit).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('buildDispatchMessage', () => {
-    it('should include sharedDriveEntryId when present', async () => {
-      vi.useFakeTimers();
-
-      await taskRouterModule.register(mockApi as never);
-      const handler = registeredEventHandlers.get('agent:done')![0];
-
-      handler({
-        agentId: 'researcher',
-        agentName: 'Researcher',
-        sessionId: '999',
-        success: true,
-        durationMs: 3000,
-        summary: 'Task completed with shared drive entry',
-        sharedDriveEntryId: 'entry-001'
-      });
-
-      vi.advanceTimersByTime(4000);
-      vi.useRealTimers();
-
-      await new Promise((r) => setTimeout(r, 200));
-
-      expect(mockSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: expect.stringContaining('entry-001')
-        })
-      );
     });
   });
 });
