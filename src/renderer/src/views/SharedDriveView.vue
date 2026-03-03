@@ -8,11 +8,15 @@
  *   │  (按 agent/   │  (Markdown / 代码 / 文本)    │
  *   │   date/topic) │                             │
  *   └──────────────┴─────────────────────────────┘
+ *
+ * 复用 WorkbenchPanel 的 previewRouter + MarkdownPreview 做文件展示。
  */
 
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import configManager from '@/config';
 import ErrorDisplay from '@/components/common/ErrorDisplay.vue';
+import MarkdownPreview from '@/components/agent/preview/MarkdownPreview.vue';
+import { routePreview } from '@/utils/previewRouter';
 
 interface SharedDriveEntry {
   id: string;
@@ -46,7 +50,6 @@ interface TreeNode {
   entry?: SharedDriveEntry;
   filename?: string;
   entryId?: string;
-  expanded?: boolean;
 }
 
 const BASE_URL = `${configManager.getBaseUrl()}/gateway/shared-drive`;
@@ -56,6 +59,8 @@ const stats = ref<StatsData | null>(null);
 const loading = ref(false);
 const error = ref<{ message: string; details?: string } | null>(null);
 const searchKeyword = ref('');
+
+const expandedIds = reactive(new Set<string>());
 
 const selectedEntryId = ref<string | null>(null);
 const selectedFilename = ref<string | null>(null);
@@ -76,34 +81,34 @@ const treeNodes = computed<TreeNode[]>(() => {
   const result: TreeNode[] = [];
 
   for (const [agentId, dateMap] of agentMap) {
+    const agentNodeId = `agent:${agentId}`;
     const agentNode: TreeNode = {
-      id: `agent-${agentId}`,
+      id: agentNodeId,
       label: agentId,
       type: 'agent',
-      expanded: true,
       children: []
     };
 
     const dates = [...dateMap.keys()].sort().reverse();
     for (const date of dates) {
+      const dateNodeId = `date:${agentId}:${date}`;
       const dateNode: TreeNode = {
-        id: `date-${agentId}-${date}`,
+        id: dateNodeId,
         label: date,
         type: 'date',
-        expanded: true,
         children: []
       };
 
       const dateEntries = dateMap.get(date)!;
       for (const entry of dateEntries) {
+        const entryNodeId = `entry:${entry.id}`;
         const entryNode: TreeNode = {
-          id: `entry-${entry.id}`,
+          id: entryNodeId,
           label: entry.topic,
           type: 'entry',
           entry,
-          expanded: false,
           children: entry.files.map((f) => ({
-            id: `file-${entry.id}-${f}`,
+            id: `file:${entry.id}:${f}`,
             label: f,
             type: 'file' as const,
             filename: f,
@@ -122,9 +127,45 @@ const treeNodes = computed<TreeNode[]>(() => {
   return result;
 });
 
+function isExpanded(nodeId: string): boolean {
+  return expandedIds.has(nodeId);
+}
+
+function toggleExpand(nodeId: string): void {
+  if (expandedIds.has(nodeId)) {
+    expandedIds.delete(nodeId);
+  } else {
+    expandedIds.add(nodeId);
+  }
+}
+
+function expandParentsOf(entryId: string): void {
+  for (const agentNode of treeNodes.value) {
+    for (const dateNode of agentNode.children || []) {
+      for (const entryNode of dateNode.children || []) {
+        if (entryNode.entry?.id === entryId) {
+          expandedIds.add(agentNode.id);
+          expandedIds.add(dateNode.id);
+          expandedIds.add(entryNode.id);
+          return;
+        }
+      }
+    }
+  }
+}
+
 onMounted(() => {
   loadEntries();
   loadStats();
+});
+
+watch(entries, () => {
+  for (const agentNode of treeNodes.value) {
+    expandedIds.add(agentNode.id);
+    for (const dateNode of agentNode.children || []) {
+      expandedIds.add(dateNode.id);
+    }
+  }
 });
 
 async function loadEntries(): Promise<void> {
@@ -164,6 +205,8 @@ async function handleSelectEntry(entry: SharedDriveEntry): Promise<void> {
   fileContent.value = '';
   detailLoading.value = true;
 
+  expandParentsOf(entry.id);
+
   try {
     const res = await fetch(`${BASE_URL}/entries/${entry.id}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -193,24 +236,29 @@ async function handleSelectFile(entryId: string, filename: string): Promise<void
   }
 }
 
-function handleTreeClick(node: TreeNode): void {
-  if (node.type === 'entry' && node.entry) {
-    handleSelectEntry(node.entry);
-  } else if (node.type === 'file' && node.entryId && node.filename) {
-    if (selectedEntryId.value !== node.entryId) {
-      const entry = entries.value.find((e) => e.id === node.entryId);
-      if (entry) handleSelectEntry(entry);
-    }
-    handleSelectFile(node.entryId, node.filename);
-  } else if (node.children) {
-    node.expanded = !node.expanded;
+function handleEntryClick(entryNode: TreeNode): void {
+  if (entryNode.entry) {
+    handleSelectEntry(entryNode.entry);
   }
 }
 
-function toggleNode(node: TreeNode): void {
-  if (node.children) {
-    node.expanded = !node.expanded;
+function handleFileClick(fileNode: TreeNode): void {
+  if (!fileNode.entryId || !fileNode.filename) return;
+
+  if (selectedEntryId.value !== fileNode.entryId) {
+    const entry = entries.value.find((e) => e.id === fileNode.entryId);
+    if (entry) {
+      selectedEntryId.value = entry.id;
+      expandParentsOf(entry.id);
+      fetch(`${BASE_URL}/entries/${entry.id}`)
+        .then((r) => r.json())
+        .then((data) => {
+          entryDetail.value = data;
+        })
+        .catch(() => {});
+    }
   }
+  handleSelectFile(fileNode.entryId, fileNode.filename);
 }
 
 function handleSearch(): void {
@@ -232,7 +280,11 @@ function getFileIcon(filename: string): string {
     txt: 'i-carbon-text-align-left',
     csv: 'i-carbon-table',
     yml: 'i-carbon-settings',
-    yaml: 'i-carbon-settings'
+    yaml: 'i-carbon-settings',
+    html: 'i-carbon-html',
+    css: 'i-carbon-color-palette',
+    py: 'i-carbon-code',
+    sh: 'i-carbon-terminal'
   };
   return iconMap[ext] || 'i-carbon-document-blank';
 }
@@ -248,13 +300,24 @@ function formatTime(iso: string): string {
 const previewTitle = computed<string>(() => {
   if (selectedFilename.value) return selectedFilename.value;
   if (entryDetail.value) return entryDetail.value.entry.topic;
-  return '选择一个条目查看详情';
+  return '';
 });
 
 const previewContent = computed<string>(() => {
   if (selectedFilename.value && fileContent.value) return fileContent.value;
   if (entryDetail.value?.readme) return entryDetail.value.readme;
   return '';
+});
+
+const previewMode = computed(() => {
+  const filename = selectedFilename.value;
+  if (filename) {
+    return routePreview(filename).mode;
+  }
+  if (entryDetail.value?.readme) {
+    return 'markdown' as const;
+  }
+  return 'code' as const;
 });
 
 let searchDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -319,41 +382,43 @@ watch(searchKeyword, () => {
 
         <div v-else class="sd-tree-list">
           <template v-for="agentNode in treeNodes" :key="agentNode.id">
-            <!-- Agent 层级 -->
-            <div class="sd-tree-agent" @click="toggleNode(agentNode)">
-              <span class="sd-tree-arrow" :class="{ expanded: agentNode.expanded }" />
+            <!-- Agent -->
+            <div class="sd-tree-agent" @click="toggleExpand(agentNode.id)">
+              <span class="sd-tree-arrow" :class="{ expanded: isExpanded(agentNode.id) }" />
               <span class="i-carbon-bot inline-block h-3.5 w-3.5 shrink-0 opacity-50" />
               <span class="sd-tree-label">{{ agentNode.label }}</span>
             </div>
 
-            <template v-if="agentNode.expanded">
+            <template v-if="isExpanded(agentNode.id)">
               <template v-for="dateNode in agentNode.children" :key="dateNode.id">
-                <!-- Date 层级 -->
-                <div class="sd-tree-date" @click="toggleNode(dateNode)">
-                  <span class="sd-tree-arrow" :class="{ expanded: dateNode.expanded }" />
+                <!-- Date -->
+                <div class="sd-tree-date" @click="toggleExpand(dateNode.id)">
+                  <span class="sd-tree-arrow" :class="{ expanded: isExpanded(dateNode.id) }" />
                   <span class="i-carbon-calendar inline-block h-3 w-3 shrink-0 opacity-40" />
                   <span class="sd-tree-label">{{ dateNode.label }}</span>
                 </div>
 
-                <template v-if="dateNode.expanded">
+                <template v-if="isExpanded(dateNode.id)">
                   <template v-for="entryNode in dateNode.children" :key="entryNode.id">
-                    <!-- Entry 层级 -->
+                    <!-- Entry (topic) -->
                     <div
                       class="sd-tree-entry"
                       :class="{ active: selectedEntryId === entryNode.entry?.id && !selectedFilename }"
-                      @click="handleTreeClick(entryNode)">
+                      @click="handleEntryClick(entryNode)">
                       <span
                         v-if="entryNode.children && entryNode.children.length > 0"
                         class="sd-tree-arrow"
-                        :class="{ expanded: entryNode.expanded }"
-                        @click.stop="toggleNode(entryNode)" />
+                        :class="{ expanded: isExpanded(entryNode.id) }"
+                        @click.stop="toggleExpand(entryNode.id)" />
                       <span v-else class="sd-tree-arrow-placeholder" />
                       <span class="i-carbon-folder-details inline-block h-3.5 w-3.5 shrink-0 opacity-50" />
-                      <span class="sd-tree-label" :title="entryNode.entry?.summary">{{ entryNode.label }}</span>
+                      <span class="sd-tree-label" :title="entryNode.entry?.summary">
+                        {{ entryNode.label }}
+                      </span>
                     </div>
 
-                    <!-- File 层级 -->
-                    <template v-if="entryNode.expanded && entryNode.children">
+                    <!-- Files -->
+                    <template v-if="isExpanded(entryNode.id) && entryNode.children">
                       <div
                         v-for="fileNode in entryNode.children"
                         :key="fileNode.id"
@@ -361,7 +426,7 @@ watch(searchKeyword, () => {
                         :class="{
                           active: selectedFilename === fileNode.filename && selectedEntryId === fileNode.entryId
                         }"
-                        @click="handleTreeClick(fileNode)">
+                        @click="handleFileClick(fileNode)">
                         <span :class="getFileIcon(fileNode.label)" class="inline-block h-3 w-3 shrink-0 opacity-40" />
                         <span class="sd-tree-label">{{ fileNode.label }}</span>
                       </div>
@@ -392,7 +457,7 @@ watch(searchKeyword, () => {
 
         <!-- 内容展示 -->
         <template v-else-if="entryDetail">
-          <!-- 预览头 -->
+          <!-- 预览头部（条目元信息） -->
           <div class="sd-preview-header">
             <div class="sd-preview-title-row">
               <span class="sd-preview-title">{{ previewTitle }}</span>
@@ -413,19 +478,29 @@ watch(searchKeyword, () => {
                 <span class="i-carbon-time inline-block h-3 w-3 opacity-40" />
                 {{ formatTime(entryDetail.entry.createdAt) }}
               </span>
-              <span v-if="entryDetail.entry.files.length > 0" class="sd-meta-item">
+              <span v-if="entryDetail.files.length > 0" class="sd-meta-item">
                 <span class="i-carbon-document inline-block h-3 w-3 opacity-40" />
-                {{ entryDetail.entry.files.length }} 文件
+                {{ entryDetail.files.length }} 文件
               </span>
             </div>
-            <p v-if="entryDetail.entry.summary" class="sd-preview-summary">
+            <p v-if="entryDetail.entry.summary && !selectedFilename" class="sd-preview-summary">
               {{ entryDetail.entry.summary }}
             </p>
           </div>
 
-          <!-- 文件内容 -->
-          <div class="sd-preview-content">
+          <!-- Markdown 预览 -->
+          <div v-if="previewMode === 'markdown' && previewContent" class="sd-preview-content sd-md-wrapper">
+            <MarkdownPreview file-path="inline.md" :content="previewContent" />
+          </div>
+
+          <!-- 代码/文本 预览 -->
+          <div v-else-if="previewContent" class="sd-preview-content">
             <pre class="sd-code-block"><code>{{ previewContent }}</code></pre>
+          </div>
+
+          <!-- 空内容 -->
+          <div v-else class="sd-preview-content sd-empty-content">
+            <p>该条目暂无内容</p>
           </div>
         </template>
       </main>
@@ -614,26 +689,41 @@ watch(searchKeyword, () => {
   user-select: none;
 }
 
-/* Tree item styles */
+/* ====== Tree arrows ====== */
 .sd-tree-arrow {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
-  transition: transform 0.12s ease;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24'%3E%3Cpath fill='currentColor' fill-opacity='0.3' d='M8.59 16.59L13.17 12L8.59 7.41L10 6l6 6l-6 6z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 12px;
+  border-radius: 3px;
+  transition: transform 0.15s ease;
+  cursor: pointer;
 }
 
-.sd-tree-arrow.expanded {
+.sd-tree-arrow::before {
+  content: '';
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent hsl(var(--foreground) / 0.25);
+  transition: transform 0.15s ease;
+}
+
+.sd-tree-arrow.expanded::before {
   transform: rotate(90deg);
 }
 
+.sd-tree-arrow:hover {
+  background: hsl(var(--foreground) / 0.06);
+}
+
 .sd-tree-arrow-placeholder {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
 }
 
@@ -645,6 +735,7 @@ watch(searchKeyword, () => {
   white-space: nowrap;
 }
 
+/* ====== Tree node rows ====== */
 .sd-tree-agent {
   display: flex;
   align-items: center;
@@ -666,7 +757,7 @@ watch(searchKeyword, () => {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px 4px 22px;
+  padding: 4px 8px 4px 24px;
   font-size: 11.5px;
   font-weight: 500;
   color: hsl(var(--muted-foreground) / 0.7);
@@ -683,7 +774,7 @@ watch(searchKeyword, () => {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px 4px 40px;
+  padding: 4px 8px 4px 42px;
   font-size: 12px;
   color: hsl(var(--foreground) / 0.65);
   cursor: pointer;
@@ -705,8 +796,8 @@ watch(searchKeyword, () => {
 .sd-tree-file {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px 3px 62px;
+  gap: 5px;
+  padding: 3px 8px 3px 64px;
   font-size: 11.5px;
   color: hsl(var(--foreground) / 0.55);
   cursor: pointer;
@@ -731,6 +822,7 @@ watch(searchKeyword, () => {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
 }
 
 .sd-preview-empty {
@@ -765,7 +857,7 @@ watch(searchKeyword, () => {
   color: hsl(var(--muted-foreground) / 0.45);
 }
 
-/* Preview header */
+/* ====== Preview header ====== */
 .sd-preview-header {
   padding: 14px 20px 12px;
   border-bottom: 1px solid hsl(var(--border) / 0.2);
@@ -822,11 +914,57 @@ watch(searchKeyword, () => {
   color: hsl(var(--foreground) / 0.6);
 }
 
-/* Preview content */
+/* ====== Preview content ====== */
 .sd-preview-content {
   flex: 1;
   overflow: auto;
-  padding: 16px 20px;
+  min-height: 0;
+}
+
+.sd-md-wrapper {
+  padding: 0;
+}
+
+.sd-md-wrapper :deep(.markdown-preview) {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  padding: 20px 24px;
+}
+
+.sd-md-wrapper :deep(.prose) {
+  max-width: none;
+  color: hsl(var(--foreground) / 0.85);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+.sd-md-wrapper :deep(.prose h1) {
+  font-size: 1.4em;
+  margin-top: 1.2em;
+}
+
+.sd-md-wrapper :deep(.prose h2) {
+  font-size: 1.2em;
+  margin-top: 1em;
+}
+
+.sd-md-wrapper :deep(.prose h3) {
+  font-size: 1.05em;
+}
+
+.sd-md-wrapper :deep(.prose code) {
+  font-size: 0.85em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: hsl(var(--foreground) / 0.06);
+}
+
+.sd-md-wrapper :deep(.prose pre) {
+  background: hsl(var(--foreground) / 0.04);
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 12px;
+  overflow-x: auto;
 }
 
 .sd-code-block {
@@ -837,6 +975,15 @@ watch(searchKeyword, () => {
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
+  padding: 16px 20px;
+}
+
+.sd-empty-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--muted-foreground) / 0.4);
+  font-size: 13px;
 }
 
 /* ====== Scrollbar ====== */
