@@ -90,7 +90,7 @@ vi.mock('@main/common/eventbus', () => ({
 
 import taskRouterModule from '../index';
 
-describe('TaskRouter (方案 B: 监听 shared-drive:entry-created)', () => {
+describe('共享网盘任务路由 (监听 shared-drive:entry-created)', () => {
   let tempDir: string;
   let mockApi: Record<string, unknown>;
   let registeredEventHandlers: Map<string, ((...args: unknown[]) => void)[]>;

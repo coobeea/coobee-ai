@@ -1,10 +1,8 @@
 /**
- * Task Router Extension
- *
- * 事件驱动的智能任务路由器（方案 B：LLM 驱动的任务分发员）。
+ * 共享网盘任务路由 (Shared Drive Task Router)
  *
  * 监听 shared-drive:entry-created 事件，创建 Thread 并拉起 task-dispatcher 智能体，
- * 由 task-dispatcher 通过 LLM 判断哪些智能体需要跟进处理。
+ * 由 task-dispatcher 通过 LLM 判断哪些智能体需要基于网盘成果做跟进处理。
  *
  * 闭环流程：
  *   智能体完成任务 → 写入共享网盘 → entry-created 事件 → task-dispatcher 分析 → 分发后续任务
@@ -74,7 +72,7 @@ async function dispatchToAnalyzer(payload: EntryCreatedPayload): Promise<void> {
     const store = await AgentStore.getInstance();
     const dispatcherDef = await store.get(TASK_DISPATCHER_AGENT_ID);
     if (!dispatcherDef) {
-      logger?.warn?.(`[TaskRouter] Agent "${TASK_DISPATCHER_AGENT_ID}" not found, skipping`);
+      logger?.warn?.(`[SDTaskRouter] Agent "${TASK_DISPATCHER_AGENT_ID}" not found, skipping`);
       return;
     }
 
@@ -98,7 +96,7 @@ async function dispatchToAnalyzer(payload: EntryCreatedPayload): Promise<void> {
     const message = buildDispatchMessage(payload);
 
     logger?.info?.(
-      `[TaskRouter] Dispatching to ${TASK_DISPATCHER_AGENT_ID}, thread=${sessionId}, entry=${payload.entryId}`
+      `[SDTaskRouter] Dispatching to ${TASK_DISPATCHER_AGENT_ID}, thread=${sessionId}, entry=${payload.entryId}`
     );
 
     const { builtinTools } = await import('@main/ai/tools');
@@ -144,12 +142,12 @@ async function dispatchToAnalyzer(payload: EntryCreatedPayload): Promise<void> {
     const result = agentExecutor.submit({ sessionId, message, builder });
 
     if (result.status === 'busy') {
-      logger?.warn?.(`[TaskRouter] Session ${sessionId} busy, skipping`);
+      logger?.warn?.(`[SDTaskRouter] Session ${sessionId} busy, skipping`);
     } else {
-      logger?.info?.(`[TaskRouter] Dispatch accepted: session=${sessionId}`);
+      logger?.info?.(`[SDTaskRouter] Dispatch accepted: session=${sessionId}`);
     }
   } catch (err) {
-    logger?.error?.('[TaskRouter] Failed to dispatch:', err);
+    logger?.error?.('[SDTaskRouter] Failed to dispatch:', err);
   }
 }
 
@@ -158,19 +156,19 @@ function handleEntryCreated(payload: Record<string, unknown>): void {
   if (!shouldDispatch(typed)) return;
 
   logger?.info?.(
-    `[TaskRouter] entry-created by ${typed.agentId}, topic="${typed.topic}", dispatching in ${DISPATCH_DELAY_MS}ms`
+    `[SDTaskRouter] entry-created by ${typed.agentId}, topic="${typed.topic}", dispatching in ${DISPATCH_DELAY_MS}ms`
   );
 
   setTimeout(() => {
     dispatchToAnalyzer(typed).catch((err) => {
-      logger?.error?.('[TaskRouter] Dispatch failed:', err);
+      logger?.error?.('[SDTaskRouter] Dispatch failed:', err);
     });
   }, DISPATCH_DELAY_MS);
 }
 
 export default {
-  id: 'task-router',
-  name: 'Task Router',
+  id: 'shared-drive-task-router',
+  name: '共享网盘任务路由',
 
   register: async (api) => {
     logger = api.logger;
@@ -186,7 +184,7 @@ export default {
         const config = JSON.parse(content);
         if (config.enabled === false) {
           enabled = false;
-          logger.info('[TaskRouter] Disabled by config');
+          logger.info('[SDTaskRouter] Disabled by config');
         }
       } catch {
         // 配置文件不存在，默认启用
@@ -200,10 +198,10 @@ export default {
       name: 'Task Router Channel',
       gateway: {
         start: (ctx) => {
-          ctx.log.info('[TaskRouter] Channel started');
+          ctx.log.info('[SDTaskRouter] Channel started');
         },
         stop: (ctx) => {
-          ctx.log.info('[TaskRouter] Channel stopped');
+          ctx.log.info('[SDTaskRouter] Channel stopped');
         }
       }
     });
@@ -212,7 +210,7 @@ export default {
     entryCreatedHandler = handleEntryCreated;
     api.eventBus.on('shared-drive:entry-created', entryCreatedHandler);
 
-    logger.info(`[TaskRouter] Registered (enabled=${enabled}, dispatcher=${TASK_DISPATCHER_AGENT_ID})`);
+    logger.info(`[SDTaskRouter] Registered (enabled=${enabled}, dispatcher=${TASK_DISPATCHER_AGENT_ID})`);
   },
 
   unregister: () => {
@@ -221,6 +219,6 @@ export default {
       entryCreatedHandler = null;
     }
     enabled = true;
-    logger?.info?.('[TaskRouter] Unregistered');
+    logger?.info?.('[SDTaskRouter] Unregistered');
   }
 } satisfies ExtensionModule;
