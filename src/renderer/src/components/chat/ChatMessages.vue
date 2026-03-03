@@ -78,7 +78,6 @@ function scrollToBottom(force = false): void {
   });
 }
 
-// 暴露给父组件，当发送消息时强制滚动到底部
 defineExpose({
   scrollToBottom
 });
@@ -133,7 +132,7 @@ onMounted(() => {
         <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60"></span>
         <span class="relative inline-flex h-2 w-2 rounded-full bg-primary"></span>
       </span>
-      <span class="text-xs font-medium text-muted-foreground ml-1.5">{{ currentActivity }}</span>
+      <span class="ml-1.5 text-xs font-medium text-muted-foreground">{{ currentActivity }}</span>
     </div>
   </div>
 </template>

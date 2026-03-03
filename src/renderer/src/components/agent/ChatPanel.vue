@@ -76,10 +76,8 @@ async function handleStop(): Promise<void> {
 function handleApproval(approval: PendingApproval, decision: HitlApprovalDecision): void {
   if (!chatStore.sessionId || approval.decision) return;
 
-  // 提交决策到后端
   chatStore.submitDecision(chatStore.sessionId, approval.index, decision);
 
-  // 添加一条用户消息，显示决策结果
   const decisionText = decision === 'approve-once' ? '已允许' : decision === 'approve-always' ? '始终允许' : '已拒绝';
 
   chatStore.messages.push({
@@ -115,7 +113,7 @@ async function verifyRunStatus(): Promise<void> {
       }
     }
   } catch {
-    // Silent fail — if we can't reach the backend, keep the current state
+    // Silent fail
   }
 }
 
