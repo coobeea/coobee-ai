@@ -353,18 +353,6 @@ defineExpose({ selectDirectory });
 
       <!-- 已选择目录 -->
       <template v-else>
-        <!-- 当前目录路径 -->
-        <div class="border-b border-gray-200/60 px-3 py-2">
-          <div class="flex items-center justify-between">
-            <p class="max-w-[160px] truncate font-mono text-[11px] text-gray-600" :title="projectPath">
-              {{ projectPath.split('/').pop() || projectPath }}
-            </p>
-            <button class="text-[10px] text-gray-400 transition hover:text-primary" @click="selectDirectory">
-              切换
-            </button>
-          </div>
-        </div>
-
         <!-- 加载中 -->
         <div v-if="loading && tree.length === 0" class="flex items-center gap-2 px-3 py-4 text-[11px] text-gray-400">
           <span class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin"></span>
