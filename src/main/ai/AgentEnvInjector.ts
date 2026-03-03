@@ -95,9 +95,11 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
           : '';
       const agentDiscoveryHint = await buildAgentDiscoveryHint();
       const goalBlock = readGoalFile(workspace);
+      const agentsMdBlock = await readAgentsMdFiles(Env.paths.agentsMdPath, workspace);
       builder.appendInstructions(
         executionProtocol,
         runtimePathsBlock,
+        ...(agentsMdBlock ? [agentsMdBlock] : []),
         ...(goalBlock ? [goalBlock] : []),
         ...(skillDiscoveryHint ? [skillDiscoveryHint] : []),
         ...(agentDiscoveryHint ? [agentDiscoveryHint] : [])
@@ -176,6 +178,63 @@ ${truncated}
   } catch {
     return undefined;
   }
+}
+
+// ==================== AGENTS.md 协议文件读取 ====================
+
+/**
+ * 读取并合并全局 + 工作空间级 AGENTS.md 协议文件
+ *
+ * 优先级：
+ *   1. 全局 AGENTS.md（{userHome}/AGENTS.md）— 系统级身份信息和规则
+ *   2. 工作空间 AGENTS.md（{workspace}/AGENTS.md）— 会话级上下文覆盖
+ *
+ * 两份文件都会被注入，工作空间版本的内容排在全局版本之后，
+ * 让智能体看到的是"全局规则 + 本会话特化"的组合。
+ *
+ * @param globalPath 全局 AGENTS.md 路径
+ * @param workspace 工作空间根路径
+ * @returns `<system_agents_md>` XML 块，或 undefined
+ */
+async function readAgentsMdFiles(globalPath: string, workspace: string): Promise<string | undefined> {
+  const maxLen = 4000;
+  const parts: string[] = [];
+
+  // 全局 AGENTS.md
+  try {
+    const content = fs.readFileSync(globalPath, 'utf-8').trim();
+    if (content) parts.push(content);
+  } catch {
+    // 文件不存在时静默
+  }
+
+  // 工作空间 AGENTS.md
+  const wsPath = path.join(workspace, 'AGENTS.md');
+  try {
+    const content = fs.readFileSync(wsPath, 'utf-8').trim();
+    if (content && content !== parts[0]) {
+      parts.push(`---\n\n<!-- Session-level overrides (${wsPath}) -->\n\n${content}`);
+    }
+  } catch {
+    // 文件不存在时静默
+  }
+
+  if (parts.length === 0) return undefined;
+
+  let merged = parts.join('\n\n');
+  if (merged.length > maxLen) {
+    merged = merged.slice(0, maxLen) + '\n\n... (truncated)';
+  }
+
+  return `<system_agents_md>
+This is the system-wide AGENTS.md protocol file. It contains identity, rules, and shared context
+that ALL agents MUST follow. You may update the workspace-level copy using the \`write\` tool.
+
+Global path: ${globalPath}
+Session path: ${wsPath}
+
+${merged}
+</system_agents_md>`;
 }
 
 // ==================== 核心执行协议 ====================

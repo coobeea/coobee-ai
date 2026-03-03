@@ -55,6 +55,18 @@ export const Env = {
       /** 用户主目录 (开发: <项目>/.home | 生产: ~/.coobee-ai) */
       userHome: _userHome,
 
+      // === 全局协议文件（AGENTS.md）===
+      /**
+       * 全局智能体协议文件路径
+       *
+       * 所有智能体启动时硬注入此文件内容到 system prompt。
+       * 包含系统身份信息、全局规则和共享上下文。
+       * 智能体运行时可通过 write 工具修改。
+       *
+       * @example 开发: <项目>/.home/AGENTS.md | 生产: ~/.coobee-ai/AGENTS.md
+       */
+      agentsMdPath: path.join(_userHome, 'AGENTS.md'),
+
       // === 配置目录（Config）===
       /** 用户配置目录 @example 开发: <项目>/.home/config | 生产: ~/.coobee-ai/config */
       configDir: path.join(_userHome, 'config'),
@@ -356,6 +368,16 @@ export const Env = {
     const goalPath = path.join(workspace, 'GOAL.md');
     if (!fs.existsSync(goalPath)) {
       fs.writeFileSync(goalPath, '', 'utf-8');
+    }
+    // 初始化会话级 AGENTS.md（从全局模板复制，智能体可按需修改）
+    const wsAgentsMd = path.join(workspace, 'AGENTS.md');
+    if (!fs.existsSync(wsAgentsMd)) {
+      const globalAgentsMd = this.paths.agentsMdPath;
+      if (fs.existsSync(globalAgentsMd)) {
+        fs.copyFileSync(globalAgentsMd, wsAgentsMd);
+      } else {
+        fs.writeFileSync(wsAgentsMd, '', 'utf-8');
+      }
     }
     return workspace;
   },
