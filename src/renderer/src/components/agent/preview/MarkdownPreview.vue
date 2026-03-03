@@ -54,7 +54,7 @@ async function loadMarkdown(): Promise<void> {
   error.value = null;
 
   try {
-    if (props.content) {
+    if (props.content !== undefined) {
       markdownContent.value = props.content;
     } else {
       const response = await fetch(`file://${props.filePath}`);
@@ -72,7 +72,7 @@ onMounted(() => {
 });
 
 watch(
-  () => props.filePath,
+  () => [props.filePath, props.content],
   () => {
     loadMarkdown();
   }
