@@ -55,6 +55,11 @@ const router = createRouter({
           component: () => import('@/views/CronView.vue')
         },
         {
+          path: 'shared-drive',
+          name: 'shared-drive',
+          component: () => import('@/views/SharedDriveView.vue')
+        },
+        {
           path: 'logs',
           name: 'logs',
           component: () => import('@/views/LogViewer.vue')

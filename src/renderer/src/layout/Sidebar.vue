@@ -42,7 +42,8 @@ const menuItems: MenuItem[] = [
   { id: 'skills', label: '技能市场', icon: 'i-carbon-skill-level-advanced', route: '/skills' },
   { id: 'tavern', label: '酒馆任务', icon: 'i-carbon-task-star', route: '/tavern' },
   { id: 'brain', label: '知识智库', icon: 'i-carbon-catalog', route: '/brain' },
-  { id: 'cron', label: '定时任务', icon: 'i-carbon-time', route: '/cron' }
+  { id: 'cron', label: '定时任务', icon: 'i-carbon-time', route: '/cron' },
+  { id: 'shared-drive', label: '共享网盘', icon: 'i-carbon-folder-shared', route: '/shared-drive' }
 ];
 
 onMounted(() => {
