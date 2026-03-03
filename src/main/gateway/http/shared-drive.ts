@@ -19,6 +19,7 @@
 
 import type Router from '@koa/router';
 import { createLogger } from '@main/common/logger';
+import { eventBus } from '@main/common/eventbus';
 import { SharedDriveStore } from '@main/ai/shared-drive/SharedDriveStore';
 
 const log = createLogger('gateway-http-shared-drive');
@@ -102,6 +103,17 @@ export function registerSharedDriveRoutes(router: Router): void {
 
       ctx.status = 201;
       ctx.body = { entry };
+
+      eventBus.emit('shared-drive:entry-created', {
+        entryId: entry.id,
+        agentId: entry.agentId,
+        topic: entry.topic,
+        date: entry.date,
+        tags: entry.tags,
+        summary: entry.summary,
+        path: entry.path,
+        timestamp: Date.now()
+      });
     } catch (err) {
       log.error('Failed to create entry:', err);
       ctx.status = 500;
