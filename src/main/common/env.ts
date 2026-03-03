@@ -322,7 +322,7 @@ export const Env = {
    *   │   ├── skills/                 当前激活的技能（软链接，可查看、可修改）
    *   │   └── knowledge/              知识库文档
    *   │
-   *   ├── .runtime/                ← 系统空间（隐藏，用户不需关注）
+   *   ├── .runtime/                ← 系统空间（前端可见，供高级用户查看）
    *   │   ├── sessions/               会话持久化
    *   │   ├── contexts/               LLM 请求上下文快照
    *   │   ├── events/                 流式事件记录
