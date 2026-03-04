@@ -141,7 +141,8 @@ export default defineConfig({
       }
     },
     server: {
-      host: '0.0.0.0' // 防止代理干扰，确保 Vite 和 Electron 之间通信正常
+      host: '0.0.0.0', // 防止代理干扰，确保 Vite 和 Electron 之间通信正常
+      port: 5178 // 自定义端口，避免与其他项目冲突
     },
     plugins: [
       tailwindcss(),
