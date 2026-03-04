@@ -30,20 +30,55 @@ interface MenuItem {
   route: string;
 }
 
+interface MenuGroup {
+  id: string;
+  title: string;
+  items: MenuItem[];
+}
+
 const router = useRouter();
 const route = useRoute();
 const threadsStore = useThreadsStore();
 
 const activeMenuId = ref('agent');
 
-const menuItems: MenuItem[] = [
-  { id: 'agent', label: '智能体', icon: 'i-carbon-bot', route: '/agent' },
-  { id: 'employee', label: '数字员工', icon: 'i-carbon-user-avatar', route: '/employee' },
-  { id: 'skills', label: '技能市场', icon: 'i-carbon-skill-level-advanced', route: '/skills' },
-  { id: 'tavern', label: '酒馆任务', icon: 'i-carbon-task-star', route: '/tavern' },
-  { id: 'brain', label: '知识智库', icon: 'i-carbon-catalog', route: '/brain' },
-  { id: 'cron', label: '定时任务', icon: 'i-carbon-time', route: '/cron' },
-  { id: 'shared-drive', label: '共享网盘', icon: 'i-carbon-folder-shared', route: '/shared-drive' }
+const menuGroups: MenuGroup[] = [
+  {
+    id: 'core',
+    title: '核心功能',
+    items: [
+      { id: 'agent', label: '智能体', icon: 'i-carbon-bot', route: '/agent' },
+      { id: 'employee', label: '数字员工', icon: 'i-carbon-user-avatar', route: '/employee' },
+      { id: 'tavern', label: '酒馆任务', icon: 'i-carbon-task-star', route: '/tavern' }
+    ]
+  },
+  {
+    id: 'collaboration',
+    title: '协作与会诊',
+    items: [
+      { id: 'discussion', label: '群聊讨论', icon: 'i-carbon-chat', route: '/discussion' },
+      { id: 'consultation', label: '专家会诊', icon: 'i-carbon-user-multiple', route: '/consultation' },
+      { id: 'designer', label: '工作流设计', icon: 'i-carbon-flow', route: '/designer' }
+    ]
+  },
+  {
+    id: 'knowledge',
+    title: '知识与资源',
+    items: [
+      { id: 'brain', label: '知识智库', icon: 'i-carbon-catalog', route: '/brain' },
+      { id: 'skills', label: '技能市场', icon: 'i-carbon-skill-level-advanced', route: '/skills' },
+      { id: 'shared-drive', label: '共享网盘', icon: 'i-carbon-folder-shared', route: '/shared-drive' }
+    ]
+  },
+  {
+    id: 'system',
+    title: '系统管理',
+    items: [
+      { id: 'cron', label: '定时任务', icon: 'i-carbon-time', route: '/cron' },
+      { id: 'logs', label: '系统日志', icon: 'i-carbon-document-tasks', route: '/logs' },
+      { id: 'settings', label: '系统设置', icon: 'i-carbon-settings', route: '/settings' }
+    ]
+  }
 ];
 
 onMounted(() => {
@@ -123,15 +158,18 @@ onMounted(() => updateActiveState());
   <aside class="sidebar">
     <!-- 导航菜单 -->
     <nav class="nav-main">
-      <button
-        v-for="item in menuItems"
-        :key="item.id"
-        class="nav-btn"
-        :class="{ active: item.id === activeMenuId && !threadsStore.activeThreadId }"
-        @click="handleMenuClick(item)">
-        <span :class="item.icon" class="icon-sm" />
-        <span>{{ item.label }}</span>
-      </button>
+      <div v-for="group in menuGroups" :key="group.id" class="menu-group">
+        <div class="group-title">{{ group.title }}</div>
+        <button
+          v-for="item in group.items"
+          :key="item.id"
+          class="nav-btn"
+          :class="{ active: item.id === activeMenuId && !threadsStore.activeThreadId }"
+          @click="handleMenuClick(item)">
+          <span :class="item.icon" class="icon-sm" />
+          <span>{{ item.label }}</span>
+        </button>
+      </div>
     </nav>
 
     <!-- 会话列表 -->
@@ -203,8 +241,24 @@ onMounted(() => updateActiveState());
 .nav-main {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
   padding: 12px 8px 0;
+}
+
+.menu-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.group-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground) / 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 12px 4px;
+  user-select: none;
 }
 
 /* ====== 会话列表区 ====== */

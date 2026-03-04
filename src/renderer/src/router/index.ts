@@ -73,6 +73,21 @@ const router = createRouter({
           path: 'observability',
           name: 'observability',
           component: () => import('@/views/observability/ObservabilityView.vue')
+        },
+        {
+          path: 'discussion',
+          name: 'discussion',
+          component: () => import('@/views/DiscussionView.vue')
+        },
+        {
+          path: 'consultation',
+          name: 'consultation',
+          component: () => import('@/views/ConsultationView.vue')
+        },
+        {
+          path: 'designer',
+          name: 'designer',
+          component: () => import('@/views/AgentDesigner.vue')
         }
       ]
     }
