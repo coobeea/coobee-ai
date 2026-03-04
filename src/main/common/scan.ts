@@ -7,7 +7,12 @@ import { DiscoveredModule } from './types';
 export function scanApis(): DiscoveredModule[] {
   log.info('[Scan] 开始扫描API文件...');
 
-  const modules = import.meta.glob('@main/api/**/*.ts', { eager: true });
+  const modules = import.meta.glob([
+    '../api/**/*.ts',
+    '!../api/**/__tests__/**',
+    '!../api/**/*.test.ts',
+    '!../api/**/*.spec.ts'
+  ], { eager: true });
   const totalFound = Object.keys(modules).length;
 
   log.info(`[Scan] 发现 ${totalFound} 个API文件:`);
@@ -15,7 +20,7 @@ export function scanApis(): DiscoveredModule[] {
     log.info(`[Scan]   ${index + 1}. ${path}`);
   });
 
-  const filteredModules = filterModules(modules);
+  const filteredModules = filterModules(modules, ['/__tests__/', '.test.ts', '.spec.ts']);
   const filteredCount = filteredModules.length;
 
   log.info(`[Scan] API文件扫描完成，共 ${filteredCount} 个文件`);
@@ -33,7 +38,7 @@ export function scanLifeCycleHooks(): DiscoveredModule[] {
   const modules = import.meta.glob('@main/lifecycle/**/*Hook.ts', { eager: true });
   const totalFound = Object.keys(modules).length;
 
-  const filteredModules = filterModules(modules, ['BaseHook']);
+  const filteredModules = filterModules(modules, ['BaseHook', '__tests__']);
   const filteredCount = filteredModules.length;
 
   log.info(`[Scan] 生命周期Hook扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`);
@@ -57,7 +62,7 @@ export function scanEventHandlers(): DiscoveredModule[] {
   const totalFound = Object.keys(modules).length;
 
   // 过滤掉 README.md 等非事件文件
-  const filteredModules = filterModules(modules, ['README']);
+  const filteredModules = filterModules(modules, ['README', '__tests__']);
   const filteredCount = filteredModules.length;
 
   log.info(`[Scan] 事件处理器文件扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`);
@@ -80,7 +85,7 @@ export function scanWsChannels(): DiscoveredModule[] {
   const modules = import.meta.glob('@main/channels/**/*Channel.ts', { eager: true });
   const totalFound = Object.keys(modules).length;
 
-  const filteredModules = filterModules(modules, ['BaseChannel']);
+  const filteredModules = filterModules(modules, ['BaseChannel', '__tests__']);
   const filteredCount = filteredModules.length;
 
   log.info(`[Scan] WebSocket Channel 扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`);
@@ -103,7 +108,7 @@ export function scanGatewayMethods(): DiscoveredModule[] {
   const modules = import.meta.glob('@main/gateway/methods/**/*.ts', { eager: true });
   const totalFound = Object.keys(modules).length;
 
-  const filteredModules = filterModules(modules);
+  const filteredModules = filterModules(modules, ['__tests__']);
   const filteredCount = filteredModules.length;
 
   log.info(`[Scan] Gateway 方法组扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`);
