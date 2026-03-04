@@ -37,16 +37,44 @@ async function loadNetworkInfo(): Promise<void> {
   }
 }
 
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // fallback: execCommand for Electron environments where navigator.clipboard may fail
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return ok;
+  }
+}
+
+const copiedPort = ref(false);
+
 async function copyUrl(): Promise<void> {
   if (!networkInfo.value?.baseUrl) return;
-  try {
-    await navigator.clipboard.writeText(networkInfo.value.baseUrl);
+  const ok = await copyToClipboard(networkInfo.value.baseUrl);
+  if (ok) {
     copied.value = true;
     setTimeout(() => {
       copied.value = false;
     }, 2000);
-  } catch {
-    console.error('[RemoteAccess] Clipboard write failed');
+  }
+}
+
+async function copyPort(): Promise<void> {
+  if (!networkInfo.value?.port) return;
+  const ok = await copyToClipboard(String(networkInfo.value.port));
+  if (ok) {
+    copiedPort.value = true;
+    setTimeout(() => {
+      copiedPort.value = false;
+    }, 2000);
   }
 }
 
@@ -148,10 +176,18 @@ onMounted(() => {
                       ]"></span>
                     {{ networkInfo.isLanEnabled ? '局域网已开启' : '仅本机访问' }}
                   </span>
-                  <span
-                    class="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                    端口 {{ networkInfo.port }}
-                  </span>
+                  <button
+                    class="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+                    title="点击复制端口号"
+                    @click="copyPort">
+                    <span
+                      v-if="copiedPort"
+                      :class="[
+                        copiedPort ? 'i-carbon-checkmark text-green-500' : '',
+                        'inline-block h-3 w-3 transition-colors'
+                      ]"></span>
+                    {{ copiedPort ? '已复制' : `端口 ${networkInfo.port}` }}
+                  </button>
                 </div>
               </div>
             </div>

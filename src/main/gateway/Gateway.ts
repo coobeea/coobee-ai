@@ -262,6 +262,7 @@ export class Gateway implements GatewayApi {
   private registerHttpRoutes(): void {
     if (!this.server) return;
     const router = this.server.getRouter();
+    registerAgentHomeRoutes(router);
     registerAgentRoutes(router);
     registerThreadRoutes(router);
     registerSkillRoutes(router);
@@ -275,7 +276,6 @@ export class Gateway implements GatewayApi {
     registerMonitoringRoutes(router);
     registerProcessRoutes(router);
     registerTerminalRoutes(router);
-    registerAgentHomeRoutes(router);
 
     // 动态挂载 Extension 注册的 HTTP 路由
     this.mountExtensionHttpRoutes(router);
