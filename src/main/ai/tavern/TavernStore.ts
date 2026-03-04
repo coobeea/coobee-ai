@@ -161,4 +161,28 @@ export class TavernStore {
     const filtered = tasks.filter((t) => t.id !== taskId);
     await this.writeIndex(filtered);
   }
+
+  /**
+   * 创建新任务
+   */
+  async createTask(
+    data: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'retryCount' | 'lastError' | 'threadId'>
+  ): Promise<Task> {
+    const timestamp = Date.now();
+    const id = `task-${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const task: Task = {
+      ...data,
+      id,
+      retryCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    await this.writeMeta(id, task);
+    await this.appendToIndex(task);
+
+    log.info(`[TavernStore] Task created: ${id}`);
+    return task;
+  }
 }
