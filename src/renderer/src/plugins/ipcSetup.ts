@@ -13,8 +13,10 @@ let isInitialized = false;
  * 此方法应该在应用启动时调用一次
  */
 export function initIpcEvents(): void {
+  const logStore = useLogStore();
+
   if (isInitialized) {
-    console.warn('[ipcSetup] IPC events already initialized');
+    logStore.warn('system', 'IPC 事件系统已初始化，跳过重复初始化');
     return;
   }
 
@@ -25,15 +27,12 @@ export function initIpcEvents(): void {
       eventBus.emit(message.type, message.payload);
     });
   } else {
-    console.error('[ipcSetup] window.api.onEvent 不可用！');
+    logStore.error('system', 'window.api.onEvent 不可用，IPC 事件系统初始化失败');
+    return;
   }
 
   isInitialized = true;
-
-  // 记录系统初始化
-  const logStore = useLogStore();
   logStore.info('system', 'IPC 事件系统已初始化');
-  console.log('[ipcSetup] IPC events initialized');
 }
 
 /**

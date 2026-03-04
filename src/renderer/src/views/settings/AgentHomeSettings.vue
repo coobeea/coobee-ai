@@ -8,9 +8,11 @@
 
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { monaco } from '@/utils/monaco-setup';
+import { useLogStore } from '@/stores/log';
 import configManager from '@/config';
 
 const GATEWAY_BASE = `${configManager.getBaseUrl()}/gateway`;
+const logStore = useLogStore();
 
 // ==================== Types ====================
 
@@ -85,7 +87,7 @@ async function loadAgents(): Promise<void> {
     const data = await res.json();
     agents.value = data.homes || [];
   } catch (err) {
-    console.warn('[AgentHomeSettings] Failed to load agents:', err);
+    logStore.warn('system', 'Agent 列表加载失败', { error: err });
   } finally {
     agentsLoading.value = false;
   }
@@ -100,7 +102,7 @@ async function loadFiles(agentId: string): Promise<void> {
     const data = await res.json();
     files.value = data.files || [];
   } catch (err) {
-    console.warn('[AgentHomeSettings] Failed to load files:', err);
+    logStore.warn('system', 'Agent Home 文件列表加载失败', { agentId, error: err });
   } finally {
     filesLoading.value = false;
   }
@@ -117,7 +119,7 @@ async function loadFileContent(agentId: string, fileName: string): Promise<void>
     originalContent.value = fileContent.value;
     setEditorContent(fileContent.value);
   } catch (err) {
-    console.warn('[AgentHomeSettings] Failed to read file:', err);
+    logStore.warn('system', 'Agent Home 文件内容读取失败', { agentId, fileName, error: err });
     fileContent.value = '(读取失败)';
     originalContent.value = '';
   } finally {
@@ -153,7 +155,11 @@ async function saveFile(): Promise<void> {
       await loadFiles(selectedAgentId.value);
     }
   } catch (err) {
-    console.warn('[AgentHomeSettings] Failed to save file:', err);
+    logStore.warn('user', 'Agent Home 文件保存失败', {
+      agentId: selectedAgentId.value,
+      fileName: selectedFileName.value,
+      error: err
+    });
   } finally {
     saving.value = false;
   }
@@ -176,16 +182,17 @@ async function deleteFile(fileName: string): Promise<void> {
     }
     await loadFiles(selectedAgentId.value);
   } catch (err) {
-    console.warn('[AgentHomeSettings] Failed to delete file:', err);
+    logStore.warn('user', 'Agent Home 文件删除失败', { agentId: selectedAgentId.value, fileName, error: err });
   }
 }
 
 async function createTodayMemory(): Promise<void> {
   if (!selectedAgentId.value || creatingMemory.value) return;
   creatingMemory.value = true;
+  let fileName = '';
   try {
     const today = new Date().toISOString().slice(0, 10);
-    const fileName = `memory/${today}.md`;
+    fileName = `memory/${today}.md`;
     const existing = files.value.find((f) => f.name === fileName);
     if (existing) {
       selectFile(fileName);
@@ -202,7 +209,7 @@ async function createTodayMemory(): Promise<void> {
     await loadFiles(selectedAgentId.value);
     selectFile(fileName);
   } catch (err) {
-    console.warn('[AgentHomeSettings] Failed to create memory:', err);
+    logStore.warn('user', 'Agent 记忆文件创建失败', { agentId: selectedAgentId.value, fileName, error: err });
   } finally {
     creatingMemory.value = false;
   }

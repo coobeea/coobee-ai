@@ -10,7 +10,10 @@ import { ref, watch, provide, onUnmounted } from 'vue';
 import configManager from '@/config';
 import { useOpenFiles } from '@/composables/useOpenFiles';
 import { watchThreadFiles, type WorkspaceFileChangedPayload } from '@/composables/useWorkspaceWatcher';
+import { useLogStore } from '@/stores/log';
 import FileTreeNodeVue from './FileTreeNode.vue';
+
+const logStore = useLogStore();
 
 const props = defineProps<{
   threadId?: string;
@@ -110,15 +113,15 @@ async function handleDeleteNode(nodePath: string): Promise<void> {
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('[ProjectPanel] 删除失败:', (data as { error?: string }).error);
+      logStore.error('user', '文件/目录删除失败', { path: nodePath, error: (data as { error?: string }).error });
       return;
     }
 
-    console.log('[ProjectPanel] 删除成功:', data);
+    logStore.info('user', '文件/目录删除成功', { path: nodePath, data });
     // 刷新文件树，保持展开状态
     await loadTree(false);
   } catch (err) {
-    console.error('[ProjectPanel] 删除错误:', err);
+    logStore.error('user', '文件/目录删除异常', { path: nodePath, error: err });
   }
 }
 
@@ -132,7 +135,7 @@ async function handlePaste(event: KeyboardEvent): Promise<void> {
       // 从剪贴板读取文件路径
       const filePaths = await window.api?.getClipboardFiles();
       if (!filePaths || filePaths.length === 0) {
-        console.log('[ProjectPanel] 剪贴板中没有文件');
+        logStore.debug('user', '剪贴板中没有文件');
         return;
       }
 
@@ -149,18 +152,18 @@ async function handlePaste(event: KeyboardEvent): Promise<void> {
       }
 
       if (!targetDir) {
-        console.error('[ProjectPanel] 无法确定目标目录');
+        logStore.error('user', '无法确定粘贴目标目录', { selectedPath: selectedPath.value });
         return;
       }
 
-      console.log('[ProjectPanel] 粘贴文件到:', targetDir, '文件:', filePaths);
+      logStore.info('user', '粘贴文件到工作区', { targetDir, filePaths });
 
       // 复制所有文件/目录
       for (const sourcePath of filePaths) {
         await copyFileToWorkspace(sourcePath, targetDir);
       }
     } catch (err) {
-      console.error('[ProjectPanel] 粘贴失败:', err);
+      logStore.error('user', '粘贴文件失败', { error: err });
     }
   }
 }
@@ -194,7 +197,7 @@ async function selectDirectory(): Promise<void> {
       projectPath.value = result;
     }
   } catch (err) {
-    console.warn('[ProjectPanel] 选择目录失败:', err);
+    logStore.warn('user', '选择目录失败', { error: err });
   }
 }
 
@@ -223,7 +226,7 @@ watch(
     // 创建新订阅
     if (newThreadId) {
       unwatchFiles = watchThreadFiles(newThreadId, (payload: WorkspaceFileChangedPayload) => {
-        console.log(`[ProjectPanel] 检测到文件变化: ${payload.files.join(', ')}`);
+        logStore.debug('event', `检测到工作区文件变化: ${payload.files.join(', ')}`);
         // 自动刷新文件树，保持展开状态
         loadTree(false);
       });
@@ -253,15 +256,15 @@ async function copyFileToWorkspace(sourcePath: string, targetDir: string): Promi
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('[ProjectPanel] 复制失败:', (data as { error?: string }).error);
+      logStore.error('user', '文件复制失败', { sourcePath, targetDir, error: (data as { error?: string }).error });
       return;
     }
 
-    console.log('[ProjectPanel] 复制成功:', data);
+    logStore.info('user', '文件复制成功', { sourcePath, targetDir, data });
     // 刷新文件树，保持展开状态
     await loadTree(false);
   } catch (err) {
-    console.error('[ProjectPanel] 复制错误:', err);
+    logStore.error('user', '文件复制异常', { sourcePath, targetDir, error: err });
   }
 }
 
@@ -288,15 +291,19 @@ async function uploadFileToWorkspace(file: File, targetDir: string): Promise<voi
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('[ProjectPanel] 上传失败:', (data as { error?: string }).error);
+      logStore.error('user', '文件上传失败', {
+        fileName: file.name,
+        targetDir,
+        error: (data as { error?: string }).error
+      });
       return;
     }
 
-    console.log('[ProjectPanel] 上传成功:', data);
+    logStore.info('user', '文件上传成功', { fileName: file.name, targetDir, data });
     // 刷新文件树，保持展开状态
     await loadTree(false);
   } catch (err) {
-    console.error('[ProjectPanel] 上传错误:', err);
+    logStore.error('user', '文件上传异常', { fileName: file.name, targetDir, error: err });
   }
 }
 

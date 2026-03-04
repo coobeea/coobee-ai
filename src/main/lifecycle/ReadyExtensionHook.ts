@@ -37,16 +37,6 @@ export const ReadyExtensionHook: LifecycleHook = {
 
       // 2. 创建注册中心和加载器（传递 eventBus 引用）
       const registry = new ExtensionRegistry();
-
-      // DEBUG: 验证 eventBus 实例
-      log.info('[ReadyExtensionHook-DEBUG] eventBus instance:', {
-        type: typeof eventBus,
-        hasOn: typeof eventBus.on === 'function',
-        hasEmit: typeof eventBus.emit === 'function',
-        hasOff: typeof eventBus.off === 'function',
-        listenerCount: typeof eventBus.listenerCount === 'function'
-      });
-
       const loader = new ExtensionLoader(registry, eventBus);
 
       // 3. 加载全局 Extension（任务级 Extension 由 AgentExecutor 动态加载）
