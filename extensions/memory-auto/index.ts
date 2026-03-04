@@ -169,6 +169,69 @@ export default {
       },
       { priority: 50 }
     );
+
+    // ========== before_compaction: 压缩前记忆落盘 ==========
+    // 代码级别的 Memory Flush：在上下文压缩前，从 session 历史中提取
+    // 关键记忆并写入 Agent Home，确保重要信息不因压缩而丢失。
+    // 通过 Extension Hook 实现而非硬编码在某个 Runtime 中，
+    // 使 OpenAI / PiMono 等所有 Runtime 均可受益。
+    api.on(
+      'before_compaction',
+      async (event) => {
+        try {
+          const agentId = event.agentId;
+          if (!agentId) {
+            api.logger.debug('[memory-auto] before_compaction: no agentId, skipping flush');
+            return;
+          }
+
+          const agentHome = await getAgentHome(agentId);
+          if (!agentHome) return;
+
+          const workspace = await getWorkspace(event.sessionId);
+          if (!workspace) return;
+
+          const sessionContent = readSessionContent(workspace);
+          if (!sessionContent || sessionContent.length < MIN_OUTPUT_FOR_MEMORY) return;
+
+          // 提取记忆信号和摘要
+          const entries: string[] = [];
+          const timestamp = new Date().toISOString().slice(11, 19);
+
+          const signals = detectMemorySignals(sessionContent);
+          for (const s of signals) {
+            entries.push(`- [${timestamp}] (compaction-flush/${s.category}) ${s.text}\n`);
+          }
+
+          if (entries.length === 0 && sessionContent.length >= MIN_OUTPUT_FOR_SUMMARY) {
+            const summary = extractSummary(sessionContent);
+            if (summary) {
+              entries.push(`- [${timestamp}] (compaction-flush/summary) ${summary}\n`);
+            }
+          }
+
+          if (entries.length === 0) return;
+
+          // 写入 Agent Home 的 memory 目录
+          const today = new Date().toISOString().slice(0, 10);
+          const memoryDir = path.join(agentHome, 'memory');
+          fs.mkdirSync(memoryDir, { recursive: true });
+          const memoryFile = path.join(memoryDir, `${today}.md`);
+
+          const exists = fs.existsSync(memoryFile);
+          const header = exists ? '' : `# Memory — ${today}\n\n`;
+
+          fs.appendFileSync(memoryFile, header + entries.join(''), 'utf-8');
+
+          api.logger.info(
+            `[memory-auto] Pre-compaction flush: ${entries.length} entries → homes/${agentId}/memory/${today}.md`
+          );
+        } catch (err) {
+          api.logger.warn(`[memory-auto] Pre-compaction flush failed: ${err}`);
+        }
+      },
+      { priority: 10 }
+    );
   }
 };
 
@@ -179,6 +242,61 @@ async function getWorkspace(sessionId: string): Promise<string | null> {
   try {
     const { Env } = await import('../../src/main/common/env');
     return await Env.getAgentWorkspaceDir(sessionId);
+  } catch {
+    return null;
+  }
+}
+
+/** 获取 Agent Home 目录路径 */
+async function getAgentHome(agentId: string): Promise<string | null> {
+  try {
+    const { Env } = await import('../../src/main/common/env');
+    return Env.getAgentHomeDir(agentId);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 从 workspace/sessions/ 目录中读取最近的 session 内容
+ *
+ * 提取 assistant 角色的消息文本，用于记忆信号检测。
+ * 仅读取最近 MAX_SESSION_LINES 行以控制内存和处理时间。
+ */
+function readSessionContent(workspace: string, maxLines = 200): string | null {
+  const sessionsDir = path.join(workspace, 'sessions');
+  if (!fs.existsSync(sessionsDir)) return null;
+
+  const files = fs
+    .readdirSync(sessionsDir, { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.jsonl'))
+    .sort((a, b) => {
+      const statA = fs.statSync(path.join(sessionsDir, a.name));
+      const statB = fs.statSync(path.join(sessionsDir, b.name));
+      return statB.mtimeMs - statA.mtimeMs;
+    });
+
+  if (files.length === 0) return null;
+
+  try {
+    const content = fs.readFileSync(path.join(sessionsDir, files[0].name), 'utf-8');
+    const lines = content.trim().split('\n').slice(-maxLines);
+    const texts: string[] = [];
+
+    for (const line of lines) {
+      try {
+        const item = JSON.parse(line);
+        const role = item?.item?.role || item?.role;
+        const text = item?.item?.content || item?.content;
+        if (role === 'assistant' && typeof text === 'string') {
+          texts.push(text);
+        }
+      } catch {
+        // skip malformed lines
+      }
+    }
+
+    return texts.join('\n\n');
   } catch {
     return null;
   }

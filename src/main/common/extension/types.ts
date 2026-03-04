@@ -304,6 +304,8 @@ export interface TurnEndEvent {
 
 export interface BeforeCompactionEvent {
   sessionId: string;
+  /** Agent 定义 ID（用于定位 Agent Home） */
+  agentId?: string;
   /** 待压缩消息数 */
   messageCount: number;
   /** 当前 token 总数 */

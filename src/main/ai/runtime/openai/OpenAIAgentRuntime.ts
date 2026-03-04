@@ -694,11 +694,10 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
   /**
    * 检查并执行 session 压缩（如果需要），返回产生的 StreamChunk 数组
    *
-   * 流程：
-   *   1. 检查是否达到压缩阈值
-   *   2. Memory Flush — 向 session 注入记忆落盘指令（Agent 在下次执行时处理）
-   *   3. Extension Hook: before_compaction — 扩展可自定义压缩
-   *   4. 默认压缩
+   * 压缩前触发 before_compaction modifying Hook：
+   *   - 扩展可在此做 Memory Flush（如 memory-auto Extension）
+   *   - 扩展可返回 skipDefault: true 跳过默认压缩（自行实现）
+   *   - 扩展可返回 customSummary 替换默认压缩摘要
    */
   private async compressSessionWithChunks(): Promise<StreamChunk[]> {
     if (!this.compressor) return [];
@@ -714,11 +713,7 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
       // 检查是否达到压缩阈值（避免在未达阈值时触发 Hook）
       if (status.totalTokens < status.threshold) return [];
 
-      // === Memory Flush: 压缩前注入记忆落盘指令 ===
-      await this.injectMemoryFlushDirective();
-
       // === Extension Hook: before_compaction (modifying) ===
-      // 在压缩前触发，允许扩展做 Memory Flush 或自定义压缩
       let skipDefault = false;
       try {
         const { ExtensionManager } = await import('../../../common/extension');
@@ -726,7 +721,8 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
         if (runner) {
           const hookResult = await runner.runModifyingHook('before_compaction', {
             sessionId: this.options.sessionId || '',
-            messageCount: 0, // SessionCompressor 未暴露此信息
+            agentId: this.options.sandboxContext?.agentId,
+            messageCount: 0,
             totalTokens: status.totalTokens,
             threshold: status.threshold
           });
@@ -813,71 +809,5 @@ export class OpenAIAgentRuntime extends AbstractAgentRuntime {
       });
 
     return compressor.compressIfNeeded(this.session, model);
-  }
-
-  // ========== Memory Flush ==========
-
-  /** 防重复标志：每次压缩周期只触发一次 */
-  private memoryFlushCompactionCount = 0;
-
-  /**
-   * 压缩前向 session 注入记忆落盘指令
-   *
-   * 在上下文被压缩（部分对话将被摘要替代）前，
-   * 向 session 追加一条 developer 消息，指示 Agent 在下一次执行时
-   * 将本次对话中的重要信息写入 Agent Home 的 memory/ 目录。
-   *
-   * 注入的指令会被包含在压缩后保留的消息中（因为是最新消息），
-   * 确保 Agent 在压缩后仍能看到并执行落盘操作。
-   */
-  private async injectMemoryFlushDirective(): Promise<void> {
-    this.memoryFlushCompactionCount++;
-    if (this.memoryFlushCompactionCount > 1) {
-      log.info('[MemoryFlush] Skipping — already triggered in this session lifecycle');
-      return;
-    }
-
-    // 获取 agentId 和 agentHome
-    const agentId = this.options.sandboxContext?.agentId;
-    if (!agentId) {
-      log.info('[MemoryFlush] Skipping — no agentId in sandbox context');
-      return;
-    }
-
-    let agentHome: string;
-    try {
-      const { Env } = await import('../../../common/env');
-      agentHome = Env.getAgentHomeDir(agentId);
-    } catch {
-      log.warn('[MemoryFlush] Could not resolve agent home dir');
-      return;
-    }
-
-    const today = new Date().toISOString().slice(0, 10);
-    const memoryDailyPath = `${agentHome}/memory/${today}.md`;
-
-    const flushMessage = `[System Memory Flush] 上下文即将被压缩，部分对话历史将被摘要替代。
-
-请立即将本次对话中值得长期保留的信息写入你的 Agent Home：
-- 追加到 ${memoryDailyPath}（每日日志，不覆盖已有内容）
-- 如有需要，更新 ${agentHome}/MEMORY.md（长期记忆精华）
-- 如发现用户新偏好，更新 ${agentHome}/USER.md
-- 如发现环境配置变化，更新 ${agentHome}/NOTES.md
-
-使用 write 工具写入，目录不存在时会自动创建。
-写入完成后继续正常处理用户请求。如果没有值得保留的信息，可以跳过。`;
-
-    try {
-      await this.session.addItems([
-        {
-          type: 'message',
-          role: 'user',
-          content: flushMessage
-        }
-      ]);
-      log.info(`[MemoryFlush] Injected flush directive for agent ${agentId}`);
-    } catch (err) {
-      log.warn('[MemoryFlush] Failed to inject directive:', err);
-    }
   }
 }

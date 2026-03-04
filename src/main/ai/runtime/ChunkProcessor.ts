@@ -129,7 +129,12 @@ export function recordMetrics(chunk: StreamChunk, sessionId: string): void {
  *   - OpenAI Runtime 在 compressSessionWithChunks 中单独处理 modifying 逻辑
  *   - 为避免重复触发，OpenAI 会在 chunk.data 中标记 hookHandled: true
  */
-export function fireHooks(chunk: StreamChunk, sessionId: string, turnState: ChunkProcessorTurnState): void {
+export function fireHooks(
+  chunk: StreamChunk,
+  sessionId: string,
+  turnState: ChunkProcessorTurnState,
+  agentId?: string
+): void {
   // 只关心这 4 种事件类型
   if (
     chunk.type !== 'turn:start' &&
@@ -167,11 +172,10 @@ export function fireHooks(chunk: StreamChunk, sessionId: string, turnState: Chun
       case 'compression:start': {
         // 如果 OpenAI Runtime 已在压缩前调用过 modifying Hook，跳过
         if (data?.hookHandled) break;
-        // 通知型：扩展可在此做 Memory Flush 等操作
-        // 注意：对 PiMono 来说 skipDefault 无效（SDK 自行管理压缩）
         await runner.run('before_compaction', {
           sessionId,
-          messageCount: 0, // PiMono 不提供此信息
+          agentId: agentId || (data?.agentId as string | undefined),
+          messageCount: 0,
           totalTokens: (data?.totalTokens as number) || 0,
           threshold: (data?.threshold as number) || 0
         });

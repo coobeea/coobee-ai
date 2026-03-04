@@ -483,10 +483,13 @@ class AgentExecutor {
 
         // Extension Hook 触发（轻量模式下跳过）
         if (!isLightweight) {
-          fireHooks(chunk, sessionId, {
-            getTurnStartTime: () => turnStartTime,
-            getTurnToolCallCount: () => turnToolCallCount
-          });
+          const builderAgentId = (builder as unknown as { getAgentId?: () => string | undefined }).getAgentId?.();
+          fireHooks(
+            chunk,
+            sessionId,
+            { getTurnStartTime: () => turnStartTime, getTurnToolCallCount: () => turnToolCallCount },
+            builderAgentId
+          );
         }
 
         if (chunk.type === 'turn:start') {
@@ -549,7 +552,8 @@ class AgentExecutor {
     sessionId: string,
     onChunk?: (chunk: StreamChunk) => void,
     signal?: AbortSignal,
-    workspaceDir?: string
+    workspaceDir?: string,
+    agentId?: string
   ): Promise<ExecutionResult> {
     // Turn 状态跟踪（用于 turn_end 事件数据）
     let turnStartTime = 0;
@@ -581,10 +585,12 @@ class AgentExecutor {
       }
 
       // === Extension Hook 触发（fire-and-forget，不阻塞流） ===
-      fireHooks(chunk, sessionId, {
-        getTurnStartTime: () => turnStartTime,
-        getTurnToolCallCount: () => turnToolCallCount
-      });
+      fireHooks(
+        chunk,
+        sessionId,
+        { getTurnStartTime: () => turnStartTime, getTurnToolCallCount: () => turnToolCallCount },
+        agentId
+      );
 
       // Turn 状态更新
       if (chunk.type === 'turn:start') {
@@ -835,7 +841,16 @@ class AgentExecutor {
 
         const streamConfig = { signal, ...request.executionConfig };
         const gen = runtime.stream(message, streamConfig);
-        const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal, workspaceDir);
+        const runtimeAgentId = (builder as unknown as { getAgentId?: () => string | undefined })?.getAgentId?.();
+        const result = await this.consumeAndForward(
+          gen,
+          eventWriter,
+          sessionId,
+          onChunk,
+          signal,
+          workspaceDir,
+          runtimeAgentId
+        );
 
         const duration = Date.now() - startTime;
 
@@ -884,7 +899,16 @@ class AgentExecutor {
 
       // 2. 流式执行（HITL 在 before_tool_call Hook 中自动处理），传入 signal
       const gen = runtime.stream(message, { signal });
-      const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal, workspaceDir);
+      const builderAgentId2 = (builder as unknown as { getAgentId?: () => string | undefined }).getAgentId?.();
+      const result = await this.consumeAndForward(
+        gen,
+        eventWriter,
+        sessionId,
+        onChunk,
+        signal,
+        workspaceDir,
+        builderAgentId2
+      );
 
       const duration = Date.now() - startTime;
 
