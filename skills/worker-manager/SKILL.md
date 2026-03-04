@@ -100,6 +100,8 @@ exec({ command: "curl -s -X POST http://localhost:8765/gateway/rpc -H 'Content-T
 | -------- | -------- | ----- | --------- | ------------------------- |
 | `asr`    | 语音识别 | 18100 | ✓         | FunASR 实时转写           |
 | `tts`    | 语音合成 | 18101 | ✗         | 支持 edge-tts / Qwen3-TTS |
-| `brain`  | 智库     | 18102 | -         | 知识库存储与检索          |
-| `tavern` | 任务中心 | 18103 | -         | Tavern 任务队列           |
-| `ocr`    | OCR识别  | 18104 | ✗         | 图片文字识别              |
+| `ocr`    | 图像识别 | 18102 | ✗         | 图片文字识别              |
+| `brain`  | 智库服务 | 42043 | ✓         | 知识库存储与检索          |
+| `tavern` | 酒馆服务 | 9010  | ✓         | Tavern 任务队列           |
+
+> 端口以各 Worker 的 `worker.json` 为准。新建 Worker 请参考 `worker-creator` Skill。

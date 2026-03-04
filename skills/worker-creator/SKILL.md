@@ -61,23 +61,38 @@ workers/{name}/
 
 ```json
 {
-  "name": "worker-name", // Worker 唯一标识（kebab-case）
-  "label": "显示名称", // 中文显示名称
-  "type": "native", // 固定值：native（Python FastAPI）
-  "entry": "server.py", // 固定值：server.py
-  "port": 18000, // 服务端口（18000-18999）
-  "enabled": true // 是否启用
+  "name": "worker-name",    // Worker 唯一标识（kebab-case）
+  "label": "显示名称",       // 中文显示名称
+  "entry": "server.py",     // 入口文件
+  "port": 18200             // 服务端口
+}
+```
+
+**可选字段**：
+
+```json
+{
+  "enable": true,            // 是否启用（默认 false）
+  "autoStart": false,        // 应用启动时自动启动（默认 false）
+  "autoRestart": true,       // 崩溃后自动重启（默认 true）
+  "maxRestarts": 3,          // 最大重启次数
+  "healthCheckTimeout": 120000, // 健康检查超时（毫秒）
+  "type": "python",          // Worker 类型
+  "requirementsFile": "requirements.txt",
+  "env": {}                  // 额外环境变量
 }
 ```
 
 **端口分配**：
 
-- 范围：`18000-18999`
-- 已用端口：
-  - `18001` - ASR（语音识别）
-  - `18002` - TTS（语音合成）
-  - `18003` - OCR（文字识别）
-- 新 Worker 从 `18004` 开始递增
+- 常规 Worker 范围：`18100-18999`
+- 已用端口（以 `worker.json` 为准）：
+  - `18100` - ASR（语音识别）
+  - `18101` - TTS（语音合成）
+  - `18102` - OCR（图像识别）
+  - `42043` - Brain（智库服务）
+  - `9010` - Tavern（酒馆服务）
+- 新 Worker 建议从 `18200` 开始递增，避免与已有 Worker 冲突
 
 ### requirements.txt 规范
 
@@ -522,10 +537,13 @@ write({
     {
       name: '{name}',
       label: '{显示名称}',
-      type: 'native',
       entry: 'server.py',
-      port: { port },
-      enabled: true
+      port: {port},
+      enable: true,
+      autoStart: false,
+      autoRestart: true,
+      maxRestarts: 3,
+      healthCheckTimeout: 120000
     },
     null,
     2
@@ -539,10 +557,13 @@ write({
 {
   "name": "my-worker",
   "label": "我的 Worker",
-  "type": "native",
   "entry": "server.py",
-  "port": 18300,
-  "enabled": true
+  "port": 18200,
+  "enable": true,
+  "autoStart": false,
+  "autoRestart": true,
+  "maxRestarts": 3,
+  "healthCheckTimeout": 120000
 }
 ```
 
@@ -941,8 +962,8 @@ Worker 创建成功需满足：
 
 // 1. 检查端口
 glob({ pattern: 'workers/*/worker.json' });
-// 发现已用端口: 18001, 18002, 18003
-// 选择端口: 18004
+// 发现已用端口: 18100, 18101, 18102, 42043, 9010
+// 选择端口: 18200
 
 // 2. 创建目录
 exec({ command: 'mkdir -p workers/echo' });
@@ -954,10 +975,13 @@ write({
     {
       name: 'echo',
       label: 'Echo Worker',
-      type: 'native',
       entry: 'server.py',
-      port: 18004,
-      enabled: true
+      port: 18200,
+      enable: true,
+      autoStart: false,
+      autoRestart: true,
+      maxRestarts: 3,
+      healthCheckTimeout: 120000
     },
     null,
     2
@@ -992,7 +1016,7 @@ def echo(request: dict):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=18004)
+    parser.add_argument("--port", type=int, default=18200)
     args = parser.parse_args()
     uvicorn.run(app, host="127.0.0.1", port=args.port)
 
@@ -1064,7 +1088,7 @@ def predict(request: dict):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=18005)
+    parser.add_argument("--port", type=int, default=18201)
     args = parser.parse_args()
     uvicorn.run(app, host="127.0.0.1", port=args.port)
 
@@ -1089,6 +1113,8 @@ if __name__ == "__main__":
 5. **健康检查**: 轮询 `/health` 端点，判断是否就绪
 
 **Agent 无需关心启动细节**，只需创建文件结构即可。
+
+> 创建完成后如需手动启停或查询状态，使用 `worker-manager` Skill（通过 Gateway IPC 操作）。
 
 ---
 
