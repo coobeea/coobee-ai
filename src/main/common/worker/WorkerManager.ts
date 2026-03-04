@@ -14,7 +14,7 @@
  *   - 状态变更通过事件通知 Renderer
  */
 
-import { ChildProcess, spawn } from 'node:child_process';
+import { ChildProcess, spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -234,7 +234,16 @@ export class WorkerManager extends EventEmitter {
 
     try {
       // 等待端口可用，防止旧进程尚未释放端口
-      await this.waitForPortAvailable(config.port);
+      try {
+        await this.waitForPortAvailable(config.port, 3000);
+      } catch {
+        // 端口被占用 — 尝试杀死残留僵尸进程（HMR 重启遗留）
+        if (this.killPortOccupant(config.port)) {
+          await this.waitForPortAvailable(config.port, 5000);
+        } else {
+          throw new Error(`端口 ${config.port} 被占用且无法释放`);
+        }
+      }
 
       const isNative = config.type === 'native';
 
@@ -565,12 +574,24 @@ export class WorkerManager extends EventEmitter {
           setTimeout(async () => {
             if (this.shuttingDown || worker.stopping) return;
             try {
-              await this.waitForPortAvailable(config.port, 15000);
+              await this.waitForPortAvailable(config.port, 10000);
             } catch {
-              log.warn(`[WorkerManager] Worker "${config.name}" 端口 ${config.port} 未释放，跳过本次重启`);
-              worker.error = `端口 ${config.port} 被占用，重启已跳过`;
-              this.updateStatus(worker, 'error');
-              return;
+              // 端口仍被占用，尝试杀死占用者后重试
+              if (this.killPortOccupant(config.port)) {
+                try {
+                  await this.waitForPortAvailable(config.port, 5000);
+                } catch {
+                  log.warn(`[WorkerManager] Worker "${config.name}" 端口 ${config.port} 未释放，跳过本次重启`);
+                  worker.error = `端口 ${config.port} 被占用，重启已跳过`;
+                  this.updateStatus(worker, 'error');
+                  return;
+                }
+              } else {
+                log.warn(`[WorkerManager] Worker "${config.name}" 端口 ${config.port} 未释放，跳过本次重启`);
+                worker.error = `端口 ${config.port} 被占用，重启已跳过`;
+                this.updateStatus(worker, 'error');
+                return;
+              }
             }
             this.start(config.name).catch((err) => {
               log.error(`[WorkerManager] Worker "${config.name}" 重启失败:`, err);
@@ -602,6 +623,7 @@ export class WorkerManager extends EventEmitter {
    */
   private async waitForPortAvailable(port: number, timeout = 10000): Promise<void> {
     const startTime = Date.now();
+    const host = Env.main.serverHost || '0.0.0.0';
     while (Date.now() - startTime < timeout) {
       const available = await new Promise<boolean>((resolve) => {
         const server = net.createServer();
@@ -609,12 +631,44 @@ export class WorkerManager extends EventEmitter {
         server.once('listening', () => {
           server.close(() => resolve(true));
         });
-        server.listen(port, '127.0.0.1');
+        server.listen(port, host);
       });
       if (available) return;
       await new Promise((r) => setTimeout(r, 500));
     }
     throw new Error(`端口 ${port} 在 ${timeout}ms 内未释放`);
+  }
+
+  /**
+   * 尝试杀死占用指定端口的进程（仅 Unix/macOS）
+   *
+   * 用于清理上一个应用实例遗留的僵尸 Worker 进程。
+   * 当 electron-vite HMR 重启主进程时，子进程可能未被清理。
+   */
+  private killPortOccupant(port: number): boolean {
+    if (Env.isWindows) return false;
+    try {
+      const output = execSync(`lsof -t -i :${port}`, { encoding: 'utf-8', timeout: 3000 }).trim();
+      if (!output) return false;
+
+      const pids = output
+        .split('\n')
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => !isNaN(n) && n > 0);
+
+      for (const pid of pids) {
+        if (pid === process.pid) continue;
+        try {
+          process.kill(pid, 'SIGKILL');
+          log.warn(`[WorkerManager] 杀死端口 ${port} 的残留进程 (PID: ${pid})`);
+        } catch {
+          // 进程可能已经退出
+        }
+      }
+      return pids.length > 0;
+    } catch {
+      return false;
+    }
   }
 
   /**
