@@ -14,6 +14,7 @@ import ModelGroupSettings from './settings/ModelGroupSettings.vue';
 import WorkersSettings from './settings/WorkersSettings.vue';
 import MemorySettings from './settings/MemorySettings.vue';
 import RemoteAccessSettings from './settings/RemoteAccessSettings.vue';
+import AgentHomeSettings from './settings/AgentHomeSettings.vue';
 import AboutView from './settings/AboutView.vue';
 
 // 一级导航状态
@@ -28,6 +29,7 @@ const menuItems = [
   },
   { id: 'workers', label: '内置服务', icon: 'i-carbon-cube', component: markRaw(WorkersSettings) },
   { id: 'memory', label: '记忆管理', icon: 'i-carbon-cognitive', component: markRaw(MemorySettings) },
+  { id: 'agent-home', label: 'Agent 人格', icon: 'i-carbon-user-avatar', component: markRaw(AgentHomeSettings) },
   { id: 'remote', label: '远程访问', icon: 'i-carbon-mobile', component: markRaw(RemoteAccessSettings) },
   { id: 'about', label: '关于我们', icon: 'i-carbon-information', component: markRaw(AboutView) }
 ];
