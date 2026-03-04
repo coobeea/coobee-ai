@@ -44,8 +44,10 @@ const saveSuccess = ref(false);
 
 const editorContainer = ref<HTMLDivElement | null>(null);
 let editorInstance: monaco.editor.IStandaloneCodeEditor | null = null;
+let pendingContent: string | null = null;
 
 const confirmDeleteFile = ref<string | null>(null);
+const creatingMemory = ref(false);
 
 // ==================== Computed helpers ====================
 
@@ -113,15 +115,21 @@ async function loadFileContent(agentId: string, fileName: string): Promise<void>
     const data = await res.json();
     fileContent.value = data.content ?? '';
     originalContent.value = fileContent.value;
-    if (editorInstance) {
-      editorInstance.setValue(fileContent.value);
-    }
+    setEditorContent(fileContent.value);
   } catch (err) {
     console.warn('[AgentHomeSettings] Failed to read file:', err);
     fileContent.value = '(读取失败)';
     originalContent.value = '';
   } finally {
     contentLoading.value = false;
+  }
+}
+
+function setEditorContent(content: string): void {
+  if (editorInstance) {
+    editorInstance.setValue(content);
+  } else {
+    pendingContent = content;
   }
 }
 
@@ -164,13 +172,39 @@ async function deleteFile(fileName: string): Promise<void> {
       selectedFileName.value = null;
       fileContent.value = '';
       originalContent.value = '';
-      if (editorInstance) {
-        editorInstance.setValue('');
-      }
+      setEditorContent('');
     }
     await loadFiles(selectedAgentId.value);
   } catch (err) {
     console.warn('[AgentHomeSettings] Failed to delete file:', err);
+  }
+}
+
+async function createTodayMemory(): Promise<void> {
+  if (!selectedAgentId.value || creatingMemory.value) return;
+  creatingMemory.value = true;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const fileName = `memory/${today}.md`;
+    const existing = files.value.find((f) => f.name === fileName);
+    if (existing) {
+      selectFile(fileName);
+      creatingMemory.value = false;
+      return;
+    }
+    const template = `# ${today} 每日记忆\n\n## 今日交互摘要\n- \n\n## 关键信息\n- \n`;
+    const res = await fetch(`${GATEWAY_BASE}/agents/${selectedAgentId.value}/home/file`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: fileName, content: template })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await loadFiles(selectedAgentId.value);
+    selectFile(fileName);
+  } catch (err) {
+    console.warn('[AgentHomeSettings] Failed to create memory:', err);
+  } finally {
+    creatingMemory.value = false;
   }
 }
 
@@ -181,9 +215,7 @@ function selectAgent(agentId: string): void {
   selectedFileName.value = null;
   fileContent.value = '';
   originalContent.value = '';
-  if (editorInstance) {
-    editorInstance.setValue('');
-  }
+  setEditorContent('');
   loadFiles(agentId);
 }
 
@@ -195,9 +227,7 @@ function selectFile(fileName: string): void {
 
 function revertFile(): void {
   fileContent.value = originalContent.value;
-  if (editorInstance) {
-    editorInstance.setValue(originalContent.value);
-  }
+  setEditorContent(originalContent.value);
 }
 
 function handleDeleteClick(fileName: string): void {
@@ -239,6 +269,11 @@ function initEditor(): void {
   editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
     saveFile();
   });
+
+  if (pendingContent !== null) {
+    editorInstance.setValue(pendingContent);
+    pendingContent = null;
+  }
 }
 
 function disposeEditor(): void {
@@ -313,16 +348,24 @@ function watchTheme(): void {
 
 // ==================== Lifecycle ====================
 
-onMounted(async () => {
-  await loadAgents();
-  await nextTick();
-  initEditor();
+onMounted(() => {
+  loadAgents();
   watchTheme();
 });
 
 onBeforeUnmount(() => {
   disposeEditor();
   themeObserver?.disconnect();
+});
+
+watch(editorContainer, async (el, oldEl) => {
+  if (!el && oldEl && editorInstance) {
+    disposeEditor();
+  }
+  if (el && !editorInstance) {
+    await nextTick();
+    initEditor();
+  }
 });
 
 watch(
@@ -412,13 +455,26 @@ watch(
             </div>
 
             <!-- 每日记忆 -->
-            <template v-if="memoryFiles().length > 0">
-              <div class="flex items-center gap-2 px-4 py-2 border-t border-border/50">
+            <div class="flex items-center justify-between px-4 py-2 border-t border-border/50">
+              <div class="flex items-center gap-2">
                 <span class="i-carbon-calendar inline-block h-3 w-3 text-muted-foreground/50"></span>
                 <span class="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
                   每日记忆 ({{ memoryFiles().length }})
                 </span>
               </div>
+              <button
+                class="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                title="新增今日记忆"
+                :disabled="creatingMemory"
+                @click="createTodayMemory">
+                <span
+                  :class="[
+                    creatingMemory ? 'i-carbon-circle-dash animate-spin' : 'i-carbon-add',
+                    'inline-block h-3 w-3'
+                  ]"></span>
+              </button>
+            </div>
+            <template v-if="memoryFiles().length > 0">
               <div class="p-2 pt-0">
                 <div
                   v-for="file in memoryFiles()"
