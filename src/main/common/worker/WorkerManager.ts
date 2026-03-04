@@ -16,6 +16,7 @@
 
 import { ChildProcess, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { createLogger } from '@main/common/logger';
@@ -58,6 +59,8 @@ export class WorkerManager extends EventEmitter {
   private configs = new Map<string, WorkerConfig>();
   /** 全局停止标记（app 退出时置 true，阻止自动重启） */
   private shuttingDown = false;
+  /** 防止同一 Worker 并发启动 */
+  private startingLocks = new Map<string, Promise<void>>();
   /** 配置文件监听器 */
   private configWatchers = new Map<string, fs.FSWatcher>();
   /** 配置重载防抖定时器 */
@@ -173,22 +176,48 @@ export class WorkerManager extends EventEmitter {
   // ==================== 启动/停止 ====================
 
   /**
-   * 启动指定 Worker
+   * 启动指定 Worker（带并发锁）
    *
-   * 流程：
-   *   1. 获取/创建虚拟环境
-   *   2. spawn 子进程
-   *   3. 等待健康检查通过
+   * 同一 Worker 的并发 start 调用会复用同一个 Promise，
+   * 避免自动重启和手动 worker.start 同时执行产生端口竞争。
    */
   async start(name: string): Promise<void> {
+    const existingLock = this.startingLocks.get(name);
+    if (existingLock) {
+      log.info(`[WorkerManager] Worker "${name}" 正在启动中，等待完成...`);
+      return existingLock;
+    }
+
+    const promise = this._doStart(name);
+    this.startingLocks.set(name, promise);
+    try {
+      await promise;
+    } finally {
+      this.startingLocks.delete(name);
+    }
+  }
+
+  /**
+   * 启动指定 Worker（实际逻辑）
+   *
+   * 流程：
+   *   1. 等待端口可用
+   *   2. 获取/创建虚拟环境
+   *   3. spawn 子进程
+   *   4. 等待健康检查通过
+   */
+  private async _doStart(name: string): Promise<void> {
     const config = this.configs.get(name);
     if (!config) {
       throw new Error(`Worker "${name}" 未注册`);
     }
 
     const existing = this.workers.get(name);
-    if (existing && (existing.status === 'ready' || existing.status === 'starting')) {
-      log.info(`[WorkerManager] Worker "${name}" 已在运行`);
+    if (
+      existing &&
+      (existing.status === 'ready' || existing.status === 'starting' || existing.status === 'initializing')
+    ) {
+      log.info(`[WorkerManager] Worker "${name}" 已在运行或启动中`);
       return;
     }
 
@@ -204,14 +233,15 @@ export class WorkerManager extends EventEmitter {
     this.workers.set(name, worker);
 
     try {
+      // 等待端口可用，防止旧进程尚未释放端口
+      await this.waitForPortAvailable(config.port);
+
       const isNative = config.type === 'native';
 
       if (isNative) {
-        // Native Worker: 直接启动二进制，无需 venv
         this.updateStatus(worker, 'starting');
         await this.spawnNativeWorker(worker);
       } else {
-        // Python Worker: 初始化虚拟环境 → 启动脚本
         this.updateStatus(worker, 'initializing');
         await this.ensureVenv(config);
         this.updateStatus(worker, 'starting');
@@ -532,12 +562,19 @@ export class WorkerManager extends EventEmitter {
           worker.error = `进程异常退出 (code=${code})，${delay}ms 后重启...`;
           this.updateStatus(worker, 'error');
 
-          setTimeout(() => {
-            if (!this.shuttingDown && !worker.stopping) {
-              this.start(config.name).catch((err) => {
-                log.error(`[WorkerManager] Worker "${config.name}" 重启失败:`, err);
-              });
+          setTimeout(async () => {
+            if (this.shuttingDown || worker.stopping) return;
+            try {
+              await this.waitForPortAvailable(config.port, 15000);
+            } catch {
+              log.warn(`[WorkerManager] Worker "${config.name}" 端口 ${config.port} 未释放，跳过本次重启`);
+              worker.error = `端口 ${config.port} 被占用，重启已跳过`;
+              this.updateStatus(worker, 'error');
+              return;
             }
+            this.start(config.name).catch((err) => {
+              log.error(`[WorkerManager] Worker "${config.name}" 重启失败:`, err);
+            });
           }, delay);
         } else {
           worker.error = `进程异常退出 (code=${code})，已达重启上限`;
@@ -555,10 +592,36 @@ export class WorkerManager extends EventEmitter {
     });
   }
 
-  // ==================== 健康检查 ====================
+  // ==================== 端口与健康检查 ====================
+
+  /**
+   * 等待端口可用（可绑定）
+   *
+   * 通过尝试 bind 来检测端口是否空闲，避免在旧进程尚未释放端口时
+   * spawn 新进程导致 EADDRINUSE。
+   */
+  private async waitForPortAvailable(port: number, timeout = 10000): Promise<void> {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      const available = await new Promise<boolean>((resolve) => {
+        const server = net.createServer();
+        server.once('error', () => resolve(false));
+        server.once('listening', () => {
+          server.close(() => resolve(true));
+        });
+        server.listen(port, '127.0.0.1');
+      });
+      if (available) return;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    throw new Error(`端口 ${port} 在 ${timeout}ms 内未释放`);
+  }
 
   /**
    * 等待 Worker 健康检查通过
+   *
+   * 在 HTTP 200 OK 后二次确认进程仍存活，
+   * 避免连接到旧进程（端口尚未释放）导致误判。
    */
   private async waitForHealth(worker: ManagedWorker): Promise<void> {
     const { config } = worker;
@@ -570,7 +633,6 @@ export class WorkerManager extends EventEmitter {
     const pollInterval = 500;
 
     while (Date.now() - startTime < timeout) {
-      // 进程可能在等待期间退出
       if (!worker.process || worker.process.killed) {
         throw new Error('Worker 进程在健康检查期间退出');
       }
@@ -580,9 +642,18 @@ export class WorkerManager extends EventEmitter {
           signal: AbortSignal.timeout(2000)
         });
         if (response.ok) {
-          return; // 健康检查通过
+          // 二次确认：HTTP 响应可能来自旧进程（端口 TIME_WAIT 期间），
+          // 检查 spawn 的进程是否仍在运行
+          if (!worker.process || worker.process.killed || worker.process.exitCode !== null) {
+            throw new Error('Worker 进程在健康检查通过后已退出（可能连接到了旧进程）');
+          }
+          return;
         }
-      } catch {
+      } catch (err) {
+        // exitCode 检查抛出的错误需要向上传播
+        if (err instanceof Error && err.message.includes('已退出')) {
+          throw err;
+        }
         // 连接失败，继续轮询
       }
 
@@ -650,18 +721,21 @@ export class WorkerManager extends EventEmitter {
         if (worker.consecutiveHealthCheckFailures >= maxFailures) {
           worker.log.error(`Worker 运行期健康检查连续失败 ${maxFailures} 次，触发自动重启`);
 
-          // 停止当前 Worker 并重启
           this.stopRuntimeHealthCheck(worker);
           await this.stop(config.name);
 
-          // 等待 2 秒后重启
-          setTimeout(() => {
-            if (!this.shuttingDown) {
-              worker.log.info('正在自动重启...');
-              this.start(config.name).catch((err) => {
-                worker.log.error('自动重启失败:', err);
-              });
+          setTimeout(async () => {
+            if (this.shuttingDown) return;
+            try {
+              await this.waitForPortAvailable(config.port, 10000);
+            } catch {
+              worker.log.warn(`端口 ${config.port} 未释放，跳过本次重启`);
+              return;
             }
+            worker.log.info('正在自动重启...');
+            this.start(config.name).catch((err) => {
+              worker.log.error('自动重启失败:', err);
+            });
           }, 2000);
         }
       }
