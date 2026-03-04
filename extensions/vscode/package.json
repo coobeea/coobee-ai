@@ -1,0 +1,74 @@
+{
+  "name": "coobee-ai-vscode",
+  "displayName": "Coobee AI",
+  "description": "VS Code extension for Coobee AI agent system",
+  "version": "0.1.0",
+  "publisher": "coobee",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Machine Learning"
+  ],
+  "activationEvents": [
+    "onCommand:coobee.connect",
+    "onCommand:coobee.chat",
+    "onCommand:coobee.submitTask"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "coobee.connect",
+        "title": "Coobee: Connect to Agent Server"
+      },
+      {
+        "command": "coobee.chat",
+        "title": "Coobee: Chat with Agent"
+      },
+      {
+        "command": "coobee.submitTask",
+        "title": "Coobee: Submit Task to Tavern"
+      },
+      {
+        "command": "coobee.showStatus",
+        "title": "Coobee: Show Status"
+      }
+    ],
+    "configuration": {
+      "title": "Coobee AI",
+      "properties": {
+        "coobee.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:13888",
+          "description": "Coobee AI server URL"
+        },
+        "coobee.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for authentication"
+        },
+        "coobee.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically connect on startup"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.x",
+    "@typescript-eslint/parser": "^6.x",
+    "eslint": "^8.x",
+    "typescript": "^5.x"
+  }
+}
