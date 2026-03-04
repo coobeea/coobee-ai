@@ -30,6 +30,18 @@ export abstract class BaseAgentBuilder {
   protected _lightweight = false;
   protected _providerConfig?: ProviderConfig;
   protected _providerModelId?: string;
+  protected _agentId?: string;
+
+  /** Agent 定义 ID（关联到 AgentStore 中的 Agent 定义） */
+  agentId(id: string): this {
+    this._agentId = id;
+    return this;
+  }
+
+  /** 获取 Agent ID（供 AgentEnvInjector 读取） */
+  getAgentId(): string | undefined {
+    return this._agentId;
+  }
 
   /** Agent 名称 */
   name(name: string): this {

@@ -103,6 +103,7 @@ function createBuilderFromDefinition(
   const builder = agentExecutor
     .piMono()
     .name(def.name || def.id)
+    .agentId(def.id)
     .mode(agentMode)
     .sessionMode('file')
     .instructions(def.instructions);

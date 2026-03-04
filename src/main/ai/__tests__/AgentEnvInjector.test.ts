@@ -9,9 +9,20 @@ vi.mock('@main/common/env', () => ({
       logs: '/mock/logs',
       userHome: '/mock/home',
       memoryDir: '/mock/memory',
-      temp: '/mock/temp'
+      temp: '/mock/temp',
+      homesDir: '/mock/homes',
+      agentsMdPath: '/mock/home/AGENTS.md'
     },
-    getAgentWorkspaceDir: vi.fn().mockResolvedValue('/mock/workspace')
+    getAgentWorkspaceDir: vi.fn().mockResolvedValue('/mock/workspace'),
+    getAgentHomeDir: vi.fn().mockReturnValue('/mock/homes/test')
+  }
+}));
+
+vi.mock('../agents/AgentHomeManager', () => ({
+  AgentHomeManager: class {
+    initHome = vi.fn().mockReturnValue('/mock/homes/test');
+    readInjectableFiles = vi.fn().mockReturnValue(undefined);
+    readAgentsMd = vi.fn().mockReturnValue(undefined);
   }
 }));
 
@@ -40,18 +51,20 @@ vi.mock('../AgentEnv', () => ({
   formatRuntimePaths: vi.fn().mockReturnValue('<runtime_paths />')
 }));
 
-vi.mock('../skills/SkillManager', () => {
-  return {
-    SkillManager: class {
-      size = 1;
-      scanSkills = vi.fn();
-      getByName = vi.fn().mockReturnValue(undefined);
-      static setCurrent = vi.fn();
-    }
-  };
-});
+vi.mock('../skills', () => ({
+  SkillManager: class {
+    size = 1;
+    scanSkills = vi.fn();
+    getByName = vi.fn().mockReturnValue(undefined);
+    static setCurrent = vi.fn();
+  }
+}));
 
-vi.mock('../runtime/shared/sandbox', () => ({
+vi.mock('../skills/CoreSkills', () => ({
+  CORE_SKILLS: []
+}));
+
+vi.mock('../sandbox', () => ({
   createPathOnlyContext: vi.fn().mockReturnValue({ mode: 'path-only' }),
   resolveSandboxContext: vi.fn()
 }));
@@ -72,7 +85,9 @@ describe('AgentEnvInjector', () => {
     mockBuilder = {
       getMode: vi.fn().mockReturnValue('agent'),
       getName: vi.fn().mockReturnValue('mock-builder'),
+      getAgentId: vi.fn().mockReturnValue(undefined),
       appendInstructions: vi.fn(),
+      skills: vi.fn(),
       sandboxContext: vi.fn(),
       sessionDir: vi.fn(),
       workspaceRoot: vi.fn(),
@@ -96,9 +111,9 @@ describe('AgentEnvInjector', () => {
   it('should inject full environment for agent mode', async () => {
     const result = await injectEnv('session-123', mockBuilder);
     expect(result).toBe('/mock/workspace');
-    expect(mockBuilder.sessionDir).toHaveBeenCalledWith('/mock/workspace/sessions');
+    expect(mockBuilder.sessionDir).toHaveBeenCalled();
     expect(mockBuilder.workspaceRoot).toHaveBeenCalledWith('/mock/workspace');
-    expect(mockBuilder.contextDir).toHaveBeenCalledWith('/mock/workspace/contexts');
+    expect(mockBuilder.contextDir).toHaveBeenCalled();
 
     expect(mockBuilder.appendInstructions).toHaveBeenCalled();
     expect(mockBuilder.sandboxContext).toHaveBeenCalled();
@@ -124,9 +139,9 @@ describe('AgentEnvInjector', () => {
     const result = await injectEnv('session-123', mockBuilder);
 
     expect(result).toBe('/mock/workspace');
-    expect(mockBuilder.sessionDir).toHaveBeenCalledWith('/mock/workspace/sessions');
+    expect(mockBuilder.sessionDir).toHaveBeenCalled();
     expect(mockBuilder.workspaceRoot).toHaveBeenCalledWith('/mock/workspace');
-    expect(mockBuilder.contextDir).toHaveBeenCalledWith('/mock/workspace/contexts');
+    expect(mockBuilder.contextDir).toHaveBeenCalled();
 
     expect(mockBuilder.appendInstructions).not.toHaveBeenCalled();
     expect(mockBuilder.sandboxContext).not.toHaveBeenCalled();

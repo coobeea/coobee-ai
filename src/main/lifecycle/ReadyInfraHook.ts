@@ -97,6 +97,9 @@ export const ReadyInfraHook: LifecycleHook = {
       // ── Step 4: AGENTS.md 协议文件 ──────────────────
       ensureGlobalAgentsMd(Env.paths.agentsMdPath, Env.app.name, Env.app.version);
 
+      // ── Step 5: Agent Home 批量初始化 ──────────────
+      await ensureAgentHomes(Env.paths.homesDir);
+
       log.info('[ReadyInfraHook] All infrastructure systems initialized successfully');
     } catch (error) {
       log.error('[ReadyInfraHook] Infrastructure initialization failed:', error);
@@ -140,6 +143,29 @@ function ensureGlobalAgentsMd(filePath: string, appName: string, appVersion: str
     log.info(`[ReadyInfraHook] Created default AGENTS.md: ${filePath}`);
   } catch (err) {
     log.warn(`[ReadyInfraHook] Failed to create AGENTS.md:`, err);
+  }
+}
+
+/**
+ * 确保所有已注册 Agent 的 Home 目录存在
+ *
+ * 遍历 AgentStore 中的所有 Agent，为每个创建 Home 目录（如不存在）。
+ */
+async function ensureAgentHomes(homesDir: string): Promise<void> {
+  try {
+    const { AgentHomeManager } = await import('@main/ai/agents/AgentHomeManager');
+    const { AgentStore } = await import('@main/ai/agents/AgentStore');
+
+    const homeManager = new AgentHomeManager(homesDir);
+    const store = await AgentStore.getInstance();
+    const agents = await store.list();
+
+    if (agents.length > 0) {
+      homeManager.initHomes(agents.map((a) => a.id));
+      log.info(`[ReadyInfraHook] Agent Homes initialized for ${agents.length} agents`);
+    }
+  } catch (err) {
+    log.warn('[ReadyInfraHook] Failed to initialize Agent Homes:', err);
   }
 }
 

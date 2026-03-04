@@ -76,6 +76,12 @@ export interface AgentEnv {
   /** 已加载的 Extension ID 列表 */
   loadedExtensions: string[];
 
+  // --- Agent Home ---
+  /** Agent 定义 ID（关联了 AgentDefinition 时存在） */
+  agentId?: string;
+  /** Agent Home 目录（homes/{agentId}/，跨会话持久化空间） */
+  agentHome?: string;
+
   // --- 记忆系统 ---
   /** 记忆总根目录 */
   memoryDir: string;
@@ -200,6 +206,10 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
     userExtensionsDir: Env.paths.userExtensionsDir,
     loadedExtensions,
 
+    // Agent Home（由 injectEnv 在获取到 agentId 后补充）
+    agentId: undefined,
+    agentHome: undefined,
+
     // 记忆系统
     memoryDir: Env.paths.memoryDir,
 
@@ -250,7 +260,7 @@ Key System Directories:
 - Config: ${env.configDir}
 - Memory: ${env.memoryDir}
 - Skills: builtin=${env.builtinSkillsDir}, user=${env.userSkillsDir}
-- Agents: builtin=${env.builtinAgentsDir}, user=${env.userAgentsDir}
+- Agents: builtin=${env.builtinAgentsDir}, user=${env.userAgentsDir}${env.agentHome ? `\n- Agent Home: ${env.agentHome} (persistent identity, memory, rules)` : ''}
 
 File Output Convention:
 - Write user-facing outputs to {workspace}/user/output/

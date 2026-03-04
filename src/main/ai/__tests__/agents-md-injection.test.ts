@@ -38,9 +38,19 @@ vi.mock('@main/common/env', () => ({
       userHome: '/mock/home',
       memoryDir: '/mock/memory',
       temp: '/mock/temp',
+      homesDir: '/mock/homes',
       agentsMdPath: '' // set in beforeEach
     },
-    getAgentWorkspaceDir: vi.fn().mockResolvedValue('/mock/workspace')
+    getAgentWorkspaceDir: vi.fn().mockResolvedValue('/mock/workspace'),
+    getAgentHomeDir: vi.fn().mockReturnValue('/mock/homes/test-agent')
+  }
+}));
+
+vi.mock('../agents/AgentHomeManager', () => ({
+  AgentHomeManager: class {
+    initHome = vi.fn().mockReturnValue('/mock/homes/test-agent');
+    readInjectableFiles = vi.fn().mockReturnValue(undefined);
+    readAgentsMd = vi.fn().mockReturnValue(undefined);
   }
 }));
 
@@ -122,6 +132,7 @@ describe('AGENTS.md injection', () => {
     mockBuilder = {
       getMode: vi.fn().mockReturnValue('agent'),
       getName: vi.fn().mockReturnValue('test-agent'),
+      getAgentId: vi.fn().mockReturnValue(undefined),
       appendInstructions: vi.fn(),
       skills: vi.fn(),
       sandboxContext: vi.fn(),

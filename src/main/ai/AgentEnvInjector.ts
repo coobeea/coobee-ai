@@ -20,6 +20,7 @@ import { createLogger } from '@main/common/logger';
 import { formatRuntimePaths, buildAgentEnv, type AgentEnv } from './AgentEnv';
 import { SkillManager } from './skills';
 import { CORE_SKILLS } from './skills/CoreSkills';
+import { AgentHomeManager } from './agents/AgentHomeManager';
 import { createPathOnlyContext, resolveSandboxContext } from './sandbox';
 import type { SandboxMode } from './sandbox';
 import type { ToolExecutionContext } from './tools/types';
@@ -46,8 +47,18 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
     ).getWorkspaceRoot?.();
     const workspace = existingWorkspace || (await Env.getAgentWorkspaceDir(sessionId));
 
-    // 2. 构建 AgentEnv
+    // 2. 构建 AgentEnv + Agent Home
     const agentEnv = await buildAgentEnv(sessionId, workspace);
+    const agentId = (builder as unknown as { getAgentId?: () => string | undefined }).getAgentId?.();
+
+    let agentHome: string | undefined;
+    let homeManager: AgentHomeManager | undefined;
+    if (agentId) {
+      homeManager = new AgentHomeManager(Env.paths.homesDir);
+      agentHome = homeManager.initHome(agentId);
+      agentEnv.agentId = agentId;
+      agentEnv.agentHome = agentHome;
+    }
 
     // ====== Agent 模式独有：Skill + 执行协议 + 运行时路径 ======
     if (mode === 'agent') {
@@ -95,11 +106,13 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
           : '';
       const agentDiscoveryHint = await buildAgentDiscoveryHint();
       const goalBlock = readGoalFile(workspace);
-      const agentsMdBlock = await readAgentsMdFiles(Env.paths.agentsMdPath, workspace);
+      const agentsMdBlock = await readAgentsMdFiles(Env.paths.agentsMdPath, agentHome, workspace);
+      const agentHomeBlock = homeManager && agentId ? homeManager.readInjectableFiles(agentId) : undefined;
       builder.appendInstructions(
         executionProtocol,
         runtimePathsBlock,
         ...(agentsMdBlock ? [agentsMdBlock] : []),
+        ...(agentHomeBlock ? [agentHomeBlock] : []),
         ...(goalBlock ? [goalBlock] : []),
         ...(skillDiscoveryHint ? [skillDiscoveryHint] : []),
         ...(agentDiscoveryHint ? [agentDiscoveryHint] : [])
@@ -121,6 +134,7 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
       //    包含沙箱信息 + Agent/Session 上下文
       const envVars = buildSkillEnvVars(agentEnv);
       const toolCtx = await buildToolExecutionContext(workspace, sessionId, envVars, {
+        agentId: agentId || undefined,
         agentName: builder.getName?.() || undefined,
         agentMode: mode
       });
@@ -183,36 +197,57 @@ ${truncated}
 // ==================== AGENTS.md 协议文件读取 ====================
 
 /**
- * 读取并合并全局 + 工作空间级 AGENTS.md 协议文件
+ * 读取并合并三级 AGENTS.md 协议文件
  *
- * 优先级：
- *   1. 全局 AGENTS.md（{userHome}/AGENTS.md）— 系统级身份信息和规则
- *   2. 工作空间 AGENTS.md（{workspace}/AGENTS.md）— 会话级上下文覆盖
- *
- * 两份文件都会被注入，工作空间版本的内容排在全局版本之后，
- * 让智能体看到的是"全局规则 + 本会话特化"的组合。
+ * 优先级（后者可覆盖前者规则）：
+ *   1. 全局 AGENTS.md（{userHome}/AGENTS.md）— 系统级规则（所有 Agent 共享）
+ *   2. Agent级 AGENTS.md（homes/{agentId}/AGENTS.md）— Agent 自定义规则（跨会话）
+ *   3. 会话级 AGENTS.md（{workspace}/AGENTS.md）— 当前会话临时覆盖
  *
  * @param globalPath 全局 AGENTS.md 路径
+ * @param agentHome Agent Home 目录路径（可选）
  * @param workspace 工作空间根路径
  * @returns `<system_agents_md>` XML 块，或 undefined
  */
-async function readAgentsMdFiles(globalPath: string, workspace: string): Promise<string | undefined> {
+async function readAgentsMdFiles(
+  globalPath: string,
+  agentHome: string | undefined,
+  workspace: string
+): Promise<string | undefined> {
   const maxLen = 4000;
   const parts: string[] = [];
+  const seenContent = new Set<string>();
 
-  // 全局 AGENTS.md
+  // 1. 全局 AGENTS.md
   try {
     const content = fs.readFileSync(globalPath, 'utf-8').trim();
-    if (content) parts.push(content);
+    if (content) {
+      parts.push(content);
+      seenContent.add(content);
+    }
   } catch {
     // 文件不存在时静默
   }
 
-  // 工作空间 AGENTS.md
+  // 2. Agent级 AGENTS.md
+  const agentMdPath = agentHome ? path.join(agentHome, 'AGENTS.md') : undefined;
+  if (agentMdPath) {
+    try {
+      const content = fs.readFileSync(agentMdPath, 'utf-8').trim();
+      if (content && !seenContent.has(content) && !isOnlyComments(content)) {
+        parts.push(`---\n\n<!-- Agent-level rules (${agentMdPath}) -->\n\n${content}`);
+        seenContent.add(content);
+      }
+    } catch {
+      // 文件不存在时静默
+    }
+  }
+
+  // 3. 会话级 AGENTS.md
   const wsPath = path.join(workspace, 'AGENTS.md');
   try {
     const content = fs.readFileSync(wsPath, 'utf-8').trim();
-    if (content && content !== parts[0]) {
+    if (content && !seenContent.has(content)) {
       parts.push(`---\n\n<!-- Session-level overrides (${wsPath}) -->\n\n${content}`);
     }
   } catch {
@@ -226,15 +261,33 @@ async function readAgentsMdFiles(globalPath: string, workspace: string): Promise
     merged = merged.slice(0, maxLen) + '\n\n... (truncated)';
   }
 
+  const pathLines = [`Global path: ${globalPath}`];
+  if (agentMdPath) pathLines.push(`Agent path: ${agentMdPath}`);
+  pathLines.push(`Session path: ${wsPath}`);
+
   return `<system_agents_md>
 This is the system-wide AGENTS.md protocol file. It contains identity, rules, and shared context
 that ALL agents MUST follow. You may update the workspace-level copy using the \`write\` tool.
 
-Global path: ${globalPath}
-Session path: ${wsPath}
+${pathLines.join('\n')}
 
 ${merged}
 </system_agents_md>`;
+}
+
+/**
+ * 判断内容是否仅包含 Markdown 注释
+ */
+function isOnlyComments(content: string): boolean {
+  const stripped = content
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      return trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('<!--') && !trimmed.endsWith('-->');
+    })
+    .join('')
+    .trim();
+  return stripped.length === 0;
 }
 
 // ==================== 核心执行协议 ====================

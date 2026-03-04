@@ -142,6 +142,26 @@ export const Env = {
        */
       userAgentsDir: path.join(_userHome, 'agents'),
 
+      // === Agent Home 目录（Agent 持久化空间）===
+      /**
+       * Agent Home 总根目录
+       *
+       * 每个 Agent 拥有独立的持久化目录，跨会话保留身份、记忆、规则：
+       *   homes/{agentId}/
+       *   ├── SOUL.md          人格与价值观
+       *   ├── IDENTITY.md      身份名片
+       *   ├── USER.md          主人档案
+       *   ├── NOTES.md         环境工具备注
+       *   ├── AGENTS.md        Agent 级规则
+       *   ├── HEARTBEAT.md     心跳任务清单
+       *   ├── MEMORY.md        长期记忆精华
+       *   ├── BOOTSTRAP.md     首次引导脚本（完成后自删除）
+       *   └── memory/          每日对话日志
+       *
+       * @example 开发: <项目>/.home/homes | 生产: ~/.coobee-ai/homes
+       */
+      homesDir: path.join(_userHome, 'homes'),
+
       // === 会话线程目录（Threads）===
       /**
        * 会话线程存储目录
@@ -303,6 +323,27 @@ export const Env = {
       await mkdirp(upgradeDir);
     }
     return upgradeDir;
+  },
+
+  // ==================== Agent Home ====================
+
+  /**
+   * 获取指定 Agent 的 Home 目录，首次访问时自动初始化
+   *
+   * Agent Home 是 Agent 的持久化空间（跨会话保留），包含：
+   *   SOUL.md / IDENTITY.md / USER.md / NOTES.md / AGENTS.md
+   *   HEARTBEAT.md / MEMORY.md / BOOTSTRAP.md / memory/
+   *
+   * @param agentId Agent 唯一标识
+   * @returns Home 目录绝对路径
+   */
+  getAgentHomeDir(agentId: string): string {
+    const homeDir = path.join(this.paths.homesDir, agentId);
+    if (!fs.existsSync(homeDir)) {
+      fs.mkdirSync(homeDir, { recursive: true });
+      fs.mkdirSync(path.join(homeDir, 'memory'), { recursive: true });
+    }
+    return homeDir;
   },
 
   // ==================== 工作空间与 Skill ====================

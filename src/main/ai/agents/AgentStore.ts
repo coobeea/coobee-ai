@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createLogger } from '@main/common/logger';
 import { ensureCoreSkills } from '../skills/CoreSkills';
+import { AgentHomeManager } from './AgentHomeManager';
 import type { AgentDefinition, AgentIndexEntry, CreateAgentParams, UpdateAgentParams } from './types';
 
 const log = createLogger('agent-store');
@@ -158,6 +159,15 @@ export class AgentStore {
     // 更新索引
     this.index.set(definition.id, toIndexEntry(definition));
 
+    // 同步创建 Agent Home 目录
+    try {
+      const { Env } = await import('@main/common/env');
+      const homeManager = new AgentHomeManager(Env.paths.homesDir);
+      homeManager.initHome(definition.id);
+    } catch (err) {
+      log.warn(`[AgentStore] Failed to init agent home for ${definition.id}:`, err);
+    }
+
     log.info(`[AgentStore] Created agent: ${definition.id} (v${definition.version})`);
     return definition;
   }
@@ -252,7 +262,8 @@ export class AgentStore {
         fs.unlinkSync(filePath);
       }
       this.index.delete(agentId);
-      log.info(`[AgentStore] Deleted agent: ${agentId}`);
+      // Agent Home 目录保留（记忆不应随定义删除而丢失）
+      log.info(`[AgentStore] Deleted agent: ${agentId} (Home preserved)`);
       return true;
     } catch (err) {
       log.warn(`[AgentStore] Failed to delete agent ${agentId}:`, err);
