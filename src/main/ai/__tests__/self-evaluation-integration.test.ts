@@ -57,10 +57,9 @@ describe('Stage 1: Skill 注入到子智能体', () => {
       });
 
       expect(coord).toBeDefined();
-      // @ts-expect-error - 访问私有属性
-      expect(coord.aggregator).toBeDefined();
-      // @ts-expect-error - 访问私有属性
-      expect(coord.validator).toBeDefined();
+      expect(coord.pool).toBeDefined();
+      expect(coord.router).toBeDefined();
+      expect(coord.context).toBeDefined();
     });
 
     it('SwarmCoordinator 构造函数应正确初始化质量闭环组件', () => {

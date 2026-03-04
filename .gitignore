@@ -17,3 +17,4 @@ runtime/**/.gitkeep
 
 # 测试结果和日志（每次运行生成）
 test-results/
+__pycache__/

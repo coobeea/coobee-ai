@@ -285,7 +285,7 @@ describe('AgentEnv', () => {
       // 关键目录
       expect(result).toContain('Config: /home/test/config');
       expect(result).toContain('Memory: /home/test/memory');
-      expect(result).toContain('Threads: /home/test/threads');
+      expect(result).toContain('Skills: builtin=/builtin/skills');
     });
 
     it('包含 Skill 搜索路径', () => {
@@ -306,7 +306,7 @@ describe('AgentEnv', () => {
 
       // formatRuntimePaths 不输出工具列表，只要包含基本环境信息即可
       expect(result).toContain('Runtime Environment');
-      expect(result).toContain('Key Directories');
+      expect(result).toContain('Key System Directories');
     });
 
     it('空列表时仍能正确输出', () => {

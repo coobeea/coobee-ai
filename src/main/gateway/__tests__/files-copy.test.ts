@@ -123,12 +123,11 @@ describe('Files Copy - Backend Logic', () => {
 
 describe('Files Copy - Path Safety', () => {
   it('应该检测路径遍历攻击', () => {
-    function isPathSafe(targetPath: string): boolean {
-      const normalized = path.normalize(targetPath);
-      if (normalized.includes('..')) {
-        return false;
-      }
-      return true;
+    function isPathSafe(targetPath: string, rootDir = '/tmp'): boolean {
+      const resolved = path.resolve(rootDir, targetPath);
+      const resolvedRoot = path.resolve(rootDir);
+      const rel = path.relative(resolvedRoot, resolved);
+      return !rel.startsWith('..') && !path.isAbsolute(rel);
     }
 
     expect(isPathSafe('/tmp/test')).toBe(true);
