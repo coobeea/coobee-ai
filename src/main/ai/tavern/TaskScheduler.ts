@@ -15,6 +15,8 @@ import { createLogger } from '@main/common/logger';
 import { eventBus } from '@main/common/eventbus';
 import { StreamEventType } from '@main/ai/streaming/types';
 import { TavernStore, type Task } from './TavernStore';
+import type { GoalChecker } from '@main/ai/goal/types';
+import { Env } from '@main/common/env';
 
 const log = createLogger('task-scheduler');
 
@@ -396,5 +398,175 @@ ${task.files.length > 0 ? '\n## Related Files\n\n' + task.files.map((f) => `- ${
       .catch(() => {
         log.debug('[TaskScheduler] Notification not available');
       });
+  }
+
+  /**
+   * 目标驱动循环执行
+   *
+   * 持续执行任务直到目标达成或超过最大迭代次数
+   *
+   * @param taskId 任务 ID
+   * @param goalChecker 目标检查器
+   * @param maxIterations 最大迭代次数（默认 10）
+   */
+  async executeUntilGoal(taskId: string, goalChecker: GoalChecker, maxIterations = 10): Promise<void> {
+    const store = await TavernStore.getInstance();
+    const task = await store.readMeta(taskId);
+    if (!task) {
+      throw new Error(`Task ${taskId} not found`);
+    }
+
+    log.info(`[TaskScheduler] Starting goal-driven execution for task ${taskId} with checker: ${goalChecker.name}`);
+
+    let iteration = 0;
+    let sessionId: string | null = null;
+
+    while (iteration < maxIterations) {
+      iteration++;
+      log.info(`[TaskScheduler] Goal-driven iteration ${iteration}/${maxIterations} for task ${taskId}`);
+
+      // 每次迭代都分派任务
+      if (!sessionId) {
+        sessionId = await this.dispatchTaskWithSession(task);
+      } else {
+        await this.continueSession(sessionId, task);
+      }
+
+      // 等待任务执行完成
+      await this.waitForSessionCompletion(sessionId);
+
+      // 检查目标是否达成
+      const workspace = await Env.getAgentWorkspaceDir(sessionId);
+      const result = await goalChecker.check({
+        sessionId,
+        taskId: task.id,
+        workspace,
+        iteration,
+        maxIterations
+      });
+
+      log.info(`[TaskScheduler] Goal check result for task ${taskId}:`, {
+        achieved: result.achieved,
+        progress: result.progress,
+        feedback: result.feedback?.slice(0, 200)
+      });
+
+      if (result.achieved) {
+        await store.updateTask(taskId, {
+          status: 'completed',
+          result: {
+            textResult: `目标在 ${iteration} 次迭代后达成`,
+            fileResults: []
+          }
+        });
+        log.info(`[TaskScheduler] Goal achieved for task ${taskId} after ${iteration} iterations`);
+        if (this.enableNotification) {
+          this.sendNotification(`目标达成: ${task.title}`, `经过 ${iteration} 次迭代成功完成`);
+        }
+        break;
+      } else {
+        log.info(`[TaskScheduler] Goal not achieved yet for task ${taskId}, continuing...`);
+        task.description = `${task.description}\n\n## 上一轮反馈\n\n${result.feedback || '继续尝试'}`;
+      }
+    }
+
+    if (iteration >= maxIterations) {
+      await store.updateTask(taskId, {
+        status: 'failed',
+        result: {
+          textResult: `任务在 ${maxIterations} 次迭代后仍未达成目标`,
+          fileResults: []
+        }
+      });
+      log.warn(`[TaskScheduler] Task ${taskId} failed to achieve goal after ${maxIterations} iterations`);
+      if (this.enableNotification) {
+        this.sendNotification(`目标未达成: ${task.title}`, `已执行 ${maxIterations} 次迭代`);
+      }
+    }
+  }
+
+  /**
+   * 分派任务并返回 sessionId（目标驱动模式使用）
+   */
+  private async dispatchTaskWithSession(task: Task): Promise<string> {
+    const { ThreadStore } = await import('@main/ai/threads/ThreadStore');
+    const threadStore = await ThreadStore.getInstance();
+    const thread = await threadStore.create({
+      title: `[Goal-Driven] ${task.title}`,
+      agentId: 'default',
+      agentMode: 'agent',
+      agentType: 'agent',
+      metadata: {
+        source: 'goal-driven-scheduler',
+        taskId: task.id
+      }
+    });
+
+    const sessionId = thread.id;
+    const message = this.buildTaskMessage(task);
+    const { agentExecutor } = await import('@main/ai/AgentExecutor');
+    const result = await agentExecutor.submitViaPipeline(sessionId, message, 'agent');
+
+    if (!result) {
+      const builder = agentExecutor.createBuilderFromFactory('agent');
+      if (!builder) {
+        throw new Error('Neither Pipeline nor BuilderFactory is available');
+      }
+      agentExecutor.submit({ sessionId, message, builder });
+    }
+
+    return sessionId;
+  }
+
+  /**
+   * 在同一 session 中继续任务（追加消息）
+   */
+  private async continueSession(sessionId: string, task: Task): Promise<void> {
+    const message = this.buildTaskMessage(task);
+    const { agentExecutor } = await import('@main/ai/AgentExecutor');
+    const result = await agentExecutor.submitViaPipeline(sessionId, message, 'agent');
+
+    if (!result) {
+      const builder = agentExecutor.createBuilderFromFactory('agent');
+      if (!builder) {
+        throw new Error('Neither Pipeline nor BuilderFactory is available');
+      }
+      agentExecutor.submit({ sessionId, message, builder });
+    }
+  }
+
+  /**
+   * 等待会话完成
+   */
+  private async waitForSessionCompletion(sessionId: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('Session completion timeout'));
+      }, 600000); // 10 分钟超时
+
+      const handleEnd = (event: { sessionId: string }): void => {
+        if (event.sessionId === sessionId) {
+          cleanup();
+          resolve();
+        }
+      };
+
+      const handleError = (event: { sessionId: string; error?: string }): void => {
+        if (event.sessionId === sessionId) {
+          cleanup();
+          reject(new Error(event.error || 'Session error'));
+        }
+      };
+
+      const cleanup = (): void => {
+        clearTimeout(timeout);
+        eventBus.off(StreamEventType.END, handleEnd);
+        eventBus.off(StreamEventType.ERROR, handleError);
+      };
+
+      eventBus.on(StreamEventType.END, handleEnd);
+      eventBus.on(StreamEventType.ERROR, handleError);
+    });
   }
 }
