@@ -138,7 +138,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import type { DiscussionSession } from '@main/ai/discussion/types';
+import type { DiscussionSession } from '@shared/types/discussion';
 
 const discussions = ref<DiscussionSession[]>([]);
 const selectedDiscussion = ref<DiscussionSession | null>(null);
