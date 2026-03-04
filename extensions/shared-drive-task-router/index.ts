@@ -208,7 +208,23 @@ export default {
 
     // 监听共享网盘条目创建事件
     entryCreatedHandler = handleEntryCreated;
+
+    // DEBUG: 验证 eventBus 实例
+    logger.info(
+      `[SDTaskRouter-DEBUG] api.eventBus type: ${typeof api.eventBus}, on method: ${typeof api.eventBus?.on}`
+    );
+    logger.info(`[SDTaskRouter-DEBUG] eventBusRef type: ${typeof eventBusRef}, on method: ${typeof eventBusRef?.on}`);
+
     api.eventBus.on('shared-drive:entry-created', entryCreatedHandler);
+
+    // 验证监听器是否注册成功
+    const eventBusWithCount = api.eventBus as { listenerCount?: (event: string) => number };
+    const listenerCount = eventBusWithCount.listenerCount
+      ? eventBusWithCount.listenerCount('shared-drive:entry-created')
+      : 'unknown';
+    logger.info(
+      `[SDTaskRouter] Registered listener for 'shared-drive:entry-created' (listenerCount: ${listenerCount})`
+    );
 
     logger.info(`[SDTaskRouter] Registered (enabled=${enabled}, dispatcher=${TASK_DISPATCHER_AGENT_ID})`);
   },

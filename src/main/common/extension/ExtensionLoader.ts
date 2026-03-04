@@ -163,9 +163,20 @@ export class ExtensionLoader {
 
       // 调用 register（支持异步）
       const eventBusApi = this.eventBusRef ? createEventBusWrapper(this.eventBusRef) : undefined;
+
+      // DEBUG: 验证 eventBus 实例一致性（所有扩展都打印）
+      log.info(`[ExtensionLoader-DEBUG] eventBusRef for ${manifest.id}:`, {
+        hasRef: !!this.eventBusRef,
+        refType: typeof this.eventBusRef,
+        eventBusApi: eventBusApi ? 'created' : 'undefined',
+        onType: typeof eventBusApi?.on
+      });
+
       const api = createExtensionApi(manifest.id, manifest.name, origin, this.registry, eventBusApi);
       try {
+        log.info(`[ExtensionLoader] Calling register() for "${manifest.id}"...`);
         await mod.register(api);
+        log.info(`[ExtensionLoader] register() completed for "${manifest.id}"`);
         // 保存模块实例，用于后续调用 unregister
         this.loadedModules.set(manifest.id, mod);
       } catch (err) {

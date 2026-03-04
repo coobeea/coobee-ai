@@ -22,6 +22,8 @@ import type {
  */
 function createExtensionLogger(extensionId: string): ExtensionLogger {
   const prefix = `[Extension:${extensionId}]`;
+  // 使用 console.log 输出，这些日志会出现在 stdout 中
+  // 如果需要写入日志文件，需要在应用层面捕获 console 输出
   return {
     info: (msg, ...args) => console.log(prefix, msg, ...args),
     warn: (msg, ...args) => console.warn(prefix, msg, ...args),
