@@ -113,6 +113,12 @@ Usage notes:
 <location>local</location>
 </skill>
 
+<skill>
+<name>gitea</name>
+<description>Gitea 代码托管平台操作指南。通过 REST API 管理仓库、Issue 工单、Pull Request、标签、里程碑、Release 发布等。Use when: (1) creating/managing git repositories, (2) creating/updating issues or tickets, (3) managing pull requests and code review, (4) creating releases or tags, (5) managing labels and milestones. Triggers on: 创建仓库, 提交工单, 提Issue, 合并PR, 发布版本, create repo, create issue, merge PR, create release, Gitea.</description>
+<location>local</location>
+</skill>
+
 </available_skills>
 
 <!-- SKILLS_TABLE_END -->
