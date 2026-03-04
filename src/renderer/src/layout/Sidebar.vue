@@ -143,6 +143,16 @@ onMounted(() => updateActiveState());
         <span :class="item.icon" class="icon-sm" />
         <span>{{ item.label }}</span>
       </button>
+
+      <!-- 更多功能按钮 -->
+      <button
+        class="nav-btn more-btn"
+        :class="{ active: showMoreMenu }"
+        title="更多功能"
+        @click="showMoreMenu = !showMoreMenu">
+        <span class="i-carbon-overflow-menu-horizontal icon-sm" />
+        <span>更多</span>
+      </button>
     </nav>
 
     <!-- 会话列表 -->
@@ -194,18 +204,6 @@ onMounted(() => updateActiveState());
           <span class="i-carbon-renew inline-block h-4 w-4 animate-spin opacity-20" />
         </div>
       </div>
-    </div>
-
-    <!-- 底部工具栏 -->
-    <div class="bottom-toolbar">
-      <button
-        class="toolbar-btn"
-        :class="{ active: showMoreMenu }"
-        title="更多功能"
-        @click="showMoreMenu = !showMoreMenu">
-        <span class="i-carbon-overflow-menu-horizontal icon-sm" />
-        <span>更多</span>
-      </button>
     </div>
 
     <!-- 更多功能弹出菜单 -->
@@ -490,45 +488,19 @@ onMounted(() => updateActiveState());
   background: hsl(var(--foreground) / 0.12);
 }
 
-/* ====== 底部工具栏 ====== */
+/* ====== 更多功能按钮 ====== */
 
-.bottom-toolbar {
-  display: flex;
-  flex-shrink: 0;
-  padding: 8px;
-  border-top: 1px solid hsl(var(--border) / 0.3);
-}
-
-.toolbar-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  height: 36px;
-  padding: 0 12px;
-  border-radius: 8px;
-  color: hsl(var(--muted-foreground));
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.toolbar-btn:hover {
-  background: hsl(var(--foreground) / 0.05);
-  color: hsl(var(--foreground) / 0.8);
-}
-
-.toolbar-btn.active {
-  background: hsl(var(--primary) / 0.1);
-  color: hsl(var(--primary));
+.more-btn {
+  margin-top: 4px;
+  border-top: 1px solid hsl(var(--border) / 0.2);
+  padding-top: 6px !important;
 }
 
 /* ====== 更多功能弹出菜单 ====== */
 
 .more-menu-popup {
   position: absolute;
-  bottom: 52px;
+  top: 320px;
   left: 8px;
   width: 204px;
   background: hsl(var(--surface));
