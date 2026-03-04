@@ -41,7 +41,10 @@ const PREVIEWABLE_BINARY_EXTS = [
   '.webm',
   '.ogg',
   '.mp3',
-  '.wav'
+  '.wav',
+  '.m4a',
+  '.aac',
+  '.flac'
 ];
 
 export interface FileTreeNode {
@@ -293,10 +296,15 @@ export function registerFileRoutes(router: Router): void {
     svg: 'image/svg+xml',
     mp4: 'video/mp4',
     webm: 'video/webm',
-    ogg: 'video/ogg',
+    ogg: 'audio/ogg',
     mov: 'video/quicktime',
     avi: 'video/x-msvideo',
-    mkv: 'video/x-matroska'
+    mkv: 'video/x-matroska',
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    m4a: 'audio/mp4',
+    aac: 'audio/aac',
+    flac: 'audio/flac'
   };
 
   router.get('/files/serve', async (ctx) => {

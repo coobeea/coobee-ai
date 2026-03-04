@@ -10,6 +10,7 @@
 
 import { ref, type Ref } from 'vue';
 import type { StreamMessage, HitlApprovalDecision } from '@shared/stream-protocol';
+import configManager from '@/config';
 
 // ==================== 共享类型 ====================
 
@@ -52,7 +53,8 @@ export type ContentBlock =
   | { type: 'thinking'; text: string }
   | { type: 'tool'; tool: ToolCallInfo }
   | { type: 'delegate'; delegate: DelegateInfo }
-  | { type: 'quality'; status: string; detail?: string };
+  | { type: 'quality'; status: string; detail?: string }
+  | { type: 'audio'; src: string; title?: string };
 
 export type MessageStatus = 'sending' | 'streaming' | 'done' | 'error' | 'interrupted';
 
@@ -255,6 +257,27 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
               } else {
                 block.tool.status = 'done';
               }
+
+              // 检测 write 工具写入的音频文件，插入可播放的 audio block
+              if (block.tool.name === 'write') {
+                const audioMatch = msg.content.match(/["']?([^"'\s]+\.(mp3|wav|m4a|aac|flac|webm))["']?/i);
+                if (audioMatch) {
+                  const absPath = audioMatch[1];
+                  const baseUrl = configManager.getBaseUrl();
+                  const audioUrl = `${baseUrl}/gateway/files/serve?path=${encodeURIComponent(absPath)}`;
+                  const fileName =
+                    absPath
+                      .split('/')
+                      .pop()
+                      ?.replace(/\.(mp3|wav|m4a|aac|flac|webm)$/i, '') || '语音';
+                  assistantMsg.blocks.push({
+                    type: 'audio',
+                    src: audioUrl,
+                    title: fileName
+                  });
+                }
+              }
+
               break;
             }
           }

@@ -82,11 +82,20 @@ defineExpose({
   scrollToBottom
 });
 
+// 监听消息数量变化（新消息到达）
 watch(
   () => props.messages.length,
-  () => scrollToBottom()
+  (newLen, oldLen) => {
+    // 如果是首次加载历史消息（从 0 到有），强制滚动到底部
+    if (oldLen === 0 && newLen > 0) {
+      scrollToBottom(true);
+    } else {
+      scrollToBottom();
+    }
+  }
 );
 
+// 监听流式内容增量更新
 watch(
   () => {
     const msgs = props.messages;

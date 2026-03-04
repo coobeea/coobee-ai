@@ -142,44 +142,35 @@ async function attachToContainer(terminalId: string, parentEl: HTMLElement): Pro
   wrapper.dataset.terminalId = terminalId;
   parentEl.appendChild(wrapper);
 
-  const isDark =
-    document.documentElement.classList.contains('dark') || window.matchMedia('(prefers-color-scheme: dark)').matches;
-
+  // 终端使用白色背景主题，与输出面板保持一致
   const xterm = new Terminal({
     cursorBlink: true,
     fontSize: 13,
     fontFamily: "'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace",
     lineHeight: 1.2,
     scrollback: 5000,
-    theme: isDark
-      ? {
-          background: '#1e1e2e',
-          foreground: '#cdd6f4',
-          cursor: '#f5e0dc',
-          selectionBackground: '#45475a',
-          black: '#45475a',
-          red: '#f38ba8',
-          green: '#a6e3a1',
-          yellow: '#f9e2af',
-          blue: '#89b4fa',
-          magenta: '#f5c2e7',
-          cyan: '#94e2d5',
-          white: '#bac2de'
-        }
-      : {
-          background: '#ffffff',
-          foreground: '#4c4f69',
-          cursor: '#dc8a78',
-          selectionBackground: '#ccd0da',
-          black: '#5c5f77',
-          red: '#d20f39',
-          green: '#40a02b',
-          yellow: '#df8e1d',
-          blue: '#1e66f5',
-          magenta: '#ea76cb',
-          cyan: '#179299',
-          white: '#acb0be'
-        }
+    theme: {
+      background: '#ffffff',
+      foreground: '#1e1e1e',
+      cursor: '#333333',
+      selectionBackground: '#e0e0e0',
+      black: '#000000',
+      red: '#cd3131',
+      green: '#00bc00',
+      yellow: '#949800',
+      blue: '#0451a5',
+      magenta: '#bc05bc',
+      cyan: '#0598bc',
+      white: '#555555',
+      brightBlack: '#666666',
+      brightRed: '#cd3131',
+      brightGreen: '#00bc00',
+      brightYellow: '#949800',
+      brightBlue: '#0451a5',
+      brightMagenta: '#bc05bc',
+      brightCyan: '#0598bc',
+      brightWhite: '#a5a5a5'
+    }
   });
 
   const fitAddon = new FitAddon();
@@ -213,13 +204,18 @@ function showTerminal(terminalId: string): void {
   }
   const term = terminals.value.find((t) => t.id === terminalId);
   if (term?.fitAddon) {
+    // 使用两个 requestAnimationFrame 确保 DOM 已经完全渲染
     requestAnimationFrame(() => {
-      try {
-        term.fitAddon.fit();
-      } catch {
-        // ignore
-      }
-      term.xterm?.focus();
+      requestAnimationFrame(() => {
+        try {
+          term.fitAddon.fit();
+          // 再次调用确保尺寸正确
+          term.fitAddon.fit();
+        } catch {
+          // ignore
+        }
+        term.xterm?.focus();
+      });
     });
   }
 }

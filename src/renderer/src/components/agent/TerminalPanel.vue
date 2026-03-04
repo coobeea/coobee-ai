@@ -37,6 +37,10 @@ const terminalContainerEl = ref<HTMLDivElement | null>(null);
 const autoScroll = ref(true);
 const selectedProcessId = ref<string | null>(null);
 
+// ResizeObserver 和定时器变量
+let resizeObserver: ResizeObserver | null = null;
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
 const execOutputs = computed<ExecOutputEntry[]>(() => chatStore.execOutputs);
 
 const filteredProcessOutput = computed<ProcessOutputLine[]>(() => {
@@ -156,19 +160,27 @@ watch(activeTab, async (tab) => {
   if (tab === 'terminal') {
     await nextTick();
     if (activeTerminalId.value) {
-      showTerminal(activeTerminalId.value);
+      // 等待 DOM 完全渲染后再适配终端尺寸
+      const id = activeTerminalId.value;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (id) showTerminal(id);
+          fitAllTerminals();
+        });
+      });
     }
   }
 });
 
 // 使用 ResizeObserver 让终端自适应大小
-let resizeObserver: ResizeObserver | null = null;
-
 function setupResizeObserver(): void {
   if (resizeObserver) resizeObserver.disconnect();
   resizeObserver = new ResizeObserver(() => {
     if (activeTab.value === 'terminal') {
-      fitAllTerminals();
+      // 延迟一点执行，确保容器尺寸已经稳定
+      requestAnimationFrame(() => {
+        fitAllTerminals();
+      });
     }
   });
   if (terminalContainerEl.value) {
@@ -176,7 +188,29 @@ function setupResizeObserver(): void {
   }
 }
 
-let refreshTimer: ReturnType<typeof setInterval> | null = null;
+// 关键修复：监听容器可见性变化，确保折叠后展开时正确初始化
+let lastVisibleHeight = 0;
+
+function checkContainerVisibility(): void {
+  if (!terminalContainerEl.value) return;
+
+  const currentHeight = terminalContainerEl.value.clientHeight;
+  const isVisible = currentHeight > 0 && terminalContainerEl.value.offsetParent !== null;
+
+  // 从不可见到可见的转变，需要重新适配
+  if (isVisible && lastVisibleHeight === 0) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        fitAllTerminals();
+        if (activeTerminalId.value) {
+          showTerminal(activeTerminalId.value);
+        }
+      });
+    });
+  }
+
+  lastVisibleHeight = isVisible ? currentHeight : 0;
+}
 
 onMounted(() => {
   initProcessWs();
@@ -185,10 +219,24 @@ onMounted(() => {
 
   nextTick(() => {
     setupResizeObserver();
+    // 初始检查
+    checkContainerVisibility();
   });
 
   if (terminals.value.length === 0) {
     handleCreateTerminal();
+  }
+
+  // 使用 MutationObserver 监听 DOM 可见性变化
+  const observer = new MutationObserver(() => {
+    checkContainerVisibility();
+  });
+
+  if (terminalContainerEl.value) {
+    observer.observe(terminalContainerEl.value, {
+      attributes: true,
+      attributeFilter: ['style', 'class']
+    });
   }
 });
 
@@ -454,6 +502,7 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
   padding: 2px;
+  background-color: #ffffff;
 }
 
 .terminal-output {
@@ -464,6 +513,8 @@ onUnmounted(() => {
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
   font-size: 11px;
   line-height: 1.6;
+  background-color: #ffffff;
+  color: #1e1e1e;
 }
 
 .output-line {

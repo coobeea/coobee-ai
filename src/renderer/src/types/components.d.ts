@@ -15,6 +15,7 @@ declare module 'vue' {
     AIGenerate: typeof import('./../components/common/AIGenerate.vue')['default']
     AudioVisualizer: typeof import('./../components/AudioVisualizer.vue')['default']
     BaseButton: typeof import('./../components/Form/BaseButton.vue')['default']
+    BlockAudio: typeof import('./../components/chat/blocks/BlockAudio.vue')['default']
     BlockDelegate: typeof import('./../components/chat/blocks/BlockDelegate.vue')['default']
     BlockQuality: typeof import('./../components/chat/blocks/BlockQuality.vue')['default']
     BlockText: typeof import('./../components/chat/blocks/BlockText.vue')['default']
