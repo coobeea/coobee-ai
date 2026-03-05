@@ -133,7 +133,7 @@ describe('Tavern Worker E2E 集成测试', () => {
     expect(eventBus.on).toHaveBeenCalledWith('external.tavern.task.created', expect.any(Function));
 
     // === Step 4: 模拟 Worker 推送到 Webhook ===
-    const httpRouteCall = mockApi.registerHttpRoute.mock.calls.find(
+    const httpRouteCall = (mockApi.registerHttpRoute as ReturnType<typeof vi.fn>).mock.calls.find(
       (call) => call[0].path === '/internal/tavern/events'
     );
     expect(httpRouteCall).toBeDefined();
@@ -211,10 +211,10 @@ describe('Tavern Worker E2E 集成测试', () => {
     extension.register(mockApi as never);
 
     // 获取工具
-    const acceptTaskTool = mockApi.registerTool.mock.calls.find(
+    const acceptTaskTool = (mockApi.registerTool as ReturnType<typeof vi.fn>).mock.calls.find(
       (call) => call[0].name === 'external_tavern_accept_task'
     )![0];
-    const submitResultTool = mockApi.registerTool.mock.calls.find(
+    const submitResultTool = (mockApi.registerTool as ReturnType<typeof vi.fn>).mock.calls.find(
       (call) => call[0].name === 'external_tavern_submit_result'
     )![0];
 
@@ -251,7 +251,7 @@ describe('Tavern Worker E2E 集成测试', () => {
 
     extension.register(mockApi as never);
 
-    const acceptTaskTool = mockApi.registerTool.mock.calls.find(
+    const acceptTaskTool = (mockApi.registerTool as ReturnType<typeof vi.fn>).mock.calls.find(
       (call) => call[0].name === 'external_tavern_accept_task'
     )![0];
 
@@ -263,7 +263,16 @@ describe('Tavern Worker E2E 集成测试', () => {
   it('并发任务处理：多个任务同时到达', async () => {
     // 创建多个任务
     const taskIds = ['concurrent-1', 'concurrent-2', 'concurrent-3'];
-    const tasks = [];
+    const tasks: Array<{
+      id: string;
+      title: string;
+      description: string;
+      status: string;
+      amount: number;
+      files: never[];
+      createdAt: string;
+      updatedAt: string;
+    }> = [];
 
     for (const taskId of taskIds) {
       const taskDir = path.join(testTasksDir, taskId);

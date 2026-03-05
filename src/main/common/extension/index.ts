@@ -15,6 +15,7 @@ export type {
   ExtensionModule,
   ExtensionLogger,
   ExtensionApi,
+  ExtensionEventBus,
   ExtensionHookName,
   ExtensionHookMode,
   ExtensionHookHandler,

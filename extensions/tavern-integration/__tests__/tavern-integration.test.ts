@@ -51,6 +51,15 @@ describe('Tavern Integration Extension', () => {
   const testTasksDir = path.join(testTavernDir, 'tasks');
   const testTasksIndex = path.join(testTavernDir, 'tasks.jsonl');
 
+  // Helper: consume async generator and return final result
+  async function consumeGenerator<T = unknown, R = unknown>(gen: AsyncGenerator<T, R, unknown>): Promise<R> {
+    let result = await gen.next();
+    while (!result.done) {
+      result = await gen.next();
+    }
+    return result.value;
+  }
+
   // Helper: create mock API with logger
   const createMockApi = (events?: Record<string, unknown>): Record<string, unknown> => ({
     registerChannel: vi.fn(),
@@ -191,18 +200,18 @@ describe('Tavern Integration Extension', () => {
       extension.register(mockApi as never);
 
       // 获取 accept_task 工具
-      const acceptTaskCall = mockApi.registerTool.mock.calls.find(
+      const acceptTaskCall = (mockApi.registerTool as ReturnType<typeof vi.fn>).mock.calls.find(
         (call) => call[0].name === 'external_tavern_accept_task'
       );
       expect(acceptTaskCall).toBeDefined();
 
       const acceptTool = acceptTaskCall![0];
-      const result = await acceptTool.execute({ taskId });
+      const result = await consumeGenerator(acceptTool.execute({ taskId }));
 
       // 验证返回结果
       expect(result).toEqual({
         success: true,
-        message: `Task ${taskId} accepted successfully.`
+        llmContent: `Task ${taskId} accepted successfully.`
       });
 
       // 验证任务状态已更新
@@ -218,7 +227,7 @@ describe('Tavern Integration Extension', () => {
 
       extension.register(mockApi as never);
 
-      const acceptTaskCall = mockApi.registerTool.mock.calls.find(
+      const acceptTaskCall = (mockApi.registerTool as ReturnType<typeof vi.fn>).mock.calls.find(
         (call) => call[0].name === 'external_tavern_accept_task'
       );
       const acceptTool = acceptTaskCall![0];
@@ -261,7 +270,7 @@ describe('Tavern Integration Extension', () => {
       extension.register(mockApi as never);
 
       // 获取 submit_result 工具
-      const submitResultCall = mockApi.registerTool.mock.calls.find(
+      const submitResultCall = (mockApi.registerTool as ReturnType<typeof vi.fn>).mock.calls.find(
         (call) => call[0].name === 'external_tavern_submit_result'
       );
       expect(submitResultCall).toBeDefined();
@@ -299,7 +308,9 @@ describe('Tavern Integration Extension', () => {
       extension.register(mockApi as never);
 
       // 验证服务已注册
-      const serviceCall = mockApi.registerService.mock.calls.find((call) => call[0].id === 'tavern-task-dispatcher');
+      const serviceCall = (mockApi.registerService as ReturnType<typeof vi.fn>).mock.calls.find(
+        (call) => call[0].id === 'tavern-task-dispatcher'
+      );
       expect(serviceCall).toBeDefined();
     });
 

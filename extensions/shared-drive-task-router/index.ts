@@ -121,7 +121,7 @@ async function dispatchToAnalyzer(payload: EntryCreatedPayload): Promise<void> {
     if (dispatcherDef.skills?.length) {
       const skillManager = new SkillManager();
       const { Env } = await import('@main/common/env');
-      skillManager.scanSkills(undefined, Env.paths.secretsDir);
+      skillManager.scanSkills([], Env.paths.secretsDir);
 
       const skillDefs = dispatcherDef.skills
         .map((name: string) => skillManager.getByName(name))

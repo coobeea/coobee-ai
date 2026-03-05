@@ -1,8 +1,8 @@
-import type { ChannelPlugin, InboundMessage, OutboundMessage } from '../../src/main/channels/types';
-import type { ExtensionLogger } from '../../src/main/common/extension/types';
-import { ChannelRuntime } from '../../src/main/channels/ChannelRuntime';
-import { DiscussionStore } from '../../src/main/ai/discussion/DiscussionStore';
-import { eventBus } from '../../src/main/common/eventbus';
+import type { ChannelPlugin, InboundMessage, OutboundMessage } from '@main/channels/types';
+import type { ExtensionLogger } from '@main/common/extension/types';
+import { ChannelRuntime } from '@main/channels/ChannelRuntime';
+import { DiscussionStore } from '@main/ai/discussion/DiscussionStore';
+import { eventBus } from '@main/common/eventbus';
 
 let logger: ExtensionLogger;
 

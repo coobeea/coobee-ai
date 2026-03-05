@@ -3,12 +3,12 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { Env } from '@main/common/env';
 import { agentExecutor } from '@main/ai/AgentExecutor';
+import { ToolRegistry } from '@main/ai/tools/registry';
+import { ToolCategory } from '@main/ai/tools/types';
+import { z } from 'zod';
 
 // Extension API logger (将在 register 时注入)
 let logger: ExtensionApi['logger'];
-
-// 清理函数列表
-let cleanupListeners: Array<() => void> = [];
 
 /**
  * 更新任务状态（直接操作本地文件系统，即 Direct 模式）
@@ -82,9 +82,10 @@ export default {
     api.registerHttpRoute({
       method: 'POST',
       path: '/internal/tavern/events',
-      handler: async (ctx: { request: { body: Record<string, unknown> }; status: number; body: unknown }) => {
+      handler: async (ctx: Record<string, unknown>) => {
         try {
-          const body = ctx.request.body;
+          const body = (ctx as { request: { body: Record<string, unknown> } }).request.body;
+          const koaCtx = ctx as { status: number; body: unknown };
           if (body && body.event === 'external.tavern.task.created' && body.task) {
             const taskObj = body.task as { id: string };
             logger?.info?.(`[TavernIntegration] Received new task event from worker: ${taskObj.id}`);
@@ -92,37 +93,33 @@ export default {
             // 将事件推入系统全局事件总线
             api.eventBus.emit(body.event as string, body.task);
 
-            ctx.status = 200;
-            ctx.body = { ok: true, message: 'Event received and published' };
+            koaCtx.status = 200;
+            koaCtx.body = { ok: true, message: 'Event received and published' };
           } else {
-            ctx.status = 400;
-            ctx.body = { ok: false, error: 'Invalid event payload' };
+            koaCtx.status = 400;
+            koaCtx.body = { ok: false, error: 'Invalid event payload' };
           }
         } catch (err) {
           logger?.error?.('[TavernIntegration] Error processing webhook event:', err);
-          ctx.status = 500;
-          ctx.body = { ok: false, error: 'Internal Server Error' };
+          const koaCtx = ctx as { status: number; body: unknown };
+          koaCtx.status = 500;
+          koaCtx.body = { ok: false, error: 'Internal Server Error' };
         }
       }
     });
 
     // 3. MVP 调度大脑：监听事件并自动派单给 app-copilot
-    api.registerService({
-      id: 'tavern-task-dispatcher',
-      start: () => {
-        logger?.info?.('[TavernTaskDispatcher] Started. Listening for tavern tasks.');
+    // 保存 handler 函数引用，用于清理
+    const taskCreatedHandler = async (task: unknown): Promise<void> => {
+      const taskObj = task as { id: string; title: string; description: string };
+      logger?.info?.(`[TavernTaskDispatcher] Dispatching task ${taskObj.id} to app-copilot...`);
 
-        // 使用 eventBus 监听事件，并保存清理函数
-        const offTaskCreated = api.eventBus.on('external.tavern.task.created', async (task: unknown) => {
-          const taskObj = task as { id: string; title: string; description: string };
-          logger?.info?.(`[TavernTaskDispatcher] Dispatching task ${taskObj.id} to app-copilot...`);
+      try {
+        // 直接指定接单的 Agent
+        const builder = agentExecutor.piMono();
 
-          try {
-            // 直接指定接单的 Agent
-            const builder = agentExecutor.piMono();
-
-            // 为了能让大模型处理这个任务，我们构造一个详细的 Prompt
-            const prompt = `There is a new Tavern task for you to handle. 
+        // 为了能让大模型处理这个任务，我们构造一个详细的 Prompt
+        const prompt = `There is a new Tavern task for you to handle. 
 Task ID: ${taskObj.id}
 Title: ${taskObj.title}
 Description:
@@ -130,40 +127,45 @@ ${taskObj.description}
 
 Please analyze this task, use the 'external_tavern_accept_task' tool to accept it, process the requirements, and then use the 'external_tavern_submit_result' tool to submit your final results.`;
 
-            builder
-              .name('app-copilot')
-              .instructions(
-                'You are an autonomous AI worker handling tasks from the Tavern system. You must ALWAYS accept the task first, do the work, and then submit the result. You have access to tavern tools.'
-              )
-              .tools([
-                'external_tavern_accept_task',
-                'external_tavern_submit_result'
-                // 注意：这里可能需要注入 app-copilot 本身的工具（如 bash, fs_read 等），取决于你的能力需求
-                // MVP 阶段为了跑通流程，我们可以注入基础的系统工具
-              ])
-              .maxSteps(5); // 允许它多轮思考，直到提交结果
+        // 获取工具定义
+        const toolRegistry = ToolRegistry.getInstance();
+        const tavernTools = [
+          toolRegistry.get('external_tavern_accept_task'),
+          toolRegistry.get('external_tavern_submit_result')
+        ].filter((t): t is NonNullable<typeof t> => t !== undefined);
 
-            const sessionId = `tavern-task-${task.id}-${Date.now()}`;
+        builder
+          .name('app-copilot')
+          .instructions(
+            'You are an autonomous AI worker handling tasks from the Tavern system. You must ALWAYS accept the task first, do the work, and then submit the result. You have access to tavern tools.'
+          )
+          .tools(tavernTools);
 
-            // 提交给 AgentExecutor 后台执行
-            agentExecutor.submit({
-              sessionId,
-              message: prompt,
-              builder,
-              onChunk: (_chunk) => {
-                // 如果需要，可以在这里把进度推送给某个通道
-              }
-            });
-          } catch (err) {
-            logger?.error?.(`[TavernTaskDispatcher] Failed to dispatch task ${taskObj.id}:`, err);
+        const sessionId = `tavern-task-${taskObj.id}-${Date.now()}`;
+
+        // 提交给 AgentExecutor 后台执行
+        agentExecutor.submit({
+          sessionId,
+          message: prompt,
+          builder,
+          onChunk: (_chunk) => {
+            // 如果需要，可以在这里把进度推送给某个通道
           }
         });
+      } catch (err) {
+        logger?.error?.(`[TavernTaskDispatcher] Failed to dispatch task ${taskObj.id}:`, err);
+      }
+    };
 
-        // 保存清理函数
-        cleanupListeners.push(offTaskCreated);
+    api.registerService({
+      id: 'tavern-task-dispatcher',
+      start: () => {
+        logger?.info?.('[TavernTaskDispatcher] Started. Listening for tavern tasks.');
+        api.eventBus.on('external.tavern.task.created', taskCreatedHandler);
       },
       stop: () => {
         logger?.info?.('[TavernTaskDispatcher] Stopped.');
+        api.eventBus.off('external.tavern.task.created', taskCreatedHandler);
       }
     });
 
@@ -172,21 +174,29 @@ Please analyze this task, use the 'external_tavern_accept_task' tool to accept i
     api.registerTool({
       name: 'external_tavern_accept_task',
       description: 'Accept a Tavern task by ID. Use this when you decide to take on a task.',
-      parameters: {
-        type: 'object',
-        properties: {
-          taskId: { type: 'string', description: 'The ID of the task to accept' }
-        },
-        required: ['taskId']
-      },
-      execute: async (params) => {
+      category: ToolCategory.Extension,
+      parameters: z.object({
+        taskId: z.string().describe('The ID of the task to accept')
+      }),
+      execute: async function* (params) {
         const { taskId } = params;
-        const success = await updateTaskStatus(taskId, 'in-progress');
+        yield { type: 'progress', content: `Accepting task ${taskId}...`, percentage: 50 };
+
+        const success = await updateTaskStatus(taskId as string, 'in-progress');
         if (success) {
           logger?.info?.(`[TavernIntegration] Agent accepted task ${taskId}`);
-          return { success: true, message: `Task ${taskId} accepted successfully.` };
+          return {
+            success: true,
+            llmContent: `Task ${taskId} accepted successfully.`
+          };
         }
-        return { success: false, error: `Task ${taskId} not found or update failed.` };
+        return {
+          success: false,
+          error: {
+            code: 'TASK_NOT_FOUND',
+            message: `Task ${taskId} not found or update failed.`
+          }
+        };
       }
     });
 
@@ -194,40 +204,38 @@ Please analyze this task, use the 'external_tavern_accept_task' tool to accept i
     api.registerTool({
       name: 'external_tavern_submit_result',
       description: 'Submit the result for a Tavern task you have completed.',
-      parameters: {
-        type: 'object',
-        properties: {
-          taskId: { type: 'string', description: 'The ID of the task being submitted' },
-          textResult: { type: 'string', description: 'The text result or explanation of the completed work' },
-          fileResults: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Optional list of file paths that contain the outputs'
-          }
-        },
-        required: ['taskId', 'textResult']
-      },
-      execute: async (params) => {
+      category: ToolCategory.Extension,
+      parameters: z.object({
+        taskId: z.string().describe('The ID of the task being submitted'),
+        textResult: z.string().describe('The text result or explanation of the completed work'),
+        fileResults: z.array(z.string()).optional().describe('Optional list of file paths that contain the outputs')
+      }),
+      execute: async function* (params) {
         const { taskId, textResult, fileResults = [] } = params;
+        yield { type: 'progress', content: `Submitting result for task ${taskId}...`, percentage: 50 };
+
         const result = { textResult, fileResults };
-        const success = await updateTaskStatus(taskId, 'completed', result);
+        const success = await updateTaskStatus(taskId as string, 'completed', result);
 
         if (success) {
           logger?.info?.(`[TavernIntegration] Agent submitted result for task ${taskId}`);
-          return { success: true, message: `Result for task ${taskId} submitted successfully.` };
+          return {
+            success: true,
+            llmContent: `Result for task ${taskId} submitted successfully.`
+          };
         }
-        return { success: false, error: `Task ${taskId} not found or update failed.` };
+        return {
+          success: false,
+          error: {
+            code: 'TASK_UPDATE_FAILED',
+            message: `Task ${taskId} not found or update failed.`
+          }
+        };
       }
     });
   },
 
   unregister: () => {
-    logger?.info?.('[TavernIntegration] Cleaning up event listeners...');
-
-    // 清理所有事件监听器
-    cleanupListeners.forEach((cleanup) => cleanup());
-    cleanupListeners = [];
-
-    logger?.info?.('[TavernIntegration] Cleanup complete.');
+    logger?.info?.('[TavernIntegration] Extension unregistered. Services will be stopped by ExtensionLoader.');
   }
 } as ExtensionModule;
