@@ -1,6 +1,6 @@
 /**
  * Discussion Shared Types
- * 
+ *
  * 前后端共享的讨论类型定义
  */
 
@@ -33,4 +33,13 @@ export interface DiscussionSession {
   createdAt: number;
   updatedAt: number;
   metadata?: Record<string, unknown>;
+}
+
+export type TurnStrategy = 'round-robin' | 'weighted' | 'reactive' | 'moderator-controlled';
+
+export interface ConsensusResult {
+  achieved: boolean;
+  level: number;
+  summary?: string;
+  disagreements?: string[];
 }
