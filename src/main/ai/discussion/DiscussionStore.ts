@@ -6,10 +6,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { createLogger } from '@main/common/logger';
 import type { DiscussionSession, DiscussionMessage } from './types';
-
-const log = createLogger('discussion-store');
 
 export class DiscussionStore {
   private static instance: DiscussionStore;
@@ -21,20 +18,24 @@ export class DiscussionStore {
 
   /**
    * 获取单例实例
+   *
+   * @param storePath - 存储路径（首次调用时必须提供）
    */
-  public static async getInstance(): Promise<DiscussionStore> {
+  public static async getInstance(storePath?: string): Promise<DiscussionStore> {
     if (!DiscussionStore.instance) {
+      if (!storePath) {
+        throw new Error('DiscussionStore: storePath is required for first initialization');
+      }
       DiscussionStore.instance = new DiscussionStore();
-      await DiscussionStore.instance.initialize();
+      await DiscussionStore.instance.initialize(storePath);
     }
     return DiscussionStore.instance;
   }
 
-  private async initialize(): Promise<void> {
+  private async initialize(storePath: string): Promise<void> {
     if (this.initialized) return;
 
-    const { Env } = await import('@main/common/env');
-    this.storePath = path.join(Env.paths.userHome, 'discussions');
+    this.storePath = storePath;
     await fs.promises.mkdir(this.storePath, { recursive: true });
     this.initialized = true;
   }
@@ -44,12 +45,11 @@ export class DiscussionStore {
    */
   async save(session: DiscussionSession): Promise<void> {
     if (!this.storePath) {
-      await this.initialize();
+      throw new Error('DiscussionStore: not initialized, call getInstance(storePath) first');
     }
 
     const filePath = path.join(this.storePath, `${session.id}.json`);
     await fs.promises.writeFile(filePath, JSON.stringify(session, null, 2), 'utf-8');
-    log.debug(`[DiscussionStore] Session saved: ${session.id}`);
   }
 
   /**
@@ -57,7 +57,7 @@ export class DiscussionStore {
    */
   async load(id: string): Promise<DiscussionSession | null> {
     if (!this.storePath) {
-      await this.initialize();
+      throw new Error('DiscussionStore: not initialized, call getInstance(storePath) first');
     }
 
     const filePath = path.join(this.storePath, `${id}.json`);
@@ -142,7 +142,7 @@ export class DiscussionStore {
    */
   async list(): Promise<DiscussionSession[]> {
     if (!this.storePath) {
-      await this.initialize();
+      throw new Error('DiscussionStore: not initialized, call getInstance(storePath) first');
     }
 
     const files = await fs.promises.readdir(this.storePath);
@@ -166,11 +166,10 @@ export class DiscussionStore {
    */
   async delete(id: string): Promise<void> {
     if (!this.storePath) {
-      await this.initialize();
+      throw new Error('DiscussionStore: not initialized, call getInstance(storePath) first');
     }
 
     const filePath = path.join(this.storePath, `${id}.json`);
     await fs.promises.unlink(filePath);
-    log.info(`[DiscussionStore] Session deleted: ${id}`);
   }
 }

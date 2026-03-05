@@ -1,8 +1,5 @@
-import type { ChannelPlugin, InboundMessage, OutboundMessage } from '@main/channels/types';
-import type { ExtensionLogger } from '@main/common/extension/types';
-import { ChannelRuntime } from '@main/channels/ChannelRuntime';
-import { DiscussionStore } from '@main/ai/discussion/DiscussionStore';
-import { eventBus } from '@main/common/eventbus';
+import type { ChannelPlugin, InboundMessage, OutboundMessage } from '../../src/main/channels/types';
+import type { ExtensionLogger } from '../../src/main/common/extension/types';
 
 let logger: ExtensionLogger;
 
@@ -24,8 +21,15 @@ export const discussionChannel: ChannelPlugin = {
       logger = ctx.log;
       logger.info('[DiscussionChannel] Started');
 
-      // 初始化 DiscussionStore
-      await DiscussionStore.getInstance();
+      // 从 ctx.config 获取 storePath（由 ChannelManager 传入）
+      const storePath = ctx.config?.storePath as string | undefined;
+      if (!storePath) {
+        throw new Error('DiscussionChannel: storePath is required in config');
+      }
+
+      // 动态导入并初始化 DiscussionStore
+      const { DiscussionStore } = await import('../../src/main/ai/discussion/DiscussionStore');
+      await DiscussionStore.getInstance(storePath);
     },
 
     /**
@@ -44,8 +48,12 @@ export const discussionChannel: ChannelPlugin = {
      */
     handleMessage: async (msg: InboundMessage) => {
       try {
+        // 动态导入依赖
+        const { ChannelRuntime } = await import('../../src/main/channels/ChannelRuntime');
+        const { DiscussionStore } = await import('../../src/main/ai/discussion/DiscussionStore');
+
         const runtime = ChannelRuntime.getInstance();
-        const store = await DiscussionStore.getInstance();
+        const store = await DiscussionStore.getInstance(); // 已在 start 时初始化
 
         // 1. 获取讨论室信息
         const session = await store.get(msg.peer);
@@ -126,7 +134,11 @@ export const discussionChannel: ChannelPlugin = {
      */
     sendMessage: async (msg: OutboundMessage) => {
       try {
-        const store = await DiscussionStore.getInstance();
+        // 动态导入依赖
+        const { DiscussionStore } = await import('../../src/main/ai/discussion/DiscussionStore');
+        const { eventBus } = await import('../../src/main/common/eventbus');
+
+        const store = await DiscussionStore.getInstance(); // 已在 start 时初始化
 
         // 1. 保存消息到数据库
         await store.addMessage(msg.to, {

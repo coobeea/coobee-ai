@@ -4,37 +4,120 @@ import fs from 'fs';
 import { mkdirp } from 'mkdirp';
 import path from 'path';
 
-export const Env = {
-  isDev: is.dev,
-  isProd: !is.dev,
-  isTest: process.env.NODE_ENV === 'test',
-  isWindows: process.platform === 'win32',
-  isMac: process.platform === 'darwin',
-  isLinux: process.platform === 'linux',
-  isPackaged: app.isPackaged,
+/**
+ * Lazy-evaluated environment configuration
+ *
+ * All properties that access 'app' object are wrapped in getters
+ * to avoid premature access during module initialization
+ */
+class EnvClass {
+  get isDev(): boolean {
+    return is.dev;
+  }
+
+  get isProd(): boolean {
+    return !is.dev;
+  }
+
+  get isTest(): boolean {
+    return process.env.NODE_ENV === 'test';
+  }
+
+  get isWindows(): boolean {
+    return process.platform === 'win32';
+  }
+
+  get isMac(): boolean {
+    return process.platform === 'darwin';
+  }
+
+  get isLinux(): boolean {
+    return process.platform === 'linux';
+  }
+
+  get isPackaged(): boolean {
+    return app.isPackaged;
+  }
 
   // 主进程环境变量
-  main: {
-    bundleId: process.env.VITE_MAIN_BUNDLE_ID,
-    logLevel: process.env.VITE_LOG_LEVEL,
-    logMaxSize: process.env.VITE_LOG_MAX_SIZE,
-    debug: process.env.VITE_DEBUG,
-    openDevTools: process.env.VITE_OPEN_DEVTOOLS,
-    /** 统一服务端口（HTTP + WebSocket 共享），默认 8765 */
-    serverPort: process.env.VITE_SERVER_PORT,
-    /** 服务绑定地址，默认 127.0.0.1（设为 0.0.0.0 可开启局域网访问） */
-    serverHost: process.env.VITE_SERVER_HOST || '127.0.0.1',
-    /** 模型存储目录（环境变量优先，未设置则用默认路径） */
-    modelDir: process.env.VITE_MODEL_DIR
-  },
+  get main(): {
+    bundleId: string | undefined;
+    logLevel: string | undefined;
+    logMaxSize: string | undefined;
+    debug: string | undefined;
+    openDevTools: string | undefined;
+    serverPort: string | undefined;
+    serverHost: string;
+    modelDir: string | undefined;
+  } {
+    return {
+      bundleId: process.env.VITE_MAIN_BUNDLE_ID,
+      logLevel: process.env.VITE_LOG_LEVEL,
+      logMaxSize: process.env.VITE_LOG_MAX_SIZE,
+      debug: process.env.VITE_DEBUG,
+      openDevTools: process.env.VITE_OPEN_DEVTOOLS,
+      /** 统一服务端口（HTTP + WebSocket 共享），默认 8765 */
+      serverPort: process.env.VITE_SERVER_PORT,
+      /** 服务绑定地址，默认 127.0.0.1（设为 0.0.0.0 可开启局域网访问） */
+      serverHost: process.env.VITE_SERVER_HOST || '127.0.0.1',
+      /** 模型存储目录（环境变量优先，未设置则用默认路径） */
+      modelDir: process.env.VITE_MODEL_DIR
+    };
+  }
 
-  app: {
-    name: app.getName(),
-    version: app.getVersion(),
-    locale: app.getLocale()
-  },
+  get app(): {
+    name: string;
+    version: string;
+    locale: string;
+  } {
+    return {
+      name: app.getName(),
+      version: app.getVersion(),
+      locale: app.getLocale()
+    };
+  }
 
-  paths: (() => {
+  private _paths?: ReturnType<typeof this._computePaths>;
+
+  get paths(): ReturnType<typeof this._computePaths> {
+    if (!this._paths) {
+      this._paths = this._computePaths();
+    }
+    return this._paths;
+  }
+
+  private _computePaths(): {
+    root: string;
+    userData: string;
+    appData: string;
+    logPath: string;
+    installDir: string;
+    userHome: string;
+    agentsMdPath: string;
+    configDir: string;
+    secretsDir: string;
+    memoryDir: string;
+    userMemoryDir: string;
+    agentMemoryDir: string;
+    sharedDriveDir: string;
+    builtinAgentsDir: string;
+    userAgentsDir: string;
+    homesDir: string;
+    threadsDir: string;
+    workspacesDir: string;
+    builtinSkillsDir: string;
+    userSkillsDir: string;
+    builtinExtensionsDir: string;
+    userExtensionsDir: string;
+    workersDir: string;
+    workerEnvsDir: string;
+    modelsDir: string;
+    home: string;
+    temp: string;
+    downloads: string;
+    documents: string;
+    desktop: string;
+  } {
     // === 基础路径计算 ===
     const _userHome = is.dev
       ? path.join(app.getAppPath(), '.home')
@@ -290,23 +373,23 @@ export const Env = {
       /** 系统桌面目录 (如: ~/Desktop) */
       desktop: app.getPath('desktop')
     };
-  })(),
+  }
 
   isRendererProcess(): boolean {
     return typeof process === 'undefined' || !process || process.type === 'renderer';
-  },
+  }
 
   isMainProcess(): boolean {
     return typeof process !== 'undefined' && process.type === 'browser';
-  },
+  }
 
   isForkedChildProcess(): boolean {
     return Number(process.env.ELECTRON_RUN_AS_NODE) === 1;
-  },
+  }
 
   getResourcePath(relativePath: string): string {
     return path.join(this.isDev ? process.cwd() : process.resourcesPath, relativePath);
-  },
+  }
 
   async getInstallDir(): Promise<string> {
     const installDir = this.paths.installDir;
@@ -314,7 +397,7 @@ export const Env = {
       await mkdirp(installDir);
     }
     return installDir;
-  },
+  }
 
   async getUpgradeDir(): Promise<string> {
     const installDir = await this.getInstallDir();
@@ -323,7 +406,7 @@ export const Env = {
       await mkdirp(upgradeDir);
     }
     return upgradeDir;
-  },
+  }
 
   // ==================== Agent Home ====================
 
@@ -344,7 +427,7 @@ export const Env = {
       fs.mkdirSync(path.join(homeDir, 'memory'), { recursive: true });
     }
     return homeDir;
-  },
+  }
 
   // ==================== 工作空间与 Skill ====================
 
@@ -421,7 +504,7 @@ export const Env = {
       }
     }
     return workspace;
-  },
+  }
 
   /**
    * 惰性迁移旧工作空间到新的双空间结构
@@ -474,7 +557,7 @@ export const Env = {
         // 迁移失败时静默
       }
     }
-  },
+  }
 
   /**
    * 获取 Skill 搜索路径列表（按优先级从低到高）
@@ -510,7 +593,7 @@ export const Env = {
       }
     }
     return skillPaths;
-  },
+  }
 
   /**
    * 获取 Extension 搜索路径列表（按优先级从低到高）
@@ -533,7 +616,7 @@ export const Env = {
       }
     }
     return extensionPaths;
-  },
+  }
 
   // ==================== 应用运行时 ====================
 
@@ -559,7 +642,7 @@ export const Env = {
 
     // 生产模式：resourcesPath/runtime
     return path.join(process.resourcesPath, 'runtime');
-  },
+  }
 
   /**
    * 获取当前平台的运行时目录
@@ -576,6 +659,7 @@ export const Env = {
 
     return path.join(runtimeDir, platformDir);
   }
-};
+}
 
+export const Env = new EnvClass();
 export default Env;

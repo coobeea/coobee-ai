@@ -2,7 +2,6 @@ import { agentExecutor } from '@main/ai/AgentExecutor';
 import { AgentStore } from '@main/ai/agents/AgentStore';
 import { ToolRegistry } from '@main/ai/tools/registry';
 import { SkillManager } from '@main/ai/skills';
-import { Env } from '@main/common/env';
 import { builtinTools } from '@main/ai/tools';
 import type { PiMonoBuilder } from '@main/ai/runtime/pimono/PiMonoBuilder';
 import type { ThinkingLevel } from '@main/ai/runtime/pimono/types';
@@ -173,6 +172,7 @@ export class ChannelRuntime {
 
     // 3. 注入技能
     if (agentDef.skills?.length) {
+      const { Env } = await import('@main/common/env');
       const skillManager = new SkillManager();
       const searchPaths = [Env.paths.builtinSkillsDir, Env.paths.userSkillsDir];
       skillManager.scanSkills(searchPaths, Env.paths.secretsDir);

@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { discussionChannel } from '../DiscussionChannel';
-import { ChannelRuntime } from '@main/channels/ChannelRuntime';
-import { DiscussionStore } from '@main/ai/discussion/DiscussionStore';
-import { eventBus } from '@main/common/eventbus';
-import type { InboundMessage, OutboundMessage } from '@main/channels/types';
+import { ChannelRuntime } from '../../../src/main/channels/ChannelRuntime';
+import { DiscussionStore } from '../../../src/main/ai/discussion/DiscussionStore';
+import { eventBus } from '../../../src/main/common/eventbus';
+import type { InboundMessage, OutboundMessage } from '../../../src/main/channels/types';
 
 // Mock dependencies
-vi.mock('@main/channels/ChannelRuntime');
-vi.mock('@main/ai/discussion/DiscussionStore');
-vi.mock('@main/common/eventbus', () => ({
+vi.mock('../../../src/main/channels/ChannelRuntime');
+vi.mock('../../../src/main/ai/discussion/DiscussionStore');
+vi.mock('../../../src/main/common/eventbus', () => ({
   eventBus: {
     emit: vi.fn()
   }

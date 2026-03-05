@@ -6,6 +6,7 @@
  */
 
 import { ExtensionRegistry } from './ExtensionRegistry';
+import { ChannelManager } from '../../channels/ChannelManager';
 import type { ChannelPlugin } from '../../channels/types';
 import type {
   ExtensionApi,
@@ -99,7 +100,7 @@ export function createExtensionApi(
     registerChannel(config) {
       registry.registerChannel(extensionId, config);
     },
-    registerChannelPlugin(plugin) {
+    async registerChannelPlugin(plugin) {
       // 1. 验证 Plugin
       validateChannelPlugin(plugin);
 
@@ -108,9 +109,6 @@ export function createExtensionApi(
 
       // 3. 注册到 ChannelManager
       try {
-        // 延迟导入避免循环依赖
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { ChannelManager } = require('../../channels/ChannelManager');
         const channelManager = ChannelManager.getInstance();
         channelManager.registerChannelPlugin(plugin);
       } catch (err) {

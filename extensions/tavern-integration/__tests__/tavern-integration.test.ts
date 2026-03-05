@@ -231,11 +231,14 @@ describe('Tavern Integration Extension', () => {
         (call) => call[0].name === 'external_tavern_accept_task'
       );
       const acceptTool = acceptTaskCall![0];
-      const result = await acceptTool.execute({ taskId: 'non-existent' });
+      const result = await consumeGenerator(acceptTool.execute({ taskId: 'non-existent' }));
 
       expect(result).toEqual({
         success: false,
-        error: 'Task non-existent not found or update failed.'
+        error: {
+          code: 'TASK_NOT_FOUND',
+          message: 'Task non-existent not found or update failed.'
+        }
       });
     });
   });
@@ -276,16 +279,18 @@ describe('Tavern Integration Extension', () => {
       expect(submitResultCall).toBeDefined();
 
       const submitTool = submitResultCall![0];
-      const result = await submitTool.execute({
-        taskId,
-        textResult: 'Task completed successfully!',
-        fileResults: ['/path/to/output.txt']
-      });
+      const result = await consumeGenerator(
+        submitTool.execute({
+          taskId,
+          textResult: 'Task completed successfully!',
+          fileResults: ['/path/to/output.txt']
+        })
+      );
 
       // 验证返回结果
       expect(result).toEqual({
         success: true,
-        message: `Result for task ${taskId} submitted successfully.`
+        llmContent: `Result for task ${taskId} submitted successfully.`
       });
 
       // 验证任务状态和结果已更新

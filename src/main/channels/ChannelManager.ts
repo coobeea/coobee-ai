@@ -153,14 +153,26 @@ export class ChannelManager {
 
     try {
       this.logger.info(`Starting channel: ${id}`);
-      await channel.config.gateway.start({
+
+      // 为 discussion channel 传递 storePath
+      const config: Record<string, unknown> = {};
+      if (id === 'discussion') {
+        const { Env } = await import('../common/env');
+        config.storePath = `${Env.paths.userHome}/discussions`;
+      }
+
+      const ctx: import('./types').ChannelLifecycleContext = {
         abortSignal: channel.abortController.signal,
-        log: this.logger
-      });
+        log: this.logger,
+        config
+      };
+      await channel.config.gateway.start(ctx);
     } catch (err) {
       channel.status = 'error';
       channel.error = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to start channel "${id}":`, err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorStack = err instanceof Error ? err.stack : undefined;
+      this.logger.error(`Failed to start channel "${id}": ${errorMsg}`, errorStack ? { stack: errorStack } : err);
       throw err;
     }
   }

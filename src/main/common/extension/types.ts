@@ -173,7 +173,7 @@ export interface ExtensionApi {
    *   outbound: { sendMessage }
    * });
    */
-  registerChannelPlugin(plugin: import('../../channels/types').ChannelPlugin): void;
+  registerChannelPlugin(plugin: import('../../channels/types').ChannelPlugin): Promise<void>;
   /** 注册 HTTP 路由 */
   registerHttpRoute(config: HttpRouteConfig): void;
   /** 注册后台服务 */

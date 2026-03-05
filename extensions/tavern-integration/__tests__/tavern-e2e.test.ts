@@ -58,6 +58,15 @@ describe('Tavern Worker E2E 集成测试', () => {
   const testTasksDir = path.join(testTavernDir, 'tasks');
   const testTasksIndex = path.join(testTavernDir, 'tasks.jsonl');
 
+  // Helper: consume async generator and return final result
+  async function consumeGenerator<T = unknown, R = unknown>(gen: AsyncGenerator<T, R, unknown>): Promise<R> {
+    let result = await gen.next();
+    while (!result.done) {
+      result = await gen.next();
+    }
+    return result.value;
+  }
+
   // Helper: create mock API with logger
   const createMockApi = (events?: Record<string, unknown>): Record<string, unknown> => ({
     registerChannel: vi.fn(),
@@ -219,7 +228,9 @@ describe('Tavern Worker E2E 集成测试', () => {
     )![0];
 
     // === Step 1: Agent 接单 ===
-    const acceptResult = await acceptTaskTool.execute({ taskId });
+    const acceptResult = await consumeGenerator<never, { success: boolean; llmContent?: string }>(
+      acceptTaskTool.execute({ taskId })
+    );
     expect(acceptResult.success).toBe(true);
 
     // 验证状态已更新为 in-progress
@@ -227,11 +238,13 @@ describe('Tavern Worker E2E 集成测试', () => {
     expect(taskAfterAccept.status).toBe('in-progress');
 
     // === Step 2: Agent 提交结果 ===
-    const submitResult = await submitResultTool.execute({
-      taskId,
-      textResult: 'Task completed successfully! Here is the hello world program.',
-      fileResults: ['/tmp/hello_world.py']
-    });
+    const submitResult = await consumeGenerator<never, { success: boolean; llmContent?: string }>(
+      submitResultTool.execute({
+        taskId,
+        textResult: 'Task completed successfully! Here is the hello world program.',
+        fileResults: ['/tmp/hello_world.py']
+      })
+    );
     expect(submitResult.success).toBe(true);
 
     // 验证状态已更新为 completed 并包含结果

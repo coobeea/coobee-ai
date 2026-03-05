@@ -10,12 +10,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createJiti } from 'jiti';
+import type { Jiti } from 'jiti';
+import { app } from 'electron';
 import { createLogger } from '@main/common/logger';
 import { ExtensionRegistry } from './ExtensionRegistry';
 import { createExtensionApi, createEventBusWrapper } from './ExtensionApi';
 import type { ExtensionManifest, ExtensionModule, ExtensionOrigin } from './types';
 
-const jiti = createJiti(import.meta.url);
 const log = createLogger('extension');
 
 /** 防抖延迟（ms） */
@@ -37,6 +38,8 @@ export class ExtensionLoader {
   /** 共享的 EventBus 引用（传递给 Extension，避免它们自己导入） */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private eventBusRef?: any;
+  /** jiti 实例（延迟初始化） */
+  private jitiInstance?: Jiti;
 
   constructor(
     private registry: ExtensionRegistry,
@@ -44,6 +47,22 @@ export class ExtensionLoader {
     eventBusRef?: any
   ) {
     this.eventBusRef = eventBusRef;
+  }
+
+  /**
+   * 获取 jiti 实例（延迟初始化，避免在模块加载时访问 app）
+   */
+  private getJiti(): Jiti {
+    if (!this.jitiInstance) {
+      const appPath = app.getAppPath();
+      this.jitiInstance = createJiti(import.meta.url, {
+        alias: {
+          '@main': path.join(appPath, 'src/main'),
+          '@shared': path.join(appPath, 'src/shared')
+        }
+      });
+    }
+    return this.jitiInstance;
   }
 
   /**
@@ -154,10 +173,14 @@ export class ExtensionLoader {
       // jiti 加载模块
       let mod: ExtensionModule;
       try {
+        const jiti = this.getJiti();
         const imported = await jiti.import(entryPath);
         mod = ((imported as Record<string, unknown>).default || imported) as ExtensionModule;
       } catch (err) {
-        log.error(`[ExtensionLoader] Failed to load "${manifest.id}" from "${entryPath}":`, err);
+        log.error(
+          `[ExtensionLoader] Failed to load "${manifest.id}" from "${entryPath}": ${err instanceof Error ? err.message : String(err)}`,
+          err
+        );
         return;
       }
 
@@ -524,7 +547,7 @@ function resolveEntryPath(dir: string): string | undefined {
 /**
  * Extension 信任校验 — P0 级安全检查
  *
- * 在 jiti.import() 执行前检查 Extension 的可信度：
+ * 在 getJiti().import() 执行前检查 Extension 的可信度：
  *   - builtin: 免检（由 load() 调用方保证）
  *   - user: 检查已知信任 ID 列表，否则警告但允许（用户主动安装）
  *   - workspace: Agent 创建的 Extension，需要额外谨慎
