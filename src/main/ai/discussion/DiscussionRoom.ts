@@ -8,6 +8,7 @@ import { createLogger } from '@main/common/logger';
 import { TurnManager } from './TurnManager';
 import { ConsensusDetector } from './ConsensusDetector';
 import { DiscussionStore } from './DiscussionStore';
+import { ChannelManager } from '@main/channels/ChannelManager';
 import type {
   DiscussionSession,
   DiscussionMessage,
@@ -39,7 +40,6 @@ export class DiscussionRoom {
   private session!: DiscussionSession;
   private turnManager: TurnManager;
   private consensusDetector: ConsensusDetector;
-  private store: DiscussionStore;
 
   constructor(options: DiscussionOptions) {
     const now = Date.now();
@@ -57,15 +57,54 @@ export class DiscussionRoom {
     this.turnManager.setParticipants(options.participants);
 
     this.consensusDetector = new ConsensusDetector();
-    this.store = new DiscussionStore();
   }
 
   /**
-   * 开始讨论
+   * 开始讨论（触发第一个 Agent 发言）
    */
   async start(): Promise<void> {
     log.info(`[DiscussionRoom] Starting discussion: ${this.session.topic}`);
-    await this.store.save(this.session);
+
+    const store = await DiscussionStore.getInstance();
+
+    // 1. 保存 session 到数据库
+    await store.save(this.session);
+
+    // 2. 添加系统消息
+    await store.addMessage(this.session.id, {
+      participant: 'System',
+      content: `Discussion started. Topic: ${this.session.topic}`,
+      timestamp: Date.now(),
+      type: 'statement'
+    });
+
+    // 3. 获取 Discussion Channel Plugin
+    const manager = ChannelManager.getInstance();
+    const plugin = manager.getChannelPlugin('discussion');
+
+    if (!plugin || !plugin.inbound) {
+      throw new Error('Discussion channel not available');
+    }
+
+    // 4. 选择第一个发言者
+    const firstSpeaker = this.getNextSpeaker();
+    if (!firstSpeaker) {
+      throw new Error('No active participants in discussion');
+    }
+
+    // 5. 触发 inbound.handleMessage
+    await plugin.inbound.handleMessage({
+      peer: this.session.id,
+      from: firstSpeaker.agentId,
+      text: `You are ${firstSpeaker.role || firstSpeaker.name}. Please start the discussion on: ${this.session.topic}`,
+      context: {
+        channel: 'discussion',
+        roomId: this.session.id,
+        role: firstSpeaker.role || firstSpeaker.name,
+        topic: this.session.topic,
+        recentMessages: []
+      }
+    });
   }
 
   /**
@@ -83,7 +122,8 @@ export class DiscussionRoom {
     this.session.messages.push(message);
     this.session.updatedAt = Date.now();
 
-    await this.store.save(this.session);
+    const store = await DiscussionStore.getInstance();
+    await store.save(this.session);
     log.debug(`[DiscussionRoom] Message added from ${agentId}: ${content.slice(0, 50)}...`);
   }
 
@@ -104,7 +144,8 @@ export class DiscussionRoom {
   async checkConsensus(): Promise<ConsensusResult> {
     const result = await this.consensusDetector.detect(this.session.messages);
     this.session.consensusLevel = result.level;
-    await this.store.save(this.session);
+    const store = await DiscussionStore.getInstance();
+    await store.save(this.session);
     return result;
   }
 
@@ -119,7 +160,8 @@ export class DiscussionRoom {
       await this.addMessage('system', summary, 'summary');
     }
 
-    await this.store.save(this.session);
+    const store = await DiscussionStore.getInstance();
+    await store.save(this.session);
     log.info(`[DiscussionRoom] Discussion ended: ${this.session.id}`);
   }
 
@@ -129,7 +171,8 @@ export class DiscussionRoom {
   async pause(): Promise<void> {
     this.session.status = 'paused';
     this.session.updatedAt = Date.now();
-    await this.store.save(this.session);
+    const store = await DiscussionStore.getInstance();
+    await store.save(this.session);
   }
 
   /**
@@ -138,7 +181,8 @@ export class DiscussionRoom {
   async resume(): Promise<void> {
     this.session.status = 'active';
     this.session.updatedAt = Date.now();
-    await this.store.save(this.session);
+    const store = await DiscussionStore.getInstance();
+    await store.save(this.session);
   }
 
   /**

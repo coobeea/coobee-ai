@@ -1,0 +1,7 @@
+{
+  "id": "discussion-channel",
+  "name": "Discussion Channel",
+  "version": "1.0.0",
+  "description": "Multi-agent discussion room implemented as ChannelPlugin",
+  "enabled": true
+}

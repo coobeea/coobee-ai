@@ -159,6 +159,21 @@ export interface ExtensionApi {
 
   /** 注册外部服务通道 */
   registerChannel(config: ChannelConfig): void;
+  /**
+   * 注册 ChannelPlugin（新架构）
+   *
+   * @param plugin - ChannelPlugin 实例
+   *
+   * @example
+   * api.registerChannelPlugin({
+   *   id: 'discussion',
+   *   name: 'Discussion Room',
+   *   lifecycle: { start, stop },
+   *   inbound: { handleMessage },
+   *   outbound: { sendMessage }
+   * });
+   */
+  registerChannelPlugin(plugin: import('../../channels/types').ChannelPlugin): void;
   /** 注册 HTTP 路由 */
   registerHttpRoute(config: HttpRouteConfig): void;
   /** 注册后台服务 */

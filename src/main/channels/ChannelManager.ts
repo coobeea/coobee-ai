@@ -1,6 +1,6 @@
 import { createLogger } from '@main/common/logger';
 import type { ChannelConfig, ExtensionLogger } from '../common/extension/types';
-import type { ManagedChannel, ChannelStatus } from './types';
+import type { ManagedChannel, ChannelStatus, ChannelPlugin, ChannelCapabilities } from './types';
 
 const log = createLogger('channels') as ExtensionLogger;
 
@@ -13,6 +13,7 @@ const log = createLogger('channels') as ExtensionLogger;
 export class ChannelManager {
   private static instance: ChannelManager;
   private channels: Map<string, ManagedChannel> = new Map();
+  private channelPlugins: Map<string, ChannelPlugin> = new Map();
   private logger: ExtensionLogger = log;
 
   private constructor() {
@@ -27,7 +28,7 @@ export class ChannelManager {
   }
 
   /**
-   * 注册通道
+   * 注册通道（旧方法，保留向后兼容）
    */
   public registerChannel(config: ChannelConfig): void {
     if (this.channels.has(config.id)) {
@@ -38,6 +39,78 @@ export class ChannelManager {
       status: 'stopped'
     });
     this.logger.info(`Registered channel: ${config.id} (${config.name})`);
+  }
+
+  /**
+   * 注册 ChannelPlugin（新架构）
+   *
+   * @param plugin - ChannelPlugin 实例
+   */
+  public registerChannelPlugin(plugin: ChannelPlugin): void {
+    if (this.channelPlugins.has(plugin.id)) {
+      this.logger.warn(`ChannelPlugin "${plugin.id}" is already registered. Overwriting.`);
+    }
+
+    // 1. 存储 Plugin
+    this.channelPlugins.set(plugin.id, plugin);
+
+    // 2. 转换为 ManagedChannel
+    this.channels.set(plugin.id, {
+      config: {
+        id: plugin.id,
+        name: plugin.name,
+        gateway: {
+          start: plugin.lifecycle.start,
+          stop: plugin.lifecycle.stop
+        }
+      },
+      status: 'stopped',
+      plugin // 保存 Plugin 引用
+    });
+
+    this.logger.info(`Registered ChannelPlugin: ${plugin.id} (${plugin.name})`);
+  }
+
+  /**
+   * 根据 ID 获取 ChannelPlugin
+   *
+   * @param id - Channel ID
+   * @returns ChannelPlugin 或 undefined
+   */
+  public getChannelPlugin(id: string): ChannelPlugin | undefined {
+    return this.channelPlugins.get(id);
+  }
+
+  /**
+   * 列出所有 ChannelPlugin
+   *
+   * @returns ChannelPlugin 数组
+   */
+  public listChannelPlugins(): ChannelPlugin[] {
+    return Array.from(this.channelPlugins.values());
+  }
+
+  /**
+   * 获取 Channel 能力声明
+   *
+   * @param id - Channel ID
+   * @returns ChannelCapabilities 或 undefined
+   */
+  public getChannelCapabilities(id: string): ChannelCapabilities | undefined {
+    const plugin = this.channelPlugins.get(id);
+    return plugin?.capabilities;
+  }
+
+  /**
+   * 检查 Channel 是否支持指定能力
+   *
+   * @param id - Channel ID
+   * @param capability - 能力名称
+   * @returns boolean
+   */
+  public supportsCapability(id: string, capability: keyof ChannelCapabilities): boolean {
+    const capabilities = this.getChannelCapabilities(id);
+    return capabilities?.[capability] === true;
   }
 
   /**
@@ -190,6 +263,7 @@ export class ChannelManager {
   public clear(): void {
     this.stopAll().finally(() => {
       this.channels.clear();
+      this.channelPlugins.clear();
     });
   }
 }

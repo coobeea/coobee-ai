@@ -7,6 +7,7 @@
 
 import type { ToolDefinition } from '../../ai/tools/types';
 import type { MethodHandler } from '../../gateway/protocol/types';
+import type { ChannelPlugin } from '../../channels/types';
 import type {
   ExtensionHookName,
   RegisteredExtensionHook,
@@ -34,6 +35,8 @@ export class ExtensionRegistry {
   private cronJobs: RegisteredCronJob[] = [];
   /** 失败的 Extension（extensionId → 错误信息） */
   private failedExtensions = new Map<string, string>();
+  /** 注册的 ChannelPlugin（pluginId → { extensionId, plugin }） */
+  private channelPlugins = new Map<string, { extensionId: string; plugin: ChannelPlugin }>();
 
   // --- 工具 ---
 
@@ -155,6 +158,36 @@ export class ExtensionRegistry {
     return [...this.channels];
   }
 
+  // --- ChannelPlugin ---
+
+  registerChannelPlugin(extensionId: string, plugin: ChannelPlugin): void {
+    if (this.channelPlugins.has(plugin.id)) {
+      throw new Error(
+        `[ExtensionRegistry] ChannelPlugin "${plugin.id}" already registered by "${this.channelPlugins.get(plugin.id)?.extensionId}"`
+      );
+    }
+    this.channelPlugins.set(plugin.id, { extensionId, plugin });
+  }
+
+  unregisterChannelPluginsByExtension(extensionId: string): string[] {
+    const removed: string[] = [];
+    for (const [pluginId, entry] of this.channelPlugins.entries()) {
+      if (entry.extensionId === extensionId) {
+        this.channelPlugins.delete(pluginId);
+        removed.push(pluginId);
+      }
+    }
+    return removed;
+  }
+
+  getChannelPlugins(): Array<{ extensionId: string; plugin: ChannelPlugin }> {
+    return Array.from(this.channelPlugins.values());
+  }
+
+  getChannelPlugin(pluginId: string): ChannelPlugin | undefined {
+    return this.channelPlugins.get(pluginId)?.plugin;
+  }
+
   // --- HTTP Route ---
 
   registerHttpRoute(extensionId: string, route: RegisteredHttpRoute['route']): void {
@@ -239,6 +272,7 @@ export class ExtensionRegistry {
     this.unregisterGatewayMethodsByExtension(extensionId);
     this.unregisterSkillDirsByExtension(extensionId);
     this.unregisterChannelsByExtension(extensionId);
+    this.unregisterChannelPluginsByExtension(extensionId);
     this.unregisterHttpRoutesByExtension(extensionId);
     this.unregisterServicesByExtension(extensionId);
     this.unregisterCronJobsByExtension(extensionId);
@@ -251,6 +285,7 @@ export class ExtensionRegistry {
     for (const m of this.gatewayMethods) ids.add(m.extensionId);
     for (const s of this.skillDirs) ids.add(s.extensionId);
     for (const c of this.channels) ids.add(c.extensionId);
+    for (const [, entry] of this.channelPlugins.entries()) ids.add(entry.extensionId);
     for (const r of this.httpRoutes) ids.add(r.extensionId);
     for (const s of this.backgroundServices) ids.add(s.extensionId);
     for (const j of this.cronJobs) ids.add(j.extensionId);
@@ -263,6 +298,7 @@ export class ExtensionRegistry {
     this.gatewayMethods = [];
     this.skillDirs = [];
     this.channels = [];
+    this.channelPlugins.clear();
     this.httpRoutes = [];
     this.backgroundServices = [];
     this.cronJobs = [];

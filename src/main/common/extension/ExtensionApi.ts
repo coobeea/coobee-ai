@@ -6,6 +6,7 @@
  */
 
 import { ExtensionRegistry } from './ExtensionRegistry';
+import type { ChannelPlugin } from '../../channels/types';
 import type {
   ExtensionApi,
   ExtensionOrigin,
@@ -30,6 +31,38 @@ function createExtensionLogger(extensionId: string): ExtensionLogger {
     error: (msg, ...args) => console.error(prefix, msg, ...args),
     debug: (msg, ...args) => console.debug(prefix, msg, ...args)
   };
+}
+
+/**
+ * 验证 ChannelPlugin
+ */
+function validateChannelPlugin(plugin: ChannelPlugin): void {
+  // 1. 检查必填字段
+  if (!plugin.id || typeof plugin.id !== 'string') {
+    throw new Error('ChannelPlugin.id is required and must be a string');
+  }
+
+  if (!plugin.name || typeof plugin.name !== 'string') {
+    throw new Error('ChannelPlugin.name is required and must be a string');
+  }
+
+  // 2. 检查 lifecycle
+  if (!plugin.lifecycle) {
+    throw new Error(`ChannelPlugin "${plugin.id}" must have lifecycle hooks`);
+  }
+
+  if (typeof plugin.lifecycle.start !== 'function') {
+    throw new Error(`ChannelPlugin "${plugin.id}" must implement lifecycle.start()`);
+  }
+
+  if (typeof plugin.lifecycle.stop !== 'function') {
+    throw new Error(`ChannelPlugin "${plugin.id}" must implement lifecycle.stop()`);
+  }
+
+  // 3. 检查 ID 格式
+  if (!/^[a-z0-9-]+$/.test(plugin.id)) {
+    throw new Error(`ChannelPlugin ID "${plugin.id}" is invalid. Use lowercase letters, numbers, and hyphens only.`);
+  }
 }
 
 /**
@@ -65,6 +98,25 @@ export function createExtensionApi(
     },
     registerChannel(config) {
       registry.registerChannel(extensionId, config);
+    },
+    registerChannelPlugin(plugin) {
+      // 1. 验证 Plugin
+      validateChannelPlugin(plugin);
+
+      // 2. 注册到 ExtensionRegistry
+      registry.registerChannelPlugin(extensionId, plugin);
+
+      // 3. 注册到 ChannelManager
+      try {
+        // 延迟导入避免循环依赖
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { ChannelManager } = require('../../channels/ChannelManager');
+        const channelManager = ChannelManager.getInstance();
+        channelManager.registerChannelPlugin(plugin);
+      } catch (err) {
+        console.error(`[ExtensionApi] Failed to register ChannelPlugin "${plugin.id}":`, err);
+        throw err;
+      }
     },
     registerHttpRoute(config) {
       registry.registerHttpRoute(extensionId, config);

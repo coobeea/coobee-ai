@@ -16,6 +16,7 @@
 import type Router from '@koa/router';
 import { createLogger } from '@main/common/logger';
 import { DiscussionRoom, DiscussionStore } from '@main/ai/discussion';
+import { ChannelManager } from '@main/channels/ChannelManager';
 import type { DiscussionParticipant, TurnStrategy } from '@main/ai/discussion/types';
 
 const log = createLogger('gateway-http-discussion');
@@ -28,7 +29,7 @@ export function registerDiscussionRoutes(router: Router): void {
 
   router.get('/discussion/sessions', async (ctx) => {
     try {
-      const store = new DiscussionStore();
+      const store = await DiscussionStore.getInstance();
       const sessions = await store.list();
       sessions.sort((a, b) => b.createdAt - a.createdAt);
       ctx.body = { sessions };
@@ -48,7 +49,7 @@ export function registerDiscussionRoutes(router: Router): void {
     }
 
     try {
-      const store = new DiscussionStore();
+      const store = await DiscussionStore.getInstance();
       const session = await store.load(sessionId);
       if (!session) {
         ctx.status = 404;
@@ -107,49 +108,61 @@ export function registerDiscussionRoutes(router: Router): void {
     const sessionId = ctx.params.id;
 
     try {
-      const store = new DiscussionStore();
-      const session = await store.load(sessionId);
+      // 1. 获取 Discussion Channel Plugin
+      const manager = ChannelManager.getInstance();
+      const plugin = manager.getChannelPlugin('discussion');
+
+      if (!plugin) {
+        ctx.status = 404;
+        ctx.body = { error: 'Discussion channel not available' };
+        return;
+      }
+
+      if (!plugin.inbound) {
+        ctx.status = 500;
+        ctx.body = { error: 'Discussion channel does not support inbound messages' };
+        return;
+      }
+
+      // 2. 加载讨论室
+      const store = await DiscussionStore.getInstance();
+      const session = await store.get(sessionId);
 
       if (!session) {
         ctx.status = 404;
-        ctx.body = { error: 'Discussion not found' };
+        ctx.body = { error: 'Discussion session not found' };
         return;
       }
 
-      if (session.messages.length > 0) {
-        ctx.status = 400;
-        ctx.body = { error: 'Discussion already started' };
-        return;
-      }
+      // 3. 更新状态为 active
+      await store.update(sessionId, { status: 'active' });
 
-      // 创建或获取 DiscussionRoom 实例
-      let room = activeRooms.get(sessionId);
-      if (!room) {
-        room = new DiscussionRoom({
+      // 4. 添加系统消息
+      await store.addMessage(sessionId, {
+        participant: 'System',
+        content: `Discussion started. Topic: ${session.topic}`,
+        timestamp: Date.now(),
+        type: 'statement'
+      });
+
+      // 5. 选择第一个发言者
+      const firstSpeaker = session.participants[0];
+
+      // 6. 触发 Plugin 的 inbound.handleMessage
+      await plugin.inbound.handleMessage({
+        peer: sessionId,
+        from: firstSpeaker.agentId,
+        text: `You are ${firstSpeaker.role || firstSpeaker.name}. Please start the discussion on: ${session.topic}`,
+        context: {
+          channel: 'discussion',
+          roomId: sessionId,
+          role: firstSpeaker.role || firstSpeaker.name,
           topic: session.topic,
-          participants: session.participants,
-          turnStrategy: 'round-robin',
-          consensusThreshold: 0.7,
-          maxRounds: 20
-        });
-        activeRooms.set(sessionId, room);
-      }
+          recentMessages: []
+        }
+      });
 
-      // TODO: 集成 LLM，触发第一个 Agent 发言
-      // 目前添加系统消息作为占位
-      await room.addMessage('system', `讨论已开始！主题: ${session.topic}`, 'statement');
-
-      const firstSpeaker = room.getNextSpeaker();
-      if (firstSpeaker) {
-        await room.addMessage(
-          firstSpeaker.agentId,
-          `我是 ${firstSpeaker.name}（${firstSpeaker.role}），让我先分享一下我的观点...（此处应调用 LLM 生成真实发言）`,
-          'statement'
-        );
-      }
-
-      const updatedSession = room.getSession();
-      ctx.body = { session: updatedSession };
+      ctx.body = { success: true };
     } catch (err) {
       log.error(`Failed to start discussion ${sessionId}:`, err);
       ctx.status = 500;
@@ -159,18 +172,29 @@ export function registerDiscussionRoutes(router: Router): void {
 
   router.post('/discussion/sessions/:id/pause', async (ctx) => {
     const sessionId = ctx.params.id;
-    const room = activeRooms.get(sessionId);
-
-    if (!room) {
-      ctx.status = 404;
-      ctx.body = { error: 'Discussion room not found or not active' };
-      return;
-    }
 
     try {
-      await room.pause();
-      const session = room.getSession();
-      ctx.body = { session };
+      const store = await DiscussionStore.getInstance();
+      const session = await store.get(sessionId);
+
+      if (!session) {
+        ctx.status = 404;
+        ctx.body = { error: 'Discussion session not found' };
+        return;
+      }
+
+      // 更新状态为 paused
+      await store.update(sessionId, { status: 'paused' });
+
+      // 添加系统消息
+      await store.addMessage(sessionId, {
+        participant: 'System',
+        content: 'Discussion paused',
+        timestamp: Date.now(),
+        type: 'statement'
+      });
+
+      ctx.body = { success: true };
     } catch (err) {
       log.error(`Failed to pause discussion ${sessionId}:`, err);
       ctx.status = 500;
@@ -180,18 +204,29 @@ export function registerDiscussionRoutes(router: Router): void {
 
   router.post('/discussion/sessions/:id/resume', async (ctx) => {
     const sessionId = ctx.params.id;
-    const room = activeRooms.get(sessionId);
-
-    if (!room) {
-      ctx.status = 404;
-      ctx.body = { error: 'Discussion room not found or not active' };
-      return;
-    }
 
     try {
-      await room.resume();
-      const session = room.getSession();
-      ctx.body = { session };
+      const store = await DiscussionStore.getInstance();
+      const session = await store.get(sessionId);
+
+      if (!session) {
+        ctx.status = 404;
+        ctx.body = { error: 'Discussion session not found' };
+        return;
+      }
+
+      // 更新状态为 active
+      await store.update(sessionId, { status: 'active' });
+
+      // 添加系统消息
+      await store.addMessage(sessionId, {
+        participant: 'System',
+        content: 'Discussion resumed',
+        timestamp: Date.now(),
+        type: 'statement'
+      });
+
+      ctx.body = { success: true };
     } catch (err) {
       log.error(`Failed to resume discussion ${sessionId}:`, err);
       ctx.status = 500;
