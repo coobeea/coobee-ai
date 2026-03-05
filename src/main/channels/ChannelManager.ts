@@ -154,11 +154,17 @@ export class ChannelManager {
     try {
       this.logger.info(`Starting channel: ${id}`);
 
-      // 为 discussion channel 传递 storePath
+      // 为 discussion channel 初始化 DiscussionStore（必须在 Extension 启动前）
       const config: Record<string, unknown> = {};
       if (id === 'discussion') {
         const { Env } = await import('../common/env');
-        config.storePath = `${Env.paths.userHome}/discussions`;
+        const storePath = `${Env.paths.userHome}/discussions`;
+        config.storePath = storePath;
+
+        // 在这里直接初始化 DiscussionStore，确保模块路径一致
+        const { DiscussionStore } = await import('../ai/discussion/DiscussionStore');
+        await DiscussionStore.getInstance(storePath);
+        this.logger.debug(`[ChannelManager] DiscussionStore initialized at ${storePath}`);
       }
 
       const ctx: import('./types').ChannelLifecycleContext = {

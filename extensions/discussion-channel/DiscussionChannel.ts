@@ -21,15 +21,14 @@ export const discussionChannel: ChannelPlugin = {
       logger = ctx.log;
       logger.info('[DiscussionChannel] Started');
 
-      // 从 ctx.config 获取 storePath（由 ChannelManager 传入）
+      // storePath 已由 ChannelManager 在启动前初始化，这里无需再初始化
+      // 只做简单验证
       const storePath = ctx.config?.storePath as string | undefined;
       if (!storePath) {
-        throw new Error('DiscussionChannel: storePath is required in config');
+        logger.warn('[DiscussionChannel] storePath not provided in config');
+      } else {
+        logger.debug(`[DiscussionChannel] Using storePath: ${storePath}`);
       }
-
-      // 动态导入并初始化 DiscussionStore
-      const { DiscussionStore } = await import('../../src/main/ai/discussion/DiscussionStore');
-      await DiscussionStore.getInstance(storePath);
     },
 
     /**
@@ -53,7 +52,7 @@ export const discussionChannel: ChannelPlugin = {
         const { DiscussionStore } = await import('../../src/main/ai/discussion/DiscussionStore');
 
         const runtime = ChannelRuntime.getInstance();
-        const store = await DiscussionStore.getInstance(); // 已在 start 时初始化
+        const store = await DiscussionStore.getInstance(); // 已由 ChannelManager 初始化
 
         // 1. 获取讨论室信息
         const session = await store.get(msg.peer);
@@ -138,7 +137,7 @@ export const discussionChannel: ChannelPlugin = {
         const { DiscussionStore } = await import('../../src/main/ai/discussion/DiscussionStore');
         const { eventBus } = await import('../../src/main/common/eventbus');
 
-        const store = await DiscussionStore.getInstance(); // 已在 start 时初始化
+        const store = await DiscussionStore.getInstance(); // 已由 ChannelManager 初始化
 
         // 1. 保存消息到数据库
         await store.addMessage(msg.to, {
