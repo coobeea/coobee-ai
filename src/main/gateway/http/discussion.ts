@@ -103,6 +103,60 @@ export function registerDiscussionRoutes(router: Router): void {
 
   // ==================== 讨论控制 ====================
 
+  router.post('/discussion/sessions/:id/start', async (ctx) => {
+    const sessionId = ctx.params.id;
+
+    try {
+      const store = new DiscussionStore();
+      const session = await store.load(sessionId);
+
+      if (!session) {
+        ctx.status = 404;
+        ctx.body = { error: 'Discussion not found' };
+        return;
+      }
+
+      if (session.messages.length > 0) {
+        ctx.status = 400;
+        ctx.body = { error: 'Discussion already started' };
+        return;
+      }
+
+      // 创建或获取 DiscussionRoom 实例
+      let room = activeRooms.get(sessionId);
+      if (!room) {
+        room = new DiscussionRoom({
+          topic: session.topic,
+          participants: session.participants,
+          turnStrategy: 'round-robin',
+          consensusThreshold: 0.7,
+          maxRounds: 20
+        });
+        activeRooms.set(sessionId, room);
+      }
+
+      // TODO: 集成 LLM，触发第一个 Agent 发言
+      // 目前添加系统消息作为占位
+      await room.addMessage('system', `讨论已开始！主题: ${session.topic}`, 'statement');
+
+      const firstSpeaker = room.getNextSpeaker();
+      if (firstSpeaker) {
+        await room.addMessage(
+          firstSpeaker.agentId,
+          `我是 ${firstSpeaker.name}（${firstSpeaker.role}），让我先分享一下我的观点...（此处应调用 LLM 生成真实发言）`,
+          'statement'
+        );
+      }
+
+      const updatedSession = room.getSession();
+      ctx.body = { session: updatedSession };
+    } catch (err) {
+      log.error(`Failed to start discussion ${sessionId}:`, err);
+      ctx.status = 500;
+      ctx.body = { error: 'Failed to start discussion' };
+    }
+  });
+
   router.post('/discussion/sessions/:id/pause', async (ctx) => {
     const sessionId = ctx.params.id;
     const room = activeRooms.get(sessionId);

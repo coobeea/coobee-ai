@@ -92,8 +92,15 @@
             </div>
           </div>
 
-          <div v-if="selectedDiscussion.messages.length === 0" class="text-center py-12 text-muted-foreground">
-            讨论尚未开始
+          <div v-if="selectedDiscussion.messages.length === 0" class="text-center py-12">
+            <p class="text-muted-foreground mb-4">讨论尚未开始</p>
+            <button
+              v-if="selectedDiscussion.status === 'active'"
+              class="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm text-primary-foreground hover:bg-primary/90 transition-colors"
+              @click="startDiscussion">
+              <span class="i-carbon-play inline-block h-5 w-5"></span>
+              开始讨论
+            </button>
           </div>
         </div>
 
@@ -101,7 +108,7 @@
         <div class="border-t border-border bg-card px-6 py-4">
           <div class="flex items-center gap-3">
             <button
-              v-if="selectedDiscussion.status === 'active'"
+              v-if="selectedDiscussion.status === 'active' && selectedDiscussion.messages.length > 0"
               class="flex items-center gap-2 rounded-lg bg-muted px-4 py-2 text-sm hover:bg-muted/80 transition-colors"
               @click="pauseDiscussion">
               <span class="i-carbon-pause inline-block h-4 w-4"></span>
@@ -213,8 +220,8 @@ const newDiscussion = ref({
   participants: [] as Array<{ agentId: string; name: string; role: string }>
 });
 
-// 可选的 Agent 列表（过滤掉系统 Agent）
-const availableAgents = computed(() => agentsStore.agents.filter((a) => a.createdBy === 'user' || a.id === 'default'));
+// 可选的 Agent 列表（显示所有 Agent）
+const availableAgents = computed(() => agentsStore.agents);
 
 const currentSpeakerName = computed(() => {
   if (!selectedDiscussion.value?.currentSpeaker) return '无';
@@ -355,6 +362,24 @@ async function submitCreateDiscussion(): Promise<void> {
     discussions.value.unshift(session);
     selectedDiscussion.value = session;
     showCreateDialog.value = false;
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function startDiscussion(): Promise<void> {
+  if (!selectedDiscussion.value) return;
+
+  loading.value = true;
+  error.value = null;
+
+  try {
+    const updated = await discussionApi.startDiscussion(selectedDiscussion.value.id);
+    selectedDiscussion.value = updated;
+    const index = discussions.value.findIndex((d) => d.id === updated.id);
+    if (index >= 0) discussions.value[index] = updated;
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {

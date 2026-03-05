@@ -52,6 +52,17 @@ export async function getDiscussion(id: string): Promise<DiscussionSession> {
   return (data as { session: DiscussionSession }).session;
 }
 
+export async function startDiscussion(id: string): Promise<DiscussionSession> {
+  const res = await fetch(`${BASE_URL}/sessions/${id}/start`, { method: 'POST' });
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+  }
+
+  return (data as { session: DiscussionSession }).session;
+}
+
 export async function pauseDiscussion(id: string): Promise<DiscussionSession> {
   const res = await fetch(`${BASE_URL}/sessions/${id}/pause`, { method: 'POST' });
   const data = await res.json();

@@ -194,8 +194,8 @@ const newConsultation = ref({
   }>
 });
 
-// 可选的专家 Agent 列表
-const availableAgents = computed(() => agentsStore.agents.filter((a) => a.createdBy === 'user' || a.id === 'default'));
+// 可选的专家 Agent 列表（显示所有 Agent）
+const availableAgents = computed(() => agentsStore.agents);
 
 function statusText(status: string): string {
   const map: Record<string, string> = {
