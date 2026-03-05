@@ -1,8 +1,8 @@
-import type { ChannelPlugin, InboundMessage, OutboundMessage } from '@main/channels/types';
-import type { ExtensionLogger } from '@main/common/extension/types';
-import { ChannelRuntime } from '@main/channels/ChannelRuntime';
-import { DiscussionStore } from '@main/ai/discussion/DiscussionStore';
-import { Gateway } from '@main/gateway/Gateway';
+import type { ChannelPlugin, InboundMessage, OutboundMessage } from '../../src/main/channels/types';
+import type { ExtensionLogger } from '../../src/main/common/extension/types';
+import { ChannelRuntime } from '../../src/main/channels/ChannelRuntime';
+import { DiscussionStore } from '../../src/main/ai/discussion/DiscussionStore';
+import { eventBus } from '../../src/main/common/eventbus';
 
 let logger: ExtensionLogger;
 
@@ -137,15 +137,12 @@ export const discussionChannel: ChannelPlugin = {
 
         logger.info(`[DiscussionChannel] Message sent to room ${msg.to} from ${msg.agentId}`);
 
-        // 2. 广播到前端
-        const gateway = Gateway.getInstance();
-        gateway.broadcast(`discussion:${msg.to}`, {
-          type: 'message',
-          data: {
-            participant: msg.agentId,
-            content: msg.text,
-            timestamp: Date.now()
-          }
+        // 2. 广播到前端（通过 EventBus）
+        eventBus.emit('discussion:message', {
+          roomId: msg.to,
+          participant: msg.agentId,
+          content: msg.text,
+          timestamp: Date.now()
         });
       } catch (err) {
         logger.error('[DiscussionChannel] Error sending message:', err);
