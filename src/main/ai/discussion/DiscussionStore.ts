@@ -19,7 +19,7 @@ export class DiscussionStore {
   /**
    * 获取单例实例
    *
-   * @param storePath - 存储路径（首次调用时必须提供）
+   * @param storePath - 存储路径（首次调用时必须提供，后续可选）
    */
   public static async getInstance(storePath?: string): Promise<DiscussionStore> {
     if (!DiscussionStore.instance) {
@@ -27,6 +27,9 @@ export class DiscussionStore {
         throw new Error('DiscussionStore: storePath is required for first initialization');
       }
       DiscussionStore.instance = new DiscussionStore();
+      await DiscussionStore.instance.initialize(storePath);
+    } else if (storePath && DiscussionStore.instance.storePath !== storePath) {
+      // 如果传入了不同的路径，更新路径
       await DiscussionStore.instance.initialize(storePath);
     }
     return DiscussionStore.instance;
