@@ -148,20 +148,28 @@ export class DiscussionStore {
       throw new Error('DiscussionStore: not initialized, call getInstance(storePath) first');
     }
 
-    const files = await fs.promises.readdir(this.storePath);
-    const sessions: DiscussionSession[] = [];
+    try {
+      const files = await fs.promises.readdir(this.storePath);
+      const sessions: DiscussionSession[] = [];
 
-    for (const file of files) {
-      if (file.endsWith('.json')) {
-        const id = file.replace('.json', '');
-        const session = await this.load(id);
-        if (session) {
-          sessions.push(session);
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          const id = file.replace('.json', '');
+          const session = await this.load(id);
+          if (session) {
+            sessions.push(session);
+          }
         }
       }
-    }
 
-    return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+      return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    } catch (err: unknown) {
+      // 如果目录不存在，返回空数组
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return [];
+      }
+      throw err;
+    }
   }
 
   /**

@@ -34,7 +34,8 @@ export function registerDiscussionRoutes(router: Router): void {
       sessions.sort((a, b) => b.createdAt - a.createdAt);
       ctx.body = { sessions };
     } catch (err) {
-      log.error('Failed to list discussions:', err);
+      log.error('Failed to list discussions:', err instanceof Error ? err.message : err);
+      log.error('Stack:', err instanceof Error ? err.stack : 'no stack');
       ctx.status = 500;
       ctx.body = { error: 'Failed to load discussions' };
     }
@@ -96,7 +97,8 @@ export function registerDiscussionRoutes(router: Router): void {
       ctx.status = 201;
       ctx.body = { session };
     } catch (err) {
-      log.error('Failed to create discussion:', err);
+      log.error('Failed to create discussion:', err instanceof Error ? err.message : err);
+      log.error('Stack:', err instanceof Error ? err.stack : 'no stack');
       ctx.status = 500;
       ctx.body = { error: 'Failed to create discussion' };
     }
