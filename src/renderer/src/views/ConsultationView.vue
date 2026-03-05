@@ -132,13 +132,18 @@
 
             <div class="form-group">
               <div class="flex items-center justify-between mb-2">
-                <label class="form-label">专家团队</label>
+                <label class="form-label">专家团队（至少1位）</label>
                 <button class="text-xs text-primary hover:underline" @click="addExpert"> + 添加专家 </button>
               </div>
 
               <div class="space-y-2">
                 <div v-for="(expert, index) in newConsultation.experts" :key="index" class="expert-row">
-                  <input v-model="expert.agentId" type="text" class="form-input flex-1" placeholder="Agent ID" />
+                  <select v-model="expert.agentId" class="form-input flex-1" @change="onExpertSelected(index)">
+                    <option value="">-- 选择专家 Agent --</option>
+                    <option v-for="agent in availableAgents" :key="agent.id" :value="agent.id">
+                      {{ agent.name }}
+                    </option>
+                  </select>
                   <input v-model="expert.roleName" type="text" class="form-input flex-1" placeholder="角色名称" />
                   <input v-model="expert.specialty" type="text" class="form-input flex-1" placeholder="专业领域" />
                   <button v-if="newConsultation.experts.length > 1" class="remove-btn" @click="removeExpert(index)">
@@ -166,9 +171,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import type { ConsultationSession } from '@shared/types/consultation';
 import * as consultationApi from '@/api/consultation';
+import { useAgentsStore } from '@/stores/agents';
+
+const agentsStore = useAgentsStore();
 
 const sessions = ref<ConsultationSession[]>([]);
 const selectedSession = ref<ConsultationSession | null>(null);
@@ -185,6 +193,9 @@ const newConsultation = ref({
     specialty: string;
   }>
 });
+
+// 可选的专家 Agent 列表
+const availableAgents = computed(() => agentsStore.agents.filter((a) => a.createdBy === 'user' || a.id === 'default'));
 
 function statusText(status: string): string {
   const map: Record<string, string> = {
@@ -232,20 +243,26 @@ function openCreateDialog(): void {
   showCreateDialog.value = true;
   newConsultation.value = {
     question: '',
-    experts: [
-      { agentId: 'expert-1', roleName: '技术专家', specialty: '系统架构' },
-      { agentId: 'expert-2', roleName: '产品专家', specialty: '用户体验' }
-    ]
+    experts: [{ agentId: '', roleName: '', specialty: '' }]
   };
 }
 
 function addExpert(): void {
-  const index = newConsultation.value.experts.length + 1;
   newConsultation.value.experts.push({
-    agentId: `expert-${index}`,
-    roleName: `专家${index}`,
-    specialty: '领域专长'
+    agentId: '',
+    roleName: '',
+    specialty: ''
   });
+}
+
+function onExpertSelected(index: number): void {
+  const expert = newConsultation.value.experts[index];
+  if (expert.agentId) {
+    const agent = availableAgents.value.find((a) => a.id === expert.agentId);
+    if (agent) {
+      expert.roleName = agent.name;
+    }
+  }
 }
 
 function removeExpert(index: number): void {
@@ -263,13 +280,24 @@ async function submitCreateConsultation(): Promise<void> {
     return;
   }
 
+  // 验证所有专家都选择了 Agent
+  const emptyExperts = newConsultation.value.experts.filter((e) => !e.agentId);
+  if (emptyExperts.length > 0) {
+    error.value = '请为所有专家选择 Agent';
+    return;
+  }
+
   loading.value = true;
   error.value = null;
 
   try {
     const session = await consultationApi.createConsultation({
       question: newConsultation.value.question,
-      experts: newConsultation.value.experts,
+      experts: newConsultation.value.experts.map((e) => ({
+        agentId: e.agentId,
+        roleName: e.roleName || availableAgents.value.find((a) => a.id === e.agentId)?.name || e.agentId,
+        specialty: e.specialty || '通用领域'
+      })),
       aggregationStrategy: 'confidence-based'
     });
 
@@ -283,8 +311,9 @@ async function submitCreateConsultation(): Promise<void> {
   }
 }
 
-onMounted(() => {
-  loadSessions();
+onMounted(async () => {
+  await agentsStore.fetchAgents();
+  await loadSessions();
 });
 </script>
 

@@ -3,9 +3,9 @@
     <div class="designer-header">
       <h2 class="text-2xl font-bold">可视化 Agent 设计器</h2>
       <div class="flex gap-2">
-        <button @click="saveAgent" class="btn-primary">保存 Agent</button>
-        <button @click="testAgent" class="btn-secondary">测试运行</button>
-        <button @click="resetDesigner" class="btn-ghost">重置</button>
+        <button class="btn-primary" @click="saveAgent">保存 Agent</button>
+        <button class="btn-secondary" @click="testAgent">测试运行</button>
+        <button class="btn-ghost" @click="resetDesigner">重置</button>
       </div>
     </div>
 
@@ -21,7 +21,11 @@
 
         <div class="form-section">
           <label>描述</label>
-          <textarea v-model="agentConfig.description" placeholder="简要描述 Agent 的职责..." rows="3" class="input-field"></textarea>
+          <textarea
+            v-model="agentConfig.description"
+            placeholder="简要描述 Agent 的职责..."
+            rows="3"
+            class="input-field"></textarea>
         </div>
 
         <div class="form-section">
@@ -35,14 +39,18 @@
 
         <div class="form-section">
           <label>系统提示词</label>
-          <textarea v-model="agentConfig.systemPrompt" placeholder="你是一个..." rows="6" class="input-field"></textarea>
+          <textarea
+            v-model="agentConfig.systemPrompt"
+            placeholder="你是一个..."
+            rows="6"
+            class="input-field"></textarea>
         </div>
 
         <div class="form-section">
           <label>工具权限</label>
           <div class="tool-checkboxes">
             <label v-for="tool in availableTools" :key="tool.id" class="checkbox-label">
-              <input type="checkbox" :value="tool.id" v-model="agentConfig.tools" />
+              <input v-model="agentConfig.tools" type="checkbox" :value="tool.id" />
               <span>{{ tool.name }}</span>
             </label>
           </div>
@@ -57,12 +65,12 @@
                 {{ skill.name }}
               </option>
             </select>
-            <button @click="addSkill" class="btn-sm">添加</button>
+            <button class="btn-sm" @click="addSkill">添加</button>
           </div>
           <div class="selected-skills">
             <span v-for="skillId in agentConfig.skills" :key="skillId" class="skill-tag">
               {{ getSkillName(skillId) }}
-              <button @click="removeSkill(skillId)" class="remove-btn">×</button>
+              <button class="remove-btn" @click="removeSkill(skillId)">×</button>
             </span>
           </div>
         </div>
@@ -79,7 +87,7 @@
 
         <div class="test-box">
           <h4 class="font-semibold mb-2">测试对话</h4>
-          <div class="test-messages" ref="testMessages">
+          <div ref="testMessages" class="test-messages">
             <div v-for="msg in testMessages" :key="msg.id" :class="['test-message', msg.role]">
               <span class="role-label">{{ msg.role }}:</span>
               <span class="message-content">{{ msg.content }}</span>
@@ -88,12 +96,11 @@
           <div class="test-input-area">
             <input
               v-model="testInput"
-              @keypress.enter="sendTestMessage"
               type="text"
               placeholder="输入测试消息..."
               class="input-field"
-            />
-            <button @click="sendTestMessage" class="btn-sm">发送</button>
+              @keypress.enter="sendTestMessage" />
+            <button class="btn-sm" @click="sendTestMessage">发送</button>
           </div>
         </div>
       </div>
@@ -161,14 +168,14 @@ const configPreview = computed(() => {
   return JSON.stringify(agentConfig.value, null, 2);
 });
 
-function addSkill() {
+function addSkill(): void {
   if (selectedSkill.value && !agentConfig.value.skills.includes(selectedSkill.value)) {
     agentConfig.value.skills.push(selectedSkill.value);
     selectedSkill.value = '';
   }
 }
 
-function removeSkill(skillId: string) {
+function removeSkill(skillId: string): void {
   agentConfig.value.skills = agentConfig.value.skills.filter((s) => s !== skillId);
 }
 
@@ -176,12 +183,12 @@ function getSkillName(skillId: string): string {
   return availableSkills.value.find((s) => s.id === skillId)?.name || skillId;
 }
 
-function saveAgent() {
+function saveAgent(): void {
   console.log('Saving agent:', agentConfig.value);
   alert('Agent 配置已保存！（实际功能待实现）');
 }
 
-function testAgent() {
+function testAgent(): void {
   if (!agentConfig.value.name) {
     alert('请先填写 Agent 名称');
     return;
@@ -194,7 +201,7 @@ function testAgent() {
   });
 }
 
-function sendTestMessage() {
+function sendTestMessage(): void {
   if (!testInput.value.trim()) return;
 
   testMessages.value.push({
@@ -214,7 +221,7 @@ function sendTestMessage() {
   testInput.value = '';
 }
 
-function resetDesigner() {
+function resetDesigner(): void {
   if (confirm('确定要重置所有配置吗？')) {
     agentConfig.value = {
       name: '',
@@ -231,127 +238,245 @@ function resetDesigner() {
 
 <style scoped>
 .agent-designer {
-  @apply flex flex-col h-full p-6 bg-gray-50 dark:bg-gray-900;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 24px;
+  background: hsl(var(--background));
 }
 
 .designer-header {
-  @apply flex justify-between items-center mb-6 pb-4 border-b border-gray-200 dark:border-gray-700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid hsl(var(--border));
 }
 
 .designer-content {
-  @apply flex gap-6 flex-1 overflow-hidden;
+  display: flex;
+  gap: 24px;
+  flex: 1;
+  overflow: hidden;
 }
 
 .canvas-panel {
-  @apply flex-1 bg-white dark:bg-gray-800 rounded-lg p-6 overflow-y-auto;
+  flex: 1;
+  background: hsl(var(--card));
+  border-radius: 8px;
+  padding: 24px;
+  overflow-y: auto;
+  border: 1px solid hsl(var(--border));
 }
 
 .preview-panel {
-  @apply w-96 bg-white dark:bg-gray-800 rounded-lg p-6 overflow-y-auto;
+  width: 384px;
+  background: hsl(var(--card));
+  border-radius: 8px;
+  padding: 24px;
+  overflow-y: auto;
+  border: 1px solid hsl(var(--border));
 }
 
 .section-title {
-  @apply text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200;
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: hsl(var(--foreground));
 }
 
 .form-section {
-  @apply mb-6;
+  margin-bottom: 24px;
 }
 
 .form-section label {
-  @apply block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300;
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: hsl(var(--foreground));
 }
 
 .input-field {
-  @apply w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md
-  bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
-  focus:outline-none focus:ring-2 focus:ring-blue-500;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
 }
 
 .tool-checkboxes {
-  @apply space-y-2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .checkbox-label {
-  @apply flex items-center gap-2 cursor-pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
 }
 
 .checkbox-label input[type='checkbox'] {
-  @apply w-4 h-4;
+  width: 16px;
+  height: 16px;
 }
 
 .skill-selector {
-  @apply flex gap-2;
+  display: flex;
+  gap: 8px;
 }
 
 .selected-skills {
-  @apply flex flex-wrap gap-2 mt-2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .skill-tag {
-  @apply inline-flex items-center gap-1 px-3 py-1 bg-blue-100 dark:bg-blue-900
-  text-blue-800 dark:text-blue-200 rounded-full text-sm;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  border-radius: 16px;
+  font-size: 12px;
 }
 
-.remove-btn {
-  @apply text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200
-  font-bold text-lg leading-none;
+.skill-tag .remove-btn {
+  color: hsl(var(--primary));
+  font-weight: bold;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.skill-tag .remove-btn:hover {
+  opacity: 0.7;
 }
 
 .preview-box {
-  @apply mb-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 8px;
 }
 
 .config-preview {
-  @apply text-xs text-gray-700 dark:text-gray-300 overflow-x-auto;
+  font-size: 11px;
+  color: hsl(var(--foreground) / 0.8);
+  overflow-x: auto;
+  font-family: 'Monaco', 'Menlo', monospace;
 }
 
 .test-box {
-  @apply p-4 bg-gray-50 dark:bg-gray-900 rounded-lg;
+  padding: 16px;
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 8px;
 }
 
 .test-messages {
-  @apply h-64 overflow-y-auto mb-4 space-y-2;
+  height: 256px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .test-message {
-  @apply p-2 rounded;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 13px;
 }
 
 .test-message.user {
-  @apply bg-blue-100 dark:bg-blue-900;
+  background: hsl(var(--primary) / 0.1);
 }
 
 .test-message.agent {
-  @apply bg-gray-200 dark:bg-gray-700;
+  background: hsl(var(--muted));
 }
 
 .role-label {
-  @apply font-semibold mr-2;
+  font-weight: 600;
+  margin-right: 8px;
 }
 
 .test-input-area {
-  @apply flex gap-2;
+  display: flex;
+  gap: 8px;
 }
 
 .btn-primary {
-  @apply px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700
-  transition-colors;
+  padding: 8px 16px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.btn-primary:hover {
+  background: hsl(var(--primary) / 0.9);
 }
 
 .btn-secondary {
-  @apply px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700
-  transition-colors;
+  padding: 8px 16px;
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background: hsl(var(--muted) / 0.8);
 }
 
 .btn-ghost {
-  @apply px-4 py-2 bg-transparent text-gray-600 dark:text-gray-400
-  border border-gray-300 dark:border-gray-600 rounded-md
-  hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors;
+  padding: 8px 16px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.btn-ghost:hover {
+  background: hsl(var(--foreground) / 0.05);
 }
 
 .btn-sm {
-  @apply px-3 py-1 bg-blue-600 text-white text-sm rounded-md
-  hover:bg-blue-700 transition-colors;
+  padding: 6px 12px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-size: 12px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn-sm:hover {
+  background: hsl(var(--primary) / 0.9);
 }
 </style>

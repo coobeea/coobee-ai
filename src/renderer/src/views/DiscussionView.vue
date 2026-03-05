@@ -153,15 +153,19 @@
 
             <div class="form-group">
               <div class="flex items-center justify-between mb-2">
-                <label class="form-label">参与者</label>
+                <label class="form-label">参与者（至少2位）</label>
                 <button class="text-xs text-primary hover:underline" @click="addParticipant"> + 添加参与者 </button>
               </div>
 
               <div class="space-y-2">
                 <div v-for="(participant, index) in newDiscussion.participants" :key="index" class="participant-row">
-                  <input v-model="participant.agentId" type="text" class="form-input flex-1" placeholder="Agent ID" />
-                  <input v-model="participant.name" type="text" class="form-input flex-1" placeholder="名称" />
-                  <input v-model="participant.role" type="text" class="form-input flex-1" placeholder="角色" />
+                  <select v-model="participant.agentId" class="form-input flex-1" @change="onAgentSelected(index)">
+                    <option value="">-- 选择 Agent --</option>
+                    <option v-for="agent in availableAgents" :key="agent.id" :value="agent.id">
+                      {{ agent.name }}
+                    </option>
+                  </select>
+                  <input v-model="participant.role" type="text" class="form-input flex-1" placeholder="角色（可选）" />
                   <button
                     v-if="newDiscussion.participants.length > 2"
                     class="remove-btn"
@@ -193,6 +197,9 @@
 import { ref, onMounted, computed } from 'vue';
 import type { DiscussionSession, DiscussionParticipant } from '@shared/types/discussion';
 import * as discussionApi from '@/api/discussion';
+import { useAgentsStore } from '@/stores/agents';
+
+const agentsStore = useAgentsStore();
 
 const discussions = ref<DiscussionSession[]>([]);
 const selectedDiscussion = ref<DiscussionSession | null>(null);
@@ -205,6 +212,9 @@ const newDiscussion = ref({
   topic: '',
   participants: [] as Array<{ agentId: string; name: string; role: string }>
 });
+
+// 可选的 Agent 列表（过滤掉系统 Agent）
+const availableAgents = computed(() => agentsStore.agents.filter((a) => a.createdBy === 'user' || a.id === 'default'));
 
 const currentSpeakerName = computed(() => {
   if (!selectedDiscussion.value?.currentSpeaker) return '无';
@@ -277,19 +287,28 @@ function openCreateDialog(): void {
   newDiscussion.value = {
     topic: '',
     participants: [
-      { agentId: 'agent-1', name: '产品经理', role: 'product' },
-      { agentId: 'agent-2', name: '技术架构师', role: 'architect' }
+      { agentId: '', name: '', role: '' },
+      { agentId: '', name: '', role: '' }
     ]
   };
 }
 
 function addParticipant(): void {
-  const index = newDiscussion.value.participants.length + 1;
   newDiscussion.value.participants.push({
-    agentId: `agent-${index}`,
-    name: `参与者${index}`,
-    role: 'participant'
+    agentId: '',
+    name: '',
+    role: ''
   });
+}
+
+function onAgentSelected(index: number): void {
+  const participant = newDiscussion.value.participants[index];
+  if (participant.agentId) {
+    const agent = availableAgents.value.find((a) => a.id === participant.agentId);
+    if (agent) {
+      participant.name = agent.name;
+    }
+  }
 }
 
 function removeParticipant(index: number): void {
@@ -307,14 +326,21 @@ async function submitCreateDiscussion(): Promise<void> {
     return;
   }
 
+  // 验证所有参与者都选择了 Agent
+  const emptyParticipants = newDiscussion.value.participants.filter((p) => !p.agentId);
+  if (emptyParticipants.length > 0) {
+    error.value = '请为所有参与者选择 Agent';
+    return;
+  }
+
   loading.value = true;
   error.value = null;
 
   try {
     const participants: DiscussionParticipant[] = newDiscussion.value.participants.map((p) => ({
       agentId: p.agentId,
-      name: p.name,
-      role: p.role,
+      name: p.name || availableAgents.value.find((a) => a.id === p.agentId)?.name || p.agentId,
+      role: p.role || 'participant',
       active: true
     }));
 
@@ -375,8 +401,9 @@ async function endDiscussion(): Promise<void> {
   }
 }
 
-onMounted(() => {
-  loadDiscussions();
+onMounted(async () => {
+  await agentsStore.fetchAgents();
+  await loadDiscussions();
 });
 </script>
 
