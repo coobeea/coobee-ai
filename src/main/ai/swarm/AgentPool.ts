@@ -125,8 +125,9 @@ export class AgentPool {
     }
 
     const poolId = this.generatePoolId(role.id);
+    // 🆕 修复 sessionId 格式：使用 :swarm-role-{roleId}（符合 multi-agent-sessionid-naming.md 规范）
     const sessionId = this.config.parentSessionId
-      ? `${this.config.parentSessionId}:swarm:${role.id}`
+      ? `${this.config.parentSessionId}:swarm-role-${role.id}`
       : `swarm-${poolId}-${Date.now()}`;
     const runtime = await this.runtimeFactory(role, sessionId, extraTools);
 

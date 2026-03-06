@@ -27,6 +27,8 @@ import { ConcurrencyManager, type SwarmSubTask } from './ConcurrencyManager';
 import { createSwarmTools } from './tools';
 import { RoleRegistry } from './roles';
 import { injectEnv } from '../AgentEnvInjector';
+import { WorkspaceManager } from '../storage/WorkspaceManager';
+import path from 'node:path';
 
 const log = createLogger('swarm:coordinator');
 
@@ -560,6 +562,20 @@ export class SwarmCoordinator {
       ? `${this.config.parentSessionId}:triage`
       : `triage-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+    // 🆕 获取主 workspace 并创建嵌套子 Agent workspace
+    const mainThreadId = this.config.parentSessionId || sessionId;
+    const { Env } = await import('@main/common/env');
+    const mainWorkspace = await Env.getAgentWorkspaceDir(mainThreadId);
+
+    const subAgentWorkspace = WorkspaceManager.getOrCreateSubAgentWorkspace({
+      agentName: 'triage',
+      sessionId,
+      type: 'triage',
+      threadWorkspace: mainWorkspace,
+      enableSkills: true,
+      enableExtensions: true
+    });
+
     const rolesDescription = roles.map((r) => `- **${r.name}** (${r.id}): ${r.description}`).join('\n');
 
     const instructions = `${TRIAGE_INSTRUCTIONS}\n\n## 可用专家\n\n${rolesDescription}\n\n${this.config.triageInstructions || ''}`;
@@ -572,7 +588,11 @@ export class SwarmCoordinator {
       .mode('agent')
       .sessionMode('file')
       .instructions(instructions)
-      .sessionId(sessionId);
+      .sessionId(sessionId)
+      // 🆕 手动设置子 Agent workspace
+      .sessionDir(path.join(subAgentWorkspace, '.runtime', 'sessions'))
+      .workspaceRoot(subAgentWorkspace)
+      .contextDir(path.join(subAgentWorkspace, '.runtime', 'contexts'));
 
     if (this.config.triageModel) {
       builder.model(this.config.triageModel);
@@ -580,7 +600,7 @@ export class SwarmCoordinator {
 
     builder.tools(allTools);
 
-    // 注入执行协议、Skill 发现提示、运行时路径
+    // 注入执行协议、Skill 发现提示（会检查已设置的 workspace，不会重复创建）
     await injectEnv(sessionId, builder);
 
     return await builder.build();
@@ -596,6 +616,21 @@ export class SwarmCoordinator {
   ): Promise<AgentRuntime> {
     const { agentExecutor } = await import('../AgentExecutor');
 
+    // 🆕 获取主 workspace 并创建嵌套子 Agent workspace
+    const mainThreadId = sessionId.split(':')[0]; // 提取主 threadId
+    const { Env } = await import('@main/common/env');
+    const mainWorkspace = await Env.getAgentWorkspaceDir(mainThreadId);
+
+    const subAgentWorkspace = WorkspaceManager.getOrCreateSubAgentWorkspace({
+      agentName: `swarm-${role.id}`,
+      sessionId,
+      type: 'swarm',
+      threadWorkspace: mainWorkspace,
+      enableSkills: true,
+      enableExtensions: true,
+      enableMemory: true
+    });
+
     const specialistInstructions = this.buildSpecialistInstructions(role);
 
     const builder = agentExecutor
@@ -604,7 +639,11 @@ export class SwarmCoordinator {
       .mode('agent')
       .sessionMode('file')
       .instructions(specialistInstructions)
-      .sessionId(sessionId);
+      .sessionId(sessionId)
+      // 🆕 手动设置子 Agent workspace
+      .sessionDir(path.join(subAgentWorkspace, '.runtime', 'sessions'))
+      .workspaceRoot(subAgentWorkspace)
+      .contextDir(path.join(subAgentWorkspace, '.runtime', 'contexts'));
 
     if (role.model) {
       builder.model(role.model);
@@ -615,7 +654,7 @@ export class SwarmCoordinator {
       builder.tools(allTools);
     }
 
-    // 注入执行协议、Skill 发现提示、运行时路径
+    // 注入执行协议、Skill 发现提示（会检查已设置的 workspace，不会重复创建）
     await injectEnv(sessionId, builder);
 
     return await builder.build();
