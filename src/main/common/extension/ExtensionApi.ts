@@ -242,10 +242,12 @@ function createExtensionServices(): ExtensionServices {
 
         // 从配置中获取 embedding 配置
         const config = configStoreInstance?.getAll?.() || {};
-        const embeddingConfig = resolveEmbeddingConfigForApi(config);
+        const embeddingConfig = resolveEmbeddingConfigForApi(config, options?.model);
 
         if (!embeddingConfig) {
-          throw new Error('No embedding provider configured. Please set up an OpenAI-compatible provider API key.');
+          throw new Error(
+            'No embedding model configured. Please set models.defaults.embedding.primary in coobee.json5'
+          );
         }
 
         const OpenAI = (await import('openai')).default;
@@ -254,9 +256,8 @@ function createExtensionServices(): ExtensionServices {
           baseURL: embeddingConfig.baseURL
         });
 
-        const model = options?.model || embeddingConfig.model || 'text-embedding-3-small';
         const response = await client.embeddings.create({
-          model,
+          model: embeddingConfig.model,
           input: texts
         });
 
@@ -268,30 +269,75 @@ function createExtensionServices(): ExtensionServices {
 
 /**
  * 从配置中解析可用于 embedding 的 provider（供 ExtensionApi 使用）
+ *
+ * @param config 完整配置对象
+ * @param modelOverride 可选的模型覆盖（如 'dashscope/text-embedding-v3'）
  */
 function resolveEmbeddingConfigForApi(
-  config: Record<string, unknown>
-): { apiKey: string; baseURL?: string; model?: string } | undefined {
+  config: Record<string, unknown>,
+  modelOverride?: string
+): { apiKey: string; baseURL?: string; model: string } | undefined {
   const models = config.models as Record<string, unknown> | undefined;
   const providers = models?.providers as Record<string, Record<string, unknown>> | undefined;
+  const defaults = models?.defaults as Record<string, unknown> | undefined;
+
   if (!providers) return undefined;
 
-  // 优先查找支持 OpenAI 兼容 embedding API 的 provider
-  const embeddingCandidates = ['dashscope', 'dashscope-subscription', 'silicon', 'openai', 'deepseek'];
-  for (const id of embeddingCandidates) {
-    const provider = providers[id];
-    if (
-      provider?.enabled !== false &&
-      provider?.apiKey &&
-      typeof provider.apiKey === 'string' &&
-      provider.apiKey.length > 0
-    ) {
-      return {
-        apiKey: provider.apiKey,
-        baseURL: typeof provider.baseUrl === 'string' ? provider.baseUrl : undefined
-      };
-    }
+  // 1. 确定目标模型引用（优先使用 override，否则用配置的默认值）
+  let modelRef: string | undefined = modelOverride;
+
+  if (!modelRef) {
+    const embeddingDefaults = defaults?.embedding as Record<string, unknown> | undefined;
+    modelRef = embeddingDefaults?.primary as string | undefined;
   }
 
-  return undefined;
+  if (!modelRef || typeof modelRef !== 'string') {
+    return undefined;
+  }
+
+  // 2. 解析 provider/model 引用（格式：'provider/model' 或 'model'）
+  const parts = modelRef.split('/');
+  let providerId: string;
+  let modelId: string;
+
+  if (parts.length === 2) {
+    [providerId, modelId] = parts;
+  } else {
+    // 只有 modelId，尝试从所有 provider 中查找
+    modelId = modelRef;
+    const found = Object.entries(providers).find(([_, p]) => {
+      const providerModels = (p as Record<string, unknown>).models as Array<Record<string, unknown>> | undefined;
+      return providerModels?.some((m) => m.id === modelId && m.supportsEmbedding === true);
+    });
+
+    if (!found) return undefined;
+    providerId = found[0];
+  }
+
+  // 3. 获取 provider 信息
+  const provider = providers[providerId] as Record<string, unknown> | undefined;
+  if (!provider || provider.enabled === false) {
+    return undefined;
+  }
+
+  const apiKey = provider.apiKey as string | undefined;
+  const baseURL = provider.baseUrl as string | undefined;
+
+  if (!apiKey || apiKey.length === 0 || apiKey.startsWith('${')) {
+    return undefined;
+  }
+
+  // 4. 验证模型支持 embedding
+  const providerModels = provider.models as Array<Record<string, unknown>> | undefined;
+  const model = providerModels?.find((m) => m.id === modelId);
+
+  if (!model || model.supportsEmbedding !== true) {
+    return undefined;
+  }
+
+  return {
+    apiKey,
+    baseURL,
+    model: modelId
+  };
 }

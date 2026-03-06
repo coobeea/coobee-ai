@@ -97,6 +97,8 @@ pnpm install
 
 ### 配置
 
+#### 扩展配置
+
 扩展默认启用，配置项在 `types/config.ts` 中：
 
 ```typescript
@@ -107,7 +109,36 @@ pnpm install
   captureMinChars: 10,      // 捕获最小字符数
   recallTopK: 5,            // 召回结果数量
   recallMinScore: 0.7,      // 召回最低分数
-  embeddingModel: 'text-embedding-3-small'  // embedding 模型
+}
+```
+
+#### Embedding 模型配置
+
+扩展使用系统配置的默认 embedding 模型（在 `coobee.json5` 中配置）：
+
+```json5
+{
+  models: {
+    providers: {
+      dashscope: {
+        models: [
+          // ... 聊天模型 ...
+          {
+            id: 'text-embedding-v4',
+            name: 'Text Embedding V4',
+            supportsEmbedding: true,
+            embeddingDimensions: [2048, 1536, 1024, 768, 512, 256, 128, 64],
+            defaultDimension: 1024
+            // ...
+          }
+        ]
+      }
+    },
+    defaults: {
+      model: { primary: 'dashscope-subscription/qwen3.5-plus' },
+      embedding: { primary: 'dashscope/text-embedding-v4' } // ← 这里配置
+    }
+  }
 }
 ```
 

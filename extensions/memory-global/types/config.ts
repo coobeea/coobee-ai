@@ -15,8 +15,6 @@ export interface MemoryGlobalConfig {
   recallTopK: number;
   /** 召回最低分数（低于此分数的结果会被过滤） */
   recallMinScore: number;
-  /** embedding 模型名称 */
-  embeddingModel: string;
 }
 
 /** 默认配置 */
@@ -26,6 +24,5 @@ export const DEFAULT_CONFIG: MemoryGlobalConfig = {
   captureMaxChars: 500,
   captureMinChars: 10,
   recallTopK: 5,
-  recallMinScore: 0.7,
-  embeddingModel: 'text-embedding-3-small'
+  recallMinScore: 0.7
 };

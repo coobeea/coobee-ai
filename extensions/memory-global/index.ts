@@ -54,10 +54,8 @@ export default {
         if (!config.autoRecall || !storage) return;
 
         try {
-          // 1. 生成 query embedding
-          const embeddings = await api.services.llm.embed([event.prompt], {
-            model: config.embeddingModel
-          });
+          // 1. 生成 query embedding（使用系统配置的默认 embedding 模型）
+          const embeddings = await api.services.llm.embed([event.prompt]);
           const queryVector = embeddings[0];
 
           // 2. 向量检索
@@ -94,10 +92,8 @@ export default {
         }
 
         try {
-          // 2. 生成 embedding
-          const embeddings = await api.services.llm.embed([output], {
-            model: config.embeddingModel
-          });
+          // 2. 生成 embedding（使用系统配置的默认 embedding 模型）
+          const embeddings = await api.services.llm.embed([output]);
           const vector = embeddings[0];
 
           // 3. 检测分类和重要度
