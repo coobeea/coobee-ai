@@ -41,7 +41,7 @@ export default {
       try {
         // 获取当前 Agent 的记忆存储目录
         const userHome = await api.services.paths.getUserHome();
-        const memoryRoot = `${userHome}/memory/agent/${event.agentId}/memory-smart`;
+        const memoryRoot = `${userHome}/memory/agent/${event.agentId}`;
 
         // 初始化存储组件（每次动态创建）
         const agentIndexManager = new IndexManager(memoryRoot);

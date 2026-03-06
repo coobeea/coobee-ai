@@ -16,7 +16,7 @@ LLM 驱动的智能记忆系统，使用倒排索引和文件存储实现快速�
 ### 两层存储结构（按 Agent 隔离）
 
 ```
-~/.coobee-ai/memory/agent/{agentId}/memory-smart/
+~/.coobee-ai/memory/agent/{agentId}/
 ├── index/                    # 第 1 层：索引（倒排索引）
 │   ├── preference.md         # 偏好索引
 │   ├── decision.md           # 决策索引
@@ -100,7 +100,7 @@ Agent 执行结束
     ↓
 追加到索引文件（按分类）
     ↓
-存储到 memory/agent/{agentId}/memory-smart/
+存储到 memory/agent/{agentId}/
 ```
 
 ### 记忆召回（Skill 引导）
@@ -110,11 +110,11 @@ Agent 执行结束
     ↓
 LLM 判断相关分类
     ↓
-Read 索引文件 (memory/agent/{currentAgentId}/memory-smart/index/{category}.md)
+Read 索引文件 (memory/agent/{currentAgentId}/index/{category}.md)
     ↓
 扫描/Grep 找到相关记忆 ID
     ↓
-Read 详细内容 (memory/agent/{currentAgentId}/memory-smart/entries/{category}/{month}.md)
+Read 详细内容 (memory/agent/{currentAgentId}/entries/{category}/{month}.md)
     ↓
 整合记忆，回答用户
 ```
