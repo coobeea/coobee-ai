@@ -124,6 +124,14 @@ export function createExtensionApi(
     },
     registerCronJob(config: CronJobConfig) {
       registry.registerCronJob(extensionId, config);
+    },
+    async getChannelRuntime() {
+      const { ChannelRuntime } = await import('../../channels/ChannelRuntime');
+      return ChannelRuntime.getInstance();
+    },
+    async getDiscussionStore() {
+      const { DiscussionStore } = await import('../../ai/discussion/DiscussionStore');
+      return DiscussionStore.getInstance();
     }
   };
 }

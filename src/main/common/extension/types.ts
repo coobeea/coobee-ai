@@ -157,6 +157,16 @@ export interface ExtensionApi {
   /** 注册 Gateway RPC 方法 */
   registerGatewayMethod(method: string, handler: MethodHandler): void;
 
+  /**
+   * 获取 ChannelRuntime 实例（避免 Extension 动态导入导致 jiti 加载失败）
+   */
+  getChannelRuntime(): Promise<import('../../channels/ChannelRuntime').ChannelRuntime>;
+
+  /**
+   * 获取 DiscussionStore 实例（避免 Extension 动态导入导致模块重复）
+   */
+  getDiscussionStore(): Promise<import('../../ai/discussion/DiscussionStore').DiscussionStore>;
+
   /** 注册外部服务通道 */
   registerChannel(config: ChannelConfig): void;
   /**
