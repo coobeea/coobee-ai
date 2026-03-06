@@ -228,6 +228,54 @@ export function registerDiscussionRoutes(router: Router): void {
         type: 'statement'
       });
 
+      // 触发下一个发言者继续讨论
+      const manager = ChannelManager.getInstance();
+      const plugin = manager.getChannelPlugin('discussion');
+
+      if (plugin?.inbound) {
+        // 找到最后一个发言者
+        const lastMessage = session.messages.filter((m) => m.agentId !== 'System').pop();
+        if (lastMessage) {
+          const lastAgentId = lastMessage.agentId;
+          const activeParticipants = session.participants.filter((p) => p.active !== false);
+          const currentIndex = activeParticipants.findIndex((p) => p.agentId === lastAgentId);
+          const nextIndex = (currentIndex + 1) % activeParticipants.length;
+          const nextSpeaker = activeParticipants[nextIndex];
+
+          if (nextSpeaker) {
+            log.info(`[Discussion] Resuming with next speaker: ${nextSpeaker.agentId}`);
+
+            const recentMessages = session.messages
+              .filter((m) => m.agentId !== 'System')
+              .slice(-5)
+              .map((m) => `${m.agentId}: ${m.content}`)
+              .join('\n');
+
+            await plugin.inbound.handleMessage({
+              peer: sessionId,
+              from: nextSpeaker.agentId,
+              text: `Discussion resumed. Topic: "${session.topic}". Recent messages:\n${recentMessages}\n\nPlease continue the discussion.`,
+              context: {
+                channel: 'discussion',
+                roomId: sessionId,
+                role: nextSpeaker.role || nextSpeaker.name,
+                topic: session.topic,
+                discussionHistory: session.messages
+                  .filter((m) => m.agentId !== 'System')
+                  .map((m) => ({
+                    sender: m.agentId,
+                    content: m.content,
+                    timestamp: m.timestamp
+                  })),
+                myPreviousMessages: session.messages
+                  .filter((m) => m.agentId === nextSpeaker.agentId)
+                  .map((m) => m.content)
+              }
+            });
+          }
+        }
+      }
+
       ctx.body = { success: true };
     } catch (err) {
       log.error(`Failed to resume discussion ${sessionId}:`, err);

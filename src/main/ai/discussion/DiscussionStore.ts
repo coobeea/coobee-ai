@@ -67,7 +67,33 @@ export class DiscussionStore {
 
     try {
       const content = await fs.promises.readFile(filePath, 'utf-8');
-      return JSON.parse(content) as DiscussionSession;
+      const session = JSON.parse(content) as DiscussionSession;
+
+      // 自动补全缺失字段（兼容旧版本 session）
+      let needsSave = false;
+      if (session.turnStrategy === undefined) {
+        session.turnStrategy = 'round-robin';
+        needsSave = true;
+      }
+      if (session.consensusThreshold === undefined) {
+        session.consensusThreshold = 0.7;
+        needsSave = true;
+      }
+      if (session.maxRounds === undefined) {
+        session.maxRounds = 20;
+        needsSave = true;
+      }
+      if (session.consensusLevel === undefined) {
+        session.consensusLevel = 0;
+        needsSave = true;
+      }
+
+      // 保存补全后的 session
+      if (needsSave) {
+        await fs.promises.writeFile(filePath, JSON.stringify(session, null, 2), 'utf-8');
+      }
+
+      return session;
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         return null;
