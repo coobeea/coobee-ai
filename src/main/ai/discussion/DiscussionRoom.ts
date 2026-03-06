@@ -49,6 +49,9 @@ export class DiscussionRoom {
       participants: options.participants,
       messages: [],
       status: 'active',
+      turnStrategy: options.turnStrategy,
+      consensusThreshold: options.consensusThreshold || 0.7,
+      maxRounds: options.maxRounds || 20,
       createdAt: now,
       updatedAt: now
     };

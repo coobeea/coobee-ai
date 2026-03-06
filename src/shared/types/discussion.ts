@@ -30,6 +30,9 @@ export interface DiscussionSession {
   status: 'active' | 'paused' | 'completed' | 'archived';
   currentSpeaker?: string;
   consensusLevel?: number;
+  turnStrategy?: TurnStrategy;
+  consensusThreshold?: number;
+  maxRounds?: number;
   createdAt: number;
   updatedAt: number;
   metadata?: Record<string, unknown>;

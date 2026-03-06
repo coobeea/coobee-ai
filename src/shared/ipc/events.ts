@@ -109,7 +109,9 @@ export const EventTypes = {
 
   // ==================== Discussion 事件 ====================
   /** 讨论室新消息 */
-  DISCUSSION_MESSAGE: 'discussion.message'
+  DISCUSSION_MESSAGE: 'discussion.message',
+  /** 讨论室结束 */
+  DISCUSSION_ENDED: 'discussion.ended'
 } as const;
 
 /**
@@ -314,6 +316,12 @@ export interface EventPayloads {
     participant: string;
     content: string;
     timestamp: number;
+  };
+  [EventTypes.DISCUSSION_ENDED]: {
+    roomId: string;
+    reason: string;
+    consensusLevel: number;
+    messageCount: number;
   };
 }
 

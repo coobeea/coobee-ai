@@ -75,6 +75,15 @@ export interface DiscussionSession {
   /** 共识度（0-1） */
   consensusLevel?: number;
 
+  /** 发言策略 */
+  turnStrategy?: TurnStrategy;
+
+  /** 共识阈值（0-1，默认 0.7） */
+  consensusThreshold?: number;
+
+  /** 最大轮次（默认 20） */
+  maxRounds?: number;
+
   /** 创建时间 */
   createdAt: number;
 

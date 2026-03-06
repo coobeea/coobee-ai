@@ -60,10 +60,27 @@
         <div class="border-b border-border bg-card px-6 py-4">
           <h2 class="text-base font-semibold text-foreground">{{ selectedDiscussion.topic }}</h2>
           <div class="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-            <span>共识度: {{ (selectedDiscussion.consensusLevel || 0) * 100 }}%</span>
+            <span>共识度: {{ ((selectedDiscussion.consensusLevel || 0) * 100).toFixed(1) }}%</span>
             <span>消息: {{ selectedDiscussion.messages.length }}</span>
+            <span>轮次: {{ getCurrentRound(selectedDiscussion) }}/{{ selectedDiscussion.maxRounds || 20 }}</span>
             <span>当前发言: {{ currentSpeakerName }}</span>
           </div>
+
+          <!-- 参与者会话信息（可折叠） -->
+          <details class="mt-3">
+            <summary class="cursor-pointer text-xs text-primary hover:underline"> 查看参与者会话状态 </summary>
+            <div class="mt-2 space-y-1 text-xs">
+              <div
+                v-for="participant in selectedDiscussion.participants"
+                :key="participant.agentId"
+                class="flex items-center justify-between rounded px-2 py-1 bg-muted/50">
+                <span class="font-medium">{{ participant.name }}</span>
+                <span class="text-muted-foreground">
+                  Session: discussion-{{ selectedDiscussion.id }}-{{ participant.agentId }}
+                </span>
+              </div>
+            </div>
+          </details>
         </div>
 
         <!-- 消息流 -->
@@ -88,7 +105,35 @@
                   {{ messageTypeText(message.type) }}
                 </span>
               </div>
-              <p class="text-sm text-foreground whitespace-pre-wrap">{{ message.content }}</p>
+              <div class="text-sm text-foreground">
+                <!-- 消息内容折叠展示 -->
+                <div v-if="message.content.length > 200 && isMessageCollapsed(message.id)" class="space-y-2">
+                  <p class="whitespace-pre-wrap">
+                    {{ message.content.slice(0, 100) }}
+                    <span class="text-muted-foreground mx-1">
+                      ... ({{ message.content.length - 200 }} 字已折叠) ...
+                    </span>
+                    {{ message.content.slice(-100) }}
+                  </p>
+                  <button
+                    class="text-xs text-primary hover:underline flex items-center gap-1"
+                    @click="toggleMessageCollapse(message)">
+                    <span class="i-carbon-chevron-down inline-block h-3 w-3"></span>
+                    展开全部
+                  </button>
+                </div>
+                <!-- 完整内容展示 -->
+                <div v-else class="space-y-2">
+                  <p class="whitespace-pre-wrap">{{ message.content }}</p>
+                  <button
+                    v-if="message.content.length > 200"
+                    class="text-xs text-primary hover:underline flex items-center gap-1"
+                    @click="toggleMessageCollapse(message)">
+                    <span class="i-carbon-chevron-up inline-block h-3 w-3"></span>
+                    收起
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -274,6 +319,12 @@ function formatTime(timestamp: number): string {
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
+function getCurrentRound(discussion: DiscussionSession): number {
+  const participantCount = discussion.participants.filter((p) => p.active !== false).length;
+  if (participantCount === 0) return 0;
+  return Math.ceil(discussion.messages.length / participantCount);
+}
+
 async function loadDiscussions(): Promise<void> {
   loading.value = true;
   error.value = null;
@@ -428,6 +479,25 @@ async function endDiscussion(): Promise<void> {
   }
 }
 
+// 消息折叠状态（存储已折叠的消息 ID）
+const collapsedMessages = ref<Set<string>>(new Set());
+
+// 切换消息折叠状态
+function toggleMessageCollapse(message: DiscussionMessage): void {
+  if (collapsedMessages.value.has(message.id)) {
+    collapsedMessages.value.delete(message.id);
+  } else {
+    collapsedMessages.value.add(message.id);
+  }
+  // 触发响应式更新
+  collapsedMessages.value = new Set(collapsedMessages.value);
+}
+
+// 判断消息是否折叠
+function isMessageCollapsed(messageId: string): boolean {
+  return collapsedMessages.value.has(messageId);
+}
+
 // 订阅讨论消息事件
 function handleDiscussionMessage(data: {
   roomId: string;
@@ -453,6 +523,12 @@ function handleDiscussionMessage(data: {
     type: 'statement'
   };
 
+  // 自动折叠长消息（> 200 字）
+  if (data.content.length > 200) {
+    collapsedMessages.value.add(newMessage.id);
+    collapsedMessages.value = new Set(collapsedMessages.value); // 触发响应式
+  }
+
   discussion.messages.push(newMessage);
   discussion.updatedAt = data.timestamp;
 
@@ -462,29 +538,38 @@ function handleDiscussionMessage(data: {
   }
 }
 
-// 定时刷新讨论列表（确保状态同步）
-let refreshTimer: ReturnType<typeof setInterval> | null = null;
+// 订阅讨论结束事件
+function handleDiscussionEnded(data: {
+  roomId: string;
+  reason: string;
+  consensusLevel: number;
+  messageCount: number;
+}): void {
+  console.log('[DiscussionView] Discussion ended:', data);
 
-function startAutoRefresh(): void {
-  // 每 5 秒刷新一次讨论列表
-  refreshTimer = setInterval(async () => {
-    if (selectedDiscussion.value) {
-      try {
-        const updated = await discussionApi.getDiscussion(selectedDiscussion.value.id);
-        selectedDiscussion.value = updated;
-        const index = discussions.value.findIndex((d) => d.id === updated.id);
-        if (index >= 0) discussions.value[index] = updated;
-      } catch (err) {
-        console.error('[DiscussionView] Failed to refresh discussion:', err);
-      }
-    }
-  }, 5000);
-}
+  // 查找对应的讨论
+  const discussion = discussions.value.find((d) => d.id === data.roomId);
+  if (!discussion) return;
 
-function stopAutoRefresh(): void {
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
+  // 更新状态
+  discussion.status = 'completed';
+  discussion.consensusLevel = data.consensusLevel;
+  discussion.updatedAt = Date.now();
+
+  // 添加系统消息
+  const endMessage: DiscussionMessage = {
+    id: `msg-${Date.now()}`,
+    agentId: 'system',
+    content: `讨论已结束。原因：${data.reason}\n共识度：${(data.consensusLevel * 100).toFixed(1)}%\n总消息数：${data.messageCount}`,
+    timestamp: Date.now(),
+    type: 'summary'
+  };
+
+  discussion.messages.push(endMessage);
+
+  // 如果是当前选中的讨论，更新引用以触发响应式
+  if (selectedDiscussion.value?.id === data.roomId) {
+    selectedDiscussion.value = { ...discussion };
   }
 }
 
@@ -492,19 +577,15 @@ onMounted(async () => {
   await agentsStore.fetchAgents();
   await loadDiscussions();
 
-  // 订阅讨论消息事件（通过本地 EventBus）
+  // 订阅讨论事件（通过本地 EventBus，WebSocket 推送，无需轮询）
   eventBus.on('discussion.message', handleDiscussionMessage);
-
-  // 启动自动刷新
-  startAutoRefresh();
+  eventBus.on('discussion.ended', handleDiscussionEnded);
 });
 
 onBeforeUnmount(() => {
   // 取消订阅
   eventBus.off('discussion.message', handleDiscussionMessage);
-
-  // 停止自动刷新
-  stopAutoRefresh();
+  eventBus.off('discussion.ended', handleDiscussionEnded);
 });
 </script>
 

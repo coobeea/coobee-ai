@@ -128,7 +128,53 @@ export function createDiscussionChannel(api: ExtensionApi): ChannelPlugin {
             return;
           }
 
-          // 7. 触发下一个发言者（自动轮转）
+          // 7. 检查是否应该结束讨论
+          const { ConsensusDetector } = await import('../../src/main/ai/discussion/ConsensusDetector');
+          const detector = new ConsensusDetector();
+
+          // 计算当前轮次（每个参与者发言一次算一轮）
+          const participantCount = updatedSession.participants.filter((p) => p.active !== false).length;
+          const currentRound = Math.ceil(updatedSession.messages.length / participantCount);
+          const maxRounds = updatedSession.maxRounds || 20;
+
+          // 检测共识
+          const consensus = await detector.detect(updatedSession.messages, updatedSession.consensusThreshold || 0.7);
+          updatedSession.consensusLevel = consensus.level;
+          await store.save(updatedSession);
+
+          logger.info(
+            `[DiscussionChannel] Round ${currentRound}/${maxRounds}, Consensus: ${(consensus.level * 100).toFixed(1)}%`
+          );
+
+          // 判断是否自动结束
+          let shouldEnd = false;
+          let endReason = '';
+
+          if (currentRound >= maxRounds) {
+            shouldEnd = true;
+            endReason = `达到最大轮次 ${maxRounds}`;
+          } else if (consensus.achieved) {
+            shouldEnd = true;
+            endReason = `达成共识（${(consensus.level * 100).toFixed(1)}%）`;
+          }
+
+          if (shouldEnd) {
+            logger.info(`[DiscussionChannel] Auto-ending discussion: ${endReason}`);
+            updatedSession.status = 'completed';
+            await store.save(updatedSession);
+
+            // 发送结束通知
+            extensionApi.eventBus.emit('discussion:ended', {
+              roomId: msg.peer,
+              reason: endReason,
+              consensusLevel: consensus.level,
+              messageCount: updatedSession.messages.length
+            });
+
+            return;
+          }
+
+          // 8. 触发下一个发言者（自动轮转）
           const nextSpeaker = getNextSpeaker(updatedSession, msg.from);
           if (nextSpeaker && updatedSession.status === 'active') {
             logger.info(`[DiscussionChannel] Scheduling next speaker: ${nextSpeaker.agentId}`);
