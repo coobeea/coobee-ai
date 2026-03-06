@@ -340,6 +340,14 @@ async function loadDiscussions(): Promise<void> {
 
 function selectDiscussion(discussion: DiscussionSession): void {
   selectedDiscussion.value = discussion;
+
+  // 默认折叠所有长消息
+  discussion.messages.forEach((msg) => {
+    if (msg.content.length > 200) {
+      collapsedMessages.value.add(msg.id);
+    }
+  });
+  collapsedMessages.value = new Set(collapsedMessages.value); // 触发响应式
 }
 
 function openCreateDialog(): void {
