@@ -34,13 +34,13 @@ export interface AgentDefinition {
   instructions: string;
 
   /**
-   * 启用的工具名称列表
+   * 排除的工具名称列表（黑名单）
    *
-   * 从 builtin + extension 工具中选择。
-   * 空数组 = 不使用任何工具（纯对话）。
-   * 未定义 = 使用所有可用工具（继承主 Agent 的工具集）。
+   * 默认所有工具可用。通过此字段明确排除不需要的工具。
+   * 空数组或未定义 = 使用所有可用工具。
+   * 示例：["exec", "process"] = 排除命令执行相关工具
    */
-  tools?: string[];
+  excludeTools?: string[];
 
   /**
    * 关联的 Skill 名称列表
@@ -92,8 +92,8 @@ export interface AgentIndexEntry {
   createdBy: 'user' | 'agent' | 'system';
   version: number;
   updatedAt: string;
-  /** 启用的工具名称列表（用于前端展示） */
-  tools?: string[];
+  /** 排除的工具名称列表（黑名单） */
+  excludeTools?: string[];
   /** 关联的 Skill 名称列表（用于前端展示） */
   skills?: string[];
 }
@@ -106,7 +106,7 @@ export interface CreateAgentParams {
   name: string;
   description: string;
   instructions: string;
-  tools?: string[];
+  excludeTools?: string[];
   skills?: string[];
   model?: string;
   thinkingLevel?: ThinkingLevel;
@@ -119,7 +119,7 @@ export interface UpdateAgentParams {
   name?: string;
   description?: string;
   instructions?: string;
-  tools?: string[];
+  excludeTools?: string[];
   skills?: string[];
   model?: string;
   thinkingLevel?: ThinkingLevel;

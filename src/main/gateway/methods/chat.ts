@@ -60,11 +60,10 @@ function mergeTools(): Map<string, (typeof builtinTools)[number]> {
 function filterToolsByMode(
   toolMap: Map<string, (typeof builtinTools)[number]>,
   agentMode: AgentMode,
-  allowList?: string[]
+  excludeList?: string[]
 ): (typeof builtinTools)[number][] {
-  let candidates = allowList
-    ? allowList.map((name) => toolMap.get(name)).filter((t): t is NonNullable<typeof t> => t !== undefined)
-    : Array.from(toolMap.values());
+  const excludeSet = new Set(excludeList || []);
+  let candidates = Array.from(toolMap.values()).filter((t) => !excludeSet.has(t.name));
 
   if (agentMode === 'chat') {
     candidates = candidates.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name));
@@ -108,7 +107,7 @@ function createBuilderFromDefinition(
     .sessionMode('file')
     .instructions(def.instructions);
 
-  const tools = filterToolsByMode(mergeTools(), agentMode, def.tools?.length ? def.tools : undefined);
+  const tools = filterToolsByMode(mergeTools(), agentMode, def.excludeTools);
   builder.tools(tools);
 
   if (def.skills?.length) {

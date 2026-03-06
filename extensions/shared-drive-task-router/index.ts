@@ -113,9 +113,9 @@ async function dispatchToAnalyzer(payload: EntryCreatedPayload): Promise<void> {
     const registry = ToolRegistry.getInstance();
     const extTools = registry.getAll();
     const allTools = [...builtinTools, ...extTools];
-    const candidateTools = dispatcherDef.tools?.length
-      ? allTools.filter((t) => dispatcherDef.tools!.includes(t.name))
-      : allTools;
+    // 默认全部工具，支持黑名单排除
+    const excludeSet = new Set(dispatcherDef.excludeTools || []);
+    const candidateTools = allTools.filter((t) => !excludeSet.has(t.name));
     builder.tools(candidateTools);
 
     if (dispatcherDef.skills?.length) {

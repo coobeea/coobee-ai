@@ -66,7 +66,13 @@ export const memoryTool: ToolDefinition = {
     '- search: search memory by keywords (multi-keyword, ranked results)\n\n' +
     'Scopes:\n' +
     '- "agent" (default): workspace-specific memory ({workspace}/MEMORY.md + memory/)\n' +
-    '- "user": global shared memory ({userHome}/memory/)\n\n' +
+    '- "user": global shared memory ({userHome}/memory/)\n' +
+    '- "smart": structured agent memory (LLM-classified, inverted index, ~/.coobee-ai/memory/agent/{agentId}/)\n\n' +
+    'For "smart" scope:\n' +
+    '- Two-layer structure: index/ (summaries) + entries/ (full content)\n' +
+    '- Categories: preference, decision, lesson, entity, knowledge, fact\n' +
+    '- Use list to discover index files, then get to read them\n' +
+    '- Index format: 4 lines per memory (title, id+date+keywords, description, path)\n\n' +
     'MEMORY.md is the primary memory file — use it for core knowledge, preferences, and key lessons.\n' +
     'memory/ directory holds categorized files (preferences.md, lessons.md, dates, etc.).\n' +
     'Memory persists across sessions. Write only valuable long-term knowledge.',
@@ -75,9 +81,12 @@ export const memoryTool: ToolDefinition = {
   parameters: z.object({
     action: z.enum(['list', 'get', 'write', 'search']).describe('The action to perform'),
     scope: z
-      .enum(['user', 'agent'])
+      .enum(['user', 'agent', 'smart'])
       .optional()
-      .describe('Memory scope. "agent" (default) = workspace-specific, "user" = global shared.'),
+      .describe(
+        'Memory scope. "agent" (default) = workspace-specific, "user" = global shared, ' +
+          '"smart" = structured agent memory (LLM-classified, ~/.coobee-ai/memory/agent/{agentId}/).'
+      ),
     file: z
       .string()
       .optional()
@@ -108,11 +117,16 @@ export const memoryTool: ToolDefinition = {
     const maxResults = (params.maxResults as number) || DEFAULT_MAX_RESULTS;
 
     // 解析记忆根目录
-    const roots = await resolveMemoryRoots(scope, context?.workspaceRoot);
+    const agentId = context?.agentId;
+    const roots = await resolveMemoryRoots(scope, context?.workspaceRoot, agentId);
     if (!roots) {
+      const errorMsg =
+        scope === 'smart' && !agentId
+          ? 'Error: agentId is required for smart scope'
+          : 'Error: Memory system not initialized (workspace or Env not available)';
       return {
         success: false,
-        llmContent: 'Error: Memory system not initialized (workspace or Env not available)',
+        llmContent: errorMsg,
         error: { code: 'NOT_INITIALIZED', message: 'Cannot resolve memory paths' }
       };
     }
@@ -349,8 +363,13 @@ interface MemoryRoots {
  *   - 有 workspaceRoot → workspace 根目录（MEMORY.md + memory/）
  *   - 无 workspaceRoot → fallback 到 Env.paths.agentMemoryDir
  * user scope:  {userHome}/memory/（MEMORY.md + 子文件）
+ * smart scope: {userHome}/memory/agent/{agentId}/ (index/ + entries/)
  */
-async function resolveMemoryRoots(scope: string, workspaceRoot?: string): Promise<MemoryRoots | null> {
+async function resolveMemoryRoots(
+  scope: string,
+  workspaceRoot?: string,
+  agentId?: string
+): Promise<MemoryRoots | null> {
   if (scope === 'agent') {
     if (workspaceRoot) {
       // 优先：workspace 根目录（MEMORY.md + memory/）
@@ -369,6 +388,25 @@ async function resolveMemoryRoots(scope: string, workspaceRoot?: string): Promis
       return {
         primaryDir: agentMemDir,
         memorySubDir: agentMemDir
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // smart scope (memory-smart structured memory)
+  if (scope === 'smart') {
+    if (!agentId) {
+      return null; // agentId 必需
+    }
+    try {
+      const { Env } = await import('@main/common/env');
+      const userHome = Env.paths.userHome;
+      const smartMemDir = path.join(userHome, 'memory', 'agent', agentId);
+      fs.mkdirSync(smartMemDir, { recursive: true });
+      return {
+        primaryDir: smartMemDir,
+        memorySubDir: smartMemDir
       };
     } catch {
       return null;

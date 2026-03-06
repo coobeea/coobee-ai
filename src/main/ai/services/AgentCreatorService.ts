@@ -331,7 +331,7 @@ export async function aiCreateAgent(requirement: string, onProgress?: ProgressCa
     name,
     description: description || name,
     instructions,
-    tools: validTools,
+    // tools 已移除，默认全部可用
     skills: validSkills.length > 0 ? validSkills : undefined,
     createdBy: 'user'
   };

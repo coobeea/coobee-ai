@@ -142,7 +142,7 @@ export class AgentStore {
       name: params.name,
       description: params.description,
       instructions: params.instructions,
-      tools: params.tools,
+      excludeTools: params.excludeTools,
       skills, // 使用处理后的 skills
       model: params.model,
       thinkingLevel: params.thinkingLevel,
@@ -226,7 +226,7 @@ export class AgentStore {
       ...(params.name !== undefined && { name: params.name }),
       ...(params.description !== undefined && { description: params.description }),
       ...(params.instructions !== undefined && { instructions: params.instructions }),
-      ...(params.tools !== undefined && { tools: params.tools }),
+      ...(params.excludeTools !== undefined && { excludeTools: params.excludeTools }),
       ...(updatedSkills !== undefined && { skills: updatedSkills }),
       ...(params.model !== undefined && { model: params.model }),
       ...(params.thinkingLevel !== undefined && { thinkingLevel: params.thinkingLevel }),
@@ -327,7 +327,7 @@ function toIndexEntry(def: AgentDefinition): AgentIndexEntry {
     createdBy: def.createdBy,
     version: def.version,
     updatedAt: def.updatedAt,
-    tools: def.tools,
+    excludeTools: def.excludeTools,
     skills: def.skills
   };
 }

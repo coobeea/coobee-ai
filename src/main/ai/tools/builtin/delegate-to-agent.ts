@@ -317,16 +317,12 @@ async function runSubAgent(
     toolMap.set(ext.name, ext);
   }
 
-  if (agentDef.tools && agentDef.tools.length > 0) {
-    const selectedTools = agentDef.tools
-      .filter((name) => !SUB_AGENT_BLOCKED_TOOLS.has(name))
-      .map((name) => toolMap.get(name))
-      .filter((t): t is NonNullable<typeof t> => t !== undefined);
-    builder.tools(selectedTools);
-  } else {
-    const allTools = Array.from(toolMap.values()).filter((t) => !SUB_AGENT_BLOCKED_TOOLS.has(t.name));
-    builder.tools(allTools);
-  }
+  // 默认使用所有工具，支持黑名单排除
+  const excludeSet = new Set(agentDef.excludeTools || []);
+  const allTools = Array.from(toolMap.values()).filter(
+    (t) => !SUB_AGENT_BLOCKED_TOOLS.has(t.name) && !excludeSet.has(t.name)
+  );
+  builder.tools(allTools);
 
   // piMono() 已自动注入 Provider 配置 + thinkingLevel
   // Agent 定义中的显式配置优先覆盖
