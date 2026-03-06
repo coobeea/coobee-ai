@@ -36,6 +36,14 @@ export interface ExtensionManifest {
    * @example ["memory-smart", "logger"]
    */
   autoInjectSkills?: string[];
+  /**
+   * 运行时自动注入的指令（追加到 Agent appendInstructions）
+   *
+   * 每次 Agent 运行时自动追加此指令，适用于需要动态注入能力的场景。
+   * 相比 autoInjectSkills（仅对新 Agent 有效），指令注入对所有 Agent（包括已有）立即生效。
+   * @example "You have access to memory-smart: use Read tool to query ~/.coobee-ai/memory/agent/{agentId}/"
+   */
+  injectInstructions?: string;
 }
 
 /** Extension 来源 */

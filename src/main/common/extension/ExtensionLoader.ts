@@ -175,6 +175,12 @@ export class ExtensionLoader {
       );
     }
 
+    // 注册运行时指令注入（每次 Agent 运行时追加）
+    if (manifest.injectInstructions) {
+      this.registry.registerInjectInstructions(manifest.id, manifest.injectInstructions);
+      log.info(`[ExtensionLoader] Registered inject instructions for "${manifest.id}"`);
+    }
+
     // 查找入口文件（纯 Skill 扩展可以没有代码入口）
     const entryPath = resolveEntryPath(dir);
     if (entryPath) {
@@ -350,6 +356,7 @@ export class ExtensionLoader {
     this.registry.unregisterGatewayMethodsByExtension(extensionId);
     this.registry.unregisterSkillDirsByExtension(extensionId);
     this.registry.unregisterAutoInjectSkillsByExtension(extensionId);
+    this.registry.unregisterInjectInstructionsByExtension(extensionId);
     this.registry.unregisterChannelsByExtension(extensionId);
     this.registry.unregisterHttpRoutesByExtension(extensionId);
     this.registry.unregisterServicesByExtension(extensionId);

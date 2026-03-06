@@ -108,6 +108,10 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
       const goalBlock = readGoalFile(workspace);
       const agentsMdBlock = await readAgentsMdFiles(Env.paths.agentsMdPath, agentHome, workspace);
       const agentHomeBlock = homeManager && agentId ? homeManager.readInjectableFiles(agentId) : undefined;
+
+      // 收集 Extension 注入的指令（运行时注入，对所有 Agent 生效）
+      const extensionInstructions = collectExtensionInstructions();
+
       builder.appendInstructions(
         executionProtocol,
         runtimePathsBlock,
@@ -115,7 +119,8 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
         ...(agentHomeBlock ? [agentHomeBlock] : []),
         ...(goalBlock ? [goalBlock] : []),
         ...(skillDiscoveryHint ? [skillDiscoveryHint] : []),
-        ...(agentDiscoveryHint ? [agentDiscoveryHint] : [])
+        ...(agentDiscoveryHint ? [agentDiscoveryHint] : []),
+        ...extensionInstructions
       );
 
       // 4b. 注入核心技能到 builder（确保子 Agent 也拥有核心技能）
@@ -572,4 +577,28 @@ async function buildToolExecutionContext(
   };
 
   return toolCtx;
+}
+
+// ==================== Extension 指令注入 ====================
+
+/**
+ * 收集所有 Extension 注入的指令
+ *
+ * Extension 可通过 extension.json 的 injectInstructions 字段声明运行时指令，
+ * 这些指令会在每次 Agent 运行时自动追加到 appendInstructions 中。
+ *
+ * 适用场景：核心功能的使用指导（如 memory-smart 召回）对所有 Agent 生效，无需修改 Agent 定义。
+ */
+function collectExtensionInstructions(): string[] {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ExtensionManager } = require('@main/common/extension');
+    const registry = ExtensionManager.getRegistry();
+    if (registry) {
+      return registry.getInjectInstructions();
+    }
+  } catch {
+    // Extension 系统未初始化时忽略
+  }
+  return [];
 }
