@@ -913,7 +913,9 @@ class AgentExecutor {
       const duration = Date.now() - startTime;
 
       // === Extension Hooks: agent_end + session_end ===
-      await this.runExtensionEndHooks(sessionId, runtime.id, result, duration);
+      // 使用稳定的 Agent ID（如果 builder 提供）而非临时 runtime.id
+      const stableAgentId = builderAgentId2 || runtime.id;
+      await this.runExtensionEndHooks(sessionId, stableAgentId, result, duration);
 
       // agent:done 事件
       await this.emitAgentLifecycleEvent('agent:done', {
