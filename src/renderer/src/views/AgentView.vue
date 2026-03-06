@@ -1682,7 +1682,7 @@ function formatTime(iso: string): string {
 
 /* 运行任务弹窗样式 */
 .run-dialog {
-  width: 460px;
+  width: 640px;
   max-height: 600px;
 }
 
