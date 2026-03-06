@@ -1,0 +1,8 @@
+{
+  "id": "memory-smart",
+  "name": "Memory Smart",
+  "version": "1.0.0",
+  "description": "LLM-powered memory classification with inverted index for fast recall",
+  "enabled": true,
+  "skills": "skills"
+}

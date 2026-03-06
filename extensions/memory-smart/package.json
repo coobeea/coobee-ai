@@ -1,0 +1,8 @@
+{
+  "name": "memory-smart",
+  "version": "1.0.0",
+  "description": "LLM-powered smart memory with inverted index and file-based storage",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {}
+}
