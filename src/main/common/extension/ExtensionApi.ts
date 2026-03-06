@@ -205,6 +205,93 @@ function createExtensionServices(): ExtensionServices {
             // 分发失败不阻断
           });
       }
+    },
+    paths: {
+      async getWorkspace(sessionId) {
+        const { Env } = await import('../../common/env');
+        return Env.getAgentWorkspaceDir(sessionId);
+      },
+      async getAgentHome(agentId) {
+        const { Env } = await import('../../common/env');
+        return Env.getAgentHomeDir(agentId);
+      },
+      async getUserHome() {
+        const { Env } = await import('../../common/env');
+        return Env.paths.userHome;
+      },
+      async getDataDir(extensionId) {
+        const { Env } = await import('../../common/env');
+        const path = await import('node:path');
+        // 扩展数据目录：~/.coobee-ai/extensions/{extensionId}/data/
+        const dataDir = path.default.join(Env.paths.userHome, 'extensions', extensionId, 'data');
+        const fs = await import('node:fs');
+        if (!fs.default.existsSync(dataDir)) {
+          fs.default.mkdirSync(dataDir, { recursive: true });
+        }
+        return dataDir;
+      }
+    },
+    llm: {
+      async chat(_messages) {
+        // TODO: 实现通过 Runtime 的简单 LLM 调用
+        // 当前 memory-global 扩展不需要此功能，仅需 embed
+        throw new Error('ExtensionApi.services.llm.chat() not implemented yet');
+      },
+      async embed(texts, options) {
+        const { configStoreInstance } = await import('../config/ConfigStore');
+
+        // 从配置中获取 embedding 配置
+        const config = configStoreInstance?.getAll?.() || {};
+        const embeddingConfig = resolveEmbeddingConfigForApi(config);
+
+        if (!embeddingConfig) {
+          throw new Error('No embedding provider configured. Please set up an OpenAI-compatible provider API key.');
+        }
+
+        const OpenAI = (await import('openai')).default;
+        const client = new OpenAI({
+          apiKey: embeddingConfig.apiKey,
+          baseURL: embeddingConfig.baseURL
+        });
+
+        const model = options?.model || embeddingConfig.model || 'text-embedding-3-small';
+        const response = await client.embeddings.create({
+          model,
+          input: texts
+        });
+
+        return response.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+      }
     }
   };
+}
+
+/**
+ * 从配置中解析可用于 embedding 的 provider（供 ExtensionApi 使用）
+ */
+function resolveEmbeddingConfigForApi(
+  config: Record<string, unknown>
+): { apiKey: string; baseURL?: string; model?: string } | undefined {
+  const models = config.models as Record<string, unknown> | undefined;
+  const providers = models?.providers as Record<string, Record<string, unknown>> | undefined;
+  if (!providers) return undefined;
+
+  // 优先查找支持 OpenAI 兼容 embedding API 的 provider
+  const embeddingCandidates = ['dashscope', 'dashscope-subscription', 'silicon', 'openai', 'deepseek'];
+  for (const id of embeddingCandidates) {
+    const provider = providers[id];
+    if (
+      provider?.enabled !== false &&
+      provider?.apiKey &&
+      typeof provider.apiKey === 'string' &&
+      provider.apiKey.length > 0
+    ) {
+      return {
+        apiKey: provider.apiKey,
+        baseURL: typeof provider.baseUrl === 'string' ? provider.baseUrl : undefined
+      };
+    }
+  }
+
+  return undefined;
 }

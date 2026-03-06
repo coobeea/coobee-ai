@@ -75,31 +75,24 @@ export default {
 
           const blocks: string[] = [];
 
-          // 尝试从结构化记忆系统检索
-          const structuredContext = await tryStructuredRetrieve(event.prompt);
-          if (structuredContext) {
-            blocks.push(`<memory_context>\n${structuredContext}\n</memory_context>`);
+          // 读取 MEMORY.md 摘要
+          const coreMemory = readMemoryMdHead(workspace, MAX_CORE_MEMORY_CHARS);
+          if (coreMemory) {
+            blocks.push(`<core_memory>\n${coreMemory}\n</core_memory>`);
           }
 
-          // 降级：读取 MEMORY.md 摘要（结构化系统可能不含所有旧数据）
-          if (!structuredContext) {
-            const coreMemory = readMemoryMdHead(workspace, MAX_CORE_MEMORY_CHARS);
-            if (coreMemory) {
-              blocks.push(`<core_memory>\n${coreMemory}\n</core_memory>`);
-            }
-
-            const keywords = extractKeywords(event.prompt);
-            if (keywords.length > 0) {
-              const recalled = searchMemoryDir(
-                path.join(workspace, 'memory'),
-                keywords,
-                MAX_RECALL_RESULTS,
-                MIN_RECALL_SCORE
-              );
-              if (recalled.length > 0) {
-                const items = recalled.map((r) => `- [${r.file}] ${r.snippet}`).join('\n');
-                blocks.push(`<recalled_memories>\n${items}\n</recalled_memories>`);
-              }
+          // 关键词检索 memory/ 目录
+          const keywords = extractKeywords(event.prompt);
+          if (keywords.length > 0) {
+            const recalled = searchMemoryDir(
+              path.join(workspace, 'memory'),
+              keywords,
+              MAX_RECALL_RESULTS,
+              MIN_RECALL_SCORE
+            );
+            if (recalled.length > 0) {
+              const items = recalled.map((r) => `- [${r.file}] ${r.snippet}`).join('\n');
+              blocks.push(`<recalled_memories>\n${items}\n</recalled_memories>`);
             }
           }
 
@@ -127,14 +120,7 @@ export default {
           const output = (event.output || '').trim();
           if (!output || output.length < MIN_OUTPUT_FOR_MEMORY) return;
 
-          // 尝试通过结构化记忆管线提取
-          const structuredResult = await tryStructuredMemorize(output, event.sessionId);
-          if (structuredResult) {
-            api.logger.info(`[memory-auto] Structured memorize: ${structuredResult.itemCount} items extracted`);
-            // 仍然写入 Markdown 作为可读备份
-          }
-
-          // 同时继续 Markdown 记录（保持向后兼容）
+          // Markdown 记录
           const entries: string[] = [];
           const timestamp = new Date().toISOString().slice(11, 19);
 
@@ -567,56 +553,7 @@ function extractSummary(output: string): string | null {
   return text.length > 200 ? text.slice(0, 200) + '...' : text;
 }
 
-// ==================== 结构化记忆集成 ====================
-
-/**
- * 尝试使用结构化记忆系统进行语义检索。
- * 返回格式化的上下文字符串，或 null（系统未初始化时降级）。
- */
-async function tryStructuredRetrieve(query: string): Promise<string | null> {
-  try {
-    const { StructuredMemoryService } = await import('../../src/main/ai/memory/structured/service');
-    const svc = StructuredMemoryService.getInstance();
-    if (!svc.initialized) return null;
-
-    const result = await svc.retrieve({
-      query,
-      topK: MAX_RECALL_RESULTS,
-      mode: 'salience'
-    });
-
-    if (!result.context || result.items.length === 0) return null;
-    return result.context;
-  } catch {
-    return null;
-  }
-}
-
-interface StructuredMemorizeResult {
-  itemCount: number;
-}
-
-/**
- * 尝试通过结构化记忆管线提取并存储记忆。
- * 返回提取结果，或 null（系统未初始化或 LLM 不可用时降级）。
- */
-async function tryStructuredMemorize(output: string, _sessionId: string): Promise<StructuredMemorizeResult | null> {
-  try {
-    const { StructuredMemoryService } = await import('../../src/main/ai/memory/structured/service');
-    const svc = StructuredMemoryService.getInstance();
-    if (!svc.initialized) return null;
-
-    const result = await svc.memorizeContent({
-      content: output,
-      source: 'agent_end_auto'
-    });
-
-    if (!result) return null;
-    return { itemCount: result.items.length };
-  } catch {
-    return null;
-  }
-}
+// ==================== 记忆信号检测 ====================
 
 /** 检测 Agent 输出中的记忆信号词 */
 function detectMemorySignals(output: string): Array<{ text: string; category: string }> {

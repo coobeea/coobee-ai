@@ -122,6 +122,24 @@ export interface ExtensionServices {
     /** 向指定 session 广播流式事件（前端 + EventBus） */
     emit(sessionId: string, chunk: { type: string; content: string; data?: Record<string, unknown> }): void;
   };
+  /** 路径解析服务 */
+  paths: {
+    /** 获取 Agent 工作空间目录 */
+    getWorkspace(sessionId: string): Promise<string>;
+    /** 获取 Agent Home 目录 */
+    getAgentHome(agentId: string): Promise<string>;
+    /** 获取用户主目录 */
+    getUserHome(): Promise<string>;
+    /** 获取全局数据目录（用于扩展存储） */
+    getDataDir(extensionId: string): Promise<string>;
+  };
+  /** LLM 调用服务 */
+  llm: {
+    /** 调用 LLM 进行对话（使用默认模型） */
+    chat(messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>): Promise<string>;
+    /** 生成文本的 embedding 向量 */
+    embed(texts: string[], options?: { model?: string }): Promise<number[][]>;
+  };
 }
 
 /** Extension 与系统交互的唯一接口 */
