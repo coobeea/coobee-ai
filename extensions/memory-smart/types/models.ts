@@ -3,18 +3,10 @@
  */
 
 /** 记忆分类（维度） */
-export type MemoryCategory = 'preference' | 'decision' | 'entity' | 'fact' | 'lesson' | 'knowledge' | 'other';
+export type MemoryCategory = 'preference' | 'decision' | 'entity' | 'fact' | 'lesson' | 'knowledge';
 
 /** 所有分类列表 */
-export const ALL_CATEGORIES: MemoryCategory[] = [
-  'preference',
-  'decision',
-  'lesson',
-  'entity',
-  'knowledge',
-  'fact',
-  'other'
-];
+export const ALL_CATEGORIES: MemoryCategory[] = ['preference', 'decision', 'lesson', 'entity', 'knowledge', 'fact'];
 
 /** LLM 分类结果 */
 export interface ClassificationResult {

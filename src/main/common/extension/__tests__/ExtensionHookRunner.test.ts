@@ -59,6 +59,7 @@ describe('ExtensionHookRunner', () => {
     // 不应抛错
     await runner.runVoidHook('agent_end', {
       sessionId: 's1',
+      agentId: 'test-agent',
       success: true,
       output: '',
       durationMs: 100

@@ -913,7 +913,7 @@ class AgentExecutor {
       const duration = Date.now() - startTime;
 
       // === Extension Hooks: agent_end + session_end ===
-      await this.runExtensionEndHooks(sessionId, result, duration);
+      await this.runExtensionEndHooks(sessionId, runtime.id, result, duration);
 
       // agent:done 事件
       await this.emitAgentLifecycleEvent('agent:done', {
@@ -1039,7 +1039,12 @@ class AgentExecutor {
    * 执行 Extension 后置 Hook
    * agent_end → session_end
    */
-  private async runExtensionEndHooks(sessionId: string, result: ExecutionResult, durationMs: number): Promise<void> {
+  private async runExtensionEndHooks(
+    sessionId: string,
+    agentId: string,
+    result: ExecutionResult,
+    durationMs: number
+  ): Promise<void> {
     try {
       const { ExtensionManager } = await import('../common/extension');
       const runner = ExtensionManager.getHookRunner();
@@ -1047,6 +1052,7 @@ class AgentExecutor {
 
       await runner.runVoidHook('agent_end', {
         sessionId,
+        agentId,
         success: !result.error,
         output: result.output,
         durationMs

@@ -148,6 +148,7 @@ describe('ExtensionIntegration', () => {
     const runner = ExtensionManager.getHookRunner()!;
     await runner.runVoidHook('agent_end', {
       sessionId: 's1',
+      agentId: 'test-agent',
       success: true,
       output: 'done',
       durationMs: 1234
@@ -315,6 +316,7 @@ describe('ExtensionIntegration', () => {
     const runner = ExtensionManager.getHookRunner()!;
     await runner.runVoidHook('agent_end', {
       sessionId: 's1',
+      agentId: 'test-agent',
       success: false,
       output: 'error occurred',
       durationMs: 500

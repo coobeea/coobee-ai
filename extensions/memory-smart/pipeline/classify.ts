@@ -15,11 +15,11 @@ const CLASSIFICATION_PROMPT = `你是一个记忆分类专家。请分析 Agent 
 - **entity**：人物、项目、工具、概念
 - **knowledge**：知识点、原理、方法论
 - **fact**：事实、数据、状态
-- **other**：其他值得记住的信息
 
 **判断标准**：
 - 值得记住：包含关键决策、重要偏好、知识点、实体信息、经验教训等
 - 不值得记住：纯问候、简单确认、无信息量的对话
+- 注意：必须归类到以上 6 个明确维度之一，不接受模糊分类
 
 请以 JSON 格式输出（严格 JSON，不要 markdown 代码块）：
 
@@ -70,7 +70,7 @@ ${agentOutput}`;
     // 分类失败时返回默认值（不记忆）
     return {
       shouldRemember: false,
-      category: 'other',
+      category: 'fact',
       importance: 0,
       summary: '',
       keywords: [],
@@ -84,5 +84,5 @@ ${agentOutput}`;
  * 验证分类是否有效
  */
 export function isValidCategory(category: string): category is MemoryCategory {
-  return ['preference', 'decision', 'lesson', 'entity', 'knowledge', 'fact', 'other'].includes(category);
+  return ['preference', 'decision', 'lesson', 'entity', 'knowledge', 'fact'].includes(category);
 }

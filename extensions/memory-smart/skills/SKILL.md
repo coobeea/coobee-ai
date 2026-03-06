@@ -13,13 +13,17 @@
 
 ## 记忆存储结构
 
-记忆系统使用两层文件结构：
+记忆系统使用两层文件结构，**按 Agent 隔离**存储。
+
+**基础路径**：`~/.coobee-ai/memory/agent/{currentAgentId}/memory-smart/`
+
+> 注意：`{currentAgentId}` 是占位符，在实际使用时会自动解析为当前 Agent 的 ID（如 `default-agent`）
 
 ### 第 1 层：索引（Index Layer）
 
-位置：`~/.coobee-ai/memory/index/{category}.md`
+位置：`~/.coobee-ai/memory/agent/{currentAgentId}/memory-smart/index/{category}.md`
 
-分类文件：
+分类文件（6 个明确维度）：
 
 - `preference.md` - 用户偏好
 - `decision.md` - 决策记录
@@ -27,7 +31,6 @@
 - `entity.md` - 实体信息
 - `knowledge.md` - 知识点
 - `fact.md` - 事实数据
-- `other.md` - 其他
 
 **索引格式**（每 4 行一条记忆，空行分隔）：
 
@@ -55,7 +58,7 @@ entries/preference/2026-03.md
 
 ### 第 2 层：详细内容（Content Layer）
 
-位置：`~/.coobee-ai/memory/entries/{category}/{YYYY-MM}.md`
+位置：`~/.coobee-ai/memory/agent/{currentAgentId}/memory-smart/entries/{category}/{YYYY-MM}.md`
 
 **内容格式**（纯文本，无多余符号）：
 
@@ -67,11 +70,8 @@ entries/preference/2026-03.md
 分类: {category}
 关键词: {keywords}
 
-用户消息:
-{userMessage}
-
-Agent 回复:
-{agentResponse}
+Agent 输出:
+{content}
 
 记忆提取:
 {memory}
@@ -97,11 +97,13 @@ Agent 回复:
 
 ### 步骤 2：读取索引文件
 
-使用 `Read` 工具读取对应分类的索引文件：
+使用 `Read` 工具读取对应分类的索引文件。
+
+**重要**：路径中的 `{currentAgentId}` 会自动解析为当前 Agent 的 ID。
 
 ```typescript
 // 示例：用户问"我之前说过喜欢什么样的代码风格？"
-Read ~/.coobee-ai/memory/index/preference.md
+Read ~/.coobee-ai/memory/agent/{currentAgentId}/memory-smart/index/preference.md
 ```
 
 ### 步骤 3：扫描索引找到相关记忆
@@ -115,14 +117,14 @@ Read ~/.coobee-ai/memory/index/preference.md
 **方法 B：使用 Grep**（索引文件较大时）
 
 - 使用 `Grep` 工具搜索关键词
-- 示例：`Grep pattern="文件系统" path="~/.coobee-ai/memory/index/preference.md"`
+- 示例：`Grep pattern="文件系统" path="~/.coobee-ai/memory/agent/{currentAgentId}/memory-smart/index/preference.md"`
 
 ### 步骤 4：读取详细内容
 
 从索引中提取的路径（如 `entries/preference/2026-03.md`），使用 `Read` 工具读取：
 
 ```typescript
-Read ~/.coobee-ai/memory/entries/preference/2026-03.md
+Read ~/.coobee-ai/memory/agent/{currentAgentId}/memory-smart/entries/preference/2026-03.md
 ```
 
 在内容中找到对应的 `=== mem-{id} ===` 区块。
@@ -141,6 +143,7 @@ Read ~/.coobee-ai/memory/entries/preference/2026-03.md
 2. **LLM 自主**：你拥有完全的文件系统访问权限，无需应用层介入
 3. **多分类检索**：一个查询可能涉及多个分类，按需读取多个索引文件
 4. **性能优先**：索引文件应保持较小（每个分类独立），确保快速读取
+5. **Agent 隔离**：记忆仅限当前 Agent，不会看到其他 Agent 的记忆
 
 ## 使用示例
 
@@ -149,7 +152,7 @@ Read ~/.coobee-ai/memory/entries/preference/2026-03.md
 **你的操作**：
 
 1. 判断分类：`preference`（偏好）
-2. 读取 `~/.coobee-ai/memory/index/preference.md`
+2. 读取 `~/.coobee-ai/memory/agent/{currentAgentId}/memory-smart/index/preference.md`
 3. 扫描找到匹配关键词"数据库"的记忆
 4. 读取对应的内容文件
 5. 回答："根据之前的记忆（2026-03-05），你明确表示倾向使用文件系统而非数据库存储..."

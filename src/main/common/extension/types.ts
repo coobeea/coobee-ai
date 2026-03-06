@@ -300,6 +300,7 @@ export interface ToolResultPersistResult {
 
 export interface AgentEndEvent {
   sessionId: string;
+  agentId: string;
   success: boolean;
   output: string;
   durationMs: number;

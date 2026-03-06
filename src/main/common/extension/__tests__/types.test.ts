@@ -229,6 +229,7 @@ describe('类型导出验证', () => {
   it('AgentEndEvent 结构', () => {
     const event: AgentEndEvent = {
       sessionId: 's1',
+      agentId: 'test-agent',
       success: true,
       output: 'done',
       durationMs: 1000

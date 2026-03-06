@@ -6,6 +6,7 @@
  * - 倒排索引（快速召回）
  * - 文件存储（按月归档）
  * - LLM 自主检索（通过 Skill 引导）
+ * - Agent 级隔离（每个 Agent 独立记忆）
  */
 
 import type { ExtensionApi } from '../../src/main/common/extension';
@@ -15,9 +16,6 @@ import { classifyMemory } from './pipeline/classify';
 import { DEFAULT_CONFIG } from './types/config';
 import type { MemoryEntry } from './types/models';
 
-let indexManager: IndexManager;
-let entryStore: EntryStore;
-
 export default {
   id: 'memory-smart',
   name: 'Memory Smart',
@@ -25,21 +23,10 @@ export default {
   async register(api: ExtensionApi) {
     const config = { ...DEFAULT_CONFIG };
 
-    // 获取记忆存储根目录
-    const userHome = await api.services.paths.getUserHome();
-    const memoryRoot = `${userHome}/memory`;
-
-    // 初始化存储组件
-    indexManager = new IndexManager(memoryRoot);
-    entryStore = new EntryStore(memoryRoot);
-
-    await indexManager.initialize();
-    await entryStore.initialize();
-
-    api.logger.info('[memory-smart] 记忆系统初始化成功', { memoryRoot, config });
+    api.logger.info('[memory-smart] 记忆系统已注册（按 Agent 隔离）', { config });
 
     /**
-     * agent_end 钩子：捕获并分类记忆
+     * agent_end 钩子：捕获并分类记忆（按 Agent 隔离）
      */
     api.on('agent_end', async (event) => {
       if (!config.autoCapture) return;
@@ -52,11 +39,23 @@ export default {
       }
 
       try {
+        // 获取当前 Agent 的记忆存储目录
+        const userHome = await api.services.paths.getUserHome();
+        const memoryRoot = `${userHome}/memory/agent/${event.agentId}/memory-smart`;
+
+        // 初始化存储组件（每次动态创建）
+        const agentIndexManager = new IndexManager(memoryRoot);
+        const agentEntryStore = new EntryStore(memoryRoot);
+
+        await agentIndexManager.initialize();
+        await agentEntryStore.initialize();
+
         // LLM 分类
         const classification = await classifyMemory(api, agentOutput);
 
         if (!classification.shouldRemember) {
           api.logger.debug('[memory-smart] 内容不值得记忆，跳过', {
+            agentId: event.agentId,
             reason: classification.reason
           });
           return;
@@ -75,10 +74,10 @@ export default {
         };
 
         // 存储到内容文件
-        const contentPath = await entryStore.appendEntry(entry);
+        const contentPath = await agentEntryStore.appendEntry(entry);
 
         // 追加索引
-        await indexManager.appendIndex(classification.category, {
+        await agentIndexManager.appendIndex(classification.category, {
           id: entry.id,
           date: entry.timestamp.substring(0, 10), // YYYY-MM-DD
           summary: entry.summary,
@@ -89,12 +88,14 @@ export default {
         });
 
         api.logger.info('[memory-smart] 记忆已保存', {
+          agentId: event.agentId,
           id: entry.id,
           category: entry.category,
           importance: entry.importance
         });
       } catch (err) {
         api.logger.error('[memory-smart] 记忆捕获失败', {
+          agentId: event.agentId,
           error: err instanceof Error ? err.message : String(err)
         });
       }
