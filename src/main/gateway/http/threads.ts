@@ -75,7 +75,7 @@ export function registerThreadRoutes(router: Router): void {
     const { title, agentId, agentType } = (body ?? {}) as {
       title?: string;
       agentId?: string;
-      agentType?: 'agent' | 'orchestrator' | 'swarm' | 'discussion';
+      agentType?: 'agent' | 'orchestrator' | 'swarm' | 'quality-loop';
     };
 
     if (!title || !agentId) {

@@ -134,12 +134,6 @@ const modeOptions: { value: AgentType; label: string; description: string; icon:
     icon: 'i-carbon-network-3'
   },
   {
-    value: 'discussion',
-    label: '讨论模式',
-    description: '多智能体围绕话题讨论，最终达成共识结论',
-    icon: 'i-carbon-chat-launch'
-  },
-  {
     value: 'quality-loop',
     label: '质量循环',
     description: '执行→验证→修复闭环，确保输出质量达标',

@@ -160,7 +160,7 @@ function loadSkillDefinitions(skillNames: string[]): SkillDefinition[] {
 // ==================== 多智能体运行时工厂 ====================
 
 async function createMultiAgentRuntime(
-  mode: 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop',
+  mode: 'orchestrator' | 'swarm' | 'quality-loop',
   sid: string
 ): Promise<OrchestratorRuntime | SwarmRuntime | QualityLoopRuntime> {
   if (mode === 'quality-loop') {
@@ -184,7 +184,7 @@ async function createMultiAgentRuntime(
     return rt;
   }
 
-  const name = mode === 'discussion' ? 'Discussion' : 'User Swarm';
+  const name = 'User Swarm';
   const rt = new SwarmRuntime(sid, sid, {
     config: { parentSessionId: sid, name },
     agentExecutor
@@ -219,7 +219,7 @@ export const chatMethods: MethodGroup = {
       }
 
       // 校验 mode 参数
-      const validModes = ['chat', 'agent', 'orchestrator', 'swarm', 'discussion', 'quality-loop'];
+      const validModes = ['chat', 'agent', 'orchestrator', 'swarm', 'quality-loop'];
       if (!validModes.includes(mode)) {
         throw new GatewayMethodError(
           GatewayErrorCode.INVALID_PARAMS,
@@ -231,9 +231,9 @@ export const chatMethods: MethodGroup = {
       let sid = sessionId;
       if (!sid) {
         const threadStore = await ThreadStore.getInstance();
-        const multiAgentModes: AgentMode[] = ['orchestrator', 'swarm', 'discussion', 'quality-loop'];
+        const multiAgentModes: AgentMode[] = ['orchestrator', 'swarm', 'quality-loop'];
         const isMultiAgent = multiAgentModes.includes(mode);
-        const agentType = isMultiAgent ? (mode as 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop') : 'agent';
+        const agentType = isMultiAgent ? (mode as 'orchestrator' | 'swarm' | 'quality-loop') : 'agent';
         const agentMode = isMultiAgent ? ('agent' as AgentMode) : mode;
         const thread = await threadStore.create({
           title: message.slice(0, 50),
@@ -248,11 +248,10 @@ export const chatMethods: MethodGroup = {
       log.info(`[chat.send] sessionId=${sid}, mode=${mode}${agentId ? `, agentId=${agentId}` : ''}`);
 
       try {
-        // ========== 多智能体模式（Orchestrator / Swarm / Discussion / Quality-Loop） ==========
-        if (mode === 'orchestrator' || mode === 'swarm' || mode === 'discussion' || mode === 'quality-loop') {
+        // ========== 多智能体模式（Orchestrator / Swarm / Quality-Loop） ==========
+        if (mode === 'orchestrator' || mode === 'swarm' || mode === 'quality-loop') {
           const runtime = await createMultiAgentRuntime(mode, sid);
-          const execConfig = mode === 'discussion' ? { executionMode: 'discussion' as const } : undefined;
-          const result = agentExecutor.submit({ sessionId: sid, message, runtime, executionConfig: execConfig });
+          const result = agentExecutor.submit({ sessionId: sid, message, runtime });
 
           if (result.status === 'busy') {
             throw new GatewayMethodError(GatewayErrorCode.SESSION_BUSY, '当前会话正在处理中');
