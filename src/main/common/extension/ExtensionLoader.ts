@@ -167,6 +167,14 @@ export class ExtensionLoader {
       }
     }
 
+    // 注册自动注入的 Skill（这些 Skill 会自动加入所有 Agent）
+    if (manifest.autoInjectSkills && manifest.autoInjectSkills.length > 0) {
+      this.registry.registerAutoInjectSkills(manifest.id, manifest.autoInjectSkills);
+      log.info(
+        `[ExtensionLoader] Registered auto-inject skills for "${manifest.id}": ${manifest.autoInjectSkills.join(', ')}`
+      );
+    }
+
     // 查找入口文件（纯 Skill 扩展可以没有代码入口）
     const entryPath = resolveEntryPath(dir);
     if (entryPath) {
@@ -341,6 +349,7 @@ export class ExtensionLoader {
     this.registry.unregisterHooksByExtension(extensionId);
     this.registry.unregisterGatewayMethodsByExtension(extensionId);
     this.registry.unregisterSkillDirsByExtension(extensionId);
+    this.registry.unregisterAutoInjectSkillsByExtension(extensionId);
     this.registry.unregisterChannelsByExtension(extensionId);
     this.registry.unregisterHttpRoutesByExtension(extensionId);
     this.registry.unregisterServicesByExtension(extensionId);

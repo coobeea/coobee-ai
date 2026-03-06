@@ -28,6 +28,14 @@ export interface ExtensionManifest {
    * @example "skills" → <extensionDir>/skills/
    */
   skills?: string;
+  /**
+   * 自动注入的 Skill 名称列表
+   *
+   * 列表中的 Skill 会自动注入到所有 Agent，无需手动激活。
+   * 适用于核心功能型 Skill（如记忆系统、日志等）。
+   * @example ["memory-smart", "logger"]
+   */
+  autoInjectSkills?: string[];
 }
 
 /** Extension 来源 */

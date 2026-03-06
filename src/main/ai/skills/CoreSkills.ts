@@ -34,15 +34,37 @@ export const CORE_SKILLS = [
 /**
  * 确保 skills 数组包含所有核心技能（用于 AgentStore create/update）
  *
- * 核心技能排在最前面，用户自定义技能追加在后。
+ * 核心技能排在最前面，Extension 自动注入 Skill 次之，用户自定义技能追加在后。
  */
 export function ensureCoreSkills(skills: string[]): string[] {
   const result = [...skills];
+
+  // 1. 核心 Skill（最高优先级）
   for (const s of [...CORE_SKILLS].reverse()) {
     if (!result.includes(s)) {
       result.unshift(s);
     }
   }
+
+  // 2. Extension 自动注入 Skill（次优先级）
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ExtensionManager } = require('@main/common/extension');
+    const registry = ExtensionManager.getRegistry();
+    if (registry) {
+      const autoInjectSkills = registry.getAutoInjectSkills();
+      // 插入到核心 Skill 之后
+      const insertIdx = CORE_SKILLS.length;
+      for (const skill of autoInjectSkills.reverse()) {
+        if (!result.includes(skill)) {
+          result.splice(insertIdx, 0, skill);
+        }
+      }
+    }
+  } catch {
+    // Extension 系统未初始化时忽略
+  }
+
   return result;
 }
 

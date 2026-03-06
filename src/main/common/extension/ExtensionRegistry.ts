@@ -37,6 +37,8 @@ export class ExtensionRegistry {
   private failedExtensions = new Map<string, string>();
   /** 注册的 ChannelPlugin（pluginId → { extensionId, plugin }） */
   private channelPlugins = new Map<string, { extensionId: string; plugin: ChannelPlugin }>();
+  /** 自动注入的 Skill 名称（extensionId → skillName[]） */
+  private autoInjectSkills = new Map<string, string[]>();
 
   // --- 工具 ---
 
@@ -131,6 +133,28 @@ export class ExtensionRegistry {
 
   getSkillDirs(): RegisteredExtensionSkillDir[] {
     return [...this.skillDirs];
+  }
+
+  // --- 自动注入 Skill ---
+
+  registerAutoInjectSkills(extensionId: string, skillNames: string[]): void {
+    if (skillNames.length === 0) return;
+    this.autoInjectSkills.set(extensionId, skillNames);
+  }
+
+  unregisterAutoInjectSkillsByExtension(extensionId: string): string[] {
+    const skills = this.autoInjectSkills.get(extensionId) || [];
+    this.autoInjectSkills.delete(extensionId);
+    return skills;
+  }
+
+  getAutoInjectSkills(): string[] {
+    const allSkills: string[] = [];
+    for (const skills of this.autoInjectSkills.values()) {
+      allSkills.push(...skills);
+    }
+    // 去重
+    return Array.from(new Set(allSkills));
   }
 
   // --- Channel ---
@@ -271,6 +295,7 @@ export class ExtensionRegistry {
     this.unregisterHooksByExtension(extensionId);
     this.unregisterGatewayMethodsByExtension(extensionId);
     this.unregisterSkillDirsByExtension(extensionId);
+    this.unregisterAutoInjectSkillsByExtension(extensionId);
     this.unregisterChannelsByExtension(extensionId);
     this.unregisterChannelPluginsByExtension(extensionId);
     this.unregisterHttpRoutesByExtension(extensionId);
@@ -297,6 +322,7 @@ export class ExtensionRegistry {
     this.tools = [];
     this.gatewayMethods = [];
     this.skillDirs = [];
+    this.autoInjectSkills.clear();
     this.channels = [];
     this.channelPlugins.clear();
     this.httpRoutes = [];

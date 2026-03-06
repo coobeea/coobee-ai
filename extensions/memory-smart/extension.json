@@ -4,5 +4,6 @@
   "version": "1.0.0",
   "description": "LLM-powered memory classification with inverted index for fast recall",
   "enabled": true,
-  "skills": "skills"
+  "skills": "skills",
+  "autoInjectSkills": ["memory-smart"]
 }
