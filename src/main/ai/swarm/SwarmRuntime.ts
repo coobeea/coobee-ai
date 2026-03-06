@@ -150,8 +150,17 @@ export class SwarmRuntime extends AbstractAgentRuntime {
         result = await this.coordinator.coordinate(task);
       }
 
+      // 🆕 如果有 artifacts，附加到输出文本中
+      let finalOutput = result.output;
+      if (result.artifacts && result.artifacts.length > 0) {
+        const artifactsSummary = result.artifacts
+          .map((a) => `- **${a.name}** (${a.type}) - 产出者: ${a.createdBy}`)
+          .join('\n');
+        finalOutput += `\n\n---\n## 📦 产出文件\n\n${artifactsSummary}\n\n所有文件已保存到工作空间的 \`user/output/\` 目录。`;
+      }
+
       return {
-        output: result.output,
+        output: finalOutput,
         toolCalls: [],
         duration: Date.now() - startTime,
         metadata: {
@@ -161,7 +170,8 @@ export class SwarmRuntime extends AbstractAgentRuntime {
           executionMode,
           handoffCount: result.handoffCount,
           rolesUsed: result.rolesUsed,
-          swarmState: result.state.status
+          swarmState: result.state.status,
+          artifacts: result.artifacts || []
         }
       };
     } catch (error: unknown) {
@@ -324,6 +334,16 @@ export class SwarmRuntime extends AbstractAgentRuntime {
         yield { type: 'text:delta', content: metaInfo, data: { delta: metaInfo } };
       }
 
+      // 🆕 如果有 artifacts，附加到输出中
+      if (result.artifacts && result.artifacts.length > 0) {
+        const artifactsSummary = result.artifacts
+          .map((a) => `- **${a.name}** (${a.type}) - 产出者: ${a.createdBy}`)
+          .join('\n');
+        const artifactsInfo = `\n\n---\n## 📦 产出文件\n\n${artifactsSummary}\n\n所有文件已保存到工作空间的 \`user/output/\` 目录。`;
+        finalOutput += artifactsInfo;
+        yield { type: 'text:delta', content: artifactsInfo, data: { delta: artifactsInfo } };
+      }
+
       yield { type: 'text:done', content: finalOutput, data: { text: finalOutput } };
       yield { type: 'llm:done', content: '' };
       yield { type: 'turn:done', content: '', data: { turnIndex: 1 } };
@@ -339,7 +359,8 @@ export class SwarmRuntime extends AbstractAgentRuntime {
           taskId,
           handoffCount: result.handoffCount,
           rolesUsed: result.rolesUsed,
-          swarmState: result.state.status
+          swarmState: result.state.status,
+          artifacts: result.artifacts || []
         }
       };
     } catch (error: unknown) {

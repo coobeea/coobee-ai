@@ -65,6 +65,8 @@ export interface CoordinationResult {
   duration: number;
   /** 每个角色的独立输出 */
   roleOutputs?: RoleOutput[];
+  /** 协作产生的中间产物（文件、文档等） */
+  artifacts?: Array<{ name: string; path: string; type: string; createdBy: string }>;
 }
 
 // ========== Triage 指令 ==========
@@ -287,6 +289,9 @@ export class SwarmCoordinator {
       const routerStats = this.router.getStats();
       const rolesUsed = this.router.getCurrentChain();
 
+      // 🆕 收集并导出所有 artifacts 到主 workspace
+      const artifacts = await this.exportArtifacts();
+
       this.emit({
         type: 'complete',
         data: { output: finalOutput, handoffCount: routerStats.totalHandoffs, rolesUsed }
@@ -298,6 +303,7 @@ export class SwarmCoordinator {
         rolesUsed,
         handoffCount: routerStats.totalHandoffs,
         roleOutputs,
+        artifacts,
         duration: Date.now() - startTime
       };
     } catch (error) {
@@ -353,6 +359,9 @@ export class SwarmCoordinator {
           this.pool.releaseAgent(poolId, true);
         }
 
+        // 🆕 收集并导出所有 artifacts
+        const artifacts = await this.exportArtifacts();
+
         this.updateState({
           status: 'completed',
           completedAt: Date.now(),
@@ -365,6 +374,7 @@ export class SwarmCoordinator {
           state: { ...this.state },
           rolesUsed: [...new Set(parallelResult.results.map((r) => r.roleId))],
           handoffCount: 0,
+          artifacts,
           duration: Date.now() - startTime
         };
       } catch (error) {
@@ -500,6 +510,9 @@ export class SwarmCoordinator {
 
       const result = await coordinator.discuss(task);
 
+      // 🆕 收集并导出所有 artifacts
+      const artifacts = await this.exportArtifacts();
+
       await this.updateState({
         status: 'completed',
         completedAt: Date.now(),
@@ -514,6 +527,7 @@ export class SwarmCoordinator {
         state: { ...this.state },
         rolesUsed: result.participantRoles,
         handoffCount: 0,
+        artifacts,
         duration: Date.now() - startTime
       };
     } catch (error) {
@@ -895,6 +909,40 @@ ${roles.map((r) => `- **${r.id}** (${r.name}): ${r.description}`).join('\n')}
   }
 
   // ========== 监控桥接 ==========
+
+  /**
+   * 🆕 导出 artifacts 到主 workspace 的 user/output 目录
+   */
+  private async exportArtifacts(): Promise<Array<{ name: string; path: string; type: string; createdBy: string }>> {
+    const artifacts = this.context.getArtifacts();
+    if (artifacts.length === 0) return [];
+
+    const fs = await import('fs-extra');
+    const { Env } = await import('@main/common/env');
+    const mainThreadId = this.config.parentSessionId;
+    if (!mainThreadId) return [];
+
+    const mainWorkspace = await Env.getAgentWorkspaceDir(mainThreadId);
+    const outputDir = path.join(mainWorkspace, 'user', 'output');
+    await fs.ensureDir(outputDir);
+
+    const result: Array<{ name: string; path: string; type: string; createdBy: string }> = [];
+
+    for (const artifact of artifacts) {
+      const outputPath = path.join(outputDir, artifact.name);
+      await fs.writeFile(outputPath, artifact.content, 'utf-8');
+      log.info(`[SwarmCoordinator] Exported artifact: ${artifact.name} (${artifact.content.length} chars)`);
+
+      result.push({
+        name: artifact.name,
+        path: outputPath,
+        type: artifact.type || 'unknown',
+        createdBy: artifact.createdBy
+      });
+    }
+
+    return result;
+  }
 
   private setupMonitoringBridge(): void {
     this.pool.addEventListener((event) => {
