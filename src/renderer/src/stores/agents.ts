@@ -18,8 +18,6 @@ export interface AgentEntry {
   createdBy: 'user' | 'agent' | 'system';
   version: number;
   updatedAt: string;
-  /** Agent 完整定义中的 tools 字段 */
-  tools?: string[];
   /** Agent 完整定义中的 skills 字段 */
   skills?: string[];
   /** 使用的模型 ID 或模型组引用（@group:xxx） */
@@ -111,7 +109,6 @@ export const useAgentsStore = defineStore('agents', () => {
     description: string;
     instructions: string;
     model?: string;
-    tools?: string[];
   }): Promise<boolean> {
     try {
       await apiRequest<{ agent: AgentEntry }>('', {
@@ -235,10 +232,7 @@ export const useAgentsStore = defineStore('agents', () => {
   }
 
   /** 更新 Agent（部分更新） */
-  async function updateAgent(
-    agentId: string,
-    params: { skills?: string[]; tools?: string[]; model?: string }
-  ): Promise<boolean> {
+  async function updateAgent(agentId: string, params: { skills?: string[]; model?: string }): Promise<boolean> {
     try {
       await apiRequest<{ agent: AgentEntry }>(`/${agentId}`, {
         method: 'PATCH',

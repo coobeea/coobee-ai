@@ -47,16 +47,6 @@
         </div>
 
         <div class="form-section">
-          <label>工具权限</label>
-          <div class="tool-checkboxes">
-            <label v-for="tool in availableTools" :key="tool.id" class="checkbox-label">
-              <input v-model="agentConfig.tools" type="checkbox" :value="tool.id" />
-              <span>{{ tool.name }}</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="form-section">
           <label>技能包</label>
           <div class="skill-selector">
             <select v-model="selectedSkill" class="input-field mb-2">
@@ -116,13 +106,7 @@ interface AgentConfig {
   description: string;
   model: string;
   systemPrompt: string;
-  tools: string[];
   skills: string[];
-}
-
-interface Tool {
-  id: string;
-  name: string;
 }
 
 interface Skill {
@@ -141,17 +125,8 @@ const agentConfig = ref<AgentConfig>({
   description: '',
   model: 'gpt-4',
   systemPrompt: '',
-  tools: [],
   skills: []
 });
-
-const availableTools = ref<Tool[]>([
-  { id: 'file-read', name: '文件读取' },
-  { id: 'file-write', name: '文件写入' },
-  { id: 'shell-exec', name: '命令执行' },
-  { id: 'web-search', name: '网络搜索' },
-  { id: 'code-analysis', name: '代码分析' }
-]);
 
 const availableSkills = ref<Skill[]>([
   { id: 'gitea', name: 'Gitea 集成' },
@@ -228,7 +203,6 @@ function resetDesigner(): void {
       description: '',
       model: 'gpt-4',
       systemPrompt: '',
-      tools: [],
       skills: []
     };
     testMessages.value = [];
@@ -314,25 +288,6 @@ function resetDesigner(): void {
   outline: none;
   border-color: hsl(var(--primary));
   box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
-}
-
-.tool-checkboxes {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.checkbox-label input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
 }
 
 .skill-selector {

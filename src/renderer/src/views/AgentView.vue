@@ -30,9 +30,8 @@ const showCreateArea = ref(false);
 /** 编辑弹窗：当前编辑的 Agent ID */
 const editAgentId = ref<string | null>(null);
 const editSkillsList = ref<string[]>([]);
-const editToolsList = ref<string[]>([]);
 const editModel = ref('');
-const editActiveTab = ref<'skills' | 'tools' | 'model'>('skills');
+const editActiveTab = ref<'skills' | 'model'>('skills');
 
 /** 可用技能列表（从后端获取） */
 interface SkillInfo {
@@ -41,14 +40,6 @@ interface SkillInfo {
 }
 const availableSkills = ref<SkillInfo[]>([]);
 const skillsLoading = ref(false);
-
-/** 可用工具列表 */
-interface ToolInfo {
-  name: string;
-  description: string;
-  category: string;
-}
-const availableTools = ref<ToolInfo[]>([]);
 
 /** 运行弹窗的临时模型覆盖 */
 // const runModelOverride = ref('');
@@ -121,7 +112,6 @@ const showAdvancedOptions = ref(false);
 const taskDescription = ref('');
 const taskAttachments = ref<AttachmentRef[]>([]);
 const taskSkills = ref<string[]>([]);
-const taskTools = ref<string[]>([]); // Added for run dialog tool selection
 
 /** 运行模式选项 */
 const modeOptions: { value: AgentType; label: string; description: string; icon: string }[] = [
@@ -167,22 +157,9 @@ async function openRunDialog(agentId: string): Promise<void> {
   const agent = agentsStore.agents.find((a) => a.id === agentId);
   taskSkills.value = agent?.skills ? [...agent.skills] : [];
 
-  // 运行弹窗：默认使用该 Agent 配置的工具；如果 Agent 未配置，则使用全部可用工具
-  if (agent?.tools && agent.tools.length > 0) {
-    taskTools.value = [...agent.tools];
-  } else {
-    taskTools.value = []; // 等待 availableTools 加载
-  }
-
   showRunDialog.value = true;
 
-  // 并行加载，提高速度
-  await Promise.all([loadAvailableSkills(), loadAvailableTools()]);
-
-  // 如果此时 taskTools 仍为空（说明 Agent 没配置特定工具），则全选
-  if (taskTools.value.length === 0 && availableTools.value.length > 0) {
-    taskTools.value = availableTools.value.map((t) => t.name);
-  }
+  await loadAvailableSkills();
 }
 
 function closeRunDialog(): void {
@@ -204,20 +181,6 @@ async function loadAvailableSkills(): Promise<void> {
     console.warn('[AgentView] Failed to fetch skills:', err);
   } finally {
     skillsLoading.value = false;
-  }
-}
-
-async function loadAvailableTools(): Promise<void> {
-  if (availableTools.value.length > 0) return;
-  try {
-    const url = `${configManager.getBaseUrl()}/gateway/agents/tools`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = (await res.json()) as { tools: ToolInfo[] };
-      availableTools.value = data.tools;
-    }
-  } catch (err) {
-    console.warn('[AgentView] Failed to fetch tools:', err);
   }
 }
 
@@ -284,15 +247,6 @@ function toggleRunSkill(skillName: string): void {
     taskSkills.value.splice(idx, 1);
   } else {
     taskSkills.value.push(skillName);
-  }
-}
-
-function toggleRunTool(toolName: string): void {
-  const idx = taskTools.value.indexOf(toolName);
-  if (idx >= 0) {
-    taskTools.value.splice(idx, 1);
-  } else {
-    taskTools.value.push(toolName);
   }
 }
 
@@ -393,25 +347,11 @@ async function openAgentEditor(agentId: string): Promise<void> {
   if (!agent) return;
   editAgentId.value = agentId;
   editSkillsList.value = [...(agent.skills ?? [])];
-
-  // 默认全选工具：如果 agent.tools 为空或 undefined，则视为使用全部工具
-  if (agent.tools && agent.tools.length > 0) {
-    editToolsList.value = [...agent.tools];
-  } else {
-    // 等待工具列表加载完成后全选
-    editToolsList.value = [];
-  }
-
   editModel.value = agent.model ?? '';
   editActiveTab.value = 'skills';
 
   modelSearchQuery.value = '';
-  await Promise.all([loadAvailableSkills(), loadAvailableTools(), loadModelList()]);
-
-  // 如果是空（即默认状态），加载完工具后自动全选
-  if (editToolsList.value.length === 0 && availableTools.value.length > 0) {
-    editToolsList.value = availableTools.value.map((t) => t.name);
-  }
+  await Promise.all([loadAvailableSkills(), loadModelList()]);
 }
 
 function toggleSkill(skillName: string): void {
@@ -423,20 +363,10 @@ function toggleSkill(skillName: string): void {
   }
 }
 
-function toggleEditTool(toolName: string): void {
-  const idx = editToolsList.value.indexOf(toolName);
-  if (idx >= 0) {
-    editToolsList.value.splice(idx, 1);
-  } else {
-    editToolsList.value.push(toolName);
-  }
-}
-
 async function saveAgentConfig(): Promise<void> {
   if (!editAgentId.value) return;
   await agentsStore.updateAgent(editAgentId.value, {
     skills: editSkillsList.value,
-    tools: editToolsList.value.length > 0 ? editToolsList.value : undefined,
     model: editModel.value || undefined
   });
   editAgentId.value = null;
@@ -636,15 +566,11 @@ function formatTime(iso: string): string {
               <span v-if="agent.skills.length > 3" class="skill-more"> +{{ agent.skills.length - 3 }} </span>
             </div>
 
-            <!-- 模型 & 工具标签 -->
+            <!-- 模型标签 -->
             <div class="card-meta">
               <span v-if="agent.model" class="meta-tag model" :title="agent.model">
                 <span class="i-carbon-machine-learning-model inline-block h-3 w-3" />
                 {{ agent.model.startsWith('@group:') ? agent.model.slice(7) : agent.model.split('/').pop() }}
-              </span>
-              <span v-if="agent.tools && agent.tools.length > 0" class="meta-tag tools">
-                <span class="i-carbon-tool-box inline-block h-3 w-3" />
-                {{ agent.tools.length }} 个工具
               </span>
             </div>
 
@@ -692,11 +618,6 @@ function formatTime(iso: string): string {
               <button :class="['edit-tab', { active: editActiveTab === 'model' }]" @click="editActiveTab = 'model'">
                 <span class="i-carbon-machine-learning-model inline-block h-3 w-3" />
                 模型
-              </button>
-              <button :class="['edit-tab', { active: editActiveTab === 'tools' }]" @click="editActiveTab = 'tools'">
-                <span class="i-carbon-tool-box inline-block h-3 w-3" />
-                工具
-                <span v-if="editToolsList.length > 0" class="edit-tab-count">{{ editToolsList.length }}</span>
               </button>
               <button :class="['edit-tab', { active: editActiveTab === 'skills' }]" @click="editActiveTab = 'skills'">
                 <span class="i-carbon-skill-level-advanced inline-block h-3 w-3" />
@@ -789,25 +710,6 @@ function formatTime(iso: string): string {
                 <p v-if="filteredModelList.length === 0 && modelSearchQuery" class="skills-empty"> 未找到匹配的模型 </p>
               </template>
 
-              <!-- 工具 Tab -->
-              <template v-if="editActiveTab === 'tools'">
-                <div class="edit-section-hint">选择此智能体可使用的工具，不选则使用全部工具</div>
-                <label
-                  v-for="tool in availableTools"
-                  :key="tool.name"
-                  class="skill-checkbox"
-                  :class="{ checked: editToolsList.includes(tool.name) }">
-                  <input
-                    type="checkbox"
-                    :checked="editToolsList.includes(tool.name)"
-                    @change="toggleEditTool(tool.name)" />
-                  <div class="skill-label">
-                    <span class="skill-label-name">{{ tool.name }}</span>
-                    <span v-if="tool.description" class="skill-label-desc">{{ tool.description }}</span>
-                  </div>
-                </label>
-              </template>
-
               <!-- 技能 Tab -->
               <template v-if="editActiveTab === 'skills'">
                 <div v-if="skillsLoading" class="skills-loading">
@@ -884,7 +786,7 @@ function formatTime(iso: string): string {
                   :class="{ 'rotate-90': showAdvancedOptions }" />
                 <span>高级选项</span>
                 <span
-                  v-if="taskDescription || taskAttachments.length > 0 || taskSkills.length > 0 || taskTools.length > 0"
+                  v-if="taskDescription || taskAttachments.length > 0 || taskSkills.length > 0"
                   class="advanced-dot">
                 </span>
               </button>
@@ -924,30 +826,6 @@ function formatTime(iso: string): string {
                       添加文件或目录
                     </button>
                     <p class="run-field-hint">选择的路径将作为上下文信息传递给智能体</p>
-                  </div>
-
-                  <!-- 技能选择 -->
-                  <div class="run-field">
-                    <label class="run-field-label">
-                      <span class="i-carbon-tool-box inline-block h-3 w-3" />
-                      工具
-                      <span v-if="taskTools.length > 0" class="skill-count">{{ taskTools.length }}</span>
-                    </label>
-                    <div class="skill-chips">
-                      <label
-                        v-for="tool in availableTools"
-                        :key="tool.name"
-                        class="skill-chip"
-                        :class="{ active: taskTools.includes(tool.name) }"
-                        :title="tool.description">
-                        <input
-                          type="checkbox"
-                          :checked="taskTools.includes(tool.name)"
-                          class="sr-only"
-                          @change="toggleRunTool(tool.name)" />
-                        {{ tool.name }}
-                      </label>
-                    </div>
                   </div>
 
                   <!-- 技能选择 -->
@@ -2118,11 +1996,6 @@ function formatTime(iso: string): string {
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.meta-tag.tools {
-  background: hsl(var(--foreground) / 0.05);
-  color: hsl(var(--muted-foreground) / 0.55);
 }
 
 /* 编辑弹窗增强 */
