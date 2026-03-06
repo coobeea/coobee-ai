@@ -209,8 +209,8 @@ export class SwarmCoordinator {
           );
         }
 
-        this.emit({ type: 'agent:done', data: { roleId: currentRoleId, output: output.substring(0, 200) } });
-        log.info(`[SwarmCoordinator] Emitted agent:done for ${currentRoleId}`);
+        this.emit({ type: 'agent:done', data: { roleId: currentRoleId, output } });
+        log.info(`[SwarmCoordinator] Emitted agent:done for ${currentRoleId}, output length: ${output.length}`);
 
         roleOutputs.push({ roleId: currentRoleId, output });
 
