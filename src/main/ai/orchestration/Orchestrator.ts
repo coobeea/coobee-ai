@@ -168,6 +168,9 @@ export class Orchestrator implements IOrchestrator {
       const finalOutput = this.aggregateResults(plan, subTaskResults);
       this.emit({ type: 'aggregate:done', data: { resultCount: subTaskResults.length } });
 
+      // 🆕 导出所有 Worker 产出文件
+      const artifacts = await this.exportWorkerArtifacts(plan.subTasks);
+
       // 完成
       this.runningTasks.delete(task.id);
 
@@ -189,6 +192,7 @@ export class Orchestrator implements IOrchestrator {
         status: failedCount === 0 ? 'success' : failedCount < plan.subTasks.length ? 'partial' : 'failed',
         finalOutput,
         subTaskResults,
+        artifacts,
         stats: {
           startTime,
           endTime,
@@ -496,6 +500,51 @@ export class Orchestrator implements IOrchestrator {
     if (entry?.aborted) return true;
     if (this.resolvedConfig.signal?.aborted) return true;
     return false;
+  }
+
+  /**
+   * 🆕 导出所有 Worker 产出的文件到主 workspace 的 user/output
+   */
+  private async exportWorkerArtifacts(
+    subTasks: SubTask[]
+  ): Promise<Array<{ name: string; path: string; workerId: string }>> {
+    if (!this.resolvedConfig.parentSessionId) return [];
+
+    const fs = await import('fs-extra');
+    const path = await import('node:path');
+    const { Env } = await import('@main/common/env');
+
+    const mainWorkspace = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId);
+    const mainOutputDir = path.join(mainWorkspace, 'user', 'output');
+    await fs.ensureDir(mainOutputDir);
+
+    const artifacts: Array<{ name: string; path: string; workerId: string }> = [];
+
+    // 遍历所有 Worker 的 output 目录
+    for (const subTask of subTasks) {
+      const workerWorkspace = path.join(mainWorkspace, 'agents', `worker-${subTask.id}`);
+      const workerOutputDir = path.join(workerWorkspace, 'user', 'output');
+
+      if (await fs.pathExists(workerOutputDir)) {
+        const files = await fs.readdir(workerOutputDir);
+        for (const file of files) {
+          const sourcePath = path.join(workerOutputDir, file);
+          const destPath = path.join(mainOutputDir, `${subTask.id}-${file}`);
+
+          // 复制文件到主 workspace
+          await fs.copy(sourcePath, destPath, { overwrite: true });
+          log.info(`[Orchestrator] Exported artifact: ${subTask.id}-${file}`);
+
+          artifacts.push({
+            name: `${subTask.id}-${file}`,
+            path: destPath,
+            workerId: `worker-${subTask.id}`
+          });
+        }
+      }
+    }
+
+    return artifacts;
   }
 
   private delay(ms: number): Promise<void> {

@@ -147,22 +147,46 @@ Consider:
    */
   private async callPlannerAgent(prompt: string): Promise<PlanOutput | null> {
     const { agentExecutor } = await import('../AgentExecutor');
+    const { WorkspaceManager } = await import('../storage/WorkspaceManager');
+    const path = await import('node:path');
 
     const prefix = this.options?.parentSessionId || `planner-${Date.now()}`;
     const sessionId = this.options?.parentSessionId ? `${prefix}:planner` : prefix;
+
+    // 🆕 创建嵌套 workspace
+    let subAgentWorkspace: string | undefined;
+    if (this.options?.parentSessionId) {
+      const { Env } = await import('@main/common/env');
+      const mainWorkspace = await Env.getAgentWorkspaceDir(this.options.parentSessionId);
+      subAgentWorkspace = WorkspaceManager.getOrCreateSubAgentWorkspace({
+        agentName: 'planner',
+        sessionId,
+        type: 'planner',
+        threadWorkspace: mainWorkspace,
+        enableSkills: true,
+        enableExtensions: true
+      });
+    }
 
     const builder = agentExecutor
       .piMono()
       .name('Orchestration Planner')
       .mode('chat')
       .sessionMode('file')
-      .instructions(PLANNER_INSTRUCTIONS);
+      .instructions(PLANNER_INSTRUCTIONS)
+      .sessionId(sessionId);
 
     if (this.options?.model) {
       builder.model(this.options.model);
     }
 
-    builder.sessionId(sessionId);
+    // 🆕 如果有嵌套 workspace，手动设置
+    if (subAgentWorkspace) {
+      builder
+        .sessionDir(path.join(subAgentWorkspace, '.runtime', 'sessions'))
+        .workspaceRoot(subAgentWorkspace)
+        .contextDir(path.join(subAgentWorkspace, '.runtime', 'contexts'));
+    }
 
     let runtime: import('../runtime/AgentRuntime').AgentRuntime | null = null;
 

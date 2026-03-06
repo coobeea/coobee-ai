@@ -43,6 +43,9 @@ const mockBuilder = {
   sessionId: vi.fn().mockReturnThis(),
   model: vi.fn().mockReturnThis(),
   tools: vi.fn().mockReturnThis(),
+  sessionDir: vi.fn().mockReturnThis(),
+  workspaceRoot: vi.fn().mockReturnThis(),
+  contextDir: vi.fn().mockReturnThis(),
   build: mockBuild,
   getMode: vi.fn().mockReturnValue('agent')
 };

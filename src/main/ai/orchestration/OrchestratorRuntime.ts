@@ -255,13 +255,28 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
     const duration = Date.now() - startTime;
 
     // 构建 ExecutionResult — 优先使用质量闭环优化后的输出
-    const finalOutput =
+    const result = taskResult as TaskExecutionResult | null;
+    let finalOutput =
       qualityLoopOutput ??
-      (taskResult
-        ? typeof (taskResult as TaskExecutionResult).finalOutput === 'string'
-          ? String((taskResult as TaskExecutionResult).finalOutput)
-          : JSON.stringify((taskResult as TaskExecutionResult).finalOutput || '', null, 2)
+      (result
+        ? typeof result.finalOutput === 'string'
+          ? String(result.finalOutput)
+          : JSON.stringify(result.finalOutput || '', null, 2)
         : '');
+
+    // 🆕 如果有产出文件，附加到输出末尾
+    if (result?.artifacts && result.artifacts.length > 0) {
+      const artifactsSummary = [
+        '',
+        '---',
+        '## 📦 产出文件',
+        '',
+        ...result.artifacts.map((a) => `- **${a.name}** - Worker: ${a.workerId}`),
+        '',
+        '所有文件已保存到工作空间的 `user/output/` 目录。'
+      ].join('\n');
+      finalOutput += artifactsSummary;
+    }
 
     return {
       output: finalOutput,
@@ -269,8 +284,9 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
       metadata: {
         orchestratorId: this.id,
         taskId: task.id,
-        status: (taskResult as TaskExecutionResult | null)?.status || 'failed',
-        stats: (taskResult as TaskExecutionResult | null)?.stats
+        status: result?.status || 'failed',
+        stats: result?.stats,
+        artifacts: result?.artifacts || []
       }
     };
   }

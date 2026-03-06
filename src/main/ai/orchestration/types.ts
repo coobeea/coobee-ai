@@ -96,6 +96,8 @@ export interface TaskExecutionResult {
     completedSubTasks: number;
     failedSubTasks: number;
   };
+  /** Worker 产出的文件列表 */
+  artifacts?: Array<{ name: string; path: string; workerId: string }>;
 }
 
 /**
