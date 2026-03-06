@@ -5,6 +5,7 @@
  *   - 创建 homes/{agentId}/ 及其子目录
  *   - 生成默认引导文件（BOOTSTRAP.md / SOUL.md / IDENTITY.md 等）
  *   - 读取 Agent Home 中的文件供注入系统提示词
+ *   - 管理 sessions.jsonl 索引（Agent 的所有会话 ID 列表）
  *
  * Agent Home 结构：
  *   homes/{agentId}/
@@ -16,6 +17,7 @@
  *   ├── HEARTBEAT.md     心跳任务清单
  *   ├── MEMORY.md        长期记忆精华
  *   ├── BOOTSTRAP.md     首次引导脚本（完成后自删除）
+ *   ├── sessions.jsonl   会话索引（追加式，每行一个 session）
  *   └── memory/          每日对话日志
  */
 
@@ -263,6 +265,42 @@ ${merged}
       // 文件不存在
     }
     return undefined;
+  }
+
+  /**
+   * 读取 Agent 的 sessions.jsonl 索引
+   *
+   * @param agentId Agent ID
+   * @returns Session 索引列表（id + createdAt），按创建时间顺序
+   */
+  readSessionIndex(agentId: string): Array<{ id: string; createdAt: string }> {
+    const indexPath = path.join(this.homesDir, agentId, 'sessions.jsonl');
+
+    if (!fs.existsSync(indexPath)) {
+      return [];
+    }
+
+    try {
+      const content = fs.readFileSync(indexPath, 'utf-8');
+      const lines = content
+        .trim()
+        .split('\n')
+        .filter((line) => line.trim());
+
+      return lines
+        .map((line) => {
+          try {
+            return JSON.parse(line) as { id: string; createdAt: string };
+          } catch {
+            log.warn(`[AgentHomeManager] Invalid JSON line in ${agentId}/sessions.jsonl: ${line}`);
+            return null;
+          }
+        })
+        .filter((entry): entry is { id: string; createdAt: string } => entry !== null);
+    } catch (err) {
+      log.warn(`[AgentHomeManager] Failed to read session index for ${agentId}:`, err);
+      return [];
+    }
   }
 }
 

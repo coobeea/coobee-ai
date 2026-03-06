@@ -270,5 +270,32 @@ export function registerAgentHomeRoutes(router: Router): void {
     }
   });
 
+  // ==================== GET SESSIONS INDEX ====================
+
+  router.get('/agents/:id/home/sessions', async (ctx) => {
+    const agentId = ctx.params.id;
+    if (!agentId) {
+      ctx.status = 400;
+      ctx.body = { error: 'agentId is required' };
+      return;
+    }
+
+    try {
+      const { AgentHomeManager } = await import('@main/ai/agents/AgentHomeManager');
+      const homeManager = new AgentHomeManager(Env.paths.homesDir);
+      const sessions = homeManager.readSessionIndex(agentId);
+
+      ctx.body = {
+        agentId,
+        sessions,
+        count: sessions.length
+      };
+    } catch (err) {
+      log.error(`[agent-home.getSessions] Error (${agentId}):`, err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   log.info('[agent-home] HTTP routes registered');
 }

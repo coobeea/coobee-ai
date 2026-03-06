@@ -10,6 +10,7 @@
  *   - 内存索引（id → ThreadIndexEntry）加速 list 操作
  *   - list 默认按 ID 降序（= 最新在前）
  *   - 单例模式（通过 getInstance）
+ *   - 创建 thread 时自动追加到 homes/{agentId}/sessions.jsonl
  */
 
 import fs from 'node:fs';
@@ -128,6 +129,12 @@ export class ThreadStore {
 
     // 立即创建工作空间目录结构（sessions、contexts、events 等）
     await this.createWorkspaceDirectories(id);
+
+    // 追加到 agent home 的 sessions.jsonl 索引
+    await this.appendToAgentSessionIndex(definition.agentId, {
+      id: definition.id,
+      createdAt: definition.createdAt
+    });
 
     log.info(`[ThreadStore] Created thread: ${definition.id} (agent: ${definition.agentId})`);
     eventBus.emit(ThreadEventType.CREATED, { thread: entry });
@@ -300,6 +307,35 @@ export class ThreadStore {
       if (release) {
         await release();
       }
+    }
+  }
+
+  /**
+   * 追加到 agent home 的 sessions.jsonl 索引
+   *
+   * @param agentId Agent ID
+   * @param entry Session 索引条目（id + createdAt）
+   */
+  private async appendToAgentSessionIndex(agentId: string, entry: { id: string; createdAt: string }): Promise<void> {
+    try {
+      const { Env } = await import('@main/common/env');
+      const homeDir = path.join(Env.paths.homesDir, agentId);
+
+      // 确保 agent home 目录存在
+      if (!fs.existsSync(homeDir)) {
+        fs.mkdirSync(homeDir, { recursive: true });
+      }
+
+      const indexPath = path.join(homeDir, 'sessions.jsonl');
+      const line = JSON.stringify(entry) + '\n';
+
+      // 追加模式，线程安全
+      fs.appendFileSync(indexPath, line, 'utf-8');
+
+      log.debug(`[ThreadStore] Appended session ${entry.id} to ${agentId}/sessions.jsonl`);
+    } catch (err) {
+      // 不阻塞主流程，只记录警告
+      log.warn(`[ThreadStore] Failed to append to agent session index (${agentId}):`, err);
     }
   }
 }
