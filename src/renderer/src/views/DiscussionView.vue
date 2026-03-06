@@ -201,12 +201,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import type { DiscussionSession, DiscussionParticipant } from '@shared/types/discussion';
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
+import type { DiscussionSession, DiscussionParticipant, DiscussionMessage } from '@shared/types/discussion';
 import * as discussionApi from '@/api/discussion';
 import { useAgentsStore } from '@/stores/agents';
+import { useEventBus } from '@/composables/useEventBus';
 
 const agentsStore = useAgentsStore();
+const eventBus = useEventBus();
 
 const discussions = ref<DiscussionSession[]>([]);
 const selectedDiscussion = ref<DiscussionSession | null>(null);
@@ -426,9 +428,83 @@ async function endDiscussion(): Promise<void> {
   }
 }
 
+// 订阅讨论消息事件
+function handleDiscussionMessage(data: {
+  roomId: string;
+  participant: string;
+  content: string;
+  timestamp: number;
+}): void {
+  console.log('[DiscussionView] Received message:', data);
+
+  // 查找对应的讨论
+  const discussion = discussions.value.find((d) => d.id === data.roomId);
+  if (!discussion) {
+    console.warn('[DiscussionView] Discussion not found:', data.roomId);
+    return;
+  }
+
+  // 添加消息到讨论
+  const newMessage: DiscussionMessage = {
+    id: `msg-${Date.now()}`,
+    agentId: data.participant,
+    content: data.content,
+    timestamp: data.timestamp,
+    type: 'statement'
+  };
+
+  discussion.messages.push(newMessage);
+  discussion.updatedAt = data.timestamp;
+
+  // 如果是当前选中的讨论，更新引用以触发响应式
+  if (selectedDiscussion.value?.id === data.roomId) {
+    selectedDiscussion.value = { ...discussion };
+  }
+}
+
+// 定时刷新讨论列表（确保状态同步）
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+function startAutoRefresh(): void {
+  // 每 5 秒刷新一次讨论列表
+  refreshTimer = setInterval(async () => {
+    if (selectedDiscussion.value) {
+      try {
+        const updated = await discussionApi.getDiscussion(selectedDiscussion.value.id);
+        selectedDiscussion.value = updated;
+        const index = discussions.value.findIndex((d) => d.id === updated.id);
+        if (index >= 0) discussions.value[index] = updated;
+      } catch (err) {
+        console.error('[DiscussionView] Failed to refresh discussion:', err);
+      }
+    }
+  }, 5000);
+}
+
+function stopAutoRefresh(): void {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
 onMounted(async () => {
   await agentsStore.fetchAgents();
   await loadDiscussions();
+
+  // 订阅讨论消息事件（通过本地 EventBus）
+  eventBus.on('discussion.message', handleDiscussionMessage);
+
+  // 启动自动刷新
+  startAutoRefresh();
+});
+
+onBeforeUnmount(() => {
+  // 取消订阅
+  eventBus.off('discussion.message', handleDiscussionMessage);
+
+  // 停止自动刷新
+  stopAutoRefresh();
 });
 </script>
 

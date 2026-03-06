@@ -105,7 +105,11 @@ export const EventTypes = {
   /** 日志路径配置变更 */
   CONFIG_LOG_PATH_CHANGED: 'config:logPath:changed',
   /** 快捷键配置变更 */
-  CONFIG_SHORTCUTS_CHANGED: 'config:shortcuts:changed'
+  CONFIG_SHORTCUTS_CHANGED: 'config:shortcuts:changed',
+
+  // ==================== Discussion 事件 ====================
+  /** 讨论室新消息 */
+  DISCUSSION_MESSAGE: 'discussion.message'
 } as const;
 
 /**
@@ -302,6 +306,14 @@ export interface EventPayloads {
       global: boolean;
       registered: boolean;
     }>;
+  };
+
+  // ==================== Discussion 事件 ====================
+  [EventTypes.DISCUSSION_MESSAGE]: {
+    roomId: string;
+    participant: string;
+    content: string;
+    timestamp: number;
   };
 }
 
