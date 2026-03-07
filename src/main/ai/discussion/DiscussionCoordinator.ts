@@ -598,7 +598,7 @@ export class DiscussionCoordinator {
   }
 
   /**
-   * 使用 LLM 检测共识度（替代关键词匹配）
+   * 使用协调者 Agent 检测共识度（委托给智能体）
    */
   private async detectConsensusWithLLM(participantMessages: DiscussionMessage[]): Promise<{
     achieved: boolean;
@@ -616,32 +616,38 @@ export class DiscussionCoordinator {
         })
         .join('\n\n');
 
-      // 使用 LLM 判断共识度
-      const { agentExecutor } = await import('@main/ai/AgentExecutor');
-      const consensusSessionId = `${this.threadId}-consensus-check`;
-
       const threshold = this.session.consensusThreshold || 0.7;
       const thresholdPercent = (threshold * 100).toFixed(0);
 
-      const builder = agentExecutor.piMono();
-      builder
-        .agentId('discussion-coordinator')
-        .instructions(
-          `你是讨论协调者。请分析以下讨论内容，判断参与者是否达成共识。\n\n` +
-            `**讨论主题**：${this.session.topic}\n\n` +
-            `**最近的讨论内容**：\n${discussionSummary}\n\n` +
-            `请回答：\n` +
-            `1. 参与者的观点是否趋于一致？（0-100，整数）\n` +
-            `2. 是否达成了共识？（阈值 ${thresholdPercent}%）\n` +
-            `3. 简要说明理由（50字以内）\n\n` +
-            `请严格按以下 JSON 格式回复（不要有任何额外内容）：\n` +
-            `{"level": 85, "achieved": true, "reasoning": "双方都认可方案A，分歧已解决"}`
-        );
+      // ✅ 委托给协调者 Agent（而不是直接调用 LLM）
+      const runtime = ChannelRuntime.getInstance();
+      const coordinatorSessionId = `${this.threadId}-coordinator`;
 
-      const result = await agentExecutor.submitAndWait({
-        sessionId: consensusSessionId,
-        message: '请判断当前的共识度',
-        builder
+      const result = await runtime.executeAgent({
+        agentId: 'discussion-coordinator',
+        sessionId: coordinatorSessionId,
+        message:
+          `你是讨论协调者。请分析以下讨论内容，判断参与者是否达成共识。\n\n` +
+          `**讨论主题**：${this.session.topic}\n\n` +
+          `**最近的讨论内容**：\n${discussionSummary}\n\n` +
+          `请回答：\n` +
+          `1. 参与者的观点是否趋于一致？（0-100，整数）\n` +
+          `2. 是否达成了共识？（阈值 ${thresholdPercent}%）\n` +
+          `3. 简要说明理由（50字以内）\n\n` +
+          `请严格按以下 JSON 格式回复（不要有任何额外内容）：\n` +
+          `{"level": 85, "achieved": true, "reasoning": "双方都认可方案A，分歧已解决"}`,
+        context: {
+          channel: 'discussion',
+          roomId: this.threadId,
+          role: 'Coordinator',
+          topic: this.session.topic,
+          consensusThreshold: threshold,
+          discussionHistory: this.session.messages.map((m) => ({
+            sender: m.agentId,
+            content: m.content,
+            timestamp: m.timestamp
+          }))
+        }
       });
 
       if (result.error) {
@@ -650,7 +656,7 @@ export class DiscussionCoordinator {
         return await this.consensusDetector.detect(participantMessages, threshold);
       }
 
-      // 解析 LLM 返回的 JSON
+      // 解析 Agent 返回的 JSON
       try {
         const parsed = JSON.parse(result.output.trim());
         return {
@@ -664,14 +670,14 @@ export class DiscussionCoordinator {
         return await this.consensusDetector.detect(participantMessages, threshold);
       }
     } catch (error) {
-      log.error('[DiscussionCoordinator] Error in LLM consensus detection:', error);
+      log.error('[DiscussionCoordinator] Error in Agent-based consensus detection:', error);
       // 降级到关键词匹配
       return await this.consensusDetector.detect(participantMessages, this.session.consensusThreshold || 0.7);
     }
   }
 
   /**
-   * 生成最终结论（协调者使用 LLM 总结）
+   * 生成最终结论（委托给协调者 Agent）
    */
   private async generateConclusion(participantMessages: DiscussionMessage[]): Promise<string> {
     try {
@@ -684,33 +690,38 @@ export class DiscussionCoordinator {
         })
         .join('\n\n');
 
-      // 使用 LLM 生成结论
-      const { agentExecutor } = await import('@main/ai/AgentExecutor');
+      // ✅ 委托给协调者 Agent（而不是直接调用 LLM）
+      const runtime = ChannelRuntime.getInstance();
       const coordinatorSessionId = `${this.threadId}-coordinator-summary`;
 
-      const builder = agentExecutor.piMono();
-      builder
-        .agentId('discussion-coordinator')
-        .instructions(
-          `你是讨论协调者。请基于以下讨论内容生成最终结论。\n\n` +
-            `**原始需求**：${this.session.topic}\n\n` +
-            `**讨论内容**：\n${discussionSummary}\n\n` +
-            `请分析：\n` +
-            `1. 参与者的共识点是什么？\n` +
-            `2. 是否回答了原始需求？\n` +
-            `3. 最终的结论或建议是什么？\n\n` +
-            `请用简洁的语言（200字以内）给出结论，不要重复讨论内容，只给出核心结论。`
-        );
-
-      const result = await agentExecutor.submitAndWait({
+      const result = await runtime.executeAgent({
+        agentId: 'discussion-coordinator',
         sessionId: coordinatorSessionId,
-        message: '请生成最终结论',
-        builder
+        message:
+          `你是讨论协调者。请基于以下讨论内容生成最终结论。\n\n` +
+          `**原始需求**：${this.session.topic}\n\n` +
+          `**讨论内容**：\n${discussionSummary}\n\n` +
+          `请分析：\n` +
+          `1. 参与者的共识点是什么？\n` +
+          `2. 是否回答了原始需求？\n` +
+          `3. 最终的结论或建议是什么？\n\n` +
+          `请用简洁的语言（200字以内）给出结论，不要重复讨论内容，只给出核心结论。`,
+        context: {
+          channel: 'discussion',
+          roomId: this.threadId,
+          role: 'Coordinator',
+          topic: this.session.topic,
+          discussionHistory: this.session.messages.map((m) => ({
+            sender: m.agentId,
+            content: m.content,
+            timestamp: m.timestamp
+          }))
+        }
       });
 
       if (result.error) {
         log.error('[DiscussionCoordinator] Failed to generate conclusion:', result.error);
-        return '协调者无法生成结论（LLM 调用失败）';
+        return '协调者无法生成结论（Agent 执行失败）';
       }
 
       return result.output;
