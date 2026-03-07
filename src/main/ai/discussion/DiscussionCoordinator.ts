@@ -315,7 +315,7 @@ export class DiscussionCoordinator {
       return { should: false };
     }
 
-    // ✅ 使用 LLM 判断共识度
+    // ✅ 使用协调者 Agent 判断共识度和主题相关度
     const consensus = await this.detectConsensusWithLLM(participantMessages);
 
     this.session.consensusLevel = consensus.level;
@@ -324,19 +324,39 @@ export class DiscussionCoordinator {
     const store = await DiscussionStore.getInstance();
     await store.save(this.session);
 
-    // 📢 添加共识检测结果消息
+    // 📢 添加协调者检测结果消息
     const consensusPercent = (consensus.level * 100).toFixed(1);
     const thresholdPercent = ((this.session.consensusThreshold || 0.7) * 100).toFixed(0);
     const consensusStatus = consensus.achieved ? '✅ 达成共识' : '⏳ 未达成共识';
+    const relevancePercent = (consensus.topicRelevance || 100).toFixed(0);
 
-    await this.addCoordinatorMessage(
-      `📊 **Consensus Check** (Round ${currentRound - 1} completed):\n` +
-        `- Current: ${consensusPercent}%\n` +
-        `- Threshold: ${thresholdPercent}%\n` +
-        `- Status: ${consensusStatus}\n` +
-        `- Analysis: ${consensus.reasoning || 'N/A'}\n` +
-        `- Decision: ${consensus.achieved ? '讨论将结束' : '继续下一轮'}`
-    );
+    // 构建协调者消息
+    let coordinatorMsg =
+      `📊 **Coordinator Analysis** (Round ${currentRound - 1} completed):\n` +
+      `- Consensus: ${consensusPercent}% (threshold: ${thresholdPercent}%)\n` +
+      `- Topic Relevance: ${relevancePercent}%\n` +
+      `- Status: ${consensusStatus}\n`;
+
+    if (consensus.reasoning) {
+      coordinatorMsg += `- Analysis: ${consensus.reasoning}\n`;
+    }
+
+    // ⚠️ 检查是否跑偏
+    if (consensus.isOffTopic) {
+      coordinatorMsg += `\n⚠️ **Warning: Discussion is off-topic!**\n`;
+      if (consensus.suggestion) {
+        coordinatorMsg += `📌 Suggestion: ${consensus.suggestion}\n`;
+      }
+      coordinatorMsg += `\n请各位参与者回到原始主题："${this.session.topic}"`;
+
+      await this.addCoordinatorMessage(coordinatorMsg);
+
+      // 跑偏不结束，继续讨论
+      return { should: false };
+    }
+
+    coordinatorMsg += `- Decision: ${consensus.achieved ? '讨论将结束' : '继续下一轮'}`;
+    await this.addCoordinatorMessage(coordinatorMsg);
 
     if (consensus.achieved) {
       return {
@@ -598,12 +618,15 @@ export class DiscussionCoordinator {
   }
 
   /**
-   * 使用协调者 Agent 检测共识度（委托给智能体）
+   * 使用协调者 Agent 检测共识度和主题相关度（委托给智能体）
    */
   private async detectConsensusWithLLM(participantMessages: DiscussionMessage[]): Promise<{
     achieved: boolean;
     level: number;
     reasoning?: string;
+    topicRelevance?: number;
+    isOffTopic?: boolean;
+    suggestion?: string;
   }> {
     try {
       // 构建讨论摘要
@@ -627,15 +650,17 @@ export class DiscussionCoordinator {
         agentId: 'discussion-coordinator',
         sessionId: coordinatorSessionId,
         message:
-          `你是讨论协调者。请分析以下讨论内容，判断参与者是否达成共识。\n\n` +
-          `**讨论主题**：${this.session.topic}\n\n` +
+          `你是讨论协调者。请从两个维度分析当前讨论：\n\n` +
+          `**原始主题**：${this.session.topic}\n\n` +
           `**最近的讨论内容**：\n${discussionSummary}\n\n` +
-          `请回答：\n` +
-          `1. 参与者的观点是否趋于一致？（0-100，整数）\n` +
-          `2. 是否达成了共识？（阈值 ${thresholdPercent}%）\n` +
-          `3. 简要说明理由（50字以内）\n\n` +
+          `请分析：\n` +
+          `1. **共识度**：参与者的观点是否趋于一致？（0-100，整数）\n` +
+          `2. **是否达成共识**：共识度是否达到阈值 ${thresholdPercent}%？\n` +
+          `3. **主题相关度**：讨论内容是否切题？（0-100，整数，100=完全切题）\n` +
+          `4. **是否跑偏**：主题相关度低于 70 认为跑偏\n` +
+          `5. **建议**：如果跑偏或共识低，给出简短的纠正建议（50字以内）\n\n` +
           `请严格按以下 JSON 格式回复（不要有任何额外内容）：\n` +
-          `{"level": 85, "achieved": true, "reasoning": "双方都认可方案A，分歧已解决"}`,
+          `{"level": 85, "achieved": true, "reasoning": "双方都认可方案A", "topicRelevance": 95, "isOffTopic": false, "suggestion": "继续深入讨论细节"}`,
         context: {
           channel: 'discussion',
           roomId: this.threadId,
@@ -662,7 +687,10 @@ export class DiscussionCoordinator {
         return {
           achieved: Boolean(parsed.achieved),
           level: Math.max(0, Math.min(1, (parsed.level || 0) / 100)), // 转换为 0-1
-          reasoning: parsed.reasoning
+          reasoning: parsed.reasoning,
+          topicRelevance: parsed.topicRelevance,
+          isOffTopic: Boolean(parsed.isOffTopic),
+          suggestion: parsed.suggestion
         };
       } catch (parseError) {
         log.error('[DiscussionCoordinator] Failed to parse consensus result:', parseError, result.output);
