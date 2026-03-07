@@ -99,7 +99,7 @@ export async function endDiscussion(id: string): Promise<DiscussionSession> {
 /**
  * 继续讨论（追加新问题）
  */
-export async function continueDiscussion(id: string, newTopic: string): Promise<void> {
+export async function continueDiscussion(id: string, newTopic: string): Promise<DiscussionSession> {
   const res = await fetch(`${BASE_URL}/sessions/${id}/continue`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -110,6 +110,8 @@ export async function continueDiscussion(id: string, newTopic: string): Promise<
   if (!res.ok) {
     throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
   }
+
+  return (data as { session: DiscussionSession }).session;
 }
 
 export async function sendMessage(

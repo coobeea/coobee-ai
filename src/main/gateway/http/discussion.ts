@@ -338,7 +338,9 @@ export function registerDiscussionRoutes(router: Router): void {
       // 3. 继续讨论
       await room.continueWith(newTopic);
 
-      ctx.body = { success: true };
+      // 4. 返回更新后的 session（避免前端再次查询导致时序问题）
+      const updatedSession = room.getSession();
+      ctx.body = { session: updatedSession };
     } catch (err) {
       log.error(`Failed to continue discussion ${sessionId}:`, err);
       ctx.status = 500;

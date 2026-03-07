@@ -554,10 +554,10 @@ async function submitContinueDiscussion(): Promise<void> {
   error.value = null;
 
   try {
-    await discussionApi.continueDiscussion(selectedDiscussion.value.id, continueNewTopic.value.trim());
+    // 继续讨论，直接返回更新后的 session（避免时序问题）
+    const updated = await discussionApi.continueDiscussion(selectedDiscussion.value.id, continueNewTopic.value.trim());
 
-    // 刷新讨论信息
-    const updated = await discussionApi.getDiscussion(selectedDiscussion.value.id);
+    // 更新本地状态
     selectedDiscussion.value = updated;
     const index = discussions.value.findIndex((d) => d.id === updated.id);
     if (index >= 0) discussions.value[index] = updated;
