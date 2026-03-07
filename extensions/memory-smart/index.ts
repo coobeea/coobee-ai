@@ -42,6 +42,14 @@ export default {
         return;
       }
 
+      // 🆕 过滤临时 runtime ID（只保存真实 Agent 的记忆）
+      if (isTemporaryRuntimeId(event.agentId)) {
+        api.logger.debug('[memory-smart] 临时 runtime ID，跳过记忆存储', {
+          agentId: event.agentId
+        });
+        return;
+      }
+
       const agentOutput = (event.output || '').trim();
 
       // 校验内容长度
@@ -69,26 +77,35 @@ export default {
         await agentIndexManager.initialize();
         await agentEntryStore.initialize();
 
-        api.logger.debug('[memory-smart] 开始 LLM 分类', {
+        api.logger.info('[memory-smart] 开始 LLM 分类', {
           agentId: event.agentId,
+          contentLength: agentOutput.length,
           contentPreview: agentOutput.substring(0, 100)
         });
+        console.log(`[memory-smart] 🤖 调用 LLM 分类 (长度: ${agentOutput.length})`);
 
         // LLM 分类
         const classification = await classifyMemory(api, agentOutput);
 
-        api.logger.debug('[memory-smart] LLM 分类完成', {
+        api.logger.info('[memory-smart] LLM 分类完成', {
           agentId: event.agentId,
           shouldRemember: classification.shouldRemember,
           category: classification.category,
+          importance: classification.importance,
           reason: classification.reason
         });
+        console.log(
+          `[memory-smart] LLM 分类结果: shouldRemember=${classification.shouldRemember}, category=${classification.category}, reason=${classification.reason}`
+        );
 
         if (!classification.shouldRemember) {
-          api.logger.debug('[memory-smart] 内容不值得记忆，跳过', {
+          api.logger.info('[memory-smart] ⚠️ 内容不值得记忆，跳过', {
             agentId: event.agentId,
-            reason: classification.reason
+            reason: classification.reason,
+            contentPreview: agentOutput.substring(0, 200)
           });
+          console.log(`[memory-smart] LLM 判断不值得记忆: ${classification.reason}`);
+          console.log(`[memory-smart] 内容预览: ${agentOutput.substring(0, 200)}`);
           return;
         }
 
@@ -118,12 +135,14 @@ export default {
           contentPath
         });
 
-        api.logger.info('[memory-smart] 记忆已保存', {
+        api.logger.info('[memory-smart] ✅ 记忆已保存', {
           agentId: event.agentId,
           id: entry.id,
           category: entry.category,
-          importance: entry.importance
+          importance: entry.importance,
+          summary: entry.summary
         });
+        console.log(`[memory-smart] ✅ 记忆已保存: ${entry.summary} (ID: ${entry.id})`);
       } catch (err) {
         api.logger.error('[memory-smart] 记忆捕获失败', {
           agentId: event.agentId,
@@ -143,4 +162,39 @@ export default {
  */
 function generateMemoryId(): string {
   return `mem-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * 判断是否为临时 runtime ID
+ *
+ * 临时 runtime ID 的特征：
+ * - pi-agent-{timestamp}-{random}   （PiMono Runtime）
+ * - orch-{timestamp}                （Orchestrator）
+ * - {threadId}:planner              （Orchestrator Planner）
+ * - {threadId}:worker:{subtaskId}   （Orchestrator Worker）
+ * - {threadId}:triage               （Swarm Triage）
+ * - {threadId}:swarm-role-{roleId}  （Swarm Role Agent）
+ *
+ * 真实 Agent ID 特征：
+ * - kebab-case（如 "code-reviewer", "app-copilot"）
+ * - 不含时间戳和随机后缀
+ */
+function isTemporaryRuntimeId(agentId: string): boolean {
+  // PiMono 临时 runtime
+  if (/^pi-agent-\d+-[a-z0-9]+$/i.test(agentId)) return true;
+
+  // Orchestrator 相关
+  if (/^orch-\d+$/.test(agentId)) return true;
+  if (agentId.includes(':planner')) return true;
+  if (agentId.includes(':worker:')) return true;
+
+  // Swarm 相关
+  if (agentId.includes(':triage')) return true;
+  if (agentId.includes(':swarm-role-')) return true;
+
+  // Worker 临时 ID（如 "worker-general-1"）
+  if (/^worker-[a-z]+-\d+$/i.test(agentId)) return true;
+
+  // 默认：认为是真实 Agent ID
+  return false;
 }

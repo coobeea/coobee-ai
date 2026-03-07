@@ -41,10 +41,12 @@ export async function classifyMemory(api: ExtensionApi, agentOutput: string): Pr
 ${agentOutput}`;
 
   try {
+    console.log('[memory-smart classify] 🔄 调用 LLM API...');
     const response = await api.services.llm.chat([
       { role: 'system', content: CLASSIFICATION_PROMPT },
       { role: 'user', content: input }
     ]);
+    console.log(`[memory-smart classify] ✅ LLM 返回: ${response.substring(0, 200)}`);
 
     // 尝试解析 JSON
     const cleaned = response
@@ -68,6 +70,8 @@ ${agentOutput}`;
     return result as ClassificationResult;
   } catch (err) {
     // 分类失败时返回默认值（不记忆）
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[memory-smart classify] ❌ 分类失败: ${errorMsg}`);
     return {
       shouldRemember: false,
       category: 'fact',
@@ -75,7 +79,7 @@ ${agentOutput}`;
       summary: '',
       keywords: [],
       memory: '',
-      reason: `Classification failed: ${err instanceof Error ? err.message : String(err)}`
+      reason: `Classification failed: ${errorMsg}`
     };
   }
 }
