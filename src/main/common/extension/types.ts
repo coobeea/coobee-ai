@@ -119,6 +119,11 @@ export interface BackgroundService {
  *
  * Extension 通过 api.services 访问系统服务，避免直接 import 核心模块。
  * 服务实例由 ExtensionManager 在注册时注入。
+ *
+ * **设计原则**：
+ * 1. Extension 禁止直接 import src/main/ 模块（避免 jiti 嵌套导入问题）
+ * 2. 所有能力统一通过 api.services.xxx() 提供
+ * 3. ExtensionApi 成为 Extension 与主进程交互的唯一边界
  */
 export interface ExtensionServices {
   /** HITL 审批服务 */
@@ -148,6 +153,12 @@ export interface ExtensionServices {
     getUserHome(): Promise<string>;
     /** 获取全局数据目录（用于扩展存储） */
     getDataDir(extensionId: string): Promise<string>;
+    /** 获取配置目录 */
+    getConfigDir(): Promise<string>;
+    /** 获取 secrets 目录 */
+    getSecretsDir(): Promise<string>;
+    /** 获取工作空间根目录 */
+    getWorkspacesDir(): Promise<string>;
   };
   /** LLM 调用服务 */
   llm: {
@@ -155,6 +166,41 @@ export interface ExtensionServices {
     chat(messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>): Promise<string>;
     /** 生成文本的 embedding 向量 */
     embed(texts: string[], options?: { model?: string }): Promise<number[][]>;
+  };
+  /** Agent 相关服务 */
+  agent: {
+    /** 获取 AgentExecutor 实例 */
+    getExecutor(): Promise<ReturnType<typeof import('../../ai/AgentExecutor').getAgentExecutor>>;
+    /** 获取 AgentStore 实例 */
+    getStore(): Promise<import('../../ai/agents/AgentStore').AgentStore>;
+    /** 获取内置工具列表 */
+    getBuiltinTools(): Promise<Array<import('../../ai/tools/types').ToolDefinition>>;
+    /** 获取 ToolRegistry 实例 */
+    getToolRegistry(): Promise<import('../../ai/tools/registry').ToolRegistry>;
+    /** 获取 SkillManager 实例 */
+    getSkillManager(): Promise<import('../../ai/skills').SkillManager>;
+  };
+  /** Thread 相关服务 */
+  thread: {
+    /** 获取 ThreadStore 实例 */
+    getStore(): Promise<import('../../ai/threads/ThreadStore').ThreadStore>;
+  };
+  /** Channel 相关服务 */
+  channel: {
+    /** 获取 ChannelRuntime 实例 */
+    getRuntime(): Promise<import('../../channels/ChannelRuntime').ChannelRuntime>;
+  };
+  /** Discussion 相关服务 */
+  discussion: {
+    /** 获取 DiscussionStore 实例 */
+    getStore(): Promise<import('../../ai/discussion/DiscussionStore').DiscussionStore>;
+    /** 创建 ConsensusDetector 实例 */
+    createConsensusDetector(): Promise<import('../../ai/discussion/ConsensusDetector').ConsensusDetector>;
+  };
+  /** 类型定义服务 */
+  types: {
+    /** 获取流式事件类型枚举 */
+    getStreamEventType(): Promise<typeof import('../../ai/streaming/types').StreamEventType>;
   };
 }
 
@@ -190,16 +236,6 @@ export interface ExtensionApi {
   on<K extends ExtensionHookName>(hookName: K, handler: ExtensionHookHandler<K>, opts?: { priority?: number }): void;
   /** 注册 Gateway RPC 方法 */
   registerGatewayMethod(method: string, handler: MethodHandler): void;
-
-  /**
-   * 获取 ChannelRuntime 实例（避免 Extension 动态导入导致 jiti 加载失败）
-   */
-  getChannelRuntime(): Promise<import('../../channels/ChannelRuntime').ChannelRuntime>;
-
-  /**
-   * 获取 DiscussionStore 实例（避免 Extension 动态导入导致模块重复）
-   */
-  getDiscussionStore(): Promise<import('../../ai/discussion/DiscussionStore').DiscussionStore>;
 
   /** 注册外部服务通道 */
   registerChannel(config: ChannelConfig): void;

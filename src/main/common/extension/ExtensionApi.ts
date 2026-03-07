@@ -124,14 +124,6 @@ export function createExtensionApi(
     },
     registerCronJob(config: CronJobConfig) {
       registry.registerCronJob(extensionId, config);
-    },
-    async getChannelRuntime() {
-      const { ChannelRuntime } = await import('../../channels/ChannelRuntime');
-      return ChannelRuntime.getInstance();
-    },
-    async getDiscussionStore() {
-      const { DiscussionStore } = await import('../../ai/discussion/DiscussionStore');
-      return DiscussionStore.getInstance();
     }
   };
 }
@@ -174,6 +166,11 @@ export function createEventBusWrapper(bus: any): ExtensionEventBus {
  *
  * 通过懒加载（dynamic import）访问核心模块，
  * 避免在 Extension 系统初始化时产生循环依赖。
+ *
+ * **设计原则**：
+ * - ExtensionApi 在主进程代码中定义，所有动态导入在主进程上下文中执行
+ * - Extension 禁止直接 import src/main/ 模块，统一通过 api.services.xxx() 获取
+ * - 彻底解决 jiti 嵌套导入导致的 app 对象 undefined 问题
  */
 function createExtensionServices(): ExtensionServices {
   return {
@@ -229,6 +226,18 @@ function createExtensionServices(): ExtensionServices {
           fs.default.mkdirSync(dataDir, { recursive: true });
         }
         return dataDir;
+      },
+      async getConfigDir() {
+        const { Env } = await import('../../common/env');
+        return Env.paths.configDir;
+      },
+      async getSecretsDir() {
+        const { Env } = await import('../../common/env');
+        return Env.paths.secretsDir;
+      },
+      async getWorkspacesDir() {
+        const { Env } = await import('../../common/env');
+        return Env.paths.workspacesDir;
       }
     },
     llm: {
@@ -262,6 +271,61 @@ function createExtensionServices(): ExtensionServices {
         });
 
         return response.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+      }
+    },
+    // 🆕 Agent 相关服务
+    agent: {
+      async getExecutor() {
+        const { agentExecutor } = await import('../../ai/AgentExecutor');
+        return agentExecutor;
+      },
+      async getStore() {
+        const { AgentStore } = await import('../../ai/agents/AgentStore');
+        return AgentStore.getInstance();
+      },
+      async getBuiltinTools() {
+        const { builtinTools } = await import('../../ai/tools');
+        return builtinTools;
+      },
+      async getToolRegistry() {
+        const { ToolRegistry } = await import('../../ai/tools/registry');
+        return ToolRegistry.getInstance();
+      },
+      async getSkillManager() {
+        const { SkillManager } = await import('../../ai/skills');
+        return new SkillManager();
+      }
+    },
+    // 🆕 Thread 相关服务
+    thread: {
+      async getStore() {
+        const { ThreadStore } = await import('../../ai/threads/ThreadStore');
+        return ThreadStore.getInstance();
+      }
+    },
+    // 🆕 Channel 相关服务
+    channel: {
+      async getRuntime() {
+        const { ChannelRuntime } = await import('../../channels/ChannelRuntime');
+        return ChannelRuntime.getInstance();
+      }
+    },
+    // 🆕 Discussion 相关服务
+    discussion: {
+      async getStore() {
+        const { DiscussionStore } = await import('../../ai/discussion/DiscussionStore');
+        return DiscussionStore.getInstance();
+      },
+      async createConsensusDetector() {
+        const { ConsensusDetector } = await import('../../ai/discussion/ConsensusDetector');
+        return new ConsensusDetector();
+      }
+    },
+    // 🆕 类型定义服务
+    types: {
+      async getStreamEventType() {
+        const { StreamEventType } = await import('../../ai/streaming/types');
+        return StreamEventType;
       }
     }
   };

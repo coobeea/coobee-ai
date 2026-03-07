@@ -28,6 +28,17 @@ const mockEventBus = {
 
 let mockWorkspacesDir: string;
 
+const mockApi = {
+  services: {
+    paths: {
+      getWorkspacesDir: vi.fn(() => Promise.resolve(mockWorkspacesDir))
+    },
+    types: {
+      getStreamEventType: vi.fn(() => Promise.resolve(StreamEventType))
+    }
+  }
+} as unknown as import('../../../src/main/common/extension/types').ExtensionApi;
+
 vi.mock('../../../src/main/common/env', async () => {
   return {
     Env: {
@@ -63,7 +74,7 @@ describe('WorkspaceFileWatcher - 卸载与资源清理', () => {
 
   it('stop() 移除所有 EventBus 监听器', async () => {
     const watcher = WorkspaceFileWatcher.getInstance();
-    await watcher.start(mockLogger, mockEventBus);
+    await watcher.start(mockLogger, mockEventBus, mockApi);
 
     expect(mockEventBus.on).toHaveBeenCalledTimes(3);
 
@@ -83,7 +94,7 @@ describe('WorkspaceFileWatcher - 卸载与资源清理', () => {
 
   it('stop() 关闭所有 FSWatcher 实例', async () => {
     const watcher = WorkspaceFileWatcher.getInstance();
-    await watcher.start(mockLogger, mockEventBus);
+    await watcher.start(mockLogger, mockEventBus, mockApi);
 
     // 启动 2 个任务的监控
     const threadDir1 = path.join(mockWorkspacesDir, 't1');
@@ -109,7 +120,7 @@ describe('WorkspaceFileWatcher - 卸载与资源清理', () => {
     vi.useFakeTimers();
 
     const watcher = WorkspaceFileWatcher.getInstance({ keepaliveTimeout: 1000 });
-    await watcher.start(mockLogger, mockEventBus);
+    await watcher.start(mockLogger, mockEventBus, mockApi);
 
     const threadDir = path.join(mockWorkspacesDir, 't1');
     fs.mkdirSync(threadDir, { recursive: true });
@@ -138,7 +149,7 @@ describe('WorkspaceFileWatcher - 卸载与资源清理', () => {
     const watcher = WorkspaceFileWatcher.getInstance();
 
     // 第 1 次加载
-    await watcher.start(mockLogger, mockEventBus);
+    await watcher.start(mockLogger, mockEventBus, mockApi);
     expect(mockEventBus.on).toHaveBeenCalledTimes(3);
 
     watcher.stop();
@@ -147,7 +158,7 @@ describe('WorkspaceFileWatcher - 卸载与资源清理', () => {
     vi.clearAllMocks();
 
     // 第 2 次加载（热重载）
-    await watcher.start(mockLogger, mockEventBus);
+    await watcher.start(mockLogger, mockEventBus, mockApi);
     expect(mockEventBus.on).toHaveBeenCalledTimes(3);
 
     watcher.stop();

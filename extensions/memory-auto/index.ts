@@ -65,6 +65,8 @@ export default {
   id: 'memory-auto',
   name: 'Memory Auto',
   register(api: ExtensionApi) {
+    // 保存 api 引用供辅助函数使用
+    apiRef = api;
     // ========== before_agent_start: 记忆注入 ==========
     api.on(
       'before_agent_start',
@@ -223,11 +225,14 @@ export default {
 
 // ==================== 辅助函数 ====================
 
+/** ExtensionApi 引用（在 register 时注入） */
+let apiRef: ExtensionApi | null = null;
+
 /** 获取 Agent 工作空间路径 */
 async function getWorkspace(sessionId: string): Promise<string | null> {
   try {
-    const { Env } = await import('../../src/main/common/env');
-    return await Env.getAgentWorkspaceDir(sessionId);
+    if (!apiRef) return null;
+    return await apiRef.services.paths.getWorkspace(sessionId);
   } catch {
     return null;
   }
@@ -236,8 +241,8 @@ async function getWorkspace(sessionId: string): Promise<string | null> {
 /** 获取 Agent Home 目录路径 */
 async function getAgentHome(agentId: string): Promise<string | null> {
   try {
-    const { Env } = await import('../../src/main/common/env');
-    return Env.getAgentHomeDir(agentId);
+    if (!apiRef) return null;
+    return await apiRef.services.paths.getAgentHome(agentId);
   } catch {
     return null;
   }

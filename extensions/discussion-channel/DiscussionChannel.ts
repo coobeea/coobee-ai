@@ -1,7 +1,6 @@
 import type { ChannelPlugin, InboundMessage, OutboundMessage } from '../../src/main/channels/types';
 import type { ExtensionApi, ExtensionLogger } from '../../src/main/common/extension/types';
 import type { DiscussionSession, DiscussionParticipant } from '../../src/main/ai/discussion/types';
-import { ConsensusDetector } from '../../src/main/ai/discussion/ConsensusDetector';
 
 let logger: ExtensionLogger;
 let extensionApi: ExtensionApi;
@@ -68,9 +67,9 @@ export function createDiscussionChannel(api: ExtensionApi): ChannelPlugin {
        */
       handleMessage: async (msg: InboundMessage) => {
         try {
-          // 通过 ExtensionApi 获取依赖（避免 jiti 加载时触发 app 对象访问）
-          const runtime = await extensionApi.getChannelRuntime();
-          const store = await extensionApi.getDiscussionStore();
+          // ✅ 通过 ExtensionApi 统一获取依赖（避免 jiti 嵌套导入问题）
+          const runtime = await extensionApi.services.channel.getRuntime();
+          const store = await extensionApi.services.discussion.getStore();
 
           // 1. 获取讨论室信息
           const session = await store.get(msg.peer);
@@ -130,7 +129,7 @@ export function createDiscussionChannel(api: ExtensionApi): ChannelPlugin {
           }
 
           // 7. 检查是否应该结束讨论
-          const detector = new ConsensusDetector();
+          const detector = await extensionApi.services.discussion.createConsensusDetector();
 
           // 计算当前轮次（每个参与者发言一次算一轮）
           const participantCount = updatedSession.participants.filter((p) => p.active !== false).length;
@@ -224,8 +223,8 @@ export function createDiscussionChannel(api: ExtensionApi): ChannelPlugin {
        */
       sendMessage: async (msg: OutboundMessage) => {
         try {
-          // 通过 ExtensionApi 获取依赖
-          const store = await extensionApi.getDiscussionStore();
+          // ✅ 通过 ExtensionApi 统一获取依赖
+          const store = await extensionApi.services.discussion.getStore();
 
           // 1. 保存消息到数据库
           await store.addMessage(msg.to, {

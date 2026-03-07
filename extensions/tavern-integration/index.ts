@@ -1,20 +1,22 @@
 import type { ExtensionModule, ExtensionApi } from '@main/common/extension';
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import { Env } from '@main/common/env';
-import { agentExecutor } from '@main/ai/AgentExecutor';
-import { ToolRegistry } from '@main/ai/tools/registry';
 import { ToolCategory } from '@main/ai/tools/types';
 import { z } from 'zod';
 
-// Extension API logger (将在 register 时注入)
+// Extension API logger 和 api 引用（将在 register 时注入）
 let logger: ExtensionApi['logger'];
+const apiRef: ExtensionApi | null = null;
 
 /**
  * 更新任务状态（直接操作本地文件系统，即 Direct 模式）
  */
 async function updateTaskStatus(taskId: string, status: string, result?: unknown): Promise<boolean> {
-  const tavernDir = path.join(Env.paths.userHome, 'tavern');
+  if (!apiRef) return false;
+
+  // ✅ 通过 ExtensionApi 统一获取用户主目录
+  const userHome = await apiRef.services.paths.getUserHome();
+  const tavernDir = path.join(userHome, 'tavern');
   const taskMetaPath = path.join(tavernDir, 'tasks', taskId, 'meta.json');
   const tasksIndexPath = path.join(tavernDir, 'tasks.jsonl');
 
@@ -115,6 +117,16 @@ export default {
       logger?.info?.(`[TavernTaskDispatcher] Dispatching task ${taskObj.id} to app-copilot...`);
 
       try {
+        const api: ExtensionApi | null = apiRef; // 使用局部变量并明确类型
+        if (!api) {
+          logger?.error?.('[TavernTaskDispatcher] ExtensionApi not available');
+          return;
+        }
+
+        // ✅ 通过 ExtensionApi 统一获取依赖
+        const agentExecutor = await api.services.agent.getExecutor();
+        const toolRegistry = await api.services.agent.getToolRegistry();
+
         // 直接指定接单的 Agent
         const builder = agentExecutor.piMono();
 
@@ -128,7 +140,6 @@ ${taskObj.description}
 Please analyze this task, use the 'external_tavern_accept_task' tool to accept it, process the requirements, and then use the 'external_tavern_submit_result' tool to submit your final results.`;
 
         // 获取工具定义
-        const toolRegistry = ToolRegistry.getInstance();
         const tavernTools = [
           toolRegistry.get('external_tavern_accept_task'),
           toolRegistry.get('external_tavern_submit_result')

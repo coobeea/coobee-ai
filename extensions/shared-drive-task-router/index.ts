@@ -15,6 +15,7 @@ const DISPATCH_DELAY_MS = 2000;
 
 let logger: ExtensionApi['logger'];
 let eventBusRef: ExtensionApi['eventBus'];
+let apiRef: ExtensionApi | null = null; // ✅ 保存 api 引用
 let entryCreatedHandler: ((payload: Record<string, unknown>) => void) | null = null;
 let enabled = true;
 
@@ -65,19 +66,23 @@ function shouldDispatch(payload: EntryCreatedPayload): boolean {
 
 async function dispatchToAnalyzer(payload: EntryCreatedPayload): Promise<void> {
   try {
-    const { agentExecutor } = await import('@main/ai/AgentExecutor');
-    const { AgentStore } = await import('@main/ai/agents/AgentStore');
-    const { ThreadStore } = await import('@main/ai/threads/ThreadStore');
+    if (!apiRef) {
+      logger?.error?.('[SDTaskRouter] ExtensionApi not available');
+      return;
+    }
 
-    const store = await AgentStore.getInstance();
-    const dispatcherDef = await store.get(TASK_DISPATCHER_AGENT_ID);
+    // ✅ 通过 ExtensionApi 统一获取依赖
+    const agentExecutor = await apiRef.services.agent.getExecutor();
+    const agentStore = await apiRef.services.agent.getStore();
+    const threadStore = await apiRef.services.thread.getStore();
+
+    const dispatcherDef = await agentStore.get(TASK_DISPATCHER_AGENT_ID);
     if (!dispatcherDef) {
       logger?.warn?.(`[SDTaskRouter] Agent "${TASK_DISPATCHER_AGENT_ID}" not found, skipping`);
       return;
     }
 
     // 创建 Thread 以便追踪
-    const threadStore = await ThreadStore.getInstance();
     const thread = await threadStore.create({
       title: `[Task Route] ${payload.agentId}: ${payload.topic}`,
       agentId: TASK_DISPATCHER_AGENT_ID,
@@ -99,9 +104,10 @@ async function dispatchToAnalyzer(payload: EntryCreatedPayload): Promise<void> {
       `[SDTaskRouter] Dispatching to ${TASK_DISPATCHER_AGENT_ID}, thread=${sessionId}, entry=${payload.entryId}`
     );
 
-    const { builtinTools } = await import('@main/ai/tools');
-    const { ToolRegistry } = await import('@main/ai/tools/registry');
-    const { SkillManager } = await import('@main/ai/skills');
+    // ✅ 通过 ExtensionApi 统一获取工具和技能
+    const builtinTools = await apiRef.services.agent.getBuiltinTools();
+    const toolRegistry = await apiRef.services.agent.getToolRegistry();
+    const skillManager = await apiRef.services.agent.getSkillManager();
 
     const builder = agentExecutor
       .piMono()
@@ -110,8 +116,7 @@ async function dispatchToAnalyzer(payload: EntryCreatedPayload): Promise<void> {
       .sessionMode('file')
       .instructions(dispatcherDef.instructions);
 
-    const registry = ToolRegistry.getInstance();
-    const extTools = registry.getAll();
+    const extTools = toolRegistry.getAll();
     const allTools = [...builtinTools, ...extTools];
     // 默认全部工具，支持黑名单排除
     const excludeSet = new Set(dispatcherDef.excludeTools || []);
@@ -119,9 +124,9 @@ async function dispatchToAnalyzer(payload: EntryCreatedPayload): Promise<void> {
     builder.tools(candidateTools);
 
     if (dispatcherDef.skills?.length) {
-      const skillManager = new SkillManager();
-      const { Env } = await import('@main/common/env');
-      skillManager.scanSkills([], Env.paths.secretsDir);
+      // ✅ 通过 ExtensionApi 获取 secretsDir
+      const secretsDir = await apiRef.services.paths.getSecretsDir();
+      skillManager.scanSkills([], secretsDir);
 
       const skillDefs = dispatcherDef.skills
         .map((name: string) => skillManager.getByName(name))
@@ -173,12 +178,15 @@ export default {
   register: async (api) => {
     logger = api.logger;
     eventBusRef = api.eventBus;
+    apiRef = api; // ✅ 保存 api 引用
 
     // 检查是否通过配置禁用
     try {
-      const { Env } = await import('@main/common/env');
+      // ✅ 通过 ExtensionApi 统一获取配置目录
+      const configDir = await api.services.paths.getConfigDir();
       const { promises: fs } = await import('fs');
-      const configPath = await import('path').then((p) => p.join(Env.paths.configDir, 'task-routes.json'));
+      const path = await import('path');
+      const configPath = path.default.join(configDir, 'task-routes.json');
       try {
         const content = await fs.readFile(configPath, 'utf-8');
         const config = JSON.parse(content);
