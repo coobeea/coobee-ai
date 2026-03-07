@@ -157,7 +157,7 @@ export class ChannelRuntime {
     const builder = agentExecutor
       .piMono()
       .name(agentDef.name || agentDef.id)
-      .mode('chat')
+      .mode('agent') // ✅ 使用 Agent 模式（工具优先，更强的自主性）
       .sessionMode('memory')
       .instructions(this.enhanceInstructions(agentDef.instructions, context));
 
