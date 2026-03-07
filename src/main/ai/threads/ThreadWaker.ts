@@ -180,7 +180,9 @@ export class ThreadWaker {
   /**
    * 系统重启后恢复
    *
-   * 不自动重新执行，而是通知用户中断了什么
+   * 支持两种恢复模式：
+   *   1. 普通 Agent Thread：通知用户中断了什么
+   *   2. Discussion Thread：自动恢复讨论协调
    */
   private async handleRestartRecovery(threadId: string, checkpoint: ThreadCheckpoint): Promise<void> {
     const { ThreadStore } = await import('./ThreadStore');
@@ -192,6 +194,20 @@ export class ThreadWaker {
       return;
     }
 
+    // ✅ 特殊处理：Discussion Thread 自动恢复
+    if (threadDef.agentMode === 'discussion' || threadDef.agentType === 'discussion') {
+      log.info(`[ThreadWaker] Recovering discussion thread: ${threadId}`);
+      try {
+        const { DiscussionCoordinator } = await import('../discussion/DiscussionCoordinator');
+        await DiscussionCoordinator.resume(threadId);
+        log.info(`[ThreadWaker] Discussion thread ${threadId} recovered successfully`);
+      } catch (error) {
+        log.error(`[ThreadWaker] Failed to recover discussion thread ${threadId}:`, error);
+      }
+      return;
+    }
+
+    // 普通 Agent Thread 恢复（原有逻辑）
     let message: string;
 
     if (threadDef.runStatus === 'approval-pending') {

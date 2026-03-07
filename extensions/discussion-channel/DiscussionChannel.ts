@@ -102,9 +102,10 @@ export function createDiscussionChannel(api: ExtensionApi): ChannelPlugin {
           };
 
           // 4. 调用 ChannelRuntime 执行 Agent
+          // ✅ 使用主 Thread ID 作为 sessionId（由 DiscussionCoordinator 创建）
           const result = await runtime.executeAgent({
             agentId: msg.from,
-            sessionId: `discussion-${msg.peer}-${msg.from}`,
+            sessionId: msg.peer, // msg.peer 已经是 discussion-xxx 格式的主 Thread ID
             message: msg.text,
             context
           });

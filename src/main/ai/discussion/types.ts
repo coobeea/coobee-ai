@@ -97,7 +97,13 @@ export interface DiscussionSession {
 /**
  * 发言调度策略
  */
-export type TurnStrategy = 'round-robin' | 'weighted' | 'reactive' | 'moderator-controlled';
+export type TurnStrategy =
+  | 'round-robin'
+  | 'weighted'
+  | 'reactive'
+  | 'moderator-controlled'
+  | 'sequential'
+  | 'concurrent';
 
 /**
  * 共识检测结果

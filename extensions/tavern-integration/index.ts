@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 // Extension API logger 和 api 引用（将在 register 时注入）
 let logger: ExtensionApi['logger'];
-const apiRef: ExtensionApi | null = null;
+let apiRef: ExtensionApi | null = null;
 
 /**
  * 更新任务状态（直接操作本地文件系统，即 Direct 模式）
@@ -64,8 +64,9 @@ export default {
   name: 'Tavern Integration',
 
   register: (api) => {
-    // 注入 logger
+    // 注入 logger 和 api 引用
     logger = api.logger;
+    apiRef = api;
     // 1. 注册 Channel
     api.registerChannel({
       id: 'tavern-channel',

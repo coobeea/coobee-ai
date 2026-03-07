@@ -1,14 +1,19 @@
 /**
- * DiscussionRoom - 智能体讨论室
+ * DiscussionRoom - 智能体讨论室（统一入口）
  *
- * 管理多个智能体进行结构化讨论，支持轮流发言、共识检测、讨论总结
+ * 职责：
+ *   1. 提供创建讨论室的入口
+ *   2. 委托给 DiscussionCoordinator 进行实际协调
+ *   3. 保持向后兼容（Facade 模式）
+ *
+ * 设计变更：
+ *   - 旧：DiscussionRoom 直接管理 session + TurnManager
+ *   - 新：DiscussionRoom 委托给 DiscussionCoordinator，Coordinator 接入 ThreadWaker
  */
 
 import { createLogger } from '@main/common/logger';
-import { TurnManager } from './TurnManager';
-import { ConsensusDetector } from './ConsensusDetector';
+import { DiscussionCoordinator } from './DiscussionCoordinator';
 import { DiscussionStore } from './DiscussionStore';
-import { ChannelManager } from '@main/channels/ChannelManager';
 import type {
   DiscussionSession,
   DiscussionMessage,
@@ -36,169 +41,136 @@ export interface DiscussionOptions {
   maxRounds?: number;
 }
 
+/**
+ * DiscussionRoom（Facade）
+ */
 export class DiscussionRoom {
-  private session!: DiscussionSession;
-  private turnManager: TurnManager;
-  private consensusDetector: ConsensusDetector;
+  private coordinator: DiscussionCoordinator;
 
   constructor(options: DiscussionOptions) {
-    const now = Date.now();
-    this.session = {
-      id: `discussion-${now}-${Math.random().toString(36).slice(2, 8)}`,
+    // 委托给 DiscussionCoordinator
+    // 将 TurnStrategy 映射为 sequential/concurrent
+    const mapTurnMode = (strategy?: TurnStrategy): 'sequential' | 'concurrent' => {
+      if (strategy === 'concurrent') return 'concurrent';
+      return 'sequential'; // round-robin, weighted, reactive 等都映射为 sequential
+    };
+
+    this.coordinator = new DiscussionCoordinator({
       topic: options.topic,
       participants: options.participants,
-      messages: [],
-      status: 'active',
-      turnStrategy: options.turnStrategy,
-      consensusThreshold: options.consensusThreshold || 0.7,
-      maxRounds: options.maxRounds || 20,
-      createdAt: now,
-      updatedAt: now
-    };
-
-    this.turnManager = new TurnManager(options.turnStrategy);
-    this.turnManager.setParticipants(options.participants);
-
-    this.consensusDetector = new ConsensusDetector();
+      consensusThreshold: options.consensusThreshold,
+      maxRounds: options.maxRounds,
+      defaultTurnMode: mapTurnMode(options.turnStrategy)
+    });
   }
 
   /**
-   * 开始讨论（触发第一个 Agent 发言）
+   * 开始讨论
    */
   async start(): Promise<void> {
-    log.info(`[DiscussionRoom] Starting discussion: ${this.session.topic}`);
-
-    const store = await DiscussionStore.getInstance();
-
-    // 1. 保存 session 到数据库
-    await store.save(this.session);
-
-    // 2. 添加系统消息
-    await store.addMessage(this.session.id, {
-      participant: 'System',
-      content: `Discussion started. Topic: ${this.session.topic}`,
-      timestamp: Date.now(),
-      type: 'statement'
-    });
-
-    // 3. 获取 Discussion Channel Plugin
-    const manager = ChannelManager.getInstance();
-    const plugin = manager.getChannelPlugin('discussion');
-
-    if (!plugin || !plugin.inbound) {
-      throw new Error('Discussion channel not available');
-    }
-
-    // 4. 选择第一个发言者
-    const firstSpeaker = this.getNextSpeaker();
-    if (!firstSpeaker) {
-      throw new Error('No active participants in discussion');
-    }
-
-    // 5. 触发 inbound.handleMessage
-    await plugin.inbound.handleMessage({
-      peer: this.session.id,
-      from: firstSpeaker.agentId,
-      text: `You are ${firstSpeaker.role || firstSpeaker.name}. Please start the discussion on: ${this.session.topic}`,
-      context: {
-        channel: 'discussion',
-        roomId: this.session.id,
-        role: firstSpeaker.role || firstSpeaker.name,
-        topic: this.session.topic,
-        recentMessages: []
-      }
-    });
+    await this.coordinator.start();
   }
 
   /**
-   * 添加消息
+   * 获取讨论室 ID
    */
-  async addMessage(agentId: string, content: string, type: DiscussionMessage['type'] = 'statement'): Promise<void> {
-    const message: DiscussionMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      agentId,
-      content,
-      type,
-      timestamp: Date.now()
-    };
-
-    this.session.messages.push(message);
-    this.session.updatedAt = Date.now();
-
-    const store = await DiscussionStore.getInstance();
-    await store.save(this.session);
-    log.debug(`[DiscussionRoom] Message added from ${agentId}: ${content.slice(0, 50)}...`);
-  }
-
-  /**
-   * 获取下一个发言者
-   */
-  getNextSpeaker(): DiscussionParticipant | null {
-    const speaker = this.turnManager.getNextSpeaker();
-    if (speaker) {
-      this.session.currentSpeaker = speaker.agentId;
-    }
-    return speaker;
-  }
-
-  /**
-   * 检测共识
-   */
-  async checkConsensus(): Promise<ConsensusResult> {
-    const result = await this.consensusDetector.detect(this.session.messages);
-    this.session.consensusLevel = result.level;
-    const store = await DiscussionStore.getInstance();
-    await store.save(this.session);
-    return result;
-  }
-
-  /**
-   * 结束讨论
-   */
-  async end(summary?: string): Promise<void> {
-    this.session.status = 'completed';
-    this.session.updatedAt = Date.now();
-
-    if (summary) {
-      await this.addMessage('system', summary, 'summary');
-    }
-
-    const store = await DiscussionStore.getInstance();
-    await store.save(this.session);
-    log.info(`[DiscussionRoom] Discussion ended: ${this.session.id}`);
-  }
-
-  /**
-   * 暂停讨论
-   */
-  async pause(): Promise<void> {
-    this.session.status = 'paused';
-    this.session.updatedAt = Date.now();
-    const store = await DiscussionStore.getInstance();
-    await store.save(this.session);
-  }
-
-  /**
-   * 恢复讨论
-   */
-  async resume(): Promise<void> {
-    this.session.status = 'active';
-    this.session.updatedAt = Date.now();
-    const store = await DiscussionStore.getInstance();
-    await store.save(this.session);
+  getId(): string {
+    return this.coordinator.getThreadId();
   }
 
   /**
    * 获取会话信息
    */
   getSession(): DiscussionSession {
-    return { ...this.session };
+    return this.coordinator.getSession();
+  }
+
+  /**
+   * 暂停讨论
+   */
+  async pause(): Promise<void> {
+    await this.coordinator.pause();
+  }
+
+  /**
+   * 恢复讨论
+   */
+  async resume(): Promise<void> {
+    await this.coordinator.resume();
   }
 
   /**
    * 获取消息历史
    */
-  getMessages(): DiscussionMessage[] {
-    return [...this.session.messages];
+  async getMessages(): Promise<DiscussionMessage[]> {
+    const session = this.coordinator.getSession();
+    return [...session.messages];
+  }
+
+  /**
+   * 添加消息（手动）
+   */
+  async addMessage(agentId: string, content: string, type: DiscussionMessage['type'] = 'statement'): Promise<void> {
+    const store = await DiscussionStore.getInstance();
+    await store.addMessage(this.coordinator.getThreadId(), {
+      participant: agentId,
+      content,
+      timestamp: Date.now(),
+      type
+    });
+  }
+
+  /**
+   * 检测共识
+   */
+  async checkConsensus(): Promise<ConsensusResult> {
+    const session = this.coordinator.getSession();
+    const detector = new (await import('./ConsensusDetector')).ConsensusDetector();
+    return await detector.detect(session.messages, session.consensusThreshold);
+  }
+
+  /**
+   * 获取下一个发言者（兼容旧 API）
+   */
+  getNextSpeaker(): DiscussionParticipant | null {
+    // 在新架构下，发言者由 Coordinator 管理，这里返回 null
+    // 如果需要，可以从 Coordinator 的 metadata 中获取
+    log.warn('[DiscussionRoom] getNextSpeaker() is deprecated in Coordinator mode');
+    return null;
+  }
+
+  /**
+   * 结束讨论（手动）
+   */
+  async end(_summary?: string): Promise<void> {
+    // Coordinator 自己会处理结束逻辑
+    log.info(`[DiscussionRoom] Manual end requested: ${this.coordinator.getThreadId()}`);
+    // 这里可以调用 Coordinator 的 pause() 或其他方法
+  }
+
+  /**
+   * 从现有 session 恢复 DiscussionRoom（用于外部调用）
+   */
+  static async fromSession(sessionId: string): Promise<DiscussionRoom> {
+    const store = await DiscussionStore.getInstance();
+    const session = await store.get(sessionId);
+
+    if (!session) {
+      throw new Error(`Discussion session ${sessionId} not found`);
+    }
+
+    // 创建 Room Facade（实际由 Coordinator 恢复）
+    const room = new DiscussionRoom({
+      topic: session.topic,
+      participants: session.participants,
+      turnStrategy: session.turnStrategy,
+      consensusThreshold: session.consensusThreshold,
+      maxRounds: session.maxRounds
+    });
+
+    // 替换为恢复的 Coordinator
+    room.coordinator = await DiscussionCoordinator.resume(sessionId);
+
+    return room;
   }
 }

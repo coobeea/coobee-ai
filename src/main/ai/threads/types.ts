@@ -21,7 +21,7 @@ import type { AgentMode } from '../runtime/types';
 export type ThreadRunStatus = 'idle' | 'running' | 'tool-pending' | 'approval-pending' | 'completed' | 'error';
 
 /** Agent 分类类型（用于前端展示和模式区分） */
-export type AgentType = 'agent' | 'orchestrator' | 'swarm' | 'quality-loop';
+export type AgentType = 'agent' | 'orchestrator' | 'swarm' | 'quality-loop' | 'discussion';
 
 // ==================== Thread 定义 ====================
 
@@ -145,4 +145,7 @@ export interface ThreadCheckpoint {
     /** 工具参数（JSON 字符串，用于重启后恢复显示） */
     arguments?: string;
   };
+
+  /** 扩展元数据（用于存储特定场景的状态，如 DiscussionCoordinator） */
+  metadata?: Record<string, unknown>;
 }
