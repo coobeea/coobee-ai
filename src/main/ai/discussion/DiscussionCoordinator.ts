@@ -158,8 +158,15 @@ export class DiscussionCoordinator {
         `- Mode: ${this.getTurnMode() === 'sequential' ? '顺序发言' : '并发发言'}`
     );
 
-    // 5. 开始第1轮协调
-    await this.coordinateNextRound();
+    // 5. 开始第1轮协调（后台异步执行，不阻塞 start() 返回）
+    // ✅ 使用 setImmediate 放到下一个事件循环，让 HTTP 请求先返回
+    setImmediate(() => {
+      this.coordinateNextRound().catch((err) => {
+        log.error('[DiscussionCoordinator] Failed to start coordination:', err);
+      });
+    });
+
+    log.info(`[DiscussionCoordinator] Discussion ${this.threadId} started (coordination running in background)`);
   }
 
   /**
@@ -190,8 +197,15 @@ export class DiscussionCoordinator {
     coordinator.threadId = threadId;
     coordinator.session = session;
 
-    // 3. 继续协调
-    await coordinator.coordinateNextRound();
+    // 3. 继续协调（后台异步执行）
+    // ✅ 使用 setImmediate 放到下一个事件循环，让恢复操作立即返回
+    setImmediate(() => {
+      coordinator.coordinateNextRound().catch((err) => {
+        log.error(`[DiscussionCoordinator] Failed to resume coordination for ${threadId}:`, err);
+      });
+    });
+
+    log.info(`[DiscussionCoordinator] Discussion ${threadId} resumed (coordination running in background)`);
 
     return coordinator;
   }
