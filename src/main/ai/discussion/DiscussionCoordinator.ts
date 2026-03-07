@@ -246,13 +246,9 @@ export class DiscussionCoordinator {
         await this.executeRoundSequential(speakers);
       }
 
-      // 6. 本轮结束，继续下一轮（递归）
-      // 注意：这里会立即继续，实际可能需要延迟或等待条件
-      setTimeout(() => {
-        this.coordinateNextRound().catch((err) => {
-          log.error('[DiscussionCoordinator] Failed to coordinate next round:', err);
-        });
-      }, 2000); // 延迟2秒
+      // 6. 本轮结束，立即递归继续下一轮（不用 setTimeout）
+      // ✅ 改为同步递归，确保流程不会中断
+      await this.coordinateNextRound();
     } catch (error) {
       log.error('[DiscussionCoordinator] Coordination error:', error);
       await this.end(`Error: ${error instanceof Error ? error.message : String(error)}`);
@@ -275,11 +271,17 @@ export class DiscussionCoordinator {
       return { should: true, reason: `Reached max rounds (${maxRounds})` };
     }
 
-    // 3. 检查共识度
-    const consensus = await this.consensusDetector.detect(
-      this.session.messages,
-      this.session.consensusThreshold || 0.7
+    // 3. 检查共识度（只检测参与者的消息）
+    const participantMessages = this.session.messages.filter(
+      (m) => m.agentId !== 'System' && m.agentId !== 'Coordinator'
     );
+
+    // 至少需要 2 条参与者消息才能检测共识
+    if (participantMessages.length < 2) {
+      return { should: false };
+    }
+
+    const consensus = await this.consensusDetector.detect(participantMessages, this.session.consensusThreshold || 0.7);
 
     this.session.consensusLevel = consensus.level;
 
@@ -310,12 +312,18 @@ export class DiscussionCoordinator {
   }
 
   /**
-   * 获取当前轮次
+   * 获取当前轮次（只计算参与者发言，排除 Coordinator 和 System）
    */
   private getCurrentRound(): number {
     const participantCount = this.session.participants.filter((p) => p.active !== false).length;
     if (participantCount === 0) return 0;
-    return Math.ceil(this.session.messages.filter((m) => m.agentId !== 'System').length / participantCount);
+
+    // 只计算参与者的消息（排除 Coordinator 和 System）
+    const participantMessages = this.session.messages.filter(
+      (m) => m.agentId !== 'System' && m.agentId !== 'Coordinator'
+    );
+
+    return Math.ceil(participantMessages.length / participantCount);
   }
 
   /**
@@ -336,15 +344,25 @@ export class DiscussionCoordinator {
       return active;
     } else {
       // 顺序模式：返回下一个发言者
-      const lastMessage = this.session.messages.filter((m) => m.agentId !== 'System').slice(-1)[0];
+      // ✅ 只查找参与者的消息（排除 Coordinator 和 System）
+      const participantMessages = this.session.messages.filter(
+        (m) => m.agentId !== 'System' && m.agentId !== 'Coordinator'
+      );
 
-      if (!lastMessage) {
+      const lastParticipantMessage = participantMessages.slice(-1)[0];
+
+      if (!lastParticipantMessage) {
         // 首次发言，返回第一个参与者
         return active.length > 0 ? [active[0]] : [];
       }
 
       // 找到上次发言者的位置，返回下一个
-      const lastIndex = active.findIndex((p) => p.agentId === lastMessage.agentId);
+      const lastIndex = active.findIndex((p) => p.agentId === lastParticipantMessage.agentId);
+      if (lastIndex === -1) {
+        // 找不到上次发言者（异常情况），返回第一个
+        return active.length > 0 ? [active[0]] : [];
+      }
+
       const nextIndex = (lastIndex + 1) % active.length;
       return [active[nextIndex]];
     }
@@ -417,18 +435,26 @@ export class DiscussionCoordinator {
       });
 
       // 更新本地 session
-      this.session.messages.push({
+      const newMessage = {
         id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         agentId: participant.agentId,
         content: result.output,
-        type: 'statement',
+        type: 'statement' as const,
         timestamp: Date.now()
-      });
+      };
 
+      this.session.messages.push(newMessage);
       this.session.updatedAt = Date.now();
 
       // 更新 Checkpoint
       await this.updateCheckpoint();
+
+      // 📢 发送前端通知（参与者发言完成）
+      const { eventBus } = await import('@main/common/eventbus');
+      eventBus.emit('discussion:message', {
+        threadId: this.threadId,
+        message: newMessage
+      });
 
       log.info(`[DiscussionCoordinator] Participant ${participant.agentId} finished`);
     } catch (error) {
@@ -467,39 +493,54 @@ export class DiscussionCoordinator {
    * 结束讨论
    */
   private async end(reason?: string): Promise<void> {
-    log.info(`[DiscussionCoordinator] Ending discussion: ${reason || 'Manual end'}`);
+    try {
+      log.info(`[DiscussionCoordinator] Ending discussion: ${reason || 'Manual end'}`);
 
-    this.session.status = 'completed';
-    this.session.updatedAt = Date.now();
+      this.session.status = 'completed';
+      this.session.updatedAt = Date.now();
 
-    // 1. 更新 DiscussionStore
-    const discussionStore = await DiscussionStore.getInstance();
-    const consensusPercent = ((this.session.consensusLevel || 0) * 100).toFixed(1);
+      // 1. 添加协调者结束消息
+      const consensusPercent = ((this.session.consensusLevel || 0) * 100).toFixed(1);
+      const participantMessages = this.session.messages.filter(
+        (m) => m.agentId !== 'System' && m.agentId !== 'Coordinator'
+      );
 
-    // 📢 添加协调者结束消息
-    await discussionStore.addMessage(this.threadId, {
-      participant: 'Coordinator',
-      content:
+      await this.addCoordinatorMessage(
         `🏁 **Discussion Ended**\n` +
-        `- Reason: ${reason || 'Manual end'}\n` +
-        `- Final Consensus: ${consensusPercent}%\n` +
-        `- Total Rounds: ${this.getCurrentRound()}\n` +
-        `- Total Messages: ${this.session.messages.length}`,
-      timestamp: Date.now(),
-      type: 'summary'
-    });
-    await discussionStore.save(this.session);
+          `- Reason: ${reason || 'Manual end'}\n` +
+          `- Final Consensus: ${consensusPercent}%\n` +
+          `- Total Rounds: ${this.getCurrentRound()}\n` +
+          `- Participant Messages: ${participantMessages.length}`
+      );
 
-    // 2. 更新 Thread 为已完成
-    const threadStore = await ThreadStore.getInstance();
-    await threadStore.update(this.threadId, {
-      runStatus: 'completed'
-    });
+      // 2. 保存最终状态到 DiscussionStore
+      const discussionStore = await DiscussionStore.getInstance();
+      await discussionStore.save(this.session);
 
-    // 3. 清理 Checkpoint
-    await CheckpointManager.getInstance().clear(this.threadId);
+      // 3. 更新 Thread 为已完成
+      const threadStore = await ThreadStore.getInstance();
+      await threadStore.update(this.threadId, {
+        runStatus: 'completed'
+      });
 
-    log.info(`[DiscussionCoordinator] Discussion ended: ${this.threadId}`);
+      // 4. 清理 Checkpoint
+      await CheckpointManager.getInstance().clear(this.threadId);
+
+      // 5. 发送前端通知
+      const { eventBus } = await import('@main/common/eventbus');
+      eventBus.emit('discussion:ended', {
+        threadId: this.threadId,
+        reason: reason || 'Manual end',
+        consensusLevel: this.session.consensusLevel,
+        totalRounds: this.getCurrentRound(),
+        messageCount: participantMessages.length
+      });
+
+      log.info(`[DiscussionCoordinator] Discussion ended successfully: ${this.threadId}`);
+    } catch (error) {
+      log.error(`[DiscussionCoordinator] Error ending discussion ${this.threadId}:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -515,14 +556,23 @@ export class DiscussionCoordinator {
     });
 
     // 同步到内存（避免下次需要重新加载）
-    this.session.messages.push({
+    const newMessage = {
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       agentId: 'Coordinator',
       content,
-      type: 'statement',
+      type: 'statement' as const,
       timestamp: Date.now()
-    });
+    };
+
+    this.session.messages.push(newMessage);
     this.session.updatedAt = Date.now();
+
+    // 📢 发送前端通知（协调者消息）
+    const { eventBus } = await import('@main/common/eventbus');
+    eventBus.emit('discussion:message', {
+      threadId: this.threadId,
+      message: newMessage
+    });
   }
 
   /**
