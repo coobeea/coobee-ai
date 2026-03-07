@@ -315,7 +315,8 @@ export class DiscussionCoordinator {
       return { should: false };
     }
 
-    const consensus = await this.consensusDetector.detect(participantMessages, this.session.consensusThreshold || 0.7);
+    // ✅ 使用 LLM 判断共识度
+    const consensus = await this.detectConsensusWithLLM(participantMessages);
 
     this.session.consensusLevel = consensus.level;
 
@@ -333,6 +334,7 @@ export class DiscussionCoordinator {
         `- Current: ${consensusPercent}%\n` +
         `- Threshold: ${thresholdPercent}%\n` +
         `- Status: ${consensusStatus}\n` +
+        `- Analysis: ${consensus.reasoning || 'N/A'}\n` +
         `- Decision: ${consensus.achieved ? '讨论将结束' : '继续下一轮'}`
     );
 
@@ -596,6 +598,79 @@ export class DiscussionCoordinator {
   }
 
   /**
+   * 使用 LLM 检测共识度（替代关键词匹配）
+   */
+  private async detectConsensusWithLLM(participantMessages: DiscussionMessage[]): Promise<{
+    achieved: boolean;
+    level: number;
+    reasoning?: string;
+  }> {
+    try {
+      // 构建讨论摘要
+      const discussionSummary = participantMessages
+        .slice(-6) // 只看最近 6 条消息（避免 token 过多）
+        .map((m) => {
+          const participant = this.session.participants.find((p) => p.agentId === m.agentId);
+          const name = participant?.name || participant?.role || m.agentId;
+          return `【${name}】: ${m.content}`;
+        })
+        .join('\n\n');
+
+      // 使用 LLM 判断共识度
+      const { agentExecutor } = await import('@main/ai/AgentExecutor');
+      const consensusSessionId = `${this.threadId}-consensus-check`;
+
+      const threshold = this.session.consensusThreshold || 0.7;
+      const thresholdPercent = (threshold * 100).toFixed(0);
+
+      const builder = agentExecutor.piMono();
+      builder
+        .agentId('discussion-coordinator')
+        .instructions(
+          `你是讨论协调者。请分析以下讨论内容，判断参与者是否达成共识。\n\n` +
+            `**讨论主题**：${this.session.topic}\n\n` +
+            `**最近的讨论内容**：\n${discussionSummary}\n\n` +
+            `请回答：\n` +
+            `1. 参与者的观点是否趋于一致？（0-100，整数）\n` +
+            `2. 是否达成了共识？（阈值 ${thresholdPercent}%）\n` +
+            `3. 简要说明理由（50字以内）\n\n` +
+            `请严格按以下 JSON 格式回复（不要有任何额外内容）：\n` +
+            `{"level": 85, "achieved": true, "reasoning": "双方都认可方案A，分歧已解决"}`
+        );
+
+      const result = await agentExecutor.submitAndWait({
+        sessionId: consensusSessionId,
+        message: '请判断当前的共识度',
+        builder
+      });
+
+      if (result.error) {
+        log.error('[DiscussionCoordinator] Failed to detect consensus:', result.error);
+        // 降级到关键词匹配
+        return await this.consensusDetector.detect(participantMessages, threshold);
+      }
+
+      // 解析 LLM 返回的 JSON
+      try {
+        const parsed = JSON.parse(result.output.trim());
+        return {
+          achieved: Boolean(parsed.achieved),
+          level: Math.max(0, Math.min(1, (parsed.level || 0) / 100)), // 转换为 0-1
+          reasoning: parsed.reasoning
+        };
+      } catch (parseError) {
+        log.error('[DiscussionCoordinator] Failed to parse consensus result:', parseError, result.output);
+        // 降级到关键词匹配
+        return await this.consensusDetector.detect(participantMessages, threshold);
+      }
+    } catch (error) {
+      log.error('[DiscussionCoordinator] Error in LLM consensus detection:', error);
+      // 降级到关键词匹配
+      return await this.consensusDetector.detect(participantMessages, this.session.consensusThreshold || 0.7);
+    }
+  }
+
+  /**
    * 生成最终结论（协调者使用 LLM 总结）
    */
   private async generateConclusion(participantMessages: DiscussionMessage[]): Promise<string> {
@@ -699,7 +774,7 @@ export class DiscussionCoordinator {
   }
 
   /**
-   * 恢复讨论
+   * 恢复讨论（从暂停状态恢复）
    */
   async resume(): Promise<void> {
     log.info(`[DiscussionCoordinator] Resuming discussion: ${this.threadId}`);
@@ -720,5 +795,54 @@ export class DiscussionCoordinator {
 
     // 4. 继续协调
     await this.coordinateNextRound();
+  }
+
+  /**
+   * 继续讨论（追加新问题，重置轮次，保留历史）
+   *
+   * @param newTopic - 新的讨论主题/问题
+   */
+  async continueWith(newTopic: string): Promise<void> {
+    log.info(`[DiscussionCoordinator] Continuing discussion with new topic: ${newTopic}`);
+
+    // 1. 追加新主题到消息历史
+    await this.addCoordinatorMessage(
+      `🔄 **New Topic Added**\n` +
+        `- Previous Consensus: ${((this.session.consensusLevel || 0) * 100).toFixed(1)}%\n` +
+        `- New Topic: ${newTopic}\n` +
+        `- Discussion will restart with Round 1`
+    );
+
+    // 2. 重置状态（保留历史消息）
+    this.session.status = 'active';
+    this.session.topic = `${this.session.topic}\n\n--- 追加问题 ---\n${newTopic}`; // 保留原始主题
+    this.session.consensusLevel = 0; // 重置共识度
+    this.session.updatedAt = Date.now();
+
+    // 3. 重置 Checkpoint（轮次归 1）
+    await this.updateCheckpoint({
+      currentRound: 1,
+      currentSpeakerIndex: 0,
+      currentRoundSpeakers: [],
+      turnMode: mapTurnModeFromStrategy(this.session.turnStrategy),
+      discussionSessionId: this.threadId
+    });
+
+    // 4. 保存 DiscussionStore
+    const discussionStore = await DiscussionStore.getInstance();
+    await discussionStore.save(this.session);
+
+    // 5. 更新 Thread 状态为运行中
+    const threadStore = await ThreadStore.getInstance();
+    await threadStore.update(this.threadId, { runStatus: 'running' });
+
+    // 6. 开始新一轮协调（后台异步执行）
+    setImmediate(() => {
+      this.coordinateNextRound().catch((err) => {
+        log.error('[DiscussionCoordinator] Failed to continue discussion:', err);
+      });
+    });
+
+    log.info(`[DiscussionCoordinator] Discussion ${this.threadId} continued with new topic`);
   }
 }

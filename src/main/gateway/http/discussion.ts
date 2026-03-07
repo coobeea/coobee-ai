@@ -306,6 +306,46 @@ export function registerDiscussionRoutes(router: Router): void {
     }
   });
 
+  router.post('/discussion/sessions/:id/continue', async (ctx) => {
+    const sessionId = ctx.params.id;
+    const body = ctx.request.body as Record<string, unknown>;
+    const newTopic = body.newTopic as string | undefined;
+
+    if (!newTopic) {
+      ctx.status = 400;
+      ctx.body = { error: 'newTopic is required' };
+      return;
+    }
+
+    try {
+      // 1. 检查讨论是否存在
+      const store = await DiscussionStore.getInstance();
+      const session = await store.get(sessionId);
+
+      if (!session) {
+        ctx.status = 404;
+        ctx.body = { error: 'Discussion session not found' };
+        return;
+      }
+
+      // 2. 恢复或获取 DiscussionRoom
+      let room = activeRooms.get(sessionId);
+      if (!room) {
+        room = await DiscussionRoom.fromSession(sessionId);
+        activeRooms.set(sessionId, room);
+      }
+
+      // 3. 继续讨论
+      await room.continueWith(newTopic);
+
+      ctx.body = { success: true };
+    } catch (err) {
+      log.error(`Failed to continue discussion ${sessionId}:`, err);
+      ctx.status = 500;
+      ctx.body = { error: 'Failed to continue discussion' };
+    }
+  });
+
   router.post('/discussion/sessions/:id/message', async (ctx) => {
     const sessionId = ctx.params.id;
     const room = activeRooms.get(sessionId);

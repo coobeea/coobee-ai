@@ -96,6 +96,22 @@ export async function endDiscussion(id: string): Promise<DiscussionSession> {
   return (data as { session: DiscussionSession }).session;
 }
 
+/**
+ * 继续讨论（追加新问题）
+ */
+export async function continueDiscussion(id: string, newTopic: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/sessions/${id}/continue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newTopic })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+  }
+}
+
 export async function sendMessage(
   id: string,
   agentId: string,

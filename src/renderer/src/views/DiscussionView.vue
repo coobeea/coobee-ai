@@ -167,6 +167,13 @@
               继续
             </button>
             <button
+              v-if="selectedDiscussion.status === 'completed'"
+              class="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 transition-colors"
+              @click="openContinueDialog">
+              <span class="i-carbon-repeat inline-block h-4 w-4"></span>
+              继续讨论
+            </button>
+            <button
               v-if="selectedDiscussion.status !== 'completed'"
               class="flex items-center gap-2 rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground hover:bg-destructive/90 transition-colors"
               @click="endDiscussion">
@@ -242,6 +249,46 @@
         </div>
       </div>
     </Transition>
+
+    <!-- 继续讨论对话框 -->
+    <Transition name="dialog">
+      <div v-if="showContinueDialog" class="dialog-overlay" @click="showContinueDialog = false">
+        <div class="dialog-content" @click.stop>
+          <div class="dialog-header">
+            <h2 class="text-lg font-semibold text-foreground">继续讨论</h2>
+            <button class="dialog-close" @click="showContinueDialog = false">
+              <span class="i-carbon-close inline-block h-5 w-5"></span>
+            </button>
+          </div>
+
+          <div class="dialog-body">
+            <div class="form-group">
+              <label class="form-label">追加新问题</label>
+              <textarea
+                v-model="continueNewTopic"
+                class="form-input min-h-[120px]"
+                placeholder="在之前讨论的基础上，提出新的问题或疑问..."
+                rows="5"></textarea>
+              <p class="text-xs text-muted-foreground mt-2"> 💡 讨论将从第 1 轮重新开始，但会保留之前的历史消息 </p>
+            </div>
+
+            <div v-if="error" class="error-message">
+              {{ error }}
+            </div>
+          </div>
+
+          <div class="dialog-footer">
+            <button class="btn-secondary" @click="showContinueDialog = false"> 取消 </button>
+            <button
+              class="btn-primary"
+              :disabled="loading || !continueNewTopic.trim()"
+              @click="submitContinueDiscussion">
+              {{ loading ? '提交中...' : '继续讨论' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -257,6 +304,7 @@ const agentsStore = useAgentsStore();
 const discussions = ref<DiscussionSession[]>([]);
 const selectedDiscussion = ref<DiscussionSession | null>(null);
 const showCreateDialog = ref(false);
+const showContinueDialog = ref(false);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
@@ -265,6 +313,9 @@ const newDiscussion = ref({
   topic: '',
   participants: [] as Array<{ agentId: string; name: string; role: string }>
 });
+
+// 继续讨论对话框表单
+const continueNewTopic = ref('');
 
 // 可选的 Agent 列表（显示所有 Agent）
 const availableAgents = computed(() => agentsStore.agents);
@@ -483,6 +534,39 @@ async function endDiscussion(): Promise<void> {
     if (index >= 0) discussions.value[index] = updated;
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
+// 打开继续讨论对话框
+function openContinueDialog(): void {
+  continueNewTopic.value = '';
+  showContinueDialog.value = true;
+}
+
+// 继续讨论
+async function submitContinueDiscussion(): Promise<void> {
+  if (!selectedDiscussion.value || !continueNewTopic.value.trim()) {
+    error.value = '请输入新的讨论主题';
+    return;
+  }
+
+  loading.value = true;
+  error.value = null;
+
+  try {
+    await discussionApi.continueDiscussion(selectedDiscussion.value.id, continueNewTopic.value.trim());
+
+    // 刷新讨论信息
+    const updated = await discussionApi.getDiscussion(selectedDiscussion.value.id);
+    selectedDiscussion.value = updated;
+    const index = discussions.value.findIndex((d) => d.id === updated.id);
+    if (index >= 0) discussions.value[index] = updated;
+
+    showContinueDialog.value = false;
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    loading.value = false;
   }
 }
 

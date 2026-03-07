@@ -93,10 +93,19 @@ export class DiscussionRoom {
   }
 
   /**
-   * 恢复讨论
+   * 恢复讨论（从暂停状态恢复）
    */
   async resume(): Promise<void> {
     await this.coordinator.resume();
+  }
+
+  /**
+   * 继续讨论（追加新问题，重置轮次，保留历史）
+   *
+   * @param newTopic - 新的讨论主题/问题
+   */
+  async continueWith(newTopic: string): Promise<void> {
+    await this.coordinator.continueWith(newTopic);
   }
 
   /**
