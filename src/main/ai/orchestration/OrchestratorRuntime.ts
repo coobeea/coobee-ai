@@ -162,16 +162,19 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
         taskResult = result;
         taskDone = true;
 
-        // 提取初始输出
-        let resultOutput =
-          typeof result.finalOutput === 'string'
-            ? result.finalOutput
-            : result.finalOutput
-              ? JSON.stringify(result.finalOutput, null, 2)
-              : result.subTaskResults
-                  .filter((r) => r.status === 'completed' && r.result)
-                  .map((r) => String(r.result))
-                  .join('\n\n');
+        // 🔄 修改：提取初始输出（正确处理对象类型）
+        let resultOutput = '';
+        if (typeof result.finalOutput === 'string') {
+          resultOutput = result.finalOutput;
+        } else if (result.finalOutput && typeof result.finalOutput === 'object') {
+          const outputObj = result.finalOutput as { summary?: string; results?: unknown[] };
+          resultOutput = outputObj.summary || JSON.stringify(result.finalOutput, null, 2);
+        } else if (result.subTaskResults.length > 0) {
+          resultOutput = result.subTaskResults
+            .filter((r) => r.status === 'completed' && r.result)
+            .map((r) => String(r.result))
+            .join('\n\n');
+        }
 
         if (this._agentExecutor) {
           try {
@@ -259,13 +262,23 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
 
     // 构建 ExecutionResult — 优先使用质量闭环优化后的输出
     const result = taskResult as TaskExecutionResult | null;
-    let finalOutput =
-      qualityLoopOutput ??
-      (result
-        ? typeof result.finalOutput === 'string'
-          ? String(result.finalOutput)
-          : JSON.stringify(result.finalOutput || '', null, 2)
-        : '');
+    let finalOutput = '';
+
+    if (qualityLoopOutput) {
+      // 如果有质量闭环优化后的输出，优先使用
+      finalOutput = qualityLoopOutput;
+    } else if (result) {
+      // 🔄 修改：正确提取 finalOutput
+      if (typeof result.finalOutput === 'string') {
+        finalOutput = String(result.finalOutput);
+      } else if (result.finalOutput && typeof result.finalOutput === 'object') {
+        // 如果是对象（来自 Orchestrator.aggregateResults），提取 summary
+        const outputObj = result.finalOutput as { summary?: string; results?: unknown[] };
+        finalOutput = outputObj.summary || JSON.stringify(result.finalOutput, null, 2);
+      } else {
+        finalOutput = JSON.stringify(result.finalOutput || '', null, 2);
+      }
+    }
 
     // 🆕 如果有产出文件，附加到输出末尾
     if (result?.artifacts && result.artifacts.length > 0) {
@@ -322,6 +335,9 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
 
   /**
    * 🆕 保存用户消息到主会话
+   *
+   * 格式：{ type: "message", message: { role, content, timestamp }, timestamp }
+   * 路径：.runtime/sessions/{sessionId}/messages.jsonl
    */
   private async saveUserMessage(content: string): Promise<void> {
     try {
@@ -330,18 +346,23 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
       const { Env } = await import('@main/common/env');
 
       const workspaceDir = await Env.getAgentWorkspaceDir(this.sessionId);
-      const sessionsDir = path.join(workspaceDir, '.runtime', 'sessions');
-      const sessionFile = path.join(sessionsDir, `${this.sessionId}.jsonl`);
+      const sessionDir = path.join(workspaceDir, '.runtime', 'sessions', this.sessionId);
+      const sessionFile = path.join(sessionDir, 'messages.jsonl');
 
-      await fs.ensureDir(sessionsDir);
+      await fs.ensureDir(sessionDir);
 
-      const userMsg = {
-        role: 'user',
-        content,
-        timestamp: new Date().toISOString()
+      const now = Date.now();
+      const record = {
+        type: 'message',
+        message: {
+          role: 'user',
+          content,
+          timestamp: now
+        },
+        timestamp: now
       };
 
-      await fs.appendFile(sessionFile, JSON.stringify(userMsg) + '\n', 'utf-8');
+      await fs.appendFile(sessionFile, JSON.stringify(record) + '\n', 'utf-8');
       log.debug(`[OrchestratorRuntime] Saved user message to session: ${this.sessionId}`);
     } catch (error) {
       log.error('[OrchestratorRuntime] Failed to save user message:', error);
@@ -350,6 +371,9 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
 
   /**
    * 🆕 保存 Assistant 响应到主会话
+   *
+   * 格式：{ type: "message", message: { role, content, timestamp }, timestamp }
+   * 路径：.runtime/sessions/{sessionId}/messages.jsonl
    */
   private async saveAssistantMessage(content: string): Promise<void> {
     try {
@@ -358,18 +382,23 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
       const { Env } = await import('@main/common/env');
 
       const workspaceDir = await Env.getAgentWorkspaceDir(this.sessionId);
-      const sessionsDir = path.join(workspaceDir, '.runtime', 'sessions');
-      const sessionFile = path.join(sessionsDir, `${this.sessionId}.jsonl`);
+      const sessionDir = path.join(workspaceDir, '.runtime', 'sessions', this.sessionId);
+      const sessionFile = path.join(sessionDir, 'messages.jsonl');
 
-      await fs.ensureDir(sessionsDir);
+      await fs.ensureDir(sessionDir);
 
-      const assistantMsg = {
-        role: 'assistant',
-        content,
-        timestamp: new Date().toISOString()
+      const now = Date.now();
+      const record = {
+        type: 'message',
+        message: {
+          role: 'assistant',
+          content,
+          timestamp: now
+        },
+        timestamp: now
       };
 
-      await fs.appendFile(sessionFile, JSON.stringify(assistantMsg) + '\n', 'utf-8');
+      await fs.appendFile(sessionFile, JSON.stringify(record) + '\n', 'utf-8');
       log.debug(`[OrchestratorRuntime] Saved assistant message to session: ${this.sessionId}`);
     } catch (error) {
       log.error('[OrchestratorRuntime] Failed to save assistant message:', error);
