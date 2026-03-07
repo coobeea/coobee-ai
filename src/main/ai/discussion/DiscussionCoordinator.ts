@@ -853,9 +853,9 @@ export class DiscussionCoordinator {
         `- Discussion will restart with Round 1`
     );
 
-    // 2. 重置状态（保留历史消息）
+    // 2. 重置状态（保留历史消息，不修改原始 topic）
     this.session.status = 'active';
-    this.session.topic = `${this.session.topic}\n\n--- 追加问题 ---\n${newTopic}`; // 保留原始主题
+    // ✅ 不修改 topic，新问题已经记录在消息历史中
     this.session.consensusLevel = 0; // 重置共识度
     this.session.updatedAt = Date.now();
 
