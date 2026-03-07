@@ -250,10 +250,9 @@ import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 import type { DiscussionSession, DiscussionParticipant, DiscussionMessage } from '@shared/types/discussion';
 import * as discussionApi from '@/api/discussion';
 import { useAgentsStore } from '@/stores/agents';
-import { useEventBus } from '@/composables/useEventBus';
+import { gateway } from '@/plugins/gatewaySetup';
 
 const agentsStore = useAgentsStore();
-const eventBus = useEventBus();
 
 const discussions = ref<DiscussionSession[]>([]);
 const selectedDiscussion = ref<DiscussionSession | null>(null);
@@ -507,93 +506,87 @@ function isMessageCollapsed(messageId: string): boolean {
 }
 
 // 订阅讨论消息事件
-function handleDiscussionMessage(data: {
-  roomId: string;
-  participant: string;
-  content: string;
-  timestamp: number;
-}): void {
-  console.log('[DiscussionView] Received message:', data);
+function handleDiscussionMessage(payload: unknown): void {
+  const data = payload as {
+    threadId: string;
+    message: DiscussionMessage;
+  };
+
+  console.log('[DiscussionView] New message received:', data);
 
   // 查找对应的讨论
-  const discussion = discussions.value.find((d) => d.id === data.roomId);
+  const discussion = discussions.value.find((d) => d.id === data.threadId);
   if (!discussion) {
-    console.warn('[DiscussionView] Discussion not found:', data.roomId);
+    console.warn('[DiscussionView] Discussion not found:', data.threadId);
     return;
   }
 
-  // 添加消息到讨论
-  const newMessage: DiscussionMessage = {
-    id: `msg-${Date.now()}`,
-    agentId: data.participant,
-    content: data.content,
-    timestamp: data.timestamp,
-    type: 'statement'
-  };
+  // 使用后端生成的完整 DiscussionMessage
+  const newMessage = data.message;
 
   // 自动折叠长消息（> 200 字）
-  if (data.content.length > 200) {
+  if (newMessage.content.length > 200) {
     collapsedMessages.value.add(newMessage.id);
     collapsedMessages.value = new Set(collapsedMessages.value); // 触发响应式
   }
 
   discussion.messages.push(newMessage);
-  discussion.updatedAt = data.timestamp;
+  discussion.updatedAt = newMessage.timestamp;
 
   // 如果是当前选中的讨论，更新引用以触发响应式
-  if (selectedDiscussion.value?.id === data.roomId) {
+  if (selectedDiscussion.value?.id === data.threadId) {
     selectedDiscussion.value = { ...discussion };
   }
 }
 
 // 订阅讨论结束事件
-function handleDiscussionEnded(data: {
-  roomId: string;
-  reason: string;
-  consensusLevel: number;
-  messageCount: number;
-}): void {
+function handleDiscussionEnded(payload: unknown): void {
+  const data = payload as {
+    threadId: string;
+    reason: string;
+    consensusLevel?: number;
+    totalRounds: number;
+    messageCount: number;
+    conclusion?: string;
+  };
+
   console.log('[DiscussionView] Discussion ended:', data);
 
   // 查找对应的讨论
-  const discussion = discussions.value.find((d) => d.id === data.roomId);
-  if (!discussion) return;
+  const discussion = discussions.value.find((d) => d.id === data.threadId);
+  if (!discussion) {
+    console.warn('[DiscussionView] Discussion not found:', data.threadId);
+    return;
+  }
 
   // 更新状态
   discussion.status = 'completed';
-  discussion.consensusLevel = data.consensusLevel;
+  discussion.consensusLevel = data.consensusLevel || 0;
   discussion.updatedAt = Date.now();
 
-  // 添加系统消息
-  const endMessage: DiscussionMessage = {
-    id: `msg-${Date.now()}`,
-    agentId: 'system',
-    content: `讨论已结束。原因：${data.reason}\n共识度：${(data.consensusLevel * 100).toFixed(1)}%\n总消息数：${data.messageCount}`,
-    timestamp: Date.now(),
-    type: 'summary'
-  };
-
-  discussion.messages.push(endMessage);
-
   // 如果是当前选中的讨论，更新引用以触发响应式
-  if (selectedDiscussion.value?.id === data.roomId) {
+  if (selectedDiscussion.value?.id === data.threadId) {
     selectedDiscussion.value = { ...discussion };
   }
 }
+
+// 取消订阅函数
+let unsubscribeMessage: (() => void) | null = null;
+let unsubscribeEnded: (() => void) | null = null;
 
 onMounted(async () => {
   await agentsStore.fetchAgents();
   await loadDiscussions();
 
-  // 订阅讨论事件（通过本地 EventBus，WebSocket 推送，无需轮询）
-  eventBus.on('discussion.message', handleDiscussionMessage);
-  eventBus.on('discussion.ended', handleDiscussionEnded);
+  // 订阅讨论事件（通过 GatewayClient WebSocket 推送，实时更新）
+  unsubscribeMessage = gateway.on('discussion.message', handleDiscussionMessage);
+  unsubscribeEnded = gateway.on('discussion.ended', handleDiscussionEnded);
 });
 
 onBeforeUnmount(() => {
   // 取消订阅
-  eventBus.off('discussion.message', handleDiscussionMessage);
-  eventBus.off('discussion.ended', handleDiscussionEnded);
+  unsubscribeMessage?.();
+  unsubscribeEnded?.();
 });
 </script>
 

@@ -11,27 +11,29 @@
 import { log } from '@main/common/logger';
 import { eventBus } from '@main/common/eventbus';
 import type { EventBridgeInit } from '../protocol';
+import type { DiscussionMessage } from '@main/ai/discussion/types';
 
 export const initDiscussionBridge: EventBridgeInit = (gateway) => {
-  // 消息事件处理器
-  const messageHandler = (payload: {
-    roomId: string;
-    participant: string;
-    content: string;
-    timestamp: number;
-  }): void => {
-    log.debug('[DiscussionBridge] Broadcasting message:', payload.roomId, payload.participant);
-    gateway.broadcastEvent('discussion.message', payload);
+  // 消息事件处理器（适配新的 payload 格式）
+  const messageHandler = (payload: { threadId: string; message: DiscussionMessage }): void => {
+    log.debug('[DiscussionBridge] Broadcasting message:', payload.threadId, payload.message.agentId);
+    // 转换为前端期望的格式
+    gateway.broadcastEvent('discussion.message', {
+      threadId: payload.threadId,
+      message: payload.message
+    });
   };
 
-  // 讨论结束事件处理器
+  // 讨论结束事件处理器（适配新的 payload 格式）
   const endedHandler = (payload: {
-    roomId: string;
+    threadId: string;
     reason: string;
-    consensusLevel: number;
+    consensusLevel?: number;
+    totalRounds: number;
     messageCount: number;
+    conclusion?: string;
   }): void => {
-    log.info('[DiscussionBridge] Broadcasting discussion ended:', payload.roomId, payload.reason);
+    log.info('[DiscussionBridge] Broadcasting discussion ended:', payload.threadId, payload.reason);
     gateway.broadcastEvent('discussion.ended', payload);
   };
 

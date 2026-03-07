@@ -312,16 +312,24 @@ export interface EventPayloads {
 
   // ==================== Discussion 事件 ====================
   [EventTypes.DISCUSSION_MESSAGE]: {
-    roomId: string;
-    participant: string;
-    content: string;
-    timestamp: number;
+    threadId: string;
+    message: {
+      id: string;
+      agentId: string;
+      content: string;
+      timestamp: number;
+      type: 'statement' | 'question' | 'answer' | 'objection' | 'agreement' | 'summary';
+      replyTo?: string;
+      metadata?: Record<string, unknown>;
+    };
   };
   [EventTypes.DISCUSSION_ENDED]: {
-    roomId: string;
+    threadId: string;
     reason: string;
-    consensusLevel: number;
+    consensusLevel?: number;
+    totalRounds: number;
     messageCount: number;
+    conclusion?: string;
   };
 }
 
