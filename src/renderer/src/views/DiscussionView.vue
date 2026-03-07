@@ -305,8 +305,10 @@ import { gateway } from '@/plugins/gatewaySetup';
 const route = useRoute();
 const agentsStore = useAgentsStore();
 
-// ✅ 根据路由判断模式（/discussion = sequential，/consultation = concurrent）
-const isConcurrentMode = computed(() => route.query.mode === 'concurrent' || route.name === 'consultation');
+// ✅ 根据路由名判断模式
+// /discussion (name: 'discussion') → sequential（群聊讨论）
+// /consultation (name: 'consultation') → concurrent（专家会诊）
+const isConcurrentMode = computed(() => route.name === 'consultation');
 const viewTitle = computed(() => (isConcurrentMode.value ? '专家会诊' : '智能体讨论室'));
 const viewSubtitle = computed(() => (isConcurrentMode.value ? '并发式多智能体协作' : '多智能体协作讨论'));
 
