@@ -719,8 +719,9 @@ export class DiscussionCoordinator {
         .join('\n\n');
 
       // ✅ 委托给协调者 Agent（而不是直接调用 LLM）
+      // 使用统一的协调者会话 ID，保持上下文连贯
       const runtime = ChannelRuntime.getInstance();
-      const coordinatorSessionId = `${this.threadId}-coordinator-summary`;
+      const coordinatorSessionId = `${this.threadId}-coordinator`;
 
       const result = await runtime.executeAgent({
         agentId: 'discussion-coordinator',
