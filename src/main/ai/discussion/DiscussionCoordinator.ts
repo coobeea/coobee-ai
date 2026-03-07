@@ -271,8 +271,13 @@ export class DiscussionCoordinator {
         await this.executeRoundSequential(activeParticipants, metadata);
       }
 
-      // 4. 本轮结束后，重新递归检查
-      await this.coordinateNextRound();
+      // 4. 本轮结束后，使用 setImmediate 递归检查（避免调用栈溢出）
+      // ✅ 每次递归都重新开始调用栈，防止无限增长
+      setImmediate(() => {
+        this.coordinateNextRound().catch((err) => {
+          log.error('[DiscussionCoordinator] Failed to coordinate next round:', err);
+        });
+      });
     } catch (error) {
       log.error('[DiscussionCoordinator] Coordination error:', error);
       await this.end(`Error: ${error instanceof Error ? error.message : String(error)}`);
