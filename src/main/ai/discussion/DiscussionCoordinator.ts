@@ -144,13 +144,16 @@ export class DiscussionCoordinator {
     const discussionStore = await DiscussionStore.getInstance();
     await discussionStore.save(this.session);
 
-    // 4. 添加系统消息
-    await discussionStore.addMessage(this.threadId, {
-      participant: 'System',
-      content: `Discussion started. Topic: ${this.session.topic}`,
-      timestamp: Date.now(),
-      type: 'statement'
-    });
+    // 4. 添加协调者启动消息
+    const participantNames = this.session.participants.map((p) => p.name || p.agentId).join(', ');
+    await this.addCoordinatorMessage(
+      `🚀 **Discussion Started**\n` +
+        `- Topic: ${this.session.topic}\n` +
+        `- Participants: ${participantNames}\n` +
+        `- Max Rounds: ${this.session.maxRounds}\n` +
+        `- Consensus Threshold: ${((this.session.consensusThreshold || 0.7) * 100).toFixed(0)}%\n` +
+        `- Mode: ${this.getTurnMode() === 'sequential' ? '顺序发言' : '并发发言'}`
+    );
 
     // 5. 开始第1轮协调
     await this.coordinateNextRound();
@@ -221,8 +224,17 @@ export class DiscussionCoordinator {
 
       // 4. 更新轮次
       const currentRound = this.getCurrentRound();
+      const maxRounds = this.session.maxRounds || 10;
+      const speakerNames = speakers.map((s) => s.name || s.agentId).join(', ');
+
       log.info(
-        `[DiscussionCoordinator] Round ${currentRound}/${this.session.maxRounds}, Mode: ${turnMode}, Speakers: ${speakers.map((s) => s.agentId).join(', ')}`
+        `[DiscussionCoordinator] Round ${currentRound}/${maxRounds}, Mode: ${turnMode}, Speakers: ${speakerNames}`
+      );
+
+      // 📢 添加协调者状态消息
+      await this.addCoordinatorMessage(
+        `🎯 **Round ${currentRound + 1}/${maxRounds}** - Mode: ${turnMode === 'sequential' ? '顺序发言' : '并发发言'}\n` +
+          `👥 Speakers: ${speakerNames}`
       );
 
       // 5. 执行本轮发言
@@ -275,10 +287,22 @@ export class DiscussionCoordinator {
     const store = await DiscussionStore.getInstance();
     await store.save(this.session);
 
+    // 📢 添加共识检测结果消息
+    const consensusPercent = (consensus.level * 100).toFixed(1);
+    const thresholdPercent = ((this.session.consensusThreshold || 0.7) * 100).toFixed(0);
+    const consensusStatus = consensus.achieved ? '✅ 达成共识' : '⏳ 未达成共识';
+
+    await this.addCoordinatorMessage(
+      `📊 **Consensus Check**: ${consensusStatus}\n` +
+        `- Current: ${consensusPercent}%\n` +
+        `- Threshold: ${thresholdPercent}%\n` +
+        `- Decision: ${consensus.achieved ? '讨论将结束' : '继续下一轮'}`
+    );
+
     if (consensus.achieved) {
       return {
         should: true,
-        reason: `Consensus achieved (${(consensus.level * 100).toFixed(1)}%)`
+        reason: `Consensus achieved (${consensusPercent}%)`
       };
     }
 
@@ -451,9 +475,16 @@ export class DiscussionCoordinator {
     // 1. 更新 DiscussionStore
     const discussionStore = await DiscussionStore.getInstance();
     const consensusPercent = ((this.session.consensusLevel || 0) * 100).toFixed(1);
+
+    // 📢 添加协调者结束消息
     await discussionStore.addMessage(this.threadId, {
-      participant: 'System',
-      content: `Discussion ended. Reason: ${reason || 'Manual end'}. Consensus level: ${consensusPercent}%`,
+      participant: 'Coordinator',
+      content:
+        `🏁 **Discussion Ended**\n` +
+        `- Reason: ${reason || 'Manual end'}\n` +
+        `- Final Consensus: ${consensusPercent}%\n` +
+        `- Total Rounds: ${this.getCurrentRound()}\n` +
+        `- Total Messages: ${this.session.messages.length}`,
       timestamp: Date.now(),
       type: 'summary'
     });
@@ -469,6 +500,29 @@ export class DiscussionCoordinator {
     await CheckpointManager.getInstance().clear(this.threadId);
 
     log.info(`[DiscussionCoordinator] Discussion ended: ${this.threadId}`);
+  }
+
+  /**
+   * 添加协调者状态消息
+   */
+  private async addCoordinatorMessage(content: string): Promise<void> {
+    const store = await DiscussionStore.getInstance();
+    await store.addMessage(this.threadId, {
+      participant: 'Coordinator',
+      content,
+      timestamp: Date.now(),
+      type: 'statement'
+    });
+
+    // 同步到内存（避免下次需要重新加载）
+    this.session.messages.push({
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      agentId: 'Coordinator',
+      content,
+      type: 'statement',
+      timestamp: Date.now()
+    });
+    this.session.updatedAt = Date.now();
   }
 
   /**
