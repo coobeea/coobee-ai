@@ -295,7 +295,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import type { DiscussionSession, DiscussionParticipant, DiscussionMessage } from '@shared/types/discussion';
 import * as discussionApi from '@/api/discussion';
@@ -309,6 +309,14 @@ const agentsStore = useAgentsStore();
 const isConcurrentMode = computed(() => route.query.mode === 'concurrent' || route.name === 'consultation');
 const viewTitle = computed(() => (isConcurrentMode.value ? '专家会诊' : '智能体讨论室'));
 const viewSubtitle = computed(() => (isConcurrentMode.value ? '并发式多智能体协作' : '多智能体协作讨论'));
+
+// ✅ 监听路由变化，重新加载列表（群聊 ↔ 专家会诊切换）
+watch(
+  () => route.name,
+  () => {
+    loadDiscussions();
+  }
+);
 
 const discussions = ref<DiscussionSession[]>([]);
 const selectedDiscussion = ref<DiscussionSession | null>(null);
@@ -388,7 +396,15 @@ async function loadDiscussions(): Promise<void> {
   loading.value = true;
   error.value = null;
   try {
-    discussions.value = await discussionApi.listDiscussions();
+    const allDiscussions = await discussionApi.listDiscussions();
+
+    // ✅ 根据当前模式过滤讨论列表
+    // 群聊讨论：只显示 sequential 模式（turnStrategy !== 'concurrent'）
+    // 专家会诊：只显示 concurrent 模式（turnStrategy === 'concurrent'）
+    discussions.value = allDiscussions.filter((d) => {
+      const isConcurrent = d.turnStrategy === 'concurrent';
+      return isConcurrentMode.value ? isConcurrent : !isConcurrent;
+    });
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
     discussions.value = [];
