@@ -472,7 +472,9 @@ export class Orchestrator implements IOrchestrator {
   }
 
   /**
-   * 聚合结果
+   * 聚合结果（用户友好的格式）
+   *
+   * 🔄 修改：不直接拼接子任务原始输出，而是提取关键信息
    */
   private aggregateResults(
     plan: ExecutionPlan,
@@ -483,18 +485,47 @@ export class Orchestrator implements IOrchestrator {
 
     const results = completed.filter((r) => r.result).map((r) => r.result);
 
-    const lines: string[] = [`Task completed: ${completed.length}/${subTaskResults.length} subtasks succeeded.`];
+    // 🆕 提取每个子任务的核心输出（过滤内部协调信息）
+    const extractedOutputs = completed
+      .map((r) => {
+        if (!r.result || typeof r.result !== 'string') return null;
+
+        const subTask = plan.subTasks.find((st) => st.id === r.subTaskId);
+        const output = String(r.result);
+
+        // 移除常见的内部标记（如果有）
+        const cleaned = output
+          .replace(/^【.*?】\s*/gm, '') // 移除【内部通知】等标记
+          .replace(/^##\s*内部信息[\s\S]*?(?=##|$)/gm, '') // 移除内部信息章节
+          .replace(/^---\s*依赖结果[\s\S]*?(?=^##|$)/gm, '') // 移除依赖结果章节
+          .trim();
+
+        return {
+          taskName: subTask?.name || r.subTaskId,
+          output: cleaned,
+          duration: r.duration || 0
+        };
+      })
+      .filter(Boolean) as Array<{ taskName: string; output: string; duration: number }>;
+
+    // 构建用户友好的汇总
+    const lines: string[] = [];
+
+    // 执行概况
+    lines.push(`✅ 任务已完成`);
+    lines.push(`\n**执行统计**：${completed.length}/${subTaskResults.length} 个子任务成功完成`);
 
     if (failed.length > 0) {
-      lines.push(`Failed subtasks: ${failed.map((f) => f.subTaskId).join(', ')}`);
+      lines.push(`⚠️ 失败的子任务：${failed.map((f) => f.subTaskId).join(', ')}`);
     }
 
-    // 包含所有成功子任务的输出
-    for (const r of completed) {
-      if (r.result && typeof r.result === 'string' && r.result.length > 0) {
-        const subTask = plan.subTasks.find((st) => st.id === r.subTaskId);
-        lines.push(`\n--- ${subTask?.name || r.subTaskId} ---`);
-        lines.push(r.result as string);
+    // 子任务输出（简洁格式）
+    if (extractedOutputs.length > 0) {
+      lines.push('\n---\n');
+      for (const item of extractedOutputs) {
+        lines.push(`## ${item.taskName}\n`);
+        lines.push(item.output);
+        lines.push('\n');
       }
     }
 

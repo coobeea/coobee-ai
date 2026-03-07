@@ -114,6 +114,9 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
   ): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
     const startTime = Date.now();
 
+    // 🆕 保存用户消息到主会话
+    await this.saveUserMessage(input);
+
     // 事件队列：Orchestrator 的回调是同步的，通过队列转为 async yield
     const eventQueue: StreamChunk[] = [];
     let resolveWaiting: (() => void) | null = null;
@@ -278,6 +281,9 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
       finalOutput += artifactsSummary;
     }
 
+    // 🆕 保存 Assistant 响应到主会话
+    await this.saveAssistantMessage(finalOutput);
+
     return {
       output: finalOutput,
       duration,
@@ -312,6 +318,66 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
 
   // ========== 事件映射 ==========
 
+  // ========== 会话持久化 ==========
+
+  /**
+   * 🆕 保存用户消息到主会话
+   */
+  private async saveUserMessage(content: string): Promise<void> {
+    try {
+      const fs = await import('fs-extra');
+      const path = await import('node:path');
+      const { Env } = await import('@main/common/env');
+
+      const workspaceDir = await Env.getAgentWorkspaceDir(this.sessionId);
+      const sessionsDir = path.join(workspaceDir, '.runtime', 'sessions');
+      const sessionFile = path.join(sessionsDir, `${this.sessionId}.jsonl`);
+
+      await fs.ensureDir(sessionsDir);
+
+      const userMsg = {
+        role: 'user',
+        content,
+        timestamp: new Date().toISOString()
+      };
+
+      await fs.appendFile(sessionFile, JSON.stringify(userMsg) + '\n', 'utf-8');
+      log.debug(`[OrchestratorRuntime] Saved user message to session: ${this.sessionId}`);
+    } catch (error) {
+      log.error('[OrchestratorRuntime] Failed to save user message:', error);
+    }
+  }
+
+  /**
+   * 🆕 保存 Assistant 响应到主会话
+   */
+  private async saveAssistantMessage(content: string): Promise<void> {
+    try {
+      const fs = await import('fs-extra');
+      const path = await import('node:path');
+      const { Env } = await import('@main/common/env');
+
+      const workspaceDir = await Env.getAgentWorkspaceDir(this.sessionId);
+      const sessionsDir = path.join(workspaceDir, '.runtime', 'sessions');
+      const sessionFile = path.join(sessionsDir, `${this.sessionId}.jsonl`);
+
+      await fs.ensureDir(sessionsDir);
+
+      const assistantMsg = {
+        role: 'assistant',
+        content,
+        timestamp: new Date().toISOString()
+      };
+
+      await fs.appendFile(sessionFile, JSON.stringify(assistantMsg) + '\n', 'utf-8');
+      log.debug(`[OrchestratorRuntime] Saved assistant message to session: ${this.sessionId}`);
+    } catch (error) {
+      log.error('[OrchestratorRuntime] Failed to save assistant message:', error);
+    }
+  }
+
+  // ========== 事件映射 ==========
+
   /**
    * 将 OrchestratorEvent 映射为 StreamChunk
    */
@@ -323,8 +389,12 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
         return [
           {
             type: 'delegate:start',
-            content: `Planning: ${data.objective || 'task decomposition'}`,
-            data: { fromAgent: this._name, toAgent: 'Planner' }
+            content: `规划任务...`,
+            data: {
+              agentId: 'planner',
+              agentName: 'Planner',
+              task: data.objective || 'task decomposition'
+            }
           }
         ];
 
@@ -332,8 +402,11 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
         return [
           {
             type: 'delegate:done',
-            content: `Plan ready: ${data.subTaskCount} subtasks, ${data.stageCount} stages`,
-            data: { fromAgent: 'Planner', toAgent: this._name }
+            content: `计划完成：${data.subTaskCount} 个子任务，${data.stageCount} 个阶段`,
+            data: {
+              agentId: 'planner',
+              agentName: 'Planner'
+            }
           }
         ];
 
@@ -358,21 +431,25 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
       case 'subtask:start':
         return [
           {
-            type: 'tool:start',
-            content: (data.subTaskName as string) || 'subtask',
-            data: { toolName: `subtask:${data.subTaskId}`, callId: data.subTaskId as string }
+            type: 'delegate:start',
+            content: `执行子任务...`,
+            data: {
+              agentId: `worker-${data.subTaskId}`,
+              agentName: (data.subTaskName as string) || `Worker ${data.subTaskId}`,
+              task: (data.subTaskName as string) || 'subtask'
+            }
           }
         ];
 
       case 'subtask:done':
         return [
           {
-            type: 'tool:done',
-            content: '',
+            type: 'delegate:done',
+            content: `子任务完成 (${data.duration}ms)`,
             data: {
-              toolName: `subtask:${data.subTaskId}`,
-              callId: data.subTaskId as string,
-              output: `Completed in ${data.duration}ms`
+              agentId: `worker-${data.subTaskId}`,
+              agentName: (data.subTaskName as string) || `Worker ${data.subTaskId}`,
+              duration: data.duration
             }
           }
         ];
@@ -380,12 +457,12 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
       case 'subtask:failed':
         return [
           {
-            type: 'tool:done',
-            content: '',
+            type: 'delegate:done',
+            content: `子任务失败`,
             data: {
-              toolName: `subtask:${data.subTaskId}`,
-              callId: data.subTaskId as string,
-              output: `Failed: ${data.error}`
+              agentId: `worker-${data.subTaskId}`,
+              agentName: (data.subTaskName as string) || `Worker ${data.subTaskId}`,
+              error: data.error
             }
           }
         ];

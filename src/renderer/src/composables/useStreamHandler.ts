@@ -376,9 +376,15 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
 
       case 'delegate:done': {
         if (assistantMsg) {
+          const agentId = msg.data?.agentId as string | undefined;
+          // 🔄 修改：根据 agentId 精确匹配 delegate block
           for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
             const block = assistantMsg.blocks[i];
-            if (block.type === 'delegate' && block.delegate.status === 'running') {
+            if (
+              block.type === 'delegate' &&
+              block.delegate.status === 'running' &&
+              (!agentId || block.delegate.agentId === agentId)
+            ) {
               block.delegate.status = 'done';
               block.delegate.output = msg.content || undefined;
               block.delegate.duration = msg.data?.duration as number | undefined;
