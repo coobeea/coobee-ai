@@ -120,11 +120,21 @@ export class DiscussionCoordinator {
 
     // 1. 创建主 Thread（接入 ThreadWaker）
     const threadStore = await ThreadStore.getInstance();
+    const participantNames = this.session.participants.map((p) => p.name || p.agentId);
     const thread = await threadStore.create({
       title: `Discussion: ${this.session.topic}`,
       agentId: 'discussion-coordinator',
       agentMode: 'discussion',
-      agentType: 'discussion'
+      agentType: 'discussion',
+      metadata: {
+        // 记录讨论室基本信息，避免 Thread 完全为空
+        topic: this.session.topic,
+        participants: participantNames,
+        participantCount: this.session.participants.length,
+        maxRounds: this.session.maxRounds,
+        consensusThreshold: this.session.consensusThreshold,
+        turnStrategy: this.session.turnStrategy
+      }
     });
 
     // 更新为生成的 Thread ID
@@ -148,11 +158,11 @@ export class DiscussionCoordinator {
     await discussionStore.save(this.session);
 
     // 4. 添加协调者启动消息
-    const participantNames = this.session.participants.map((p) => p.name || p.agentId).join(', ');
+    const participantNamesStr = participantNames.join(', ');
     await this.addCoordinatorMessage(
       `🚀 **Discussion Started**\n` +
         `- Topic: ${this.session.topic}\n` +
-        `- Participants: ${participantNames}\n` +
+        `- Participants: ${participantNamesStr}\n` +
         `- Max Rounds: ${this.session.maxRounds}\n` +
         `- Consensus Threshold: ${((this.session.consensusThreshold || 0.7) * 100).toFixed(0)}%\n` +
         `- Mode: ${this.getTurnMode() === 'sequential' ? '顺序发言' : '并发发言'}`
@@ -196,6 +206,12 @@ export class DiscussionCoordinator {
     // 覆盖 threadId 和 session（使用恢复的数据）
     coordinator.threadId = threadId;
     coordinator.session = session;
+
+    // ✅ 同步 Thread 的 messageCount（恢复时可能不一致）
+    const threadStore = await ThreadStore.getInstance();
+    await threadStore.update(threadId, {
+      messageCount: session.messages.length
+    });
 
     // 3. 继续协调（后台异步执行）
     // ✅ 使用 setImmediate 放到下一个事件循环，让恢复操作立即返回
@@ -518,6 +534,12 @@ export class DiscussionCoordinator {
       // 更新 Checkpoint
       await this.updateCheckpoint();
 
+      // ✅ 同步更新 Thread 的 messageCount
+      const threadStore = await ThreadStore.getInstance();
+      await threadStore.update(this.threadId, {
+        messageCount: this.session.messages.length
+      });
+
       // 📢 发送前端通知（参与者发言完成）
       const { eventBus } = await import('@main/common/eventbus');
       eventBus.emit('discussion:message', {
@@ -783,6 +805,12 @@ export class DiscussionCoordinator {
 
     this.session.messages.push(newMessage);
     this.session.updatedAt = Date.now();
+
+    // ✅ 同步更新 Thread 的 messageCount
+    const threadStore = await ThreadStore.getInstance();
+    await threadStore.update(this.threadId, {
+      messageCount: this.session.messages.length
+    });
 
     // 📢 发送前端通知（协调者消息）
     const { eventBus } = await import('@main/common/eventbus');
