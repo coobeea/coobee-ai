@@ -108,6 +108,10 @@ export interface SubTaskExecutionResult {
   status: 'completed' | 'failed';
   result?: unknown;
   error?: string;
+  /** 执行耗时（ms） */
+  duration?: number;
+  /** 完成时间戳 */
+  timestamp?: number;
 }
 
 // ========== Plan Version 相关类型 ==========

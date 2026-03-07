@@ -158,15 +158,24 @@ export class Orchestrator implements IOrchestrator {
 
       log.info(`[Orchestrator] Plan created: ${plan.subTasks.length} subtasks, ${plan.stages.length} stages`);
 
+      // 🆕 保存任务定义和计划到文件
+      await this.saveTaskDefinitionAndPlan(task, plan);
+
       // ── 2. 执行阶段 ──
       log.info('[Orchestrator] Phase 2: Executing...');
       const subTaskResults = await this.executePlan(task, plan);
+
+      // 🆕 保存每个子任务的结果到 tasks/{taskId}/results/
+      await this.saveSubTaskResults(task.id, subTaskResults);
 
       // ── 3. 聚合阶段 ──
       this.emit({ type: 'aggregate:start' });
       log.info('[Orchestrator] Phase 3: Aggregating results...');
       const finalOutput = this.aggregateResults(plan, subTaskResults);
       this.emit({ type: 'aggregate:done', data: { resultCount: subTaskResults.length } });
+
+      // 🆕 保存最终汇总结果到主会话
+      await this.saveFinalSummary(task.id, finalOutput, subTaskResults);
 
       // 🆕 导出所有 Worker 产出文件
       const artifacts = await this.exportWorkerArtifacts(plan.subTasks);
@@ -287,13 +296,16 @@ export class Orchestrator implements IOrchestrator {
             results.push({
               subTaskId: stageTasks[index].id,
               status: 'completed',
-              result: result.value.output
+              result: result.value.output,
+              duration: result.value.duration,
+              timestamp: Date.now()
             });
           } else {
             results.push({
               subTaskId: stageTasks[index].id,
               status: 'failed',
-              error: result.reason?.message || 'Unknown error'
+              error: result.reason?.message || 'Unknown error',
+              timestamp: Date.now()
             });
           }
         });
@@ -307,13 +319,16 @@ export class Orchestrator implements IOrchestrator {
             results.push({
               subTaskId: subTask.id,
               status: 'completed',
-              result: workerResult.output
+              result: workerResult.output,
+              duration: workerResult.duration,
+              timestamp: Date.now()
             });
           } catch (error: unknown) {
             results.push({
               subTaskId: subTask.id,
               status: 'failed',
-              error: error instanceof Error ? error.message : String(error)
+              error: error instanceof Error ? error.message : String(error),
+              timestamp: Date.now()
             });
             log.warn(`[Orchestrator] SubTask ${subTask.id} failed, continuing...`);
           }
@@ -500,6 +515,176 @@ export class Orchestrator implements IOrchestrator {
     if (entry?.aborted) return true;
     if (this.resolvedConfig.signal?.aborted) return true;
     return false;
+  }
+
+  /**
+   * 🆕 保存任务定义和计划到文件
+   */
+  private async saveTaskDefinitionAndPlan(task: Task, plan: ExecutionPlan): Promise<void> {
+    if (!this.resolvedConfig.parentSessionId) return;
+
+    const fs = await import('fs-extra');
+    const path = await import('node:path');
+    const { Env } = await import('@main/common/env');
+
+    const mainWorkspace = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId);
+    const tasksDir = path.join(mainWorkspace, 'tasks', task.id);
+    await fs.ensureDir(tasksDir);
+
+    // 保存任务定义
+    const definitionContent = [
+      '# 任务定义',
+      '',
+      `**任务 ID**: ${task.id}`,
+      `**目标**: ${task.objective}`,
+      `**创建时间**: ${new Date().toISOString()}`,
+      '',
+      '## 任务描述',
+      task.description || '（无）',
+      '',
+      '## 需求清单',
+      ...(task.requirements || []).map((r) => `- ${r}`),
+      '',
+      '## 约束条件',
+      ...(task.constraints || []).map((c) => `- ${c}`)
+    ].join('\n');
+    await fs.writeFile(path.join(tasksDir, 'definition.md'), definitionContent, 'utf-8');
+
+    // 保存执行计划
+    const planContent = [
+      '# 执行计划',
+      '',
+      `**生成时间**: ${new Date(plan.createdAt).toISOString()}`,
+      `**子任务数量**: ${plan.subTasks.length}`,
+      `**执行阶段**: ${plan.stages.length}`,
+      '',
+      '## 子任务列表',
+      '',
+      ...plan.subTasks.map(
+        (st) =>
+          `### ${st.id}: ${st.name}\n` +
+          `- **描述**: ${st.description}\n` +
+          `- **分配给**: ${st.assignedWorker}\n` +
+          `- **依赖**: ${st.dependencies?.length ? st.dependencies.join(', ') : '无'}\n`
+      ),
+      '',
+      '## 执行阶段',
+      '',
+      ...plan.stages.map(
+        (stage) =>
+          `### ${stage.name} (${stage.id})\n` +
+          `- **顺序**: ${stage.order}\n` +
+          `- **并行**: ${stage.parallel ? '是' : '否'}\n` +
+          `- **子任务**: ${stage.tasks.map((t) => t.id).join(', ')}\n`
+      )
+    ].join('\n');
+    await fs.writeFile(path.join(tasksDir, 'plan.md'), planContent, 'utf-8');
+
+    log.info(`[Orchestrator] Saved task definition and plan to ${tasksDir}`);
+  }
+
+  /**
+   * 🆕 保存子任务执行结果到 tasks/{taskId}/results/
+   */
+  private async saveSubTaskResults(taskId: string, results: SubTaskExecutionResult[]): Promise<void> {
+    if (!this.resolvedConfig.parentSessionId) return;
+
+    const fs = await import('fs-extra');
+    const path = await import('node:path');
+    const { Env } = await import('@main/common/env');
+
+    const mainWorkspace = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId);
+    const resultsDir = path.join(mainWorkspace, 'tasks', taskId, 'results');
+    await fs.ensureDir(resultsDir);
+
+    for (const result of results) {
+      const resultContent = [
+        `# ${result.subTaskId} 执行结果`,
+        '',
+        `**状态**: ${result.status}`,
+        `**执行时长**: ${result.duration || 0}ms`,
+        `**时间戳**: ${new Date(result.timestamp || Date.now()).toISOString()}`,
+        '',
+        '## 输出',
+        '',
+        typeof result.result === 'string' ? result.result : JSON.stringify(result.result, null, 2),
+        '',
+        result.error ? `## 错误\n\n${result.error}` : ''
+      ].join('\n');
+
+      await fs.writeFile(path.join(resultsDir, `${result.subTaskId}.md`), resultContent, 'utf-8');
+    }
+
+    log.info(`[Orchestrator] Saved ${results.length} subtask results to ${resultsDir}`);
+  }
+
+  /**
+   * 🆕 保存最终汇总结果到主会话
+   */
+  private async saveFinalSummary(
+    taskId: string,
+    finalOutput: { summary: string; results: unknown[] },
+    subTaskResults: SubTaskExecutionResult[]
+  ): Promise<void> {
+    if (!this.resolvedConfig.parentSessionId) return;
+
+    const fs = await import('fs-extra');
+    const path = await import('node:path');
+    const { Env } = await import('@main/common/env');
+
+    const mainWorkspace = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId);
+    const tasksDir = path.join(mainWorkspace, 'tasks', taskId);
+    await fs.ensureDir(tasksDir);
+
+    const summaryContent = [
+      '# 任务执行汇总',
+      '',
+      `**任务 ID**: ${taskId}`,
+      `**完成时间**: ${new Date().toISOString()}`,
+      '',
+      '## 执行摘要',
+      '',
+      finalOutput.summary,
+      '',
+      '## 子任务结果',
+      '',
+      ...subTaskResults.map(
+        (r) =>
+          `### ${r.subTaskId}` +
+          `\n- **状态**: ${r.status === 'completed' ? '✅ 完成' : '❌ 失败'}` +
+          `\n- **耗时**: ${r.duration || 0}ms` +
+          (r.error ? `\n- **错误**: ${r.error}` : '') +
+          '\n'
+      ),
+      '',
+      '## 完整输出',
+      '',
+      ...subTaskResults
+        .filter((r) => r.status === 'completed' && r.result)
+        .map(
+          (r) =>
+            `### ${r.subTaskId}\n\n${typeof r.result === 'string' ? r.result : JSON.stringify(r.result, null, 2)}\n`
+        )
+    ].join('\n');
+
+    await fs.writeFile(path.join(tasksDir, 'summary.md'), summaryContent, 'utf-8');
+
+    // 保存状态 JSON
+    const statusData = {
+      taskId,
+      status: subTaskResults.every((r) => r.status === 'completed')
+        ? 'success'
+        : subTaskResults.some((r) => r.status === 'completed')
+          ? 'partial'
+          : 'failed',
+      completedAt: new Date().toISOString(),
+      subTaskCount: subTaskResults.length,
+      completedCount: subTaskResults.filter((r) => r.status === 'completed').length,
+      failedCount: subTaskResults.filter((r) => r.status === 'failed').length
+    };
+    await fs.writeFile(path.join(tasksDir, 'status.json'), JSON.stringify(statusData, null, 2), 'utf-8');
+
+    log.info(`[Orchestrator] Saved final summary to ${tasksDir}`);
   }
 
   /**
