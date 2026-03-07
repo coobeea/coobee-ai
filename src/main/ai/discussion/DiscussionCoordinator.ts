@@ -19,7 +19,7 @@ import { CheckpointManager } from '@main/ai/threads/CheckpointManager';
 import { ConsensusDetector } from './ConsensusDetector';
 import { DiscussionStore } from './DiscussionStore';
 import { ChannelRuntime } from '@main/channels/ChannelRuntime';
-import type { DiscussionSession, DiscussionParticipant, TurnStrategy } from './types';
+import type { DiscussionSession, DiscussionParticipant, DiscussionMessage, TurnStrategy } from './types';
 import type { ThreadCheckpoint } from '@main/ai/threads/types';
 
 const log = createLogger('discussion-coordinator');
@@ -44,10 +44,12 @@ export interface DiscussionCoordinatorOptions {
  * 协调者元数据（存储在 Checkpoint.metadata）
  */
 interface CoordinatorMetadata {
-  /** 当前轮次 */
+  /** 当前轮次（从 1 开始） */
   currentRound: number;
-  /** 当前发言者（顺序模式下） */
+  /** 当前发言者索引（顺序模式下，0-based） */
   currentSpeakerIndex: number;
+  /** 本轮已发言的参与者 ID 列表 */
+  currentRoundSpeakers: string[];
   /** 发言模式 */
   turnMode: 'sequential' | 'concurrent';
   /** 讨论室 ID（DiscussionStore 中的 session） */
@@ -134,8 +136,9 @@ export class DiscussionCoordinator {
 
     // 2. 创建 Checkpoint
     await this.updateCheckpoint({
-      currentRound: 0,
+      currentRound: 1, // 从第1轮开始
       currentSpeakerIndex: 0,
+      currentRoundSpeakers: [], // 本轮已发言者列表
       turnMode: mapTurnModeFromStrategy(this.session.turnStrategy),
       discussionSessionId: this.threadId
     });
@@ -205,49 +208,56 @@ export class DiscussionCoordinator {
         this.session = latestSession;
       }
 
-      // 1. 检查是否应该结束
-      const shouldEnd = await this.checkShouldEnd();
-      if (shouldEnd.should) {
-        await this.end(shouldEnd.reason);
-        return;
+      // 加载 Checkpoint 获取当前轮次状态
+      const checkpoint = await CheckpointManager.getInstance().load(this.threadId);
+      const metadata = (checkpoint?.metadata as CoordinatorMetadata | undefined) || {
+        currentRound: 1,
+        currentSpeakerIndex: 0,
+        currentRoundSpeakers: [],
+        turnMode: 'sequential',
+        discussionSessionId: this.threadId
+      };
+
+      // 1. 检查是否应该结束（在轮次开始前检查）
+      if (metadata.currentRoundSpeakers.length === 0) {
+        // 新一轮开始前，检查是否应该结束
+        const shouldEnd = await this.checkShouldEnd(metadata.currentRound);
+        if (shouldEnd.should) {
+          await this.end(shouldEnd.reason);
+          return;
+        }
+
+        // 📢 添加协调者轮次开始消息
+        const activeParticipants = this.session.participants.filter((p) => p.active !== false);
+        const maxRounds = this.session.maxRounds || 10;
+        const participantNames = activeParticipants.map((p) => p.name || p.agentId).join(', ');
+
+        await this.addCoordinatorMessage(
+          `🎯 **Round ${metadata.currentRound}/${maxRounds}** - Mode: ${metadata.turnMode === 'sequential' ? '顺序发言' : '并发发言'}\n` +
+            `👥 Participants: ${participantNames}\n` +
+            `📝 Waiting for all participants to speak...`
+        );
       }
 
-      // 2. 判断本轮模式（顺序/并发）
-      const turnMode = this.getTurnMode();
+      // 2. 判断本轮模式
+      const turnMode = metadata.turnMode;
+      const activeParticipants = this.session.participants.filter((p) => p.active !== false);
 
-      // 3. 获取本轮发言者
-      const speakers = this.getNextSpeakers(turnMode);
-      if (speakers.length === 0) {
+      if (activeParticipants.length === 0) {
         await this.end('No active participants');
         return;
       }
 
-      // 4. 更新轮次
-      const currentRound = this.getCurrentRound();
-      const maxRounds = this.session.maxRounds || 10;
-      const speakerNames = speakers.map((s) => s.name || s.agentId).join(', ');
-
-      log.info(
-        `[DiscussionCoordinator] Round ${currentRound}/${maxRounds}, Mode: ${turnMode}, Speakers: ${speakerNames}`
-      );
-
-      // 📢 添加协调者状态消息
-      await this.addCoordinatorMessage(
-        `🎯 **Round ${currentRound + 1}/${maxRounds}** - Mode: ${turnMode === 'sequential' ? '顺序发言' : '并发发言'}\n` +
-          `👥 Speakers: ${speakerNames}`
-      );
-
-      // 5. 执行本轮发言
+      // 3. 执行本轮发言
       if (turnMode === 'concurrent') {
         // 并发模式：所有人同时发言
-        await this.executeRoundConcurrent(speakers);
+        await this.executeRoundConcurrent(activeParticipants, metadata);
       } else {
         // 顺序模式：一个接一个
-        await this.executeRoundSequential(speakers);
+        await this.executeRoundSequential(activeParticipants, metadata);
       }
 
-      // 6. 本轮结束，立即递归继续下一轮（不用 setTimeout）
-      // ✅ 改为同步递归，确保流程不会中断
+      // 4. 本轮结束后，重新递归检查
       await this.coordinateNextRound();
     } catch (error) {
       log.error('[DiscussionCoordinator] Coordination error:', error);
@@ -256,28 +266,33 @@ export class DiscussionCoordinator {
   }
 
   /**
-   * 检查是否应该结束讨论
+   * 检查是否应该结束讨论（每轮开始前调用）
    */
-  private async checkShouldEnd(): Promise<{ should: boolean; reason?: string }> {
+  private async checkShouldEnd(currentRound: number): Promise<{ should: boolean; reason?: string }> {
     // 1. 检查状态
     if (this.session.status !== 'active') {
       return { should: true, reason: 'Discussion already ended or paused' };
     }
 
     // 2. 检查轮次
-    const currentRound = this.getCurrentRound();
     const maxRounds = this.session.maxRounds || 10;
-    if (currentRound >= maxRounds) {
+    if (currentRound > maxRounds) {
       return { should: true, reason: `Reached max rounds (${maxRounds})` };
     }
 
-    // 3. 检查共识度（只检测参与者的消息）
+    // 3. 第1轮不检查共识（还没人发言）
+    if (currentRound === 1) {
+      return { should: false };
+    }
+
+    // 4. 检查共识度（只检测参与者的消息）
     const participantMessages = this.session.messages.filter(
       (m) => m.agentId !== 'System' && m.agentId !== 'Coordinator'
     );
 
-    // 至少需要 2 条参与者消息才能检测共识
-    if (participantMessages.length < 2) {
+    // 至少需要所有参与者都发言过1次才能检测共识
+    const activeCount = this.session.participants.filter((p) => p.active !== false).length;
+    if (participantMessages.length < activeCount) {
       return { should: false };
     }
 
@@ -295,9 +310,10 @@ export class DiscussionCoordinator {
     const consensusStatus = consensus.achieved ? '✅ 达成共识' : '⏳ 未达成共识';
 
     await this.addCoordinatorMessage(
-      `📊 **Consensus Check**: ${consensusStatus}\n` +
+      `📊 **Consensus Check** (Round ${currentRound - 1} completed):\n` +
         `- Current: ${consensusPercent}%\n` +
         `- Threshold: ${thresholdPercent}%\n` +
+        `- Status: ${consensusStatus}\n` +
         `- Decision: ${consensus.achieved ? '讨论将结束' : '继续下一轮'}`
     );
 
@@ -312,21 +328,6 @@ export class DiscussionCoordinator {
   }
 
   /**
-   * 获取当前轮次（只计算参与者发言，排除 Coordinator 和 System）
-   */
-  private getCurrentRound(): number {
-    const participantCount = this.session.participants.filter((p) => p.active !== false).length;
-    if (participantCount === 0) return 0;
-
-    // 只计算参与者的消息（排除 Coordinator 和 System）
-    const participantMessages = this.session.messages.filter(
-      (m) => m.agentId !== 'System' && m.agentId !== 'Coordinator'
-    );
-
-    return Math.ceil(participantMessages.length / participantCount);
-  }
-
-  /**
    * 判断本轮模式（顺序/并发）
    */
   private getTurnMode(): 'sequential' | 'concurrent' {
@@ -334,54 +335,78 @@ export class DiscussionCoordinator {
   }
 
   /**
-   * 获取下一轮发言者
-   */
-  private getNextSpeakers(mode: 'sequential' | 'concurrent'): DiscussionParticipant[] {
-    const active = this.session.participants.filter((p) => p.active !== false);
-
-    if (mode === 'concurrent') {
-      // 并发模式：返回所有活跃参与者
-      return active;
-    } else {
-      // 顺序模式：返回下一个发言者
-      // ✅ 只查找参与者的消息（排除 Coordinator 和 System）
-      const participantMessages = this.session.messages.filter(
-        (m) => m.agentId !== 'System' && m.agentId !== 'Coordinator'
-      );
-
-      const lastParticipantMessage = participantMessages.slice(-1)[0];
-
-      if (!lastParticipantMessage) {
-        // 首次发言，返回第一个参与者
-        return active.length > 0 ? [active[0]] : [];
-      }
-
-      // 找到上次发言者的位置，返回下一个
-      const lastIndex = active.findIndex((p) => p.agentId === lastParticipantMessage.agentId);
-      if (lastIndex === -1) {
-        // 找不到上次发言者（异常情况），返回第一个
-        return active.length > 0 ? [active[0]] : [];
-      }
-
-      const nextIndex = (lastIndex + 1) % active.length;
-      return [active[nextIndex]];
-    }
-  }
-
-  /**
    * 执行一轮（顺序模式）
+   * ✅ 所有参与者依次发言完才算一轮
    */
-  private async executeRoundSequential(speakers: DiscussionParticipant[]): Promise<void> {
-    for (const speaker of speakers) {
-      await this.executeParticipant(speaker);
+  private async executeRoundSequential(
+    participants: DiscussionParticipant[],
+    metadata: CoordinatorMetadata
+  ): Promise<void> {
+    // 获取本轮还需要发言的参与者
+    const remainingSpeakers = participants.filter((p) => !metadata.currentRoundSpeakers.includes(p.agentId));
+
+    if (remainingSpeakers.length === 0) {
+      // 本轮所有人都发言完了，进入下一轮
+      await this.advanceToNextRound(metadata);
+      return;
+    }
+
+    // 执行下一个发言者
+    const nextSpeaker = remainingSpeakers[0];
+    await this.executeParticipant(nextSpeaker);
+
+    // 更新 metadata：记录已发言
+    metadata.currentRoundSpeakers.push(nextSpeaker.agentId);
+    metadata.currentSpeakerIndex++;
+    await this.updateCheckpoint(metadata);
+
+    // 检查本轮是否完成
+    if (metadata.currentRoundSpeakers.length >= participants.length) {
+      // ✅ 本轮所有人都发言完了
+      await this.advanceToNextRound(metadata);
     }
   }
 
   /**
    * 执行一轮（并发模式）
+   * ✅ 所有参与者同时发言完才算一轮
    */
-  private async executeRoundConcurrent(speakers: DiscussionParticipant[]): Promise<void> {
-    await Promise.all(speakers.map((speaker) => this.executeParticipant(speaker)));
+  private async executeRoundConcurrent(
+    participants: DiscussionParticipant[],
+    metadata: CoordinatorMetadata
+  ): Promise<void> {
+    // 获取本轮还需要发言的参与者
+    const remainingSpeakers = participants.filter((p) => !metadata.currentRoundSpeakers.includes(p.agentId));
+
+    if (remainingSpeakers.length === 0) {
+      // 本轮所有人都发言完了，进入下一轮
+      await this.advanceToNextRound(metadata);
+      return;
+    }
+
+    // 并发执行所有剩余发言者
+    await Promise.all(remainingSpeakers.map((speaker) => this.executeParticipant(speaker)));
+
+    // 更新 metadata：记录所有人都发言了
+    metadata.currentRoundSpeakers = participants.map((p) => p.agentId);
+    await this.updateCheckpoint(metadata);
+
+    // ✅ 本轮完成
+    await this.advanceToNextRound(metadata);
+  }
+
+  /**
+   * 进入下一轮
+   */
+  private async advanceToNextRound(metadata: CoordinatorMetadata): Promise<void> {
+    log.info(`[DiscussionCoordinator] Round ${metadata.currentRound} completed, advancing to next round`);
+
+    // 重置本轮发言记录，轮次+1
+    metadata.currentRound++;
+    metadata.currentSpeakerIndex = 0;
+    metadata.currentRoundSpeakers = [];
+
+    await this.updateCheckpoint(metadata);
   }
 
   /**
@@ -399,10 +424,13 @@ export class DiscussionCoordinator {
 
       const runtime = ChannelRuntime.getInstance();
 
-      // 执行参与者 Agent（使用主 Thread ID）
+      // 执行参与者 Agent（使用独立的子会话 ID）
+      // ✅ 会话结构：主Thread (discussion-xxx) + 子会话 (discussion-xxx-agent-id)
+      const participantSessionId = `${this.threadId}-${participant.agentId}`;
+
       const result = await runtime.executeAgent({
         agentId: participant.agentId,
-        sessionId: this.threadId, // ✅ 使用主 Thread ID，不再拼接
+        sessionId: participantSessionId, // ✅ 每个参与者独立会话
         message: `You are ${participant.role || participant.name}. Continue discussing "${this.session.topic}".\n\nRecent messages:\n${recentMessages}\n\nPlease share your perspective.`,
         context: {
           channel: 'discussion',
@@ -469,8 +497,9 @@ export class DiscussionCoordinator {
     const checkpoint = await CheckpointManager.getInstance().load(this.threadId);
 
     const currentMetadata: CoordinatorMetadata = (checkpoint?.metadata as CoordinatorMetadata | undefined) || {
-      currentRound: 0,
+      currentRound: 1,
       currentSpeakerIndex: 0,
+      currentRoundSpeakers: [],
       turnMode: 'sequential',
       discussionSessionId: this.threadId
     };
@@ -479,18 +508,14 @@ export class DiscussionCoordinator {
       threadId: this.threadId,
       runStatus: 'running',
       updatedAt: new Date().toISOString(),
-      metadata: {
-        ...currentMetadata,
-        ...metadata,
-        currentRound: this.getCurrentRound()
-      }
+      metadata: metadata || currentMetadata
     };
 
     await CheckpointManager.getInstance().save(newCheckpoint);
   }
 
   /**
-   * 结束讨论
+   * 结束讨论（生成最终结论）
    */
   private async end(reason?: string): Promise<void> {
     try {
@@ -499,47 +524,105 @@ export class DiscussionCoordinator {
       this.session.status = 'completed';
       this.session.updatedAt = Date.now();
 
-      // 1. 添加协调者结束消息
-      const consensusPercent = ((this.session.consensusLevel || 0) * 100).toFixed(1);
+      // 1. 生成最终结论（协调者总结）
       const participantMessages = this.session.messages.filter(
         (m) => m.agentId !== 'System' && m.agentId !== 'Coordinator'
       );
+
+      const conclusion = await this.generateConclusion(participantMessages);
+
+      // 2. 添加协调者结束消息
+      const consensusPercent = ((this.session.consensusLevel || 0) * 100).toFixed(1);
+      const checkpoint = await CheckpointManager.getInstance().load(this.threadId);
+      const currentRound = (checkpoint?.metadata as CoordinatorMetadata | undefined)?.currentRound || 1;
 
       await this.addCoordinatorMessage(
         `🏁 **Discussion Ended**\n` +
           `- Reason: ${reason || 'Manual end'}\n` +
           `- Final Consensus: ${consensusPercent}%\n` +
-          `- Total Rounds: ${this.getCurrentRound()}\n` +
-          `- Participant Messages: ${participantMessages.length}`
+          `- Completed Rounds: ${currentRound - 1}\n` +
+          `- Total Messages: ${participantMessages.length}\n\n` +
+          `📝 **Final Conclusion**:\n${conclusion}`
       );
 
-      // 2. 保存最终状态到 DiscussionStore
+      // 3. 保存最终状态到 DiscussionStore
       const discussionStore = await DiscussionStore.getInstance();
       await discussionStore.save(this.session);
 
-      // 3. 更新 Thread 为已完成
+      // 4. 更新 Thread 为已完成
       const threadStore = await ThreadStore.getInstance();
       await threadStore.update(this.threadId, {
         runStatus: 'completed'
       });
 
-      // 4. 清理 Checkpoint
+      // 5. 清理 Checkpoint
       await CheckpointManager.getInstance().clear(this.threadId);
 
-      // 5. 发送前端通知
+      // 6. 发送前端通知
       const { eventBus } = await import('@main/common/eventbus');
       eventBus.emit('discussion:ended', {
         threadId: this.threadId,
         reason: reason || 'Manual end',
         consensusLevel: this.session.consensusLevel,
-        totalRounds: this.getCurrentRound(),
-        messageCount: participantMessages.length
+        totalRounds: currentRound - 1,
+        messageCount: participantMessages.length,
+        conclusion
       });
 
       log.info(`[DiscussionCoordinator] Discussion ended successfully: ${this.threadId}`);
     } catch (error) {
       log.error(`[DiscussionCoordinator] Error ending discussion ${this.threadId}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * 生成最终结论（协调者使用 LLM 总结）
+   */
+  private async generateConclusion(participantMessages: DiscussionMessage[]): Promise<string> {
+    try {
+      // 构建讨论摘要
+      const discussionSummary = participantMessages
+        .map((m) => {
+          const participant = this.session.participants.find((p) => p.agentId === m.agentId);
+          const name = participant?.name || participant?.role || m.agentId;
+          return `【${name}】: ${m.content}`;
+        })
+        .join('\n\n');
+
+      // 使用 LLM 生成结论
+      const { agentExecutor } = await import('@main/ai/AgentExecutor');
+      const coordinatorSessionId = `${this.threadId}-coordinator-summary`;
+
+      const builder = agentExecutor.piMono();
+      builder
+        .agentId('discussion-coordinator')
+        .instructions(
+          `你是讨论协调者。请基于以下讨论内容生成最终结论。\n\n` +
+            `**原始需求**：${this.session.topic}\n\n` +
+            `**讨论内容**：\n${discussionSummary}\n\n` +
+            `请分析：\n` +
+            `1. 参与者的共识点是什么？\n` +
+            `2. 是否回答了原始需求？\n` +
+            `3. 最终的结论或建议是什么？\n\n` +
+            `请用简洁的语言（200字以内）给出结论，不要重复讨论内容，只给出核心结论。`
+        );
+
+      const result = await agentExecutor.submitAndWait({
+        sessionId: coordinatorSessionId,
+        message: '请生成最终结论',
+        builder
+      });
+
+      if (result.error) {
+        log.error('[DiscussionCoordinator] Failed to generate conclusion:', result.error);
+        return '协调者无法生成结论（LLM 调用失败）';
+      }
+
+      return result.output;
+    } catch (error) {
+      log.error('[DiscussionCoordinator] Error generating conclusion:', error);
+      return '协调者无法生成结论（系统错误）';
     }
   }
 
