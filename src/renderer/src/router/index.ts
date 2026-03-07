@@ -82,7 +82,7 @@ const router = createRouter({
         {
           path: 'consultation',
           name: 'consultation',
-          component: () => import('@/views/ConsultationView.vue')
+          component: () => import('@/views/DiscussionView.vue') // ✅ 复用 DiscussionView
         },
         {
           path: 'designer',

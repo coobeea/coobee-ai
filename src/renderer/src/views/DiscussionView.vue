@@ -3,10 +3,12 @@
     <!-- 顶部工具栏 -->
     <div class="flex items-center justify-between border-b border-border bg-card px-6 py-4">
       <div class="flex items-center gap-3">
-        <span class="i-carbon-forum inline-block h-6 w-6 text-primary"></span>
+        <span
+          class="inline-block h-6 w-6 text-primary"
+          :class="isConcurrentMode ? 'i-carbon-user-multiple' : 'i-carbon-forum'"></span>
         <div>
-          <h1 class="text-lg font-semibold text-foreground">智能体讨论室</h1>
-          <p class="text-xs text-muted-foreground">多智能体协作讨论</p>
+          <h1 class="text-lg font-semibold text-foreground">{{ viewTitle }}</h1>
+          <p class="text-xs text-muted-foreground">{{ viewSubtitle }}</p>
         </div>
       </div>
 
@@ -294,12 +296,19 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
+import { useRoute } from 'vue-router';
 import type { DiscussionSession, DiscussionParticipant, DiscussionMessage } from '@shared/types/discussion';
 import * as discussionApi from '@/api/discussion';
 import { useAgentsStore } from '@/stores/agents';
 import { gateway } from '@/plugins/gatewaySetup';
 
+const route = useRoute();
 const agentsStore = useAgentsStore();
+
+// ✅ 根据路由判断模式（/discussion = sequential，/consultation = concurrent）
+const isConcurrentMode = computed(() => route.query.mode === 'concurrent' || route.name === 'consultation');
+const viewTitle = computed(() => (isConcurrentMode.value ? '专家会诊' : '智能体讨论室'));
+const viewSubtitle = computed(() => (isConcurrentMode.value ? '并发式多智能体协作' : '多智能体协作讨论'));
 
 const discussions = ref<DiscussionSession[]>([]);
 const selectedDiscussion = ref<DiscussionSession | null>(null);
@@ -462,10 +471,13 @@ async function submitCreateDiscussion(): Promise<void> {
       active: true
     }));
 
+    // ✅ 根据模式选择 turnStrategy
+    // 群聊讨论（sequential）→ 'round-robin'
+    // 专家会诊（concurrent）→ 'concurrent'
     const session = await discussionApi.createDiscussion({
       topic: newDiscussion.value.topic,
       participants,
-      turnStrategy: 'round-robin',
+      turnStrategy: isConcurrentMode.value ? 'concurrent' : 'round-robin',
       consensusThreshold: 0.7,
       maxRounds: 20
     });

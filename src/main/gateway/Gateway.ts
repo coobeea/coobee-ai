@@ -32,7 +32,6 @@ import { registerTerminalRoutes } from './http/terminals';
 import { registerAgentHomeRoutes } from './http/agent-home';
 import { registerWebhookRoutes } from './http/webhooks';
 import { registerDiscussionRoutes } from './http/discussion';
-import { registerConsultationRoutes } from './http/consultation';
 import { GatewayErrorCode, GatewayMethodError } from './protocol/errors';
 import type {
   GatewayRequest,
@@ -281,7 +280,6 @@ export class Gateway implements GatewayApi {
     registerTerminalRoutes(router);
     registerWebhookRoutes(router);
     registerDiscussionRoutes(router);
-    registerConsultationRoutes(router);
 
     // 动态挂载 Extension 注册的 HTTP 路由
     this.mountExtensionHttpRoutes(router);

@@ -38,7 +38,12 @@ export interface DiscussionSession {
   metadata?: Record<string, unknown>;
 }
 
-export type TurnStrategy = 'round-robin' | 'weighted' | 'reactive' | 'moderator-controlled';
+export type TurnStrategy =
+  | 'round-robin' // 顺序发言（轮流）
+  | 'concurrent' // 并发发言（同时）
+  | 'weighted' // 加权发言（未来）
+  | 'reactive' // 响应式发言（未来）
+  | 'moderator-controlled'; // 主持人控制（未来）
 
 export interface ConsensusResult {
   achieved: boolean;
