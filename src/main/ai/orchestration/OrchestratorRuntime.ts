@@ -23,8 +23,6 @@ import { AbstractAgentRuntime, generateRuntimeId } from '../runtime/AbstractAgen
 import type { AgentRuntimeOptions, ExecutionConfig, ExecutionResult, StreamChunk, SessionInfo } from '../runtime/types';
 import { Orchestrator, createOrchestrator, type OrchestratorConfig, type OrchestratorEvent } from './Orchestrator';
 import type { Task, TaskExecutionResult } from './types';
-import { Aggregator } from '../quality-loop/Aggregator';
-import { createLLMChat, type AgentExecutorLike } from '../quality-loop/llm-chat';
 
 const log = createLogger('orchestration:runtime');
 
@@ -57,7 +55,6 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
   private sessionId: string;
   private createdAt: number;
   private _orchestratorConfig: OrchestratorConfig;
-  private _agentExecutor: unknown;
 
   constructor(options?: OrchestratorRuntimeOptions) {
     super();
@@ -66,7 +63,6 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
     this.sessionId = options?.sessionId || `orch-${Date.now()}`;
     this.createdAt = Date.now();
     this._orchestratorConfig = options?.orchestratorConfig || {};
-    this._agentExecutor = options?.agentExecutor;
 
     this._options = {
       name: this._name,
@@ -162,7 +158,7 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
         taskResult = result;
         taskDone = true;
 
-        // 🔄 修改：提取初始输出（正确处理对象类型）
+        // 🔄 修改：提取 Aggregator Agent 生成的汇总输出
         let resultOutput = '';
         if (typeof result.finalOutput === 'string') {
           resultOutput = result.finalOutput;
@@ -176,47 +172,8 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
             .join('\n\n');
         }
 
-        if (this._agentExecutor) {
-          try {
-            const aggregator = new Aggregator(createLLMChat(this._agentExecutor as AgentExecutorLike));
-
-            if (result.subTaskResults.length > 1) {
-              pushChunk({
-                type: 'text:delta',
-                content: '\n[质量闭环] 正在汇总多子任务输出...\n',
-                data: { delta: '\n[质量闭环] 正在汇总多子任务输出...\n' }
-              });
-
-              const aggregationResult = await aggregator.aggregate({
-                userRequest: input,
-                subTaskResults: result.subTaskResults.map((subtask, idx) => ({
-                  taskId: `subtask-${idx}`,
-                  agentName: `agent-${idx}`,
-                  output: String(subtask.result || ''),
-                  status: subtask.status === 'completed' ? 'success' : 'failed',
-                  error: subtask.error
-                }))
-              });
-
-              resultOutput = aggregationResult.finalOutput;
-              pushChunk({
-                type: 'text:delta',
-                content: `[质量闭环] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n`,
-                data: {
-                  delta: `[质量闭环] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n`
-                }
-              });
-            }
-          } catch (error) {
-            log.error('[OrchestratorRuntime] 质量闭环失败:', error);
-            pushChunk({
-              type: 'text:delta',
-              content: `[质量闭环] ⚠️ 质量检查失败，使用原始输出\n`,
-              data: { delta: `[质量闭环] ⚠️ 质量检查失败，使用原始输出\n` }
-            });
-          }
-        }
-
+        // ✅ 汇总已由 Orchestrator 内部的 Aggregator Agent 完成
+        // 不再需要在 Runtime 层做二次汇总
         qualityLoopOutput = resultOutput;
         pushChunk({ type: 'text:start', content: '' });
         pushChunk({
@@ -523,6 +480,32 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
             type: 'delegate:done',
             content: `Replan ready: ${data.newSubTaskCount} new subtasks`,
             data: { fromAgent: 'Planner', toAgent: this._name }
+          }
+        ];
+
+      case 'aggregate:start':
+        return [
+          {
+            type: 'delegate:start',
+            content: `汇总任务结果...`,
+            data: {
+              agentId: 'aggregator',
+              agentName: 'Aggregator',
+              task: '汇总分析'
+            }
+          }
+        ];
+
+      case 'aggregate:done':
+        return [
+          {
+            type: 'delegate:done',
+            content: `汇总完成 (${data.duration}ms)`,
+            data: {
+              agentId: 'aggregator',
+              agentName: 'Aggregator',
+              duration: data.duration
+            }
           }
         ];
 

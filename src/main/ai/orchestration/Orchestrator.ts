@@ -19,6 +19,7 @@
 import { createLogger } from '@main/common/logger';
 import { Planner, type IPlanner } from './Planner';
 import { WorkerCoordinator, type IWorkerCoordinator, type WorkerExecutionResult } from './WorkerCoordinator';
+import { AggregatorAgent, type IAggregator } from './AggregatorAgent';
 import type { Task, SubTask, ExecutionPlan, TaskExecutionResult, SubTaskExecutionResult } from './types';
 
 const log = createLogger('orchestration');
@@ -110,6 +111,7 @@ export class Orchestrator implements IOrchestrator {
   constructor(
     private readonly planner: IPlanner,
     private readonly workerCoordinator: IWorkerCoordinator,
+    private readonly aggregator: IAggregator,
     config?: OrchestratorConfig
   ) {
     this.resolvedConfig = {
@@ -171,8 +173,25 @@ export class Orchestrator implements IOrchestrator {
       // ── 3. 聚合阶段 ──
       this.emit({ type: 'aggregate:start' });
       log.info('[Orchestrator] Phase 3: Aggregating results...');
-      const finalOutput = this.aggregateResults(plan, subTaskResults);
-      this.emit({ type: 'aggregate:done', data: { resultCount: subTaskResults.length } });
+
+      // 🔄 修改：委托给 Aggregator Agent，而非直接调用 LLM
+      const { Env } = await import('@main/common/env');
+      const path = await import('node:path');
+      const workspaceDir = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId || task.id);
+      const taskDirPath = path.join(workspaceDir, 'tasks', task.id);
+
+      const aggregationResult = await this.aggregator.aggregate(task, plan, subTaskResults, taskDirPath);
+
+      this.emit({
+        type: 'aggregate:done',
+        data: { resultCount: subTaskResults.length, duration: aggregationResult.duration }
+      });
+
+      // 构建最终输出（包含汇总内容）
+      const finalOutput = {
+        summary: aggregationResult.summary,
+        results: subTaskResults.filter((r) => r.result).map((r) => r.result)
+      };
 
       // 🆕 保存最终汇总结果到主会话
       await this.saveFinalSummary(task.id, finalOutput, subTaskResults);
@@ -471,69 +490,9 @@ export class Orchestrator implements IOrchestrator {
     return null;
   }
 
-  /**
-   * 聚合结果（用户友好的格式）
-   *
-   * 🔄 修改：不直接拼接子任务原始输出，而是提取关键信息
-   */
-  private aggregateResults(
-    plan: ExecutionPlan,
-    subTaskResults: SubTaskExecutionResult[]
-  ): { summary: string; results: unknown[] } {
-    const completed = subTaskResults.filter((r) => r.status === 'completed');
-    const failed = subTaskResults.filter((r) => r.status === 'failed');
-
-    const results = completed.filter((r) => r.result).map((r) => r.result);
-
-    // 🆕 提取每个子任务的核心输出（过滤内部协调信息）
-    const extractedOutputs = completed
-      .map((r) => {
-        if (!r.result || typeof r.result !== 'string') return null;
-
-        const subTask = plan.subTasks.find((st) => st.id === r.subTaskId);
-        const output = String(r.result);
-
-        // 移除常见的内部标记（如果有）
-        const cleaned = output
-          .replace(/^【.*?】\s*/gm, '') // 移除【内部通知】等标记
-          .replace(/^##\s*内部信息[\s\S]*?(?=##|$)/gm, '') // 移除内部信息章节
-          .replace(/^---\s*依赖结果[\s\S]*?(?=^##|$)/gm, '') // 移除依赖结果章节
-          .trim();
-
-        return {
-          taskName: subTask?.name || r.subTaskId,
-          output: cleaned,
-          duration: r.duration || 0
-        };
-      })
-      .filter(Boolean) as Array<{ taskName: string; output: string; duration: number }>;
-
-    // 构建用户友好的汇总
-    const lines: string[] = [];
-
-    // 执行概况
-    lines.push(`✅ 任务已完成`);
-    lines.push(`\n**执行统计**：${completed.length}/${subTaskResults.length} 个子任务成功完成`);
-
-    if (failed.length > 0) {
-      lines.push(`⚠️ 失败的子任务：${failed.map((f) => f.subTaskId).join(', ')}`);
-    }
-
-    // 子任务输出（简洁格式）
-    if (extractedOutputs.length > 0) {
-      lines.push('\n---\n');
-      for (const item of extractedOutputs) {
-        lines.push(`## ${item.taskName}\n`);
-        lines.push(item.output);
-        lines.push('\n');
-      }
-    }
-
-    return {
-      summary: lines.join('\n'),
-      results
-    };
-  }
+  // ========== 已移除 aggregateResults 方法 ==========
+  // 原先直接拼接子任务输出的方法已被 Aggregator Agent 替代
+  // Aggregator Agent 使用工具读取文件，生成简洁的汇总
 
   // ========== 辅助方法 ==========
 
@@ -651,6 +610,8 @@ export class Orchestrator implements IOrchestrator {
 
   /**
    * 🆕 保存最终汇总结果到主会话
+   *
+   * 🔄 修改：保存 Aggregator Agent 的简洁汇总到 aggregation.md
    */
   private async saveFinalSummary(
     taskId: string,
@@ -667,15 +628,24 @@ export class Orchestrator implements IOrchestrator {
     const tasksDir = path.join(mainWorkspace, 'tasks', taskId);
     await fs.ensureDir(tasksDir);
 
-    const summaryContent = [
+    // 🆕 保存简洁的汇总到 aggregation.md（来自 Aggregator Agent）
+    const aggregationContent = [
       '# 任务执行汇总',
       '',
       `**任务 ID**: ${taskId}`,
       `**完成时间**: ${new Date().toISOString()}`,
       '',
-      '## 执行摘要',
+      finalOutput.summary
+    ].join('\n');
+
+    await fs.writeFile(path.join(tasksDir, 'aggregation.md'), aggregationContent, 'utf-8');
+
+    // 保留详细的 summary.md（包含所有子任务完整输出）
+    const detailedSummary = [
+      '# 任务执行详细记录',
       '',
-      finalOutput.summary,
+      `**任务 ID**: ${taskId}`,
+      `**完成时间**: ${new Date().toISOString()}`,
       '',
       '## 子任务结果',
       '',
@@ -698,7 +668,7 @@ export class Orchestrator implements IOrchestrator {
         )
     ].join('\n');
 
-    await fs.writeFile(path.join(tasksDir, 'summary.md'), summaryContent, 'utf-8');
+    await fs.writeFile(path.join(tasksDir, 'summary.md'), detailedSummary, 'utf-8');
 
     // 保存状态 JSON
     const statusData = {
@@ -771,7 +741,7 @@ export class Orchestrator implements IOrchestrator {
 /**
  * 创建 Orchestrator 实例
  *
- * 工厂函数，自动创建 Planner 和 WorkerCoordinator。
+ * 工厂函数，自动创建 Planner、WorkerCoordinator 和 AggregatorAgent。
  */
 export function createOrchestrator(config?: OrchestratorConfig): Orchestrator {
   const planner = new Planner({
@@ -787,5 +757,11 @@ export function createOrchestrator(config?: OrchestratorConfig): Orchestrator {
     signal: config?.signal
   });
 
-  return new Orchestrator(planner, workerCoordinator, config);
+  const aggregator = new AggregatorAgent({
+    parentSessionId: config?.parentSessionId,
+    model: config?.model,
+    signal: config?.signal
+  });
+
+  return new Orchestrator(planner, workerCoordinator, aggregator, config);
 }
