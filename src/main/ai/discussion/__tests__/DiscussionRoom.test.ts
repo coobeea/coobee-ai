@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DiscussionRoom } from '../DiscussionRoom';
 import { TurnManager } from '../TurnManager';
 import { ConsensusDetector } from '../ConsensusDetector';
-import type { DiscussionParticipant } from '../types';
+import type { DiscussionParticipant, DiscussionMessage } from '../types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
