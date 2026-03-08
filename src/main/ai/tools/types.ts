@@ -158,13 +158,7 @@ export interface ToolExecutionContext extends SandboxContext {
    */
   cwd: string;
 
-  // === 用户空间（user/）===
-
-  /** 用户空间根目录 — {workspace}/user/ */
-  userDir: string;
-
-  /** 工具输出目录 — {workspace}/user/output/ */
-  outputDir: string;
+  // === 工作空间目录 ===
 
   /** 多 Agent 任务目录 — {workspace}/tasks/ */
   tasksDir: string;

@@ -202,22 +202,21 @@ ${truncated}
 // ==================== AGENTS.md 协议文件读取 ====================
 
 /**
- * 读取并合并三级 AGENTS.md 协议文件
+ * 读取并合并二级 AGENTS.md 协议文件
  *
  * 优先级（后者可覆盖前者规则）：
  *   1. 全局 AGENTS.md（{userHome}/AGENTS.md）— 系统级规则（所有 Agent 共享）
- *   2. Agent级 AGENTS.md（homes/{agentId}/AGENTS.md）— Agent 自定义规则（跨会话）
- *   3. 会话级 AGENTS.md（{workspace}/AGENTS.md）— 当前会话临时覆盖
+ *   2. Agent级 AGENTS.md（homes/{agentId}/AGENTS.md）— Agent 自定义规则（跨会话持久）
  *
  * @param globalPath 全局 AGENTS.md 路径
  * @param agentHome Agent Home 目录路径（可选）
- * @param workspace 工作空间根路径
+ * @param _workspace 工作空间根路径（已废弃，仅保留参数兼容）
  * @returns `<system_agents_md>` XML 块，或 undefined
  */
 async function readAgentsMdFiles(
   globalPath: string,
   agentHome: string | undefined,
-  workspace: string
+  _workspace: string
 ): Promise<string | undefined> {
   const maxLen = 4000;
   const parts: string[] = [];
@@ -248,17 +247,6 @@ async function readAgentsMdFiles(
     }
   }
 
-  // 3. 会话级 AGENTS.md
-  const wsPath = path.join(workspace, 'AGENTS.md');
-  try {
-    const content = fs.readFileSync(wsPath, 'utf-8').trim();
-    if (content && !seenContent.has(content)) {
-      parts.push(`---\n\n<!-- Session-level overrides (${wsPath}) -->\n\n${content}`);
-    }
-  } catch {
-    // 文件不存在时静默
-  }
-
   if (parts.length === 0) return undefined;
 
   let merged = parts.join('\n\n');
@@ -268,11 +256,10 @@ async function readAgentsMdFiles(
 
   const pathLines = [`Global path: ${globalPath}`];
   if (agentMdPath) pathLines.push(`Agent path: ${agentMdPath}`);
-  pathLines.push(`Session path: ${wsPath}`);
 
   return `<system_agents_md>
 This is the system-wide AGENTS.md protocol file. It contains identity, rules, and shared context
-that ALL agents MUST follow. You may update the workspace-level copy using the \`write\` tool.
+that ALL agents MUST follow. You may update the Agent-level copy in your Agent Home directory.
 
 ${pathLines.join('\n')}
 
@@ -550,9 +537,7 @@ async function buildToolExecutionContext(
     // 工作目录
     cwd,
 
-    // 用户空间
-    outputDir: path.join(workspace, 'user', 'output'),
-    userDir: path.join(workspace, 'user'),
+    // 工作空间目录
     tasksDir: path.join(workspace, 'tasks'),
 
     // 系统空间（.runtime/）

@@ -39,10 +39,6 @@ export class WorkspaceManager {
     const workspace = join(threadWorkspace, 'agents', agentName);
 
     if (!existsSync(workspace)) {
-      // 用户空间
-      mkdirSync(join(workspace, 'user', 'output'), { recursive: true });
-      if (enableSkills) mkdirSync(join(workspace, 'user', 'skills'), { recursive: true });
-
       // 系统空间
       mkdirSync(join(workspace, '.runtime', 'sessions'), { recursive: true });
       mkdirSync(join(workspace, '.runtime', 'contexts'), { recursive: true });
@@ -50,6 +46,7 @@ export class WorkspaceManager {
       mkdirSync(join(workspace, '.runtime', 'logs'), { recursive: true });
 
       // 可选目录
+      if (enableSkills) mkdirSync(join(workspace, 'skills'), { recursive: true });
       if (enableExtensions) mkdirSync(join(workspace, 'extensions'), { recursive: true });
       if (enableMemory) mkdirSync(join(workspace, 'memory'), { recursive: true });
 

@@ -322,8 +322,6 @@ export function createFallbackToolContext(opts: { workspaceRoot: string; session
     sessionId,
     threadId: sessionId,
     cwd: workspace,
-    userDir: path.join(workspace, 'user'),
-    outputDir: path.join(workspace, 'user', 'output'),
     tasksDir: path.join(workspace, 'tasks'),
     sessionsDir: path.join(workspace, '.runtime', 'sessions'),
     contextsDir: path.join(workspace, '.runtime', 'contexts'),

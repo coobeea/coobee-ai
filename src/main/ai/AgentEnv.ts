@@ -246,25 +246,33 @@ Your Runtime Environment:
 - Model: ${env.defaultModel} (thinking=${env.thinkingLevel})
 - Extensions: ${extensionsList}
 
-Workspace Structure (Dual-Space Architecture):
-- User Space: ${env.workspace}/user/       ← user-facing data, outputs, editable skills
-  - data/       — user input files, reference materials
-  - output/     — your output files go here
-  - skills/     — active skills (symlinked, viewable and editable)
-  - knowledge/  — knowledge base documents
-- System Space: ${env.workspace}/.runtime/  ← internal, hidden from user
-  - sessions/, contexts/, events/, logs/
-- GOAL.md at workspace root
+Workspace Structure:
+- Workspace Root: ${env.workspace}/           ← temporary sandbox (create files as needed)
+  - .runtime/                                 — system internal files (sessions, contexts, logs)
+  - tasks/                                    — multi-agent collaboration area
+  - GOAL.md                                   — task goal file${
+    env.agentHome
+      ? `\n\n- Agent Home: ${env.agentHome}/            ← YOUR persistent space (survives across sessions)
+  - SOUL.md, USER.md, MEMORY.md               — your identity and memory
+  - output/                                   — your persistent output files
+  - skill-data/                               — structured data from skills`
+      : ''
+  }
 
 Key System Directories:
 - Config: ${env.configDir}
 - Memory: ${env.memoryDir}
 - Skills: builtin=${env.builtinSkillsDir}, user=${env.userSkillsDir}
-- Agents: builtin=${env.builtinAgentsDir}, user=${env.userAgentsDir}${env.agentHome ? `\n- Agent Home: ${env.agentHome} (persistent identity, memory, rules)` : ''}
+- Agents: builtin=${env.builtinAgentsDir}, user=${env.userAgentsDir}
 
 File Output Convention:
-- Write user-facing outputs to {workspace}/user/output/
-- Write intermediate/system data to {workspace}/.runtime/
-- For multi-agent tasks: {workspace}/tasks/{taskId}/
+- Persistent outputs → {agentHome}/output/ (or {agentHome}/skill-data/ for structured data)
+- Temporary files → {workspace}/ (create subdirs as needed)
+- System data → {workspace}/.runtime/ (managed by system)
+- Multi-agent tasks → {workspace}/tasks/{taskId}/
+
+IMPORTANT: Decide file location based on purpose:
+- If the output is valuable for future sessions → save to Agent Home
+- If the file is temporary for current task → save to workspace
 </runtime_environment>`;
 }

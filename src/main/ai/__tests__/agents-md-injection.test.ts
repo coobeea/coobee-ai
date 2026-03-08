@@ -4,10 +4,9 @@
  *
  * 测试覆盖：
  *   1. 全局 AGENTS.md 存在时正确注入到 appendInstructions
- *   2. 工作空间 AGENTS.md 与全局合并
+ *   2. Agent级 AGENTS.md 与全局合并
  *   3. 文件不存在时不注入
  *   4. 内容过长时截断
- *   5. 工作空间初始化时从全局复制
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -170,12 +169,21 @@ describe('AGENTS.md injection', () => {
     expect(agentsMdArg).toBeUndefined();
   });
 
-  it('should merge global and workspace AGENTS.md', async () => {
+  it('should merge global and Agent-level AGENTS.md', async () => {
     const globalContent = '# System Identity\n\n- **系统名称**: TestAI';
-    const wsContent = '# Session Context\n\n当前任务: 代码审查';
+    const agentContent = '# Agent Rules\n\n当前专长: 代码审查';
 
     fs.writeFileSync(globalAgentsMdPath, globalContent, 'utf-8');
-    fs.writeFileSync(path.join(workspaceDir, 'AGENTS.md'), wsContent, 'utf-8');
+
+    // Mock Agent Home AGENTS.md
+    const agentHomeDir = '/mock/homes/test-agent';
+    const agentAgentsMdPath = path.join(agentHomeDir, 'AGENTS.md');
+    fs.mkdirSync(agentHomeDir, { recursive: true });
+    fs.writeFileSync(agentAgentsMdPath, agentContent, 'utf-8');
+
+    // Mock getAgentHomeDir to return real temp dir
+    (envModule.Env.getAgentHomeDir as any).mockReturnValue(agentHomeDir);
+    mockBuilder.getAgentId.mockReturnValue('test-agent');
 
     await injectEnv('session-123', mockBuilder);
 
@@ -184,21 +192,27 @@ describe('AGENTS.md injection', () => {
     expect(agentsMdArg).toBeDefined();
     expect(agentsMdArg).toContain('系统名称');
     expect(agentsMdArg).toContain('代码审查');
-    expect(agentsMdArg).toContain('Session-level overrides');
+    expect(agentsMdArg).toContain('Agent-level rules');
   });
 
-  it('should not duplicate content if workspace AGENTS.md is same as global', async () => {
+  it('should not duplicate content if Agent AGENTS.md is same as global', async () => {
     const content = '# System Identity\n\n- **系统名称**: TestAI';
     fs.writeFileSync(globalAgentsMdPath, content, 'utf-8');
-    fs.writeFileSync(path.join(workspaceDir, 'AGENTS.md'), content, 'utf-8');
+
+    const agentHomeDir = '/mock/homes/test-agent';
+    fs.mkdirSync(agentHomeDir, { recursive: true });
+    fs.writeFileSync(path.join(agentHomeDir, 'AGENTS.md'), content, 'utf-8');
+
+    (envModule.Env.getAgentHomeDir as any).mockReturnValue(agentHomeDir);
+    mockBuilder.getAgentId.mockReturnValue('test-agent');
 
     await injectEnv('session-123', mockBuilder);
 
     const allArgs = mockBuilder.appendInstructions.mock.calls[0];
     const agentsMdArg = allArgs.find((a: string) => a.includes('<system_agents_md>'));
     expect(agentsMdArg).toBeDefined();
-    // Should NOT contain session-level marker (identical content is deduplicated)
-    expect(agentsMdArg).not.toContain('Session-level overrides');
+    // Should NOT contain Agent-level marker (identical content is deduplicated)
+    expect(agentsMdArg).not.toContain('Agent-level rules');
   });
 
   it('should truncate content exceeding 4000 chars', async () => {

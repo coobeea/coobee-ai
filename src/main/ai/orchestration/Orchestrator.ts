@@ -689,7 +689,7 @@ export class Orchestrator implements IOrchestrator {
   }
 
   /**
-   * 🆕 导出所有 Worker 产出的文件到主 workspace 的 user/output
+   * 导出所有 Worker 产出的文件到主 workspace 的 output/
    */
   private async exportWorkerArtifacts(
     subTasks: SubTask[]
@@ -701,7 +701,7 @@ export class Orchestrator implements IOrchestrator {
     const { Env } = await import('@main/common/env');
 
     const mainWorkspace = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId);
-    const mainOutputDir = path.join(mainWorkspace, 'user', 'output');
+    const mainOutputDir = path.join(mainWorkspace, 'output');
     await fs.ensureDir(mainOutputDir);
 
     const artifacts: Array<{ name: string; path: string; workerId: string }> = [];
@@ -709,7 +709,7 @@ export class Orchestrator implements IOrchestrator {
     // 遍历所有 Worker 的 output 目录
     for (const subTask of subTasks) {
       const workerWorkspace = path.join(mainWorkspace, 'agents', `worker-${subTask.id}`);
-      const workerOutputDir = path.join(workerWorkspace, 'user', 'output');
+      const workerOutputDir = path.join(workerWorkspace, 'output');
 
       if (await fs.pathExists(workerOutputDir)) {
         const files = await fs.readdir(workerOutputDir);

@@ -246,7 +246,7 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
         '',
         ...result.artifacts.map((a) => `- **${a.name}** - Worker: ${a.workerId}`),
         '',
-        '所有文件已保存到工作空间的 `user/output/` 目录。'
+        '所有文件已保存到工作空间的 `output/` 目录。'
       ].join('\n');
       finalOutput += artifactsSummary;
     }

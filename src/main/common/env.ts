@@ -468,13 +468,7 @@ class EnvClass {
     const workspace = path.join(this.paths.workspacesDir, id);
     const subDirs = [
       workspace,
-      // 用户空间
-      path.join(workspace, 'user'),
-      path.join(workspace, 'user', 'data'),
-      path.join(workspace, 'user', 'output'),
-      path.join(workspace, 'user', 'skills'),
-      path.join(workspace, 'user', 'knowledge'),
-      // 系统空间
+      // 系统空间（.runtime/）
       path.join(workspace, '.runtime'),
       path.join(workspace, '.runtime', 'sessions'),
       path.join(workspace, '.runtime', 'contexts'),
@@ -493,35 +487,23 @@ class EnvClass {
     if (!fs.existsSync(goalPath)) {
       fs.writeFileSync(goalPath, '', 'utf-8');
     }
-    // 初始化会话级 AGENTS.md（从全局模板复制，智能体可按需修改）
-    const wsAgentsMd = path.join(workspace, 'AGENTS.md');
-    if (!fs.existsSync(wsAgentsMd)) {
-      const globalAgentsMd = this.paths.agentsMdPath;
-      if (fs.existsSync(globalAgentsMd)) {
-        fs.copyFileSync(globalAgentsMd, wsAgentsMd);
-      } else {
-        fs.writeFileSync(wsAgentsMd, '', 'utf-8');
-      }
-    }
     return workspace;
   }
 
   /**
-   * 惰性迁移旧工作空间到新的双空间结构
+   * 惰性迁移旧工作空间到新结构
    *
    * 如果根目录下存在旧的 sessions/contexts/events/logs 目录，
-   * 把它们移动到 .runtime/ 下。如果根目录下有 output/，移到 user/output/。
+   * 把它们移动到 .runtime/ 下。
    */
   async _migrateWorkspaceIfNeeded(workspace: string): Promise<void> {
     const runtimeDir = path.join(workspace, '.runtime');
-    const userDir = path.join(workspace, 'user');
 
     const runtimeMigrations = ['sessions', 'contexts', 'events', 'logs'];
     for (const name of runtimeMigrations) {
       const oldDir = path.join(workspace, name);
       const newDir = path.join(runtimeDir, name);
       if (fs.existsSync(oldDir) && !fs.existsSync(path.join(oldDir, '.migrated'))) {
-        // 旧目录存在且未标记迁移——将内容复制到新位置
         try {
           const entries = fs.readdirSync(oldDir);
           for (const entry of entries) {
@@ -531,30 +513,10 @@ class EnvClass {
               fs.renameSync(src, dst);
             }
           }
-          // 标记已迁移（保留旧目录避免破坏正在运行的会话）
           fs.writeFileSync(path.join(oldDir, '.migrated'), 'migrated to .runtime/', 'utf-8');
         } catch {
           // 迁移失败时静默，不阻塞正常流程
         }
-      }
-    }
-
-    // output/ → user/output/
-    const oldOutput = path.join(workspace, 'output');
-    const newOutput = path.join(userDir, 'output');
-    if (fs.existsSync(oldOutput) && !fs.existsSync(path.join(oldOutput, '.migrated'))) {
-      try {
-        const entries = fs.readdirSync(oldOutput);
-        for (const entry of entries) {
-          const src = path.join(oldOutput, entry);
-          const dst = path.join(newOutput, entry);
-          if (!fs.existsSync(dst)) {
-            fs.renameSync(src, dst);
-          }
-        }
-        fs.writeFileSync(path.join(oldOutput, '.migrated'), 'migrated to user/output/', 'utf-8');
-      } catch {
-        // 迁移失败时静默
       }
     }
   }
@@ -583,7 +545,7 @@ class EnvClass {
     ];
     const skillPaths = [this.paths.builtinSkillsDir, this.paths.userSkillsDir];
     if (workspace) {
-      const wsSkills = path.join(workspace, 'user', 'skills');
+      const wsSkills = path.join(workspace, 'skills');
       coreDirs.push(wsSkills);
       skillPaths.push(wsSkills);
     }

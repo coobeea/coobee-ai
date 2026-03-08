@@ -911,7 +911,7 @@ ${roles.map((r) => `- **${r.id}** (${r.name}): ${r.description}`).join('\n')}
   // ========== 监控桥接 ==========
 
   /**
-   * 🆕 导出 artifacts 到主 workspace 的 user/output 目录
+   * 导出 artifacts 到主 workspace 的 output 目录
    */
   private async exportArtifacts(): Promise<Array<{ name: string; path: string; type: string; createdBy: string }>> {
     const artifacts = this.context.getArtifacts();
@@ -923,7 +923,7 @@ ${roles.map((r) => `- **${r.id}** (${r.name}): ${r.description}`).join('\n')}
     if (!mainThreadId) return [];
 
     const mainWorkspace = await Env.getAgentWorkspaceDir(mainThreadId);
-    const outputDir = path.join(mainWorkspace, 'user', 'output');
+    const outputDir = path.join(mainWorkspace, 'output');
     await fs.ensureDir(outputDir);
 
     const result: Array<{ name: string; path: string; type: string; createdBy: string }> = [];
