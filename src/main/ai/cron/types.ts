@@ -167,6 +167,14 @@ export abstract class BaseCronJob {
   readonly agentId?: string;
 
   /**
+   * 委托给 Agent 的任务描述（当指定了 agentId 时使用）
+   * 默认使用 description，子类可覆盖以提供更详细的任务描述
+   */
+  get taskForAgent(): string {
+    return this.description;
+  }
+
+  /**
    * 执行逻辑
    * @returns 结果摘要字符串
    */

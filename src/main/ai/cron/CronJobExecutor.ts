@@ -99,7 +99,9 @@ export class CronJobExecutor {
   }
 
   /**
-   * 声明式 Job 执行：直接调用 BaseCronJob.execute()
+   * 声明式 Job 执行：
+   * - 如果指定了 agentId，则通过 Agent 执行（类似动态 Job）
+   * - 否则直接调用 BaseCronJob.execute()
    */
   private async executeDeclarative(job: CronJobDefinition): Promise<string> {
     const instance = this.declarativeJobs.get(job.id);
@@ -107,6 +109,17 @@ export class CronJobExecutor {
       throw new Error(`声明式 Job 实例未注册: ${job.id}`);
     }
 
+    // 如果声明式 Job 指定了 agentId，则通过 Agent 执行
+    if (instance.agentId) {
+      // 构造包含任务描述的 job 对象传递给 executeDynamic
+      const jobWithTask: CronJobDefinition = {
+        ...job,
+        task: instance.taskForAgent || job.description
+      };
+      return await this.executeDynamic(jobWithTask);
+    }
+
+    // 否则直接调用 execute 方法
     return await instance.execute({
       jobId: job.id,
       jobName: job.name,
