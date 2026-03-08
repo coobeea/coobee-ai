@@ -66,7 +66,7 @@ const canCancel = computed(() => props.readonly && taskStatus.value === 'pending
 const canOptimize = computed(() => description.value.trim().length > 0 && !props.readonly);
 
 const handleOptimizeSuccess = (result: unknown): void => {
-  // task-analyzer 返回的是 Markdown 格式的详细描述
+  // app-copilot 返回的是 Markdown 格式的详细描述
   if (typeof result === 'string') {
     description.value = result;
   }
@@ -249,7 +249,7 @@ onMounted(() => {
           <AIGenerate
             v-if="!readonly"
             v-slot="{ isGenerating, trigger }"
-            agent="task-analyzer"
+            agent="app-copilot"
             :prompt="`请将以下任务描述优化为更详细、结构化的 Markdown 格式：\n\n${description}`"
             :auto-parse-json="false"
             :require-confirm="true"

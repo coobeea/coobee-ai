@@ -129,7 +129,7 @@ async function handleParse(): Promise<void> {
 
 用户输入：${input}`;
 
-    const result = await quickChat('task-analyzer', prompt);
+    const result = await quickChat('app-copilot', prompt);
     if (!result) throw new Error('AI 未返回结果');
 
     const jsonStr = result

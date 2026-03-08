@@ -2,6 +2,7 @@
   "id": "shared-drive-task-router",
   "name": "共享网盘任务路由",
   "version": "2.0.0",
-  "description": "监听共享网盘条目创建事件（shared-drive:entry-created），拉起 task-dispatcher 智能体分析成果并智能分发后续任务。",
-  "enabled": true
+  "description": "监听共享网盘条目创建事件（shared-drive:entry-created），拉起 app-copilot 智能体分析成果并智能分发后续任务。",
+  "enabled": false,
+  "_note": "暂时禁用：task-dispatcher 已移除，功能待重构"
 }

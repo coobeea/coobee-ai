@@ -1,16 +1,16 @@
 /**
  * 共享网盘任务路由 (Shared Drive Task Router)
  *
- * 监听 shared-drive:entry-created 事件，创建 Thread 并拉起 task-dispatcher 智能体，
- * 由 task-dispatcher 通过 LLM 判断哪些智能体需要基于网盘成果做跟进处理。
+ * 监听 shared-drive:entry-created 事件，创建 Thread 并拉起 app-copilot 智能体，
+ * 由 app-copilot 通过 LLM 判断哪些智能体需要基于网盘成果做跟进处理。
  *
  * 闭环流程：
- *   智能体完成任务 → 写入共享网盘 → entry-created 事件 → task-dispatcher 分析 → 分发后续任务
+ *   智能体完成任务 → 写入共享网盘 → entry-created 事件 → app-copilot 分析 → 分发后续任务
  */
 
 import type { ExtensionModule, ExtensionApi } from '@main/common/extension';
 
-const TASK_DISPATCHER_AGENT_ID = 'task-dispatcher';
+const TASK_DISPATCHER_AGENT_ID = 'app-copilot';
 const DISPATCH_DELAY_MS = 2000;
 
 let logger: ExtensionApi['logger'];
@@ -55,7 +55,7 @@ function buildDispatchMessage(payload: EntryCreatedPayload): string {
 function shouldDispatch(payload: EntryCreatedPayload): boolean {
   if (!enabled) return false;
 
-  // 跳过 task-dispatcher 自身写入的条目，避免循环
+  // 跳过 app-copilot 自身写入的条目，避免循环
   if (payload.agentId === TASK_DISPATCHER_AGENT_ID) return false;
 
   // 条目必须有实质 topic
