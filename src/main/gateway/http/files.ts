@@ -47,6 +47,9 @@ const PREVIEWABLE_BINARY_EXTS = [
   '.flac'
 ];
 
+/** 支持直接服务预览的文本文件扩展名 */
+const SERVEABLE_TEXT_EXTS = ['.html', '.htm'];
+
 export interface FileTreeNode {
   name: string;
   path: string;
@@ -334,13 +337,13 @@ export function registerFileRoutes(router: Router): void {
       }
 
       const ext = path.extname(filePath).slice(1).toLowerCase();
-      if (!PREVIEWABLE_BINARY_EXTS.includes(ext)) {
+      if (!PREVIEWABLE_BINARY_EXTS.includes(ext) && !SERVEABLE_TEXT_EXTS.includes(ext)) {
         ctx.status = 415;
         ctx.body = { error: 'File type not supported for preview' };
         return;
       }
 
-      const mimeType = MIME_MAP[ext] || 'application/octet-stream';
+      const mimeType = MIME_MAP[ext] || (SERVEABLE_TEXT_EXTS.includes(ext) ? 'text/html' : 'application/octet-stream');
       ctx.type = mimeType;
       ctx.body = fs.createReadStream(filePath);
     } catch (err) {

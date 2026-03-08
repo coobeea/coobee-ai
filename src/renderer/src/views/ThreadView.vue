@@ -67,11 +67,13 @@ function enterWorkspaceForThread(id: string): void {
   const thread = threadsStore.threads.find((t) => t.id === id);
   if (thread) {
     agentsStore.selectAgent(thread.agentId);
-    if (thread.workspacePath) {
+    // ✅ 使用 Agent Home 路径，而不是会话临时空间
+    if (thread.agentHomePath) {
+      projectPath.value = thread.agentHomePath;
+    } else if (thread.workspacePath) {
+      // 降级兼容：如果没有 agentHomePath，使用 workspacePath
       projectPath.value = thread.workspacePath;
     } else {
-      // 如果 thread 没有 workspacePath，使用空字符串标记为已就绪
-      // 用户可以继续使用对话功能，只是项目面板可能为空
       projectPath.value = '';
     }
   }

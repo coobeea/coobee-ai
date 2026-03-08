@@ -32,6 +32,8 @@ export interface ThreadEntry {
   updatedAt: string;
   /** 该 Thread 的工作空间绝对路径 */
   workspacePath: string;
+  /** Agent Home 目录路径（用于展示 Agent 持久化数据） */
+  agentHomePath: string;
 }
 
 /** HTTP 基础路径 */

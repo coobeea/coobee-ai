@@ -1,43 +1,53 @@
 <template>
   <div class="html-preview h-full w-full">
     <iframe
-      v-if="!error"
-      :src="htmlUrl"
-      :sandbox="
-        isHttpUrl ? 'allow-scripts allow-same-origin allow-forms allow-popups' : 'allow-scripts allow-same-origin'
-      "
-      class="h-full w-full border-0"
-      @error="handleError" />
+      v-if="iframeSrc"
+      :src="iframeSrc"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+      class="h-full w-full border-0" />
     <div v-else class="flex h-full w-full items-center justify-center bg-gray-100">
-      <div class="text-red-500">{{ error }}</div>
+      <div class="text-gray-500">加载中...</div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { computed, ref, onBeforeUnmount, watch } from 'vue';
 
 const props = defineProps<{
   filePath: string;
   content?: string;
 }>();
 
-const error = ref<string | null>(null);
+const blobUrl = ref<string>('');
 
 const isHttpUrl = computed(() => /^https?:\/\//i.test(props.filePath));
 
-const htmlUrl = computed(() => {
-  if (props.content) {
-    const blob = new Blob([props.content], { type: 'text/html' });
-    return URL.createObjectURL(blob);
-  }
-  if (/^https?:\/\//i.test(props.filePath)) {
+// ✅ 将副作用从 computed 移到 watch
+watch(
+  () => props.content,
+  (newContent) => {
+    if (newContent && !isHttpUrl.value) {
+      if (blobUrl.value) {
+        URL.revokeObjectURL(blobUrl.value);
+      }
+      const blob = new Blob([newContent], { type: 'text/html' });
+      blobUrl.value = URL.createObjectURL(blob);
+    }
+  },
+  { immediate: true }
+);
+
+const iframeSrc = computed(() => {
+  if (isHttpUrl.value) {
     return props.filePath;
   }
-  return `file://${props.filePath}`;
+  return blobUrl.value || '';
 });
 
-function handleError(): void {
-  error.value = 'HTML 预览失败';
-}
+onBeforeUnmount(() => {
+  if (blobUrl.value) {
+    URL.revokeObjectURL(blobUrl.value);
+  }
+});
 </script>

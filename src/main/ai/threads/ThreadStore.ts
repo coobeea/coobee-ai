@@ -108,6 +108,10 @@ export class ThreadStore {
 
     const sessionId = id;
 
+    // ✅ 获取 Agent Home 路径
+    const { Env } = await import('@main/common/env');
+    const agentHomePath = Env.getAgentHomeDir(params.agentId);
+
     const definition: ThreadDefinition = {
       id,
       title: params.title,
@@ -118,6 +122,7 @@ export class ThreadStore {
       agentType: params.agentType ?? 'agent',
       runStatus: 'idle',
       messageCount: 0,
+      agentHomePath, // ✅ 填充 Agent Home 路径
       createdAt: now,
       updatedAt: now,
       metadata: params.metadata
@@ -378,6 +383,7 @@ function toIndexEntry(def: ThreadDefinition, workspacesDir: string): ThreadIndex
     messageCount: def.messageCount,
     createdAt: def.createdAt,
     updatedAt: def.updatedAt,
-    workspacePath: path.join(workspacesDir, def.id)
+    workspacePath: path.join(workspacesDir, def.id),
+    agentHomePath: def.agentHomePath // ✅ 传递 Agent Home 路径
   };
 }

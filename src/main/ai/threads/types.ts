@@ -57,6 +57,9 @@ export interface ThreadDefinition {
   /** 消息数量（轻量统计，避免前端需要加载全部消息） */
   messageCount: number;
 
+  /** Agent Home 目录路径（用于前端展示 Agent 持久化数据） */
+  agentHomePath: string;
+
   /** 创建时间（ISO 8601） */
   createdAt: string;
 
@@ -82,6 +85,8 @@ export interface ThreadIndexEntry {
   updatedAt: string;
   /** 该 Thread 的工作空间绝对路径（= workspacesDir/{id}） */
   workspacePath: string;
+  /** Agent Home 目录路径（用于前端展示 Agent 持久化数据） */
+  agentHomePath: string;
 }
 
 // ==================== 创建 / 更新参数 ====================
