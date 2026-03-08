@@ -70,7 +70,7 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
       SkillManager.setCurrent(skillManager, sessionId);
 
       // 4. 注入核心执行协议 + 运行时环境 + Skill 发现提示 + Agent 发现提示到 appendInstructions
-      //    执行协议可通过同名 Skill 覆盖（用户在 workspace/skills/execution-protocol/ 创建即可）
+      //    执行协议可通过同名 Skill 覆盖（用户在 skills/execution-protocol/ 创建即可）
       const executionProtocol = buildExecutionProtocol(skillManager);
       const runtimePathsBlock = formatRuntimePaths(agentEnv);
       const skillDiscoveryHint =

@@ -436,23 +436,14 @@ class EnvClass {
    *
    * 返回 {workspacesDir}/{id}，id 通常为 sessionId。
    *
-   * 结构（双空间架构）：
+   * 工作空间是会话级的临时沙箱，Agent 可以自由创建文件和目录：
    *   {workspacesDir}/{id}/
    *   ├── GOAL.md                  目标文件（Agent 在意图提取阶段填写）
-   *   │
-   *   ├── user/                    ← 用户空间（前端默认展示，用户可直接操作）
-   *   │   ├── data/                   用户输入文件、参考资料
-   *   │   ├── output/                 Agent 产出
-   *   │   ├── skills/                 当前激活的技能（软链接，可查看、可修改）
-   *   │   └── knowledge/              知识库文档
-   *   │
-   *   ├── .runtime/                ← 系统空间（前端可见，供高级用户查看）
+   *   ├── .runtime/                系统内部文件（LLM 运行时数据）
    *   │   ├── sessions/               会话持久化
    *   │   ├── contexts/               LLM 请求上下文快照
    *   │   ├── events/                 流式事件记录
-   *   │   ├── logs/                   Agent 运行日志
-   *   │   └── checkpoint.json         执行断点
-   *   │
+   *   │   └── logs/                   Agent 运行日志
    *   └── tasks/                   [多 Agent] 委托任务目录（按需创建）
    *       └── {taskId}/
    *           ├── plan.md             任务计划
@@ -460,6 +451,9 @@ class EnvClass {
    *           ├── agents/             子 Agent 工作空间
    *           ├── results/            子 Agent 汇总结果
    *           └── experiences/        共享执行经验
+   *
+   * 注意：Agent 可以在 workspace 根目录自由创建其他文件和目录（如 output/、data/ 等），
+   * 但这些都是临时文件。持久化数据应保存到 Agent Home（homes/{agentId}/）。
    *
    * @param id 工作空间标识（通常为 sessionId）
    * @returns 工作空间根路径

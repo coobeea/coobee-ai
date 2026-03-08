@@ -88,7 +88,7 @@ asyncio.run(transcribe('{audio_file_path}'))
 如果音频不符合要求，先转换格式：
 
 ```
-exec({ command: "ffmpeg -i {input_file} -ar 16000 -ac 1 -f wav {workspace}/user/output/converted.wav" })
+exec({ command: "ffmpeg -i {input_file} -ar 16000 -ac 1 -f wav {workspace}/output/converted.wav" })
 ```
 
 ---

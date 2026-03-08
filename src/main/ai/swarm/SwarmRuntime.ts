@@ -339,7 +339,7 @@ export class SwarmRuntime extends AbstractAgentRuntime {
         const artifactsSummary = result.artifacts
           .map((a) => `- **${a.name}** (${a.type}) - 产出者: ${a.createdBy}`)
           .join('\n');
-        const artifactsInfo = `\n\n---\n## 📦 产出文件\n\n${artifactsSummary}\n\n所有文件已保存到工作空间的 \`user/output/\` 目录。`;
+        const artifactsInfo = `\n\n---\n## 📦 产出文件\n\n${artifactsSummary}\n\n所有文件已保存到工作空间的 \`output/\` 目录。`;
         finalOutput += artifactsInfo;
         yield { type: 'text:delta', content: artifactsInfo, data: { delta: artifactsInfo } };
       }

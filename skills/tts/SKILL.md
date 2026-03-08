@@ -19,11 +19,17 @@ exec({
   command: "curl -s -X POST http://localhost:18101/api/tts \
     -H 'Content-Type: application/json' \
     -d '{\"text\":\"你好，世界\",\"speaker\":\"xiaoxiao\"}' \
-    -o {workspace}/user/output/speech.mp3"
+    -o {workspace}/output/speech.mp3"
 })
 ```
 
-将 `{workspace}` 替换为实际工作空间路径（从 `<runtime_paths>` 的 `workspace` 字段获取）。
+将 `{workspace}` 替换为实际工作空间路径（从 `<runtime_environment>` 的 `Workspace` 字段获取）。
+
+或者保存到 Agent Home 以持久化：
+
+```
+-o {agentHome}/output/speech.mp3
+```
 
 ---
 
@@ -70,9 +76,12 @@ exec({ command: "curl -s http://localhost:18101/api/speakers" })
 
 ## 输出文件约定
 
-音频文件保存至 `{workspace}/user/output/`，前端可自动识别并渲染播放器。
+音频文件保存至 `{workspace}/output/` 或 `{agentHome}/output/`（持久化），前端可自动识别并渲染播放器。
 
 推荐文件命名：`tts_{timestamp}.mp3` 或具有语义的名称（如 `summary.mp3`）。
+
+- **临时音频**（当前会话用）→ `{workspace}/output/`
+- **持久化音频**（长期保留）→ `{agentHome}/output/`
 
 ---
 
