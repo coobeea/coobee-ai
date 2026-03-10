@@ -568,44 +568,44 @@ src/renderer/src/views/training/
 
 ## 实施计划
 
-### Phase 1：基础功能（复用中策）- 4 周
+### Phase 1：基础功能（复用中策）- ✅ 已完成
 
 - [x] 3 个 Agent（evaluator, coach, data-generator）
 - [x] TrainingExecutor + SessionStore
 - [x] 基础 UI
 
-### Phase 2：并行和测试集 - 2 周
+### Phase 2：并行和测试集 - ✅ 已完成
 
-- [ ] 实现 ParallelTrainingExecutor
-- [ ] 数据集分离为训练集/测试集
-- [ ] 测试集验证逻辑
+- [x] 实现 ParallelTrainingExecutor
+- [x] 数据集分离为训练集/测试集
+- [x] 测试集验证逻辑
 
-### Phase 3：增量训练 - 2 周
+### Phase 3：增量训练 - ✅ 已完成
 
-- [ ] 实现弱点分析算法
-- [ ] 实现针对性数据生成
-- [ ] 实现增量训练流程
+- [x] 实现弱点分析算法
+- [x] 实现针对性数据生成
+- [x] 实现增量训练流程
 
-### Phase 4：自动化和智能化 - 3 周
+### Phase 4：自动化和智能化 - ✅ 已完成
 
-- [ ] 实现完全自动的数据集生成
-- [ ] 实现难度自适应
-- [ ] 实现弱点强化训练
+- [x] 实现完全自动的数据集生成
+- [x] 实现难度自适应
+- [x] 实现弱点强化训练
 
-### Phase 5：版本管理 - 2 周
+### Phase 5：版本管理 - ✅ 已完成
 
-- [ ] 实现 TrainingVersionManager
-- [ ] Agent 版本创建和对比
-- [ ] 版本切换功能
+- [x] 实现 TrainingVersionManager
+- [x] Agent 版本创建和对比
+- [x] 版本切换功能
 
-### Phase 6：高级可视化 - 2 周
+### Phase 6：高级可视化 - ✅ 已完成
 
-- [ ] 集成 Echarts
-- [ ] 实现训练曲线图
-- [ ] 实现维度雷达图
-- [ ] 实现任务分布图
+- [x] 集成 Echarts
+- [x] 实现训练曲线图
+- [x] 实现维度雷达图
+- [x] 实现任务分布图
 
-### Phase 7（可选）：分布式训练 - 4 周
+### Phase 7（可选）：分布式训练 - ⏸️ 暂不实施
 
 - [ ] 设计分布式架构
 - [ ] 实现主控节点
