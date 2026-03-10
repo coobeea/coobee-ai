@@ -88,6 +88,8 @@ export function registerTrainingRoutes(router: Router): void {
       };
 
       // 创建训练会话
+      const autoCreateVersion = body.autoCreateVersion === true;
+
       const session = await trainingStore.create({
         agentId,
         goal,
@@ -95,7 +97,10 @@ export function registerTrainingRoutes(router: Router): void {
         maxRounds,
         strategy: (strategy || 'sequential') as 'sequential' | 'parallel' | 'adaptive' | 'weakness-targeted',
         parallelCount: parallelCount || 1,
-        parentSessionId: continueFromSessionId
+        parentSessionId: continueFromSessionId,
+        metadata: {
+          autoCreateVersion
+        }
       });
 
       // 异步启动训练（根据策略选择执行器）
@@ -240,6 +245,58 @@ export function registerTrainingRoutes(router: Router): void {
       ctx.body = { success: true, data: analysis };
     } catch (err) {
       logger.error('[Training API] 弱点分析失败:', err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // 手动创建训练版本
+  router.post('/training/sessions/:id/create-version', async (ctx: Context) => {
+    ensureInstances();
+
+    try {
+      const session = await trainingStore.load(ctx.params.id);
+      if (!session) {
+        ctx.status = 404;
+        ctx.body = { error: '训练会话不存在' };
+        return;
+      }
+
+      if (session.status !== 'completed') {
+        ctx.status = 400;
+        ctx.body = { error: '只能为已完成的训练创建版本' };
+        return;
+      }
+
+      const { TrainingVersionManager } = await import('@main/training/TrainingVersionManager');
+      const versionManager = new TrainingVersionManager();
+      const versionId = await versionManager.createTrainedVersion(session);
+
+      // 更新会话记录
+      session.trainedVersionId = versionId;
+      await trainingStore.save(session);
+
+      ctx.body = { success: true, data: { versionId } };
+    } catch (err) {
+      logger.error('[Training API] 创建版本失败:', err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // 列出 Agent 的所有训练版本
+  router.get('/training/agents/:agentId/versions', async (ctx: Context) => {
+    ensureInstances();
+
+    try {
+      const agentId = ctx.params.agentId;
+      const { TrainingVersionManager } = await import('@main/training/TrainingVersionManager');
+      const versionManager = new TrainingVersionManager();
+      const versions = await versionManager.listTrainedVersions(agentId);
+
+      ctx.body = { success: true, data: versions };
+    } catch (err) {
+      logger.error('[Training API] 获取版本列表失败:', err);
       ctx.status = 500;
       ctx.body = { error: err instanceof Error ? err.message : String(err) };
     }

@@ -11,6 +11,7 @@
 import { AgentDelegator } from './AgentDelegator';
 import { TrainingSessionStore } from './TrainingSessionStore';
 import { TestSetValidator } from './TestSetValidator';
+import { TrainingVersionManager } from './TrainingVersionManager';
 import type {
   TrainingSession,
   TrainingTask,
@@ -32,6 +33,7 @@ export class TrainingExecutor {
   protected readonly sessionStore: TrainingSessionStore;
   protected readonly config: TrainingExecutorConfig;
   protected readonly testSetValidator: TestSetValidator;
+  protected readonly versionManager: TrainingVersionManager;
 
   /** 运行中的训练会话 Map */
   protected readonly runningSessions = new Map<string, TrainingSession>();
@@ -47,6 +49,7 @@ export class TrainingExecutor {
     this.config = config;
     this.delegator = new AgentDelegator(config);
     this.testSetValidator = new TestSetValidator(this.delegator);
+    this.versionManager = new TrainingVersionManager();
   }
 
   // ==================== 训练执行 ====================
@@ -130,6 +133,18 @@ export class TrainingExecutor {
 
       // 生成报告
       await this.generateReport(session);
+
+      // 自动创建训练版本（如果启用）
+      if (this.config.autoCreateVersion || session.metadata?.autoCreateVersion) {
+        try {
+          const versionId = await this.versionManager.createTrainedVersion(session);
+          session.trainedVersionId = versionId;
+          await this.sessionStore.save(session);
+          logger.info(`[Training] 已创建训练版本: ${versionId}`);
+        } catch (err) {
+          logger.error(`[Training] 创建训练版本失败:`, err);
+        }
+      }
 
       logger.info(`[Training] 训练完成: ${sessionId}`);
       this.emitProgress(session);

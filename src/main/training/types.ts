@@ -264,7 +264,15 @@ export interface TrainingSession {
     targetedDimensions?: string[];
     /** 训练备注 */
     notes?: string;
+    /** 自动创建训练版本 */
+    autoCreateVersion?: boolean;
   };
+
+  /** 训练报告 */
+  report?: TrainingReport;
+
+  /** 训练生成的 Agent 版本 ID */
+  trainedVersionId?: string;
 }
 
 /**
@@ -447,6 +455,9 @@ export interface TrainingExecutorConfig {
 
   /** 进度更新间隔（毫秒） */
   progressUpdateInterval: number;
+
+  /** 训练完成后是否自动创建版本 */
+  autoCreateVersion?: boolean;
 }
 
 /**
