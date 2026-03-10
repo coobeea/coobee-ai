@@ -1,22 +1,21 @@
 <template>
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="emit('close')">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+  <div class="dialog-overlay" @click.self="emit('close')">
+    <div class="dialog">
       <!-- 标题 -->
-      <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-        <h2 class="text-xl font-bold text-gray-900 dark:text-white">创建训练</h2>
-        <button class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors" @click="emit('close')">
-          <i class="i-carbon-close text-gray-600 dark:text-gray-400"></i>
+      <div class="dialog-header">
+        <span class="i-carbon-machine-learning-model inline-block h-4 w-4" />
+        <span>创建训练</span>
+        <button class="close-btn" @click="emit('close')">
+          <span class="i-carbon-close inline-block h-4 w-4" />
         </button>
       </div>
 
       <!-- 表单 -->
-      <div class="p-6 space-y-6">
-        <!-- 步骤 1：选择智能体 -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> 选择智能体 </label>
-          <select
-            v-model="form.agentId"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+      <div class="dialog-body">
+        <!-- 选择智能体 -->
+        <div class="form-group">
+          <label class="form-label">选择智能体</label>
+          <select v-model="form.agentId" class="form-select">
             <option value="">请选择...</option>
             <option value="app-copilot">应用管家</option>
             <option value="one-line-summary">一句话总结</option>
@@ -24,38 +23,29 @@
           </select>
         </div>
 
-        <!-- 步骤 2：选择训练目标 -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> 训练目标 </label>
-          <select
-            v-model="form.goalName"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+        <!-- 选择训练目标 -->
+        <div class="form-group">
+          <label class="form-label">训练目标</label>
+          <select v-model="form.goalName" class="form-select">
             <option value="">请选择...</option>
             <option value="代码生成能力">代码生成能力</option>
             <option value="文本总结能力">文本总结能力（开发中）</option>
             <option value="问题分析能力">问题分析能力（开发中）</option>
           </select>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400"> 选择智能体需要提升的能力维度 </p>
+          <p class="form-hint">选择智能体需要提升的能力维度</p>
         </div>
 
-        <!-- 步骤 3：配置参数 -->
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> 训练轮次 </label>
-            <input
-              v-model.number="form.maxRounds"
-              type="number"
-              min="10"
-              max="10000"
-              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400"> 建议：100-1000 轮 </p>
+        <!-- 配置参数 -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">训练轮次</label>
+            <input v-model.number="form.maxRounds" type="number" min="10" max="10000" class="form-input" />
+            <p class="form-hint">建议：100-1000 轮</p>
           </div>
 
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> 训练策略 </label>
-            <select
-              v-model="form.strategy"
-              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+          <div class="form-group">
+            <label class="form-label">训练策略</label>
+            <select v-model="form.strategy" class="form-select">
               <option value="sequential">串行（稳定）</option>
               <option value="parallel">并行（快速）</option>
               <option value="adaptive">自适应（智能）</option>
@@ -63,46 +53,32 @@
           </div>
         </div>
 
-        <!-- 并行度配置（仅并行模式） -->
-        <div v-if="form.strategy === 'parallel'">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> 并行度 </label>
-          <input
-            v-model.number="form.parallelCount"
-            type="number"
-            min="2"
-            max="5"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400"> 同时执行的任务数（2-5，推荐 3） </p>
+        <!-- 并行度配置 -->
+        <div v-if="form.strategy === 'parallel'" class="form-group">
+          <label class="form-label">并行度</label>
+          <input v-model.number="form.parallelCount" type="number" min="2" max="5" class="form-input" />
+          <p class="form-hint">同时执行的任务数（2-5，推荐 3）</p>
         </div>
 
         <!-- 预估信息 -->
-        <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
-          <div class="flex items-start gap-2">
-            <i class="i-carbon-information text-blue-600 dark:text-blue-400 text-lg mt-0.5"></i>
-            <div class="text-sm text-blue-900 dark:text-blue-100">
-              <div class="font-medium mb-1">预估信息</div>
-              <div class="space-y-1 text-blue-700 dark:text-blue-300">
-                <div>· 预计耗时: {{ estimatedTime }}</div>
-                <div>· 预计成本: {{ estimatedCost }}</div>
-                <div>· API 调用次数: {{ estimatedCalls }}</div>
-              </div>
+        <div class="estimate-card">
+          <span class="i-carbon-information inline-block h-4 w-4 estimate-icon" />
+          <div class="estimate-content">
+            <div class="estimate-title">预估信息</div>
+            <div class="estimate-list">
+              <div>· 预计耗时: {{ estimatedTime }}</div>
+              <div>· 预计成本: {{ estimatedCost }}</div>
+              <div>· API 调用次数: {{ estimatedCalls }}</div>
             </div>
           </div>
         </div>
       </div>
 
       <!-- 底部按钮 -->
-      <div class="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-        <button
-          class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          @click="emit('close')">
-          取消
-        </button>
-        <button
-          :disabled="!isFormValid || submitting"
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-          @click="handleSubmit">
-          <i v-if="submitting" class="i-carbon-circle-dash animate-spin"></i>
+      <div class="dialog-footer">
+        <button class="btn-secondary" @click="emit('close')">取消</button>
+        <button :disabled="!isFormValid || submitting" class="btn-primary" @click="handleSubmit">
+          <span v-if="submitting" class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin" />
           <span>{{ submitting ? '创建中...' : '开始训练' }}</span>
         </button>
       </div>
@@ -187,3 +163,205 @@ async function handleSubmit(): Promise<void> {
   }
 }
 </script>
+
+<style scoped>
+/* ====== 对话框遮罩 ====== */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: hsl(var(--overlay) / 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+/* ====== 对话框容器 ====== */
+
+.dialog {
+  background: hsl(var(--surface));
+  border-radius: 12px;
+  box-shadow: 0 8px 32px hsl(var(--shadow) / 0.12);
+  width: 100%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ====== 对话框头部 ====== */
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 24px;
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+  font-size: 16px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.close-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: hsl(var(--text-secondary));
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.close-btn:hover {
+  background: hsl(var(--foreground) / 0.06);
+  color: hsl(var(--foreground));
+}
+
+/* ====== 对话框内容 ====== */
+
+.dialog-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ====== 表单元素 ====== */
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--input-background));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  transition: all 0.12s ease;
+}
+
+.form-input:focus,
+.form-select:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.1);
+}
+
+.form-hint {
+  font-size: 11px;
+  color: hsl(var(--text-muted));
+}
+
+/* ====== 预估信息卡片 ====== */
+
+.estimate-card {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 10px;
+  background: hsl(var(--info) / 0.08);
+  border: 1px solid hsl(var(--info) / 0.2);
+}
+
+.estimate-icon {
+  flex-shrink: 0;
+  color: hsl(var(--info));
+}
+
+.estimate-content {
+  flex: 1;
+}
+
+.estimate-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-bottom: 8px;
+}
+
+.estimate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: hsl(var(--text-secondary));
+}
+
+/* ====== 对话框底部 ====== */
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 24px;
+  border-top: 1px solid hsl(var(--border) / 0.5);
+}
+
+.btn-secondary,
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.btn-secondary {
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+}
+
+.btn-secondary:hover {
+  background: hsl(var(--secondary-hover));
+}
+
+.btn-primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.btn-primary:hover {
+  background: hsl(var(--primary-hover));
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+</style>
