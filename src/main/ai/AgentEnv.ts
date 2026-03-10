@@ -237,27 +237,38 @@ export function formatRuntimePaths(env: AgentEnv): string {
   // 格式化扩展列表
   const extensionsList = env.loadedExtensions.length > 0 ? env.loadedExtensions.join(', ') : 'none';
 
+  const agentHomeSection = env.agentHome
+    ? `
+**Agent Home (Your Root Directory)**: ${env.agentHome}/
+  ├── SOUL.md, USER.md, MEMORY.md           — Your identity and long-term memory
+  ├── AGENTS.md                             — Your skill and tool configuration
+  ├── output/                               — Your persistent output files (training results, data)
+  ├── skill-data/                           — Structured data from skills (survives across sessions)
+  └── memory/                               — Your daily conversation logs
+
+  **PURPOSE**: This is YOUR permanent space. Store training results, accumulated knowledge,
+  and any data you want to reuse in future tasks here.
+`
+    : '';
+
   return `<runtime_environment>
 Your Runtime Environment:
 - Session: ${env.sessionId}
-- Workspace: ${env.workspace}
+- Current Task Directory: ${env.workspace}
 - Platform: ${env.platform}/${env.arch} (${env.isDev ? 'dev' : 'prod'})
 - Security: sandbox=${env.sandboxMode}, exec=${env.execApproval}
 - Model: ${env.defaultModel} (thinking=${env.thinkingLevel})
 - Extensions: ${extensionsList}
 
-Workspace Structure:
-- Workspace Root: ${env.workspace}/           ← temporary sandbox (create files as needed)
-  - .runtime/                                 — system internal files (sessions, contexts, logs)
-  - tasks/                                    — multi-agent collaboration area
-  - GOAL.md                                   — task goal file${
-    env.agentHome
-      ? `\n\n- Agent Home: ${env.agentHome}/            ← YOUR persistent space (survives across sessions)
-  - SOUL.md, USER.md, MEMORY.md               — your identity and memory
-  - output/                                   — your persistent output files
-  - skill-data/                               — structured data from skills`
-      : ''
-  }
+Directory Structure:
+${agentHomeSection}
+**Current Task Workspace (Temporary)**: ${env.workspace}/
+  ├── .runtime/                             — System internal files (sessions, contexts, logs)
+  ├── tasks/                                — Multi-agent collaboration area
+  └── GOAL.md                               — Task goal file
+
+  **PURPOSE**: This is the temporary sandbox for the CURRENT task.
+  Files here are task-specific and may be cleaned up after task completion.
 
 Key System Directories:
 - Config: ${env.configDir}
@@ -265,14 +276,27 @@ Key System Directories:
 - Skills: builtin=${env.builtinSkillsDir}, user=${env.userSkillsDir}
 - Agents: builtin=${env.builtinAgentsDir}, user=${env.userAgentsDir}
 
-File Output Convention:
-- Persistent outputs → {agentHome}/output/ (or {agentHome}/skill-data/ for structured data)
-- Temporary files → {workspace}/ (create subdirs as needed)
-- System data → {workspace}/.runtime/ (managed by system)
-- Multi-agent tasks → {workspace}/tasks/{taskId}/
+File Output Guidelines:
 
-IMPORTANT: Decide file location based on purpose:
-- If the output is valuable for future sessions → save to Agent Home
-- If the file is temporary for current task → save to workspace
+**Where to save files?**
+
+1. **Persistent Outputs (Training Results, Knowledge)** → Agent Home
+   - {agentHome}/output/           — General persistent files
+   - {agentHome}/skill-data/       — Structured data from skills
+   Example: Model checkpoints, curated datasets, configuration templates
+
+2. **Temporary Task Files** → Current Task Workspace
+   - {workspace}/                  — Task-specific temporary files
+   Example: Intermediate results, debug logs, scratch files
+
+3. **System Files** (DO NOT manually modify)
+   - {workspace}/.runtime/         — Managed by system
+
+**Decision Rule**:
+- Will you need this file in future tasks? → Agent Home
+- Is this file only for current task? → Workspace
+- Not sure? → Ask yourself: "Is this training/accumulation or task-specific?"
+
+**IMPORTANT**: When user asks "check our root directory" or similar, they usually mean Agent Home (${env.agentHome || 'N/A'}), not the temporary workspace.
 </runtime_environment>`;
 }

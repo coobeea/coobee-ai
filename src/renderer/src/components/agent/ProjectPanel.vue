@@ -5,8 +5,9 @@
  * 显示项目目录的文件树，通过 HTTP API 获取目录结构。
  * 支持目录展开/折叠、文件类型图标、手动刷新、文件选中。
  * 自动监听文件变化并刷新树。
+ * 支持切换显示"智能体目录"或"任务工作目录"。
  */
-import { ref, watch, provide, onUnmounted } from 'vue';
+import { ref, watch, provide, onUnmounted, inject, computed, type Ref } from 'vue';
 import configManager from '@/config';
 import { useOpenFiles } from '@/composables/useOpenFiles';
 import { watchThreadFiles, type WorkspaceFileChangedPayload } from '@/composables/useWorkspaceWatcher';
@@ -14,6 +15,19 @@ import { useLogStore } from '@/stores/log';
 import FileTreeNodeVue from './FileTreeNode.vue';
 
 const logStore = useLogStore();
+
+// 从 ThreadView 注入目录模式
+type DirectoryMode = 'agent-home' | 'workspace';
+const directoryMode = inject<Ref<DirectoryMode>>('directoryMode', ref('agent-home'));
+const toggleDirectoryMode = inject<() => void>('toggleDirectoryMode', () => {});
+
+const directoryTitle = computed(() => {
+  return directoryMode.value === 'agent-home' ? '智能体目录' : '任务工作目录';
+});
+
+const directoryIcon = computed(() => {
+  return directoryMode.value === 'agent-home' ? 'i-carbon-user-avatar' : 'i-carbon-folder-shared';
+});
 
 const props = defineProps<{
   threadId?: string;
@@ -319,10 +333,17 @@ defineExpose({ selectDirectory });
     <!-- 面板标题 -->
     <div class="flex h-10 shrink-0 items-center justify-between border-b border-gray-200/60 px-3">
       <div class="flex items-center gap-1.5">
-        <span class="i-carbon-folder-shared inline-block h-3.5 w-3.5 text-gray-500"></span>
-        <span class="text-xs font-semibold text-gray-600">任务工作目录</span>
+        <span :class="directoryIcon" class="inline-block h-3.5 w-3.5 text-gray-500"></span>
+        <span class="text-xs font-semibold text-gray-600">{{ directoryTitle }}</span>
       </div>
       <div class="flex items-center gap-0.5">
+        <button
+          v-if="projectPath"
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
+          :title="directoryMode === 'agent-home' ? '切换到任务目录' : '切换到智能体目录'"
+          @click="toggleDirectoryMode">
+          <span class="i-carbon-switcher inline-block h-3 w-3"></span>
+        </button>
         <button
           v-if="projectPath"
           class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"

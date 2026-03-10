@@ -164,6 +164,11 @@ export class AgentStore {
       const { Env } = await import('@main/common/env');
       const homeManager = new AgentHomeManager(Env.paths.homesDir);
       homeManager.initHome(definition.id);
+
+      // 同步 skills 到 AGENTS.md（自动激活）
+      if (skills.length > 0) {
+        await this.syncSkillsToAgentsMd(definition.id, skills);
+      }
     } catch (err) {
       log.warn(`[AgentStore] Failed to init agent home for ${definition.id}:`, err);
     }
@@ -241,6 +246,15 @@ export class AgentStore {
     // 更新索引
     this.index.set(updated.id, toIndexEntry(updated));
 
+    // 同步 skills 到 AGENTS.md（如果 skills 有变化）
+    if (updatedSkills !== undefined) {
+      try {
+        await this.syncSkillsToAgentsMd(agentId, updatedSkills);
+      } catch (err) {
+        log.warn(`[AgentStore] Failed to sync skills to AGENTS.md for ${agentId}:`, err);
+      }
+    }
+
     log.info(`[AgentStore] Updated agent: ${agentId} (v${updated.version})`);
     return updated;
   }
@@ -313,6 +327,87 @@ export class AgentStore {
   private writeDefinition(def: AgentDefinition): void {
     const filePath = path.join(this.userDir, `${def.id}.json`);
     fs.writeFileSync(filePath, JSON.stringify(def, null, 2), 'utf-8');
+  }
+
+  /**
+   * 同步 skills 到 Agent Home 的 AGENTS.md
+   *
+   * 将 Agent 定义中的 skills 写入 homes/{agentId}/AGENTS.md，
+   * 这样技能会自动激活，无需用户每次手动指定。
+   *
+   * @param agentId - Agent ID
+   * @param skills - 技能名称列表
+   */
+  private async syncSkillsToAgentsMd(agentId: string, skills: string[]): Promise<void> {
+    try {
+      const { Env } = await import('@main/common/env');
+      const agentHome = Env.getAgentHomeDir(agentId);
+      const agentsMdPath = path.join(agentHome, 'AGENTS.md');
+
+      // 构建 skills 内容块
+      const skillsBlock = this.buildSkillsBlock(skills);
+
+      // 读取现有 AGENTS.md（如果存在）
+      let existingContent = '';
+      if (fs.existsSync(agentsMdPath)) {
+        existingContent = fs.readFileSync(agentsMdPath, 'utf-8');
+      }
+
+      // 替换或追加 skills 块
+      const updatedContent = this.replaceOrAppendSkillsBlock(existingContent, skillsBlock);
+
+      // 写回文件
+      fs.writeFileSync(agentsMdPath, updatedContent, 'utf-8');
+
+      log.info(`[AgentStore] Synced ${skills.length} skills to ${agentsMdPath}`);
+    } catch (err) {
+      log.error(`[AgentStore] Failed to sync skills to AGENTS.md for ${agentId}:`, err);
+      throw err;
+    }
+  }
+
+  /**
+   * 构建 skills 内容块
+   */
+  private buildSkillsBlock(skills: string[]): string {
+    if (skills.length === 0) {
+      return `<skills_system priority="1">
+## Available Skills
+
+无技能配置。使用 \`skill_list\` 工具查看可用技能。
+
+</skills_system>`;
+    }
+
+    const skillItems = skills.map((s) => `- ${s}`).join('\n');
+    return `<skills_system priority="1">
+## Available Skills
+
+以下技能已为你配置并自动激活：
+
+${skillItems}
+
+使用 \`skill_list\` 工具查看完整技能列表及详细信息。
+
+</skills_system>`;
+  }
+
+  /**
+   * 替换或追加 skills 块
+   *
+   * 如果存在 <skills_system> 块，替换它；否则追加到文件末尾。
+   */
+  private replaceOrAppendSkillsBlock(existingContent: string, skillsBlock: string): string {
+    const skillsRegex = /<skills_system[^>]*>[\s\S]*?<\/skills_system>/;
+
+    if (skillsRegex.test(existingContent)) {
+      // 替换现有 skills 块
+      return existingContent.replace(skillsRegex, skillsBlock);
+    } else {
+      // 追加到文件末尾（如果文件不为空，先加空行）
+      const separator = existingContent.trim() ? '\n\n' : '';
+      return existingContent + separator + skillsBlock + '\n';
+    }
   }
 }
 

@@ -42,6 +42,10 @@ const workspaceReady = computed(() => projectPath.value !== null);
 
 const threadId = computed(() => route.params.id as string);
 
+// 目录切换：智能体目录 vs 任务工作目录
+type DirectoryMode = 'agent-home' | 'workspace';
+const directoryMode = ref<DirectoryMode>('agent-home');
+
 // 提供 addToChat 方法给 ProjectPanel/FileTreeNode
 function addToChat(node: { path: string; name: string; type: 'file' | 'directory' }): void {
   chatPanelRef.value?.insertFileReference({
@@ -52,6 +56,8 @@ function addToChat(node: { path: string; name: string; type: 'file' | 'directory
 
 provide('addToChat', addToChat);
 provide('addFileToTask', undefined);
+provide('directoryMode', directoryMode);
+provide('toggleDirectoryMode', toggleDirectoryMode);
 
 const pendingSkillRef = ref<string | null>(null);
 
@@ -63,19 +69,38 @@ function handleUseSkill(skillName: string): void {
 
 provide('pendingSkillRef', pendingSkillRef);
 
+// 根据当前模式更新显示的目录路径
+function updateProjectPathForMode(thread: { agentHomePath?: string; workspacePath?: string }): void {
+  if (directoryMode.value === 'agent-home') {
+    projectPath.value = thread.agentHomePath || thread.workspacePath || '';
+  } else {
+    projectPath.value = thread.workspacePath || thread.agentHomePath || '';
+  }
+}
+
+// 切换目录模式
+function toggleDirectoryMode(): void {
+  const thread = threadsStore.threads.find((t) => t.id === threadId.value);
+  if (!thread) return;
+
+  directoryMode.value = directoryMode.value === 'agent-home' ? 'workspace' : 'agent-home';
+  updateProjectPathForMode(thread);
+}
+
+// 监听模式切换，重新加载目录
+watch(directoryMode, () => {
+  const thread = threadsStore.threads.find((t) => t.id === threadId.value);
+  if (thread) {
+    updateProjectPathForMode(thread);
+  }
+});
+
 function enterWorkspaceForThread(id: string): void {
   const thread = threadsStore.threads.find((t) => t.id === id);
   if (thread) {
     agentsStore.selectAgent(thread.agentId);
-    // ✅ 使用 Agent Home 路径，而不是会话临时空间
-    if (thread.agentHomePath) {
-      projectPath.value = thread.agentHomePath;
-    } else if (thread.workspacePath) {
-      // 降级兼容：如果没有 agentHomePath，使用 workspacePath
-      projectPath.value = thread.workspacePath;
-    } else {
-      projectPath.value = '';
-    }
+    // 根据当前模式选择显示的目录
+    updateProjectPathForMode(thread);
   }
   threadsStore.selectThread(id);
   closeAllFiles();
