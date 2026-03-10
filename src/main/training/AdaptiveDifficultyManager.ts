@@ -22,6 +22,8 @@ export interface RecentPerformance {
   avgDifficulty: number;
   /** 最近N轮数量 */
   recentCount: number;
+  /** 趋势（improving=进步中, declining=下降中, stable=稳定） */
+  trend?: 'improving' | 'declining' | 'stable';
 }
 
 export class AdaptiveDifficultyManager {
@@ -54,7 +56,8 @@ export class AdaptiveDifficultyManager {
         avgScore: 0,
         passRate: 0,
         avgDifficulty: 3, // 默认中等难度
-        recentCount: 0
+        recentCount: 0,
+        trend: 'stable'
       };
     }
 
@@ -68,11 +71,27 @@ export class AdaptiveDifficultyManager {
     const difficulties = recentResults.map((r) => r.taskDifficulty || 3);
     const avgDifficulty = difficulties.reduce((sum, d) => sum + d, 0) / difficulties.length;
 
+    // 计算趋势（比较前半段和后半段的得分）
+    let trend: 'improving' | 'declining' | 'stable' = 'stable';
+    if (recentResults.length >= 4) {
+      const halfPoint = Math.floor(recentResults.length / 2);
+      const firstHalfAvg = scores.slice(0, halfPoint).reduce((sum, s) => sum + s, 0) / halfPoint;
+      const secondHalfAvg = scores.slice(halfPoint).reduce((sum, s) => sum + s, 0) / (scores.length - halfPoint);
+      const diff = secondHalfAvg - firstHalfAvg;
+
+      if (diff > 5) {
+        trend = 'improving';
+      } else if (diff < -5) {
+        trend = 'declining';
+      }
+    }
+
     return {
       avgScore: Math.round(avgScore * 10) / 10,
       passRate: Math.round(passRate * 100) / 100,
       avgDifficulty: Math.round(avgDifficulty * 10) / 10,
-      recentCount: recentResults.length
+      recentCount: recentResults.length,
+      trend
     };
   }
 

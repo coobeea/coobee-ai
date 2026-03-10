@@ -195,11 +195,27 @@ export class TrainingSessionStore {
    * 加载数据集文件
    */
   private async loadDataset(datasetPath: string): Promise<TrainingDataset> {
-    // 如果是相对路径，从 datasets 目录加载
-    let fullPath = datasetPath;
-    if (!path.isAbsolute(datasetPath)) {
-      fullPath = path.join(Env.paths.userHome, 'datasets', datasetPath);
+    // 如果是绝对路径，直接使用
+    if (path.isAbsolute(datasetPath)) {
+      if (!fs.existsSync(datasetPath)) {
+        throw new Error(`数据集文件不存在: ${datasetPath}`);
+      }
+      const raw = fs.readFileSync(datasetPath, 'utf-8');
+      const dataset = JSON.parse(raw);
+
+      // 验证数据集格式
+      if (!dataset.trainSet || !Array.isArray(dataset.trainSet)) {
+        throw new Error('数据集格式错误：缺少 trainSet');
+      }
+
+      logger.info(
+        `[TrainingStore] 数据集已加载: ${dataset.name} (训练集: ${dataset.trainSet.length}, 测试集: ${dataset.testSet?.length || 0})`
+      );
+      return dataset;
     }
+
+    // 相对路径，从 datasets 目录加载
+    const fullPath = path.join(Env.paths.userHome, 'datasets', datasetPath);
 
     if (!fs.existsSync(fullPath)) {
       throw new Error(`数据集文件不存在: ${fullPath}`);

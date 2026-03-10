@@ -20,6 +20,7 @@ export default defineConfig({
       'src/main/lifecycle/__tests__/**/*.test.ts',
       'src/main/terminal/__tests__/**/*.test.ts',
       'src/main/channels/__tests__/**/*.test.ts',
+      'src/main/training/__tests__/**/*.test.ts',
       'src/renderer/**/__tests__/**/*.test.ts',
       'extensions/**/__tests__/**/*.test.ts'
     ],
@@ -39,7 +40,8 @@ export default defineConfig({
         'src/main/common/database/**/*.ts',
         'src/main/common/ipc/**/*.ts',
         'src/main/common/errors/**/*.ts',
-        'src/main/lifecycle/**/*.ts'
+        'src/main/lifecycle/**/*.ts',
+        'src/main/training/**/*.ts'
       ],
       exclude: [
         'src/main/ai/**/__tests__/**',
@@ -52,7 +54,8 @@ export default defineConfig({
         'src/main/common/database/__tests__/**',
         'src/main/common/ipc/__tests__/**',
         'src/main/common/errors/__tests__/**',
-        'src/main/lifecycle/__tests__/**'
+        'src/main/lifecycle/__tests__/**',
+        'src/main/training/__tests__/**'
       ]
     },
     alias: [
