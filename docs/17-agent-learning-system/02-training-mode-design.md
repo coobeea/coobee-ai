@@ -1,6 +1,47 @@
-# 智能体训练模式 - 设计文档
+# 智能体训练模式 - 需求分析与设计文档
 
 > **核心理念**：训练是专门的、独立的、程序驱动的智能体强化过程，与日常使用完全解耦。
+
+---
+
+## 讨论记录
+
+### 讨论时间
+
+2026-03-10
+
+### 关键决策
+
+#### 决策 1：架构原则 - 不直接调用 LLM API
+
+**原则**：所有涉及 LLM 的操作，都必须通过 Agent（long time 模式，即 Agent 模式）来完成，不允许直接调用 LLM API。
+
+**理由**：
+
+1. **统一性**：所有 LLM 交互走同一套流程，避免混乱
+2. **可追溯性**：每次 LLM 调用都是一个 Thread，有完整的会话记录
+3. **可控性**：每个 Agent 都有明确的 instructions，行为可控
+4. **可扩展性**：需要新能力时，创建新 Agent 即可
+
+**影响**：
+
+- 训练循环中的所有 LLM 操作（数据生成、评估、教练建议）都需要委托给专门的 Agent
+- 需要设计多个专职 Agent 来支撑训练流程
+
+#### 决策 2：训练数据生成策略
+
+**策略**：用户提供基础数据集（种子数据），需要扩充时通过 Agent 生成更多训练数据。
+
+**理由**：
+
+1. 用户提供的基础数据集质量高、有代表性
+2. Agent 可以基于基础数据集生成变体，保持一致性
+3. 灵活性强，可以根据训练进度动态生成针对性任务
+
+**影响**：
+
+- 需要创建"训练数据生成 Agent"（training-data-generator）
+- 基础数据集需要设计合理的格式和结构
 
 ---
 
@@ -411,20 +452,301 @@ async function trainAgent(agentId: string, trainingGoal: TrainingGoal, dataset: 
 
 ---
 
-## 4. 技术实现方案
+## 4. Agent 分工体系（基于决策 1）
 
-### 4.1 核心模块
+基于"不直接调用 LLM API"的原则，训练系统中所有涉及 LLM 的操作都委托给专门的 Agent。
+
+### 4.1 Agent 角色设计
 
 ```
-src/main/training/
-├── types.ts                    ← 类型定义
-├── TrainingSession.ts          ← 训练会话管理
-├── TrainingExecutor.ts         ← 训练执行器
-├── TrainingDataset.ts          ← 数据集管理
-├── TrainingEvaluator.ts        ← 评估器
-├── TrainingReporter.ts         ← 报告生成器
-└── __tests__/                  ← 测试
+训练系统 (程序驱动，负责调度和流程控制)
+  ↓
+  ├─ 训练数据生成 Agent (training-data-generator)
+  │    职责：根据基础数据集，生成更多训练任务
+  │    输入：基础数据集 + 生成规则 + 当前轮次
+  │    输出：新的训练任务（JSON 格式）
+  │    技能：dimension-architect
+  │
+  ├─ 被训练的 Agent (如 app-copilot)
+  │    职责：执行训练任务（这就是我们要训练的目标）
+  │    输入：任务描述
+  │    输出：任务结果
+  │    技能：根据 Agent 定义
+  │
+  ├─ 评估 Agent (training-evaluator)
+  │    职责：客观评估任务执行结果
+  │    输入：任务描述 + 执行结果 + 评估标准
+  │    输出：分数 + 各维度评分 + 详细反馈（JSON 格式）
+  │    技能：dimension-architect, eval-refine-loop
+  │    工具：exec（用于运行代码测试）, read
+  │
+  └─ 训练教练 Agent (training-coach)
+       职责：分析评估结果，给出优化建议
+       输入：任务 + 执行结果 + 评估结果
+       输出：改进建议（具体、可操作）
+       技能：self-reflection, eval-refine-loop
 ```
+
+### 4.2 Agent 调用流程
+
+```typescript
+// 伪代码：完全基于 Agent 的训练流程
+class TrainingExecutor {
+  async executeTrainingRound(session: TrainingSession, round: number): Promise<TrainingResult> {
+    // 1. 获取或生成训练任务（通过 Agent）
+    const task = await this.getTask(session, round);
+
+    // 2. 执行任务（通过被训练的 Agent）
+    const output = await this.executeTask(session.agentId, task);
+
+    // 3. 评估结果（通过评估 Agent）
+    const evaluation = await this.evaluateOutput(task, output);
+
+    // 4. 如果未达标，获取改进建议（通过教练 Agent）
+    if (evaluation.score < session.goal.threshold) {
+      const advice = await this.getCoachAdvice(task, output, evaluation);
+
+      // 5. 基于建议重新执行（通过被训练的 Agent）
+      const refinedOutput = await this.refineTask(session.agentId, task, advice);
+
+      // 6. 重新评估
+      evaluation = await this.evaluateOutput(task, refinedOutput);
+    }
+
+    return { round, task, evaluation };
+  }
+
+  // ==================== Agent 委托方法 ====================
+
+  /**
+   * 通过"数据生成 Agent"生成训练任务
+   */
+  private async generateTaskByAgent(baseDataset: any): Promise<TrainingTask> {
+    const result = await ChannelRuntime.getInstance().executeAgent({
+      agentId: 'training-data-generator',
+      userMessage: `基于基础数据集生成 1 个新训练任务：\n${JSON.stringify(baseDataset)}`,
+      metadata: { isTrainingTask: true }
+    });
+    return JSON.parse(result.content);
+  }
+
+  /**
+   * 通过"被训练的 Agent"执行任务
+   */
+  private async executeTask(agentId: string, task: TrainingTask): Promise<string> {
+    const result = await ChannelRuntime.getInstance().executeAgent({
+      agentId,
+      userMessage: task.description,
+      metadata: { isTrainingExecution: true }
+    });
+    return result.content;
+  }
+
+  /**
+   * 通过"评估 Agent"评估结果
+   */
+  private async evaluateOutput(task: TrainingTask, output: string): Promise<Evaluation> {
+    const result = await ChannelRuntime.getInstance().executeAgent({
+      agentId: 'training-evaluator',
+      userMessage: `评估任务：\n任务：${task.description}\n输出：${output}\n标准：${JSON.stringify(task.criteria)}`,
+      metadata: { isTrainingEvaluation: true }
+    });
+    return JSON.parse(result.content);
+  }
+
+  /**
+   * 通过"训练教练 Agent"获取优化建议
+   */
+  private async getCoachAdvice(task: TrainingTask, output: string, evaluation: Evaluation): Promise<string> {
+    const result = await ChannelRuntime.getInstance().executeAgent({
+      agentId: 'training-coach',
+      userMessage: `分析并给出改进建议：\n任务：${task.description}\n输出：${output}\n评估：${JSON.stringify(evaluation)}`,
+      metadata: { isTrainingCoach: true }
+    });
+    return result.content;
+  }
+}
+```
+
+### 4.3 需要创建的 Agent 定义
+
+#### Agent 1: training-data-generator (训练数据生成器)
+
+```json
+{
+  "id": "training-data-generator",
+  "name": "训练数据生成器",
+  "description": "根据基础数据集和规则，生成新的、多样化的训练任务",
+  "instructions": "详见后续方案设计",
+  "skills": ["dimension-architect"],
+  "tools": ["read", "write"]
+}
+```
+
+#### Agent 2: training-evaluator (训练评估器)
+
+```json
+{
+  "id": "training-evaluator",
+  "name": "训练评估器",
+  "description": "客观评估训练任务的执行结果，给出量化分数和反馈",
+  "instructions": "详见后续方案设计",
+  "skills": ["dimension-architect", "eval-refine-loop"],
+  "tools": ["exec", "read"]
+}
+```
+
+#### Agent 3: training-coach (训练教练)
+
+```json
+{
+  "id": "training-coach",
+  "name": "训练教练",
+  "description": "分析训练结果，给出具体的改进建议",
+  "instructions": "详见后续方案设计",
+  "skills": ["self-reflection", "eval-refine-loop"],
+  "tools": []
+}
+```
+
+---
+
+## 5. 待讨论的关键问题
+
+### 5.1 数据生成 Agent 的触发时机
+
+**问题**：什么时候需要生成新数据？
+
+**方案**：
+
+- **方案 A**：每轮都生成（最灵活，但慢，成本高）
+- **方案 B**：基础数据集用完后才生成（高效）
+- **方案 C**：根据表现动态生成（智能，如连续多轮在某个维度失败，生成针对性任务）
+
+**待决策**：选择哪个方案？
+
+---
+
+### 5.2 评估 Agent 如何保证客观性
+
+**问题**：LLM 作为评审可能存在主观性或不一致
+
+**方案**：
+
+- **代码类任务**：评估 Agent 使用 `exec` 工具运行测试用例（客观）
+- **文本类任务**：
+  - 多次评估取平均值
+  - 使用更强的模型作为 judge（如 GPT-4o）
+  - 结合自动化指标（长度、关键词覆盖率）
+
+**待决策**：如何平衡客观性和成本？
+
+---
+
+### 5.3 训练教练 Agent 的建议如何应用
+
+**问题**：教练给出建议后，如何让被训练的 Agent 真正改进？
+
+**方案 A**：在 refinement 时，将建议放入 prompt
+
+```typescript
+userMessage: `
+  重新执行任务：${task.description}
+  
+  教练的改进建议：
+  ${coachAdvice}
+  
+  请基于建议改进输出。
+`;
+```
+
+**方案 B**：根据建议，动态修改被训练 Agent 的 instructions（更激进，但效果可能更持久）
+
+**待决策**：短期改进（方案 A）还是长期改进（方案 B）？
+
+---
+
+### 5.4 如何避免 Agent 调用链过长导致的问题
+
+**问题**：
+
+```
+训练系统 → 数据生成 Agent → 被训练 Agent → 评估 Agent → 教练 Agent → 被训练 Agent (refine)
+```
+
+调用链长，中间任何环节失败都会影响训练。
+
+**风险**：
+
+- 某个 Agent 超时
+- 某个 Agent 输出格式错误（JSON 解析失败）
+- 某个 Agent 工具调用失败
+
+**方案**：
+
+- 每个 Agent 调用都有**超时机制**（如 30s）
+- 每个 Agent 调用都有**重试机制**（最多 3 次）
+- 记录每个环节的结果，便于调试
+- 提供"快速失败"选项（某个环节失败直接跳过这一轮，不阻塞后续训练）
+
+**待决策**：超时时间、重试次数？
+
+---
+
+### 5.5 训练成本控制
+
+**问题**：1000 轮训练，每轮可能涉及 3-5 次 Agent 调用，总成本可能很高。
+
+**估算**（以 deepseek-chat 为例）：
+
+- 单次 Agent 调用：~1000 tokens 输入 + 500 tokens 输出
+- 每轮训练：3-5 次调用 = 4500-7500 tokens
+- 1000 轮训练：450 万 - 750 万 tokens
+- 成本：约 $0.6 - $1.0（deepseek-chat）
+- 如果用 GPT-4：约 $30 - $50
+
+**方案**：
+
+1. 使用成本低的模型（如 deepseek-chat）作为默认
+2. 提供"快速训练模式"（100 轮）和"完整训练模式"（1000 轮）
+3. 设置预算上限（如每次训练最多 $10）
+4. 支持暂停和恢复（避免一次性消耗太多）
+
+**待决策**：默认模型选择？预算上限？
+
+---
+
+### 5.6 训练结果固化策略
+
+**问题**：训练完成后，如何将成果应用到 Agent？
+
+**方案 A：直接修改 instructions**（激进）
+
+- 优点：立即生效
+- 缺点：可能破坏原有能力，不可回滚
+
+**方案 B：版本化管理**（推荐）
+
+- 训练完成后创建新版本：`app-copilot-v2`
+- 保留旧版本，可随时切换
+- 优点：安全、可回滚
+- 缺点：需要版本管理机制
+
+**方案 C：只记录不修改**（保守）
+
+- 训练数据存到 Agent Home
+- 不修改 Agent 定义
+- 用户手动决定是否应用
+- 优点：最安全
+- 缺点：训练效果不会自动生效
+
+**待决策**：选择哪个方案？
+
+---
+
+## 6. 技术实现方案
+
+### 6.1 核心模块
 
 ### 4.2 关键类型
 
