@@ -74,6 +74,45 @@ export class AgentStore {
     log.info(
       `[AgentStore] Initialized: ${this.index.size} agents loaded (builtin: ${this.builtinDir}, user: ${this.userDir})`
     );
+
+    // 迁移：为所有已有智能体同步 skills 到 AGENTS.md
+    await this.migrateAgentSkills();
+  }
+
+  /**
+   * 迁移方法：为所有现有智能体同步 skills 到 AGENTS.md
+   * 只在第一次启动或升级后执行一次
+   */
+  private async migrateAgentSkills(): Promise<void> {
+    try {
+      const { Env } = await import('@main/common/env');
+      const migrationFlagPath = path.join(Env.paths.userHome, '.migration_skills_to_agentsmd');
+
+      // 如果已经迁移过，跳过
+      if (fs.existsSync(migrationFlagPath)) {
+        return;
+      }
+
+      log.info('[AgentStore] Starting skills migration to AGENTS.md...');
+      let migratedCount = 0;
+
+      for (const [agentId, entry] of this.index.entries()) {
+        if (entry.skills && entry.skills.length > 0) {
+          try {
+            await this.syncSkillsToAgentsMd(agentId, entry.skills);
+            migratedCount++;
+          } catch (err) {
+            log.warn(`[AgentStore] Failed to migrate skills for ${agentId}:`, err);
+          }
+        }
+      }
+
+      // 标记迁移完成
+      fs.writeFileSync(migrationFlagPath, new Date().toISOString(), 'utf-8');
+      log.info(`[AgentStore] Skills migration completed: ${migratedCount}/${this.index.size} agents`);
+    } catch (err) {
+      log.error('[AgentStore] Skills migration failed:', err);
+    }
   }
 
   /** 扫描目录重建索引（多级合并：builtin < user） */
