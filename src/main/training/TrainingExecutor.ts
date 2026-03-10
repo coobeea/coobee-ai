@@ -1,0 +1,595 @@
+/**
+ * 训练执行器 - 基础版
+ *
+ * 负责：
+ * - 执行训练循环
+ * - 协调 Agent 调用（任务执行、评估、教练）
+ * - 管理训练进度
+ * - 生成训练报告
+ */
+
+import { AgentDelegator } from './AgentDelegator';
+import { TrainingSessionStore } from './TrainingSessionStore';
+import type {
+  TrainingSession,
+  TrainingTask,
+  TrainingRoundResult,
+  TrainingExecutorConfig,
+  TrainingReport,
+  CoachAdvice,
+  TrainingEvaluation
+} from './types';
+import { DEFAULT_TRAINING_CONFIG } from './types';
+import { log as logger } from '@main/common/logger';
+import { eventBus } from '@main/common/eventbus';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { Env } from '@main/common/env';
+
+export class TrainingExecutor {
+  private readonly delegator: AgentDelegator;
+  private readonly sessionStore: TrainingSessionStore;
+  private readonly config: TrainingExecutorConfig;
+
+  /** 运行中的训练会话 Map */
+  private readonly runningSessions = new Map<string, TrainingSession>();
+
+  /** 暂停标记 Map */
+  private readonly pauseFlags = new Map<string, boolean>();
+
+  /** 停止标记 Map */
+  private readonly stopFlags = new Map<string, boolean>();
+
+  constructor(sessionStore: TrainingSessionStore, config: TrainingExecutorConfig = DEFAULT_TRAINING_CONFIG) {
+    this.sessionStore = sessionStore;
+    this.config = config;
+    this.delegator = new AgentDelegator(config);
+  }
+
+  // ==================== 训练执行 ====================
+
+  /**
+   * 执行完整训练流程（串行）
+   */
+  async executeTraining(session: TrainingSession): Promise<void> {
+    const sessionId = session.id;
+    logger.info(
+      `[Training] 开始训练: ${sessionId}, 智能体=${session.agentId}, 目标=${session.goal.name}, 轮次=${session.maxRounds}`
+    );
+
+    try {
+      // 标记为运行中
+      this.runningSessions.set(sessionId, session);
+      session.status = 'running';
+      await this.sessionStore.save(session);
+      this.emitProgress(session);
+
+      // 主训练循环
+      for (let round = 1; round <= session.maxRounds; round++) {
+        // 检查暂停标记
+        if (this.pauseFlags.get(sessionId)) {
+          logger.info(`[Training] 训练已暂停: ${sessionId}`);
+          session.status = 'paused';
+          session.progress.pausedAt = Date.now();
+          await this.sessionStore.save(session);
+          this.emitProgress(session);
+          return;
+        }
+
+        // 检查停止标记
+        if (this.stopFlags.get(sessionId)) {
+          logger.info(`[Training] 训练已停止: ${sessionId}`);
+          session.status = 'completed';
+          session.endTime = Date.now();
+          await this.sessionStore.save(session);
+          this.emitProgress(session);
+          return;
+        }
+
+        // 执行单轮训练
+        const result = await this.executeRound(session, round);
+
+        // 记录结果
+        session.results.push(result);
+        session.progress.currentRound = round;
+        session.progress.completedRounds = round;
+        if (result.evaluation.passed) {
+          session.progress.passedRounds++;
+        }
+
+        // 更新进度（每轮都保存，防止崩溃丢失）
+        await this.sessionStore.updateProgress(sessionId, session.progress);
+        this.emitProgress(session);
+
+        // 日志
+        logger.info(
+          `[Training] 第 ${round}/${session.maxRounds} 轮完成: ${result.evaluation.score}分 ${result.evaluation.passed ? '✓' : '✗'}`
+        );
+
+        // 检查提前终止
+        if (this.shouldEarlyStop(session)) {
+          logger.info(`[Training] 连续 ${this.config.earlyStopThreshold} 轮达标，提前结束训练`);
+          break;
+        }
+      }
+
+      // 训练完成
+      session.status = 'completed';
+      session.endTime = Date.now();
+      await this.sessionStore.save(session);
+
+      // 生成报告
+      await this.generateReport(session);
+
+      logger.info(`[Training] 训练完成: ${sessionId}`);
+      this.emitProgress(session);
+    } catch (err) {
+      logger.error(`[Training] 训练失败: ${sessionId}`, err);
+      session.status = 'failed';
+      session.endTime = Date.now();
+      await this.sessionStore.save(session);
+      this.emitProgress(session);
+      throw err;
+    } finally {
+      // 清理标记
+      this.runningSessions.delete(sessionId);
+      this.pauseFlags.delete(sessionId);
+      this.stopFlags.delete(sessionId);
+    }
+  }
+
+  /**
+   * 执行单轮训练
+   */
+  private async executeRound(session: TrainingSession, round: number): Promise<TrainingRoundResult> {
+    const startTime = Date.now();
+
+    // 1. 获取任务（从数据集选择或生成）
+    const task = await this.getTask(session, round);
+
+    // 2. 执行任务
+    logger.debug(`[Training] 执行任务: ${task.id}`);
+    let output = await this.delegator.executeTask(session.agentId, task);
+
+    // 3. 评估结果
+    logger.debug(`[Training] 评估任务: ${task.id}`);
+    let evaluation = await this.delegator.evaluateOutput(task, output);
+
+    // 4. 如果未达标且启用教练，获取建议并重试
+    let usedCoachAdvice = false;
+    let coachAdvice: CoachAdvice | undefined = undefined;
+    let refinedOutput: string | undefined = undefined;
+    let refinedEvaluation: TrainingEvaluation | undefined = undefined;
+
+    if (!evaluation.passed && this.config.enableCoach) {
+      logger.debug(`[Training] 任务未达标 (${evaluation.score}分)，获取教练建议`);
+
+      coachAdvice = await this.delegator.getCoachAdvice(task, output, evaluation);
+      usedCoachAdvice = true;
+
+      logger.debug(`[Training] 基于教练建议重新执行`);
+      refinedOutput = await this.delegator.refineTask(session.agentId, task, coachAdvice);
+      refinedEvaluation = await this.delegator.evaluateOutput(task, refinedOutput);
+
+      logger.info(
+        `[Training] 改进效果: ${evaluation.score} → ${refinedEvaluation.score} (${refinedEvaluation.passed ? '✓ 达标' : '✗ 仍未达标'})`
+      );
+
+      // 使用改进后的结果
+      output = refinedOutput;
+      evaluation = refinedEvaluation;
+    }
+
+    const endTime = Date.now();
+
+    return {
+      round,
+      taskId: task.id,
+      taskDescription: task.description,
+      taskDifficulty: task.difficulty,
+      output,
+      evaluation,
+      usedCoachAdvice,
+      coachAdvice,
+      refinedOutput,
+      refinedEvaluation,
+      startTime,
+      endTime,
+      duration: endTime - startTime
+    };
+  }
+
+  /**
+   * 获取训练任务（从数据集或生成）
+   */
+  private async getTask(session: TrainingSession, round: number): Promise<TrainingTask> {
+    const trainSet = session.dataset.trainSet;
+
+    // 如果还在训练集范围内，直接选择
+    if (round <= trainSet.length) {
+      return trainSet[round - 1];
+    }
+
+    // 训练集用完，循环使用（对于基础版）
+    const index = (round - 1) % trainSet.length;
+    logger.debug(`[Training] 训练集循环使用: 第 ${round} 轮 → 任务 ${index + 1}`);
+    return trainSet[index];
+
+    // TODO: Phase 4 - 实现完全自动数据生成
+    // const context = {
+    //   currentRound: round,
+    //   avgScore: this.calculateAvgScore(session.results),
+    //   weakDimension: this.findWeakestDimension(session.results)
+    // };
+    // return await this.delegator.generateTask(trainSet, context);
+  }
+
+  /**
+   * 检查是否应该提前终止
+   */
+  private shouldEarlyStop(session: TrainingSession): boolean {
+    const threshold = this.config.earlyStopThreshold;
+    const recentResults = session.results.slice(-threshold);
+
+    if (recentResults.length < threshold) {
+      return false;
+    }
+
+    return recentResults.every((r) => r.evaluation.passed);
+  }
+
+  // ==================== 训练控制 ====================
+
+  /**
+   * 暂停训练
+   */
+  async pause(sessionId: string): Promise<void> {
+    logger.info(`[Training] 暂停训练: ${sessionId}`);
+    this.pauseFlags.set(sessionId, true);
+  }
+
+  /**
+   * 恢复训练
+   */
+  async resume(sessionId: string): Promise<void> {
+    logger.info(`[Training] 恢复训练: ${sessionId}`);
+
+    const session = await this.sessionStore.load(sessionId);
+    if (!session) {
+      throw new Error(`训练会话不存在: ${sessionId}`);
+    }
+
+    if (session.status !== 'paused') {
+      throw new Error(`只能恢复已暂停的训练（当前状态: ${session.status}）`);
+    }
+
+    // 清除暂停标记
+    this.pauseFlags.delete(sessionId);
+    session.progress.pausedAt = undefined;
+
+    // 从当前轮次继续
+    await this.executeTraining(session);
+  }
+
+  /**
+   * 停止训练
+   */
+  async stop(sessionId: string): Promise<void> {
+    logger.info(`[Training] 停止训练: ${sessionId}`);
+    this.stopFlags.set(sessionId, true);
+  }
+
+  // ==================== 报告生成 ====================
+
+  /**
+   * 生成训练报告
+   */
+  private async generateReport(session: TrainingSession): Promise<void> {
+    logger.info(`[Training] 生成训练报告: ${session.id}`);
+
+    // 1. 计算统计数据
+    const report = this.buildReport(session);
+
+    // 2. 生成 Markdown
+    const markdown = this.formatReportAsMarkdown(report);
+
+    // 3. 保存到 Agent Home
+    const agentHome = Env.getAgentHomeDir(session.agentId);
+    const reportDir = path.join(agentHome, 'training-history');
+    if (!fs.existsSync(reportDir)) {
+      fs.mkdirSync(reportDir, { recursive: true });
+    }
+
+    const reportPath = path.join(reportDir, `${session.id}.md`);
+    fs.writeFileSync(reportPath, markdown, 'utf-8');
+
+    logger.info(`[Training] 报告已保存: ${reportPath}`);
+
+    // 4. 触发事件
+    eventBus.emit('training:completed', {
+      sessionId: session.id,
+      agentId: session.agentId,
+      reportPath
+    });
+  }
+
+  /**
+   * 构建报告数据
+   */
+  private buildReport(session: TrainingSession): TrainingReport {
+    const results = session.results;
+    const totalRounds = results.length;
+    const passedRounds = results.filter((r) => r.evaluation.passed).length;
+    const scores = results.map((r) => r.evaluation.score);
+
+    const finalScore = scores[scores.length - 1] || 0;
+    const avgScore = scores.reduce((a, b) => a + b, 0) / totalRounds;
+    const initialScore = scores[0] || 0;
+
+    // 维度分析
+    const dimensionAnalysis = this.analyzeDimensions(session);
+
+    // 难度分析
+    const difficultyAnalysis = this.analyzeDifficulty(session);
+
+    // 训练曲线
+    const trainingCurve = results.map((r) => ({
+      round: r.round,
+      score: r.evaluation.score,
+      passed: r.evaluation.passed
+    }));
+
+    // 测试集验证（如果启用）
+    const testSetValidation = undefined;
+    // TODO: Phase 2 - 实现测试集验证
+
+    // 弱点分析
+    const weaknessAnalysis = this.analyzeWeakness(session);
+
+    return {
+      sessionId: session.id,
+      agentId: session.agentId,
+      goalName: session.goal.name,
+      summary: {
+        totalRounds,
+        passedRounds,
+        passRate: (passedRounds / totalRounds) * 100,
+        finalScore,
+        avgScore,
+        initialScore,
+        improvement: finalScore - initialScore,
+        totalTimeMinutes: (session.endTime! - session.startTime) / 1000 / 60
+      },
+      dimensionAnalysis,
+      difficultyAnalysis,
+      trainingCurve,
+      testSetValidation,
+      weaknessAnalysis,
+      generatedAt: Date.now()
+    };
+  }
+
+  /**
+   * 维度分析
+   */
+  private analyzeDimensions(session: TrainingSession): TrainingReport['dimensionAnalysis'] {
+    const dimensionScores: Record<string, number[]> = {};
+
+    // 收集各维度得分
+    for (const result of session.results) {
+      for (const [dim, score] of Object.entries(result.evaluation.dimensions || {})) {
+        if (!dimensionScores[dim]) {
+          dimensionScores[dim] = [];
+        }
+        dimensionScores[dim].push(score);
+      }
+    }
+
+    // 计算统计
+    return Object.entries(dimensionScores).map(([dimension, scores]) => {
+      const initialScore = scores[0] || 0;
+      const finalScore = scores[scores.length - 1] || 0;
+      const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+
+      return {
+        dimension,
+        initialScore,
+        finalScore,
+        avgScore,
+        improvement: finalScore - initialScore
+      };
+    });
+  }
+
+  /**
+   * 难度分析
+   */
+  private analyzeDifficulty(session: TrainingSession): TrainingReport['difficultyAnalysis'] {
+    const difficultyGroups: Record<number, TrainingRoundResult[]> = {};
+
+    // 按难度分组
+    for (const result of session.results) {
+      const diff = result.taskDifficulty;
+      if (!difficultyGroups[diff]) {
+        difficultyGroups[diff] = [];
+      }
+      difficultyGroups[diff].push(result);
+    }
+
+    // 计算统计
+    return Object.entries(difficultyGroups).map(([difficulty, results]) => {
+      const scores = results.map((r) => r.evaluation.score);
+      const passedCount = results.filter((r) => r.evaluation.passed).length;
+
+      return {
+        difficulty: parseInt(difficulty),
+        count: results.length,
+        avgScore: scores.reduce((a, b) => a + b, 0) / scores.length,
+        passRate: (passedCount / results.length) * 100
+      };
+    });
+  }
+
+  /**
+   * 弱点分析
+   */
+  private analyzeWeakness(session: TrainingSession): TrainingReport['weaknessAnalysis'] {
+    const dimensionScores: Record<string, number[]> = {};
+
+    for (const result of session.results) {
+      for (const [dim, score] of Object.entries(result.evaluation.dimensions || {})) {
+        if (!dimensionScores[dim]) {
+          dimensionScores[dim] = [];
+        }
+        dimensionScores[dim].push(score);
+      }
+    }
+
+    const weaknesses: TrainingReport['weaknessAnalysis'] = [];
+
+    for (const [dimension, scores] of Object.entries(dimensionScores)) {
+      const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+      const failureCount = scores.filter((s) => s < 80).length;
+
+      // 平均分 < 75 视为弱点
+      if (avgScore < 75) {
+        weaknesses.push({
+          dimension,
+          avgScore,
+          failureCount
+        });
+      }
+    }
+
+    // 按平均分排序（从低到高）
+    return weaknesses.sort((a, b) => a.avgScore - b.avgScore);
+  }
+
+  /**
+   * 格式化报告为 Markdown
+   */
+  private formatReportAsMarkdown(report: TrainingReport): string {
+    const summary = report.summary;
+
+    const md = `# 训练报告
+
+## 基本信息
+
+- **训练会话 ID**: ${report.sessionId}
+- **智能体**: ${report.agentId}
+- **训练目标**: ${report.goalName}
+- **训练轮次**: ${summary.totalRounds}
+- **总耗时**: ${summary.totalTimeMinutes.toFixed(1)} 分钟
+- **生成时间**: ${new Date(report.generatedAt).toLocaleString()}
+
+---
+
+## 训练结果
+
+### 总体表现
+
+- **最终得分**: ${summary.finalScore}/100
+- **平均得分**: ${summary.avgScore.toFixed(1)}/100
+- **初始得分**: ${summary.initialScore}/100
+- **得分提升**: ${summary.improvement > 0 ? '+' : ''}${summary.improvement.toFixed(1)}
+- **达标率**: ${summary.passRate.toFixed(1)}% (${summary.passedRounds}/${summary.totalRounds})
+
+### 评价
+
+${this.getPerformanceLevel(summary.finalScore, summary.improvement)}
+
+---
+
+## 维度分析
+
+${report.dimensionAnalysis
+  .map(
+    (d) => `
+### ${d.dimension}
+
+- 初始得分: ${d.initialScore.toFixed(1)}
+- 最终得分: ${d.finalScore.toFixed(1)}
+- 平均得分: ${d.avgScore.toFixed(1)}
+- 提升幅度: ${d.improvement > 0 ? '+' : ''}${d.improvement.toFixed(1)}
+`
+  )
+  .join('\n')}
+
+---
+
+## 难度分析
+
+| 难度 | 任务数 | 平均得分 | 达标率 |
+|-----|-------|---------|--------|
+${report.difficultyAnalysis.map((d) => `| ${d.difficulty} | ${d.count} | ${d.avgScore.toFixed(1)} | ${d.passRate.toFixed(1)}% |`).join('\n')}
+
+---
+
+## 弱点分析
+
+${
+  report.weaknessAnalysis && report.weaknessAnalysis.length > 0
+    ? `
+识别出以下弱点维度（平均分 < 75）：
+
+${report.weaknessAnalysis.map((w) => `- **${w.dimension}**: 平均 ${w.avgScore.toFixed(1)}分，失败 ${w.failureCount} 次`).join('\n')}
+
+**建议**：考虑针对这些弱点进行增量训练。
+`
+    : '✓ 未发现明显弱点'
+}
+
+---
+
+## 训练曲线
+
+\`\`\`
+轮次 | 得分 | 状态
+${report.trainingCurve.map((c) => `${c.round.toString().padStart(4)} | ${c.score.toString().padStart(3)} | ${c.passed ? '✓' : '✗'}`).join('\n')}
+\`\`\`
+
+---
+
+## 详细记录
+
+${report.trainingCurve.map((c) => `- 第 ${c.round} 轮: ${c.score}分 ${c.passed ? '✓' : '✗'}`).join('\n')}
+`;
+
+    return md;
+  }
+
+  /**
+   * 获取表现等级评价
+   */
+  private getPerformanceLevel(finalScore: number, improvement: number): string {
+    if (finalScore >= 90) {
+      return '🎉 **优秀**：训练效果显著，智能体表现优异！';
+    } else if (finalScore >= 80) {
+      return '✅ **良好**：训练目标已达成，智能体表现合格。';
+    } else if (finalScore >= 70) {
+      return '⚠️ **及格**：基本达标，但仍有提升空间，建议继续训练。';
+    } else if (improvement > 10) {
+      return '📈 **进步中**：虽未达标，但进步明显，建议继续训练。';
+    } else {
+      return '❌ **不及格**：未达标且进步不明显，建议检查训练数据和 Agent 配置。';
+    }
+  }
+
+  // ==================== 事件通知 ====================
+
+  /**
+   * 触发进度更新事件
+   */
+  private emitProgress(session: TrainingSession): void {
+    eventBus.emit('training:progress', {
+      sessionId: session.id,
+      agentId: session.agentId,
+      status: session.status,
+      currentRound: session.progress.currentRound,
+      totalRounds: session.progress.totalRounds,
+      currentScore: session.progress.currentScore,
+      avgScore: session.progress.avgScore,
+      passedRounds: session.progress.passedRounds
+    });
+  }
+}

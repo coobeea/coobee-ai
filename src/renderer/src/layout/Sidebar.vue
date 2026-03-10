@@ -52,6 +52,7 @@ const mainMenuItems: MenuItem[] = [
 const moreMenuItems: MenuItem[] = [
   { id: 'discussion', label: '群聊讨论', icon: 'i-carbon-chat', route: '/discussion' },
   { id: 'consultation', label: '专家会诊', icon: 'i-carbon-user-multiple', route: '/consultation' }, // ✅ 使用独立路由，但复用同一个组件
+  { id: 'training', label: '智能体训练', icon: 'i-carbon-machine-learning-model', route: '/training' },
   { id: 'designer', label: 'Agent 设计器', icon: 'i-carbon-flow', route: '/designer' },
   { id: 'logs', label: '系统日志', icon: 'i-carbon-document-tasks', route: '/logs' },
   { id: 'settings', label: '系统设置', icon: 'i-carbon-settings', route: '/settings' }

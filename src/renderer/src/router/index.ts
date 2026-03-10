@@ -85,6 +85,16 @@ const router = createRouter({
           component: () => import('@/views/DiscussionView.vue') // ✅ 复用 DiscussionView
         },
         {
+          path: 'training',
+          name: 'training',
+          component: () => import('@/views/TrainingView.vue')
+        },
+        {
+          path: 'training/:id',
+          name: 'training-detail',
+          component: () => import('@/views/TrainingDetailView.vue')
+        },
+        {
           path: 'designer',
           name: 'designer',
           component: () => import('@/views/AgentDesigner.vue')
