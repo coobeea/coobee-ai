@@ -105,7 +105,13 @@ export const EventTypes = {
   /** 日志路径配置变更 */
   CONFIG_LOG_PATH_CHANGED: 'config:logPath:changed',
   /** 快捷键配置变更 */
-  CONFIG_SHORTCUTS_CHANGED: 'config:shortcuts:changed'
+  CONFIG_SHORTCUTS_CHANGED: 'config:shortcuts:changed',
+
+  // ==================== Discussion 事件 ====================
+  /** 讨论室新消息 */
+  DISCUSSION_MESSAGE: 'discussion.message',
+  /** 讨论室结束 */
+  DISCUSSION_ENDED: 'discussion.ended'
 } as const;
 
 /**
@@ -302,6 +308,28 @@ export interface EventPayloads {
       global: boolean;
       registered: boolean;
     }>;
+  };
+
+  // ==================== Discussion 事件 ====================
+  [EventTypes.DISCUSSION_MESSAGE]: {
+    threadId: string;
+    message: {
+      id: string;
+      agentId: string;
+      content: string;
+      timestamp: number;
+      type: 'statement' | 'question' | 'answer' | 'objection' | 'agreement' | 'summary';
+      replyTo?: string;
+      metadata?: Record<string, unknown>;
+    };
+  };
+  [EventTypes.DISCUSSION_ENDED]: {
+    threadId: string;
+    reason: string;
+    consensusLevel?: number;
+    totalRounds: number;
+    messageCount: number;
+    conclusion?: string;
   };
 }
 

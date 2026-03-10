@@ -5,8 +5,8 @@
  * 在应用就绪后、窗口创建前执行
  */
 
-import { LifecyclePhase, LifecycleContext, LifecycleHook } from '@main/common/types'
-import { log } from '@main/common/logger'
+import { LifecyclePhase, LifecycleContext, LifecycleHook } from '@main/common/types';
+import { log } from '@main/common/logger';
 
 /**
  * IPC Registration Hook
@@ -21,23 +21,23 @@ export const ReadyIpcRegistrationHook: LifecycleHook = {
   critical: true, // 标记为关键 Hook，失败时中断启动
 
   async execute(_context: LifecycleContext): Promise<void> {
-    log.info('[ReadyIpcRegistrationHook] Registering IPC handlers...')
+    log.info('[ReadyIpcRegistrationHook] Registering IPC handlers...');
 
     try {
       // 动态导入以避免循环依赖
-      const { registerIpcHandlers } = await import('@main/common/ipc')
-      const { ipcEventBroadcaster } = await import('@main/common/ipc/eventBroadcaster')
+      const { registerIpcHandlers } = await import('@main/common/ipc');
+      const { ipcEventBroadcaster } = await import('@main/common/ipc/eventBroadcaster');
 
       // 注册所有 IPC 处理器
-      registerIpcHandlers()
+      registerIpcHandlers();
 
       // 初始化 IPC 事件广播器（监听主进程 EventBus 并转发到前端）
-      ipcEventBroadcaster.init()
+      ipcEventBroadcaster.init();
 
-      log.info('[ReadyIpcRegistrationHook] All IPC handlers registered successfully')
+      log.info('[ReadyIpcRegistrationHook] All IPC handlers registered successfully');
     } catch (error) {
-      log.error('[ReadyIpcRegistrationHook] Failed to register IPC handlers:', error)
-      throw error
+      log.error('[ReadyIpcRegistrationHook] Failed to register IPC handlers:', error);
+      throw error;
     }
   }
-}
+};

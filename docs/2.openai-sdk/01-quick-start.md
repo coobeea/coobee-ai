@@ -21,15 +21,15 @@ export OPENAI_API_KEY=your-api-key
 ## 最小示例
 
 ```typescript
-import { Agent, run } from '@openai/agents'
+import { Agent, run } from '@openai/agents';
 
 const agent = new Agent({
   name: 'Assistant',
   instructions: 'You only respond in haikus.'
-})
+});
 
-const result = await run(agent, 'Tell me about recursion in programming.')
-console.log(result.finalOutput)
+const result = await run(agent, 'Tell me about recursion in programming.');
+console.log(result.finalOutput);
 ```
 
 这就是全部！三步完成：
@@ -53,7 +53,7 @@ new Agent({
 ### `run()` 函数
 
 ```typescript
-const result = await run(agent, input)
+const result = await run(agent, input);
 ```
 
 - `agent` — Agent 实例

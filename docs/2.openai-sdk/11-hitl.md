@@ -39,8 +39,8 @@ sequenceDiagram
 ### 1. 定义需要审批的工具
 
 ```typescript
-import { Agent, run, tool } from '@openai/agents'
-import { z } from 'zod'
+import { Agent, run, tool } from '@openai/agents';
+import { z } from 'zod';
 
 const getTemperature = tool({
   name: 'get_temperature',
@@ -49,12 +49,12 @@ const getTemperature = tool({
   // needsApproval 可以是布尔值或函数
   needsApproval: async (_ctx, { city }) => {
     // 只有查询 Oakland 时需要审批
-    return city.includes('Oakland')
+    return city.includes('Oakland');
   },
   execute: async ({ city }) => {
-    return `The temperature in ${city} is 72F.`
+    return `The temperature in ${city} is 72F.`;
   }
-})
+});
 ```
 
 ### 2. 处理中断
@@ -64,30 +64,30 @@ const agent = new Agent({
   name: 'Weather Agent',
   instructions: 'You check the temperature.',
   tools: [getTemperature]
-})
+});
 
-let result = await run(agent, 'What is the temperature in Oakland?')
+let result = await run(agent, 'What is the temperature in Oakland?');
 
 // 检查是否有中断
 while (result.interruptions?.length > 0) {
   for (const interruption of result.interruptions) {
-    console.log(`Agent ${interruption.agent.name} wants to use tool: ${interruption.toolName}`)
-    console.log(`Arguments: ${JSON.stringify(interruption.args)}`)
+    console.log(`Agent ${interruption.agent.name} wants to use tool: ${interruption.toolName}`);
+    console.log(`Arguments: ${JSON.stringify(interruption.args)}`);
 
-    const approved = await promptUser('Approve? (y/n)')
+    const approved = await promptUser('Approve? (y/n)');
 
     if (approved) {
-      result.state.approve(interruption)
+      result.state.approve(interruption);
     } else {
-      result.state.reject(interruption)
+      result.state.reject(interruption);
     }
   }
 
   // 恢复执行
-  result = await run(agent, result.state)
+  result = await run(agent, result.state);
 }
 
-console.log(result.finalOutput)
+console.log(result.finalOutput);
 ```
 
 ### 3. 关键 API
@@ -109,7 +109,7 @@ Agent 作为工具使用时也可以设置审批：
 const weatherAgent = new Agent({
   name: 'Weather Agent',
   tools: [getWeather]
-})
+});
 
 const mainAgent = new Agent({
   name: 'Main Agent',
@@ -118,11 +118,11 @@ const mainAgent = new Agent({
       toolName: 'ask_weather_agent',
       // 针对 Agent-as-Tool 的审批
       needsApproval: async (_ctx, { input }) => {
-        return input.includes('San Francisco')
+        return input.includes('San Francisco');
       }
     })
   ]
-})
+});
 ```
 
 ## 状态序列化与反序列化
@@ -130,26 +130,26 @@ const mainAgent = new Agent({
 状态可以序列化为 JSON，跨进程/线程传输：
 
 ```typescript
-import { RunState } from '@openai/agents'
-import fs from 'fs'
+import { RunState } from '@openai/agents';
+import fs from 'fs';
 
 // 保存状态
-const result = await run(agent, userMessage)
+const result = await run(agent, userMessage);
 if (result.interruptions?.length > 0) {
-  await fs.promises.writeFile('result.json', JSON.stringify(result.state, null, 2))
+  await fs.promises.writeFile('result.json', JSON.stringify(result.state, null, 2));
 }
 
 // --- 可能在不同进程/线程中 ---
 
 // 恢复状态
-const storedState = await fs.promises.readFile('result.json', 'utf-8')
-const state = await RunState.fromString(agent, storedState)
+const storedState = await fs.promises.readFile('result.json', 'utf-8');
+const state = await RunState.fromString(agent, storedState);
 
 // 批准并继续
 for (const interruption of state.interruptions) {
-  state.approve(interruption)
+  state.approve(interruption);
 }
-const finalResult = await run(agent, state)
+const finalResult = await run(agent, state);
 ```
 
 这对于以下场景非常有用：
@@ -163,32 +163,32 @@ const finalResult = await run(agent, state)
 流式模式下的 HITL 处理方式略有不同：
 
 ```typescript
-let stream = await run(mainAgent, userMessage, { stream: true })
+let stream = await run(mainAgent, userMessage, { stream: true });
 
 // 输出文本流
-stream.toTextStream({ compatibleWithNodeStreams: true }).pipe(process.stdout)
-await stream.completed
+stream.toTextStream({ compatibleWithNodeStreams: true }).pipe(process.stdout);
+await stream.completed;
 
 // 检查中断
 while (stream.interruptions?.length) {
-  const state = stream.state
+  const state = stream.state;
 
   for (const interruption of stream.interruptions) {
-    const ok = await promptUser(`Approve ${interruption.toolName}?`)
+    const ok = await promptUser(`Approve ${interruption.toolName}?`);
     if (ok) {
-      state.approve(interruption)
+      state.approve(interruption);
     } else {
-      state.reject(interruption)
+      state.reject(interruption);
     }
   }
 
   // 恢复流式执行
-  stream = await run(mainAgent, state, { stream: true })
-  stream.toTextStream({ compatibleWithNodeStreams: true }).pipe(process.stdout)
-  await stream.completed
+  stream = await run(mainAgent, state, { stream: true });
+  stream.toTextStream({ compatibleWithNodeStreams: true }).pipe(process.stdout);
+  await stream.completed;
 }
 
-console.log('\nFinal output:', stream.finalOutput)
+console.log('\nFinal output:', stream.finalOutput);
 ```
 
 ## HITL + Session
@@ -198,62 +198,60 @@ HITL 与 Session 可以结合使用，实现持久化审批流程：
 ### MemorySession + HITL
 
 ```typescript
-import { MemorySession } from '@openai/agents'
+import { MemorySession } from '@openai/agents';
 
-const session = new MemorySession()
+const session = new MemorySession();
 
 async function resolveInterruptions(agent, result, session) {
   while (result.interruptions?.length) {
     for (const interruption of result.interruptions) {
-      const approved = await promptUser(`Approve?`)
+      const approved = await promptUser(`Approve?`);
       if (approved) {
-        result.state.approve(interruption)
+        result.state.approve(interruption);
       } else {
-        result.state.reject(interruption)
+        result.state.reject(interruption);
       }
     }
     // 使用 session 恢复执行
-    result = await run(agent, result.state, { session })
+    result = await run(agent, result.state, { session });
   }
-  return result
+  return result;
 }
 
-let result = await run(agent, userMessage, { session })
-result = await resolveInterruptions(agent, result, session)
+let result = await run(agent, userMessage, { session });
+result = await resolveInterruptions(agent, result, session);
 ```
 
 ### FileSession + HITL
 
 ```typescript
-import { FileSession } from './sessions'
+import { FileSession } from './sessions';
 
-const session = new FileSession({ dir: './tmp' })
-const sessionId = await session.getSessionId()
+const session = new FileSession({ dir: './tmp' });
+const sessionId = await session.getSessionId();
 
-let result = await run(agent, userMessage, { session })
+let result = await run(agent, userMessage, { session });
 // ... 处理中断 ...
 
 // 恢复会话（不同进程）
-const restoredSession = new FileSession({ dir: './tmp', sessionId })
+const restoredSession = new FileSession({ dir: './tmp', sessionId });
 // 继续之前的对话
 ```
 
 ### OpenAIConversationsSession + HITL
 
 ```typescript
-import { OpenAIConversationsSession } from '@openai/agents'
+import { OpenAIConversationsSession } from '@openai/agents';
 
-const session = new OpenAIConversationsSession()
-let result = await run(agent, userMessage, { session })
+const session = new OpenAIConversationsSession();
+let result = await run(agent, userMessage, { session });
 // ... 处理中断，逻辑相同 ...
 ```
 
 ## needsApproval 函数签名
 
 ```typescript
-type NeedsApproval =
-  | boolean
-  | ((ctx: RunContext, args: Record<string, unknown>) => boolean | Promise<boolean>)
+type NeedsApproval = boolean | ((ctx: RunContext, args: Record<string, unknown>) => boolean | Promise<boolean>);
 ```
 
 - `boolean` — 始终需要或不需要审批
@@ -263,10 +261,10 @@ type NeedsApproval =
 
 ```typescript
 interface Interruption {
-  agent: Agent // 发起调用的 Agent
-  toolName: string // 工具名称
-  args: unknown // 工具参数
-  toolCall: ToolCall // 原始工具调用
+  agent: Agent; // 发起调用的 Agent
+  toolName: string; // 工具名称
+  args: unknown; // 工具参数
+  toolCall: ToolCall; // 原始工具调用
 }
 ```
 

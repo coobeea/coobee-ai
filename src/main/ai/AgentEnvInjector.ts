@@ -15,9 +15,12 @@
  */
 
 import path from 'node:path';
+import fs from 'node:fs';
 import { createLogger } from '@main/common/logger';
 import { formatRuntimePaths, buildAgentEnv, type AgentEnv } from './AgentEnv';
 import { SkillManager } from './skills';
+import { CORE_SKILLS } from './skills/CoreSkills';
+import { AgentHomeManager } from './agents/AgentHomeManager';
 import { createPathOnlyContext, resolveSandboxContext } from './sandbox';
 import type { SandboxMode } from './sandbox';
 import type { ToolExecutionContext } from './tools/types';
@@ -44,8 +47,18 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
     ).getWorkspaceRoot?.();
     const workspace = existingWorkspace || (await Env.getAgentWorkspaceDir(sessionId));
 
-    // 2. 构建 AgentEnv
+    // 2. 构建 AgentEnv + Agent Home
     const agentEnv = await buildAgentEnv(sessionId, workspace);
+    const agentId = (builder as unknown as { getAgentId?: () => string | undefined }).getAgentId?.();
+
+    let agentHome: string | undefined;
+    let homeManager: AgentHomeManager | undefined;
+    if (agentId) {
+      homeManager = new AgentHomeManager(Env.paths.homesDir);
+      agentHome = homeManager.initHome(agentId);
+      agentEnv.agentId = agentId;
+      agentEnv.agentHome = agentHome;
+    }
 
     // ====== Agent 模式独有：Skill + 执行协议 + 运行时路径 ======
     if (mode === 'agent') {
@@ -57,7 +70,7 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
       SkillManager.setCurrent(skillManager, sessionId);
 
       // 4. 注入核心执行协议 + 运行时环境 + Skill 发现提示 + Agent 发现提示到 appendInstructions
-      //    执行协议可通过同名 Skill 覆盖（用户在 workspace/skills/execution-protocol/ 创建即可）
+      //    执行协议可通过同名 Skill 覆盖（用户在 skills/execution-protocol/ 创建即可）
       const executionProtocol = buildExecutionProtocol(skillManager);
       const runtimePathsBlock = formatRuntimePaths(agentEnv);
       const skillDiscoveryHint =
@@ -69,28 +82,64 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
             `1. Use the \`read\` tool to read its SKILL.md file (path provided by skill_list)\n` +
             `2. Follow the instructions within the SKILL.md file\n` +
             `3. Do NOT attempt to use a Skill without reading its documentation first\n\n` +
-            `Key Skills for self-management:\n` +
-            `- **Knowledge base** → load "brain" Skill (search/publish solutions)\n` +
+            `### Core Skills (ALWAYS ACTIVE — use for every non-trivial task)\n\n` +
+            `These are your **mandatory quality assurance** skills:\n\n` +
+            `| Skill | Purpose | When to Use |\n` +
+            `|-------|---------|-------------|\n` +
+            `| **execution-protocol** | 五步工作法：目标提取→计划执行→自我评估→自我修复→报告沉淀 | Every task: decompose goals, write GOAL.md, track progress |\n` +
+            `| **self-reflection** | 自我评估与修复方法论：质量评分、过程评分、修复决策树 | After completing any complex task: verify output against criteria |\n` +
+            `| **eval-refine-loop** | 维度化评估→差距报告→诊断→优化→再评估的全自动闭环 | When output quality needs systematic verification |\n` +
+            `| **brain** | 知识库搜索与经验沉淀 | Before solving: search for existing solutions; After solving: publish reusable knowledge |\n` +
+            `| **dimension-architect** | 需求维度量化拆解 | When user requirements need structured dimensional analysis |\n\n` +
+            `**CRITICAL WORKFLOW**:\n` +
+            `1. **Before execution**: Load \`execution-protocol\` to decompose task and define verifiable criteria\n` +
+            `2. **After execution**: Load \`self-reflection\` to evaluate quality against criteria\n` +
+            `3. **If quality < 80**: Follow repair strategy in \`self-reflection\`, iterate until passing\n` +
+            `4. **For LLM output quality**: Use \`eval-refine-loop\` for systematic dimension-based evaluation\n\n` +
+            `### Other Useful Skills\n\n` +
             `- Configuration changes → load "system-config" Skill\n` +
             `- Creating new Skills → load "skill-creator" Skill\n` +
             `- Creating Extensions → load "extension-creator" Skill\n` +
-            `- Self-evaluation → load "self-reflection" Skill\n` +
             `- Environment info → load "runtime-env" Skill\n` +
             `\nYou can also use \`config_get\` to view current config and \`config_patch\` to modify it.\n` +
             `</skill_discovery>`
           : '';
       const agentDiscoveryHint = await buildAgentDiscoveryHint();
+      const goalBlock = readGoalFile(workspace);
+      const agentsMdBlock = await readAgentsMdFiles(Env.paths.agentsMdPath, agentHome, workspace);
+      const agentHomeBlock = homeManager && agentId ? homeManager.readInjectableFiles(agentId) : undefined;
+
+      // 收集 Extension 注入的指令（运行时注入，对所有 Agent 生效）
+      const extensionInstructions = collectExtensionInstructions();
+
       builder.appendInstructions(
         executionProtocol,
         runtimePathsBlock,
+        ...(agentsMdBlock ? [agentsMdBlock] : []),
+        ...(agentHomeBlock ? [agentHomeBlock] : []),
+        ...(goalBlock ? [goalBlock] : []),
         ...(skillDiscoveryHint ? [skillDiscoveryHint] : []),
-        ...(agentDiscoveryHint ? [agentDiscoveryHint] : [])
+        ...(agentDiscoveryHint ? [agentDiscoveryHint] : []),
+        ...extensionInstructions
       );
+
+      // 4b. 注入核心技能到 builder（确保子 Agent 也拥有核心技能）
+      //     builder.skills() 是累加模式，不会覆盖已有 skills
+      const coreSkillDefs = CORE_SKILLS.map((name) => skillManager.getByName(name)).filter(
+        (s): s is NonNullable<typeof s> => s !== null
+      );
+      if (coreSkillDefs.length > 0) {
+        builder.skills(coreSkillDefs);
+        log.info(
+          `[EnvInjector] Injected ${coreSkillDefs.length} core skills: ${coreSkillDefs.map((s) => s.name).join(', ')}`
+        );
+      }
 
       // 5. 构建工具执行上下文（由 Runtime 的 convertTools 注入到每个工具）
       //    包含沙箱信息 + Agent/Session 上下文
       const envVars = buildSkillEnvVars(agentEnv);
       const toolCtx = await buildToolExecutionContext(workspace, sessionId, envVars, {
+        agentId: agentId || undefined,
         agentName: builder.getName?.() || undefined,
         agentMode: mode
       });
@@ -99,14 +148,14 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
 
     // ====== Chat & Agent 共享：基础环境设置 ======
 
-    // 6. 设置会话存储目录（指向 workspace 内的 sessions/）
-    builder.sessionDir(path.join(workspace, 'sessions'));
+    // 6. 设置会话存储目录（指向 .runtime/ 系统空间）
+    builder.sessionDir(path.join(workspace, '.runtime', 'sessions'));
 
     // 7. 设置工作目录（统一 API：两个 Builder 都支持 workspaceRoot()）
     builder.workspaceRoot(workspace);
 
-    // 8. 设置上下文快照目录（Runtime 层写入）
-    builder.contextDir(path.join(workspace, 'contexts'));
+    // 8. 设置上下文快照目录（.runtime/ 系统空间）
+    builder.contextDir(path.join(workspace, '.runtime', 'contexts'));
 
     log.info(`[EnvInjector] Injected: sessionId=${sessionId}, mode=${mode}, workspace=${workspace}`);
     return workspace;
@@ -114,6 +163,123 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
     log.warn(`[EnvInjector] Failed, continuing without env:`, error);
     return undefined;
   }
+}
+
+// ==================== 目标文件读取 ====================
+
+/**
+ * 读取工作空间中的 GOAL.md 目标文件
+ *
+ * 目标文件由 Agent 在执行协议第 1 步（Intent & Goal Extraction）时创建，
+ * 存储用户的原始需求和可验证的目标准则。
+ *
+ * 每次新的请求都会重新读取并注入到 appendInstructions 中，
+ * 确保在多轮对话（即使上下文窗口截断）时目标不丢失。
+ *
+ * @returns `<current_goal>` XML 块，或 undefined（文件不存在时）
+ */
+function readGoalFile(workspace: string): string | undefined {
+  const goalPath = path.join(workspace, 'GOAL.md');
+  try {
+    const content = fs.readFileSync(goalPath, 'utf-8').trim();
+    if (!content) return undefined;
+
+    // 截断过长的目标文件（保护 token 预算）
+    const maxLen = 4000;
+    const truncated = content.length > maxLen ? content.slice(0, maxLen) + '\n\n... (truncated)' : content;
+
+    return `<current_goal>
+The following is the persistent goal for this session, extracted from GOAL.md in the workspace.
+Always keep this goal in mind. If the user's new message changes the goal, update GOAL.md accordingly.
+
+${truncated}
+</current_goal>`;
+  } catch {
+    return undefined;
+  }
+}
+
+// ==================== AGENTS.md 协议文件读取 ====================
+
+/**
+ * 读取并合并二级 AGENTS.md 协议文件
+ *
+ * 优先级（后者可覆盖前者规则）：
+ *   1. 全局 AGENTS.md（{userHome}/AGENTS.md）— 系统级规则（所有 Agent 共享）
+ *   2. Agent级 AGENTS.md（homes/{agentId}/AGENTS.md）— Agent 自定义规则（跨会话持久）
+ *
+ * @param globalPath 全局 AGENTS.md 路径
+ * @param agentHome Agent Home 目录路径（可选）
+ * @param _workspace 工作空间根路径（已废弃，仅保留参数兼容）
+ * @returns `<system_agents_md>` XML 块，或 undefined
+ */
+async function readAgentsMdFiles(
+  globalPath: string,
+  agentHome: string | undefined,
+  _workspace: string
+): Promise<string | undefined> {
+  const maxLen = 4000;
+  const parts: string[] = [];
+  const seenContent = new Set<string>();
+
+  // 1. 全局 AGENTS.md
+  try {
+    const content = fs.readFileSync(globalPath, 'utf-8').trim();
+    if (content) {
+      parts.push(content);
+      seenContent.add(content);
+    }
+  } catch {
+    // 文件不存在时静默
+  }
+
+  // 2. Agent级 AGENTS.md
+  const agentMdPath = agentHome ? path.join(agentHome, 'AGENTS.md') : undefined;
+  if (agentMdPath) {
+    try {
+      const content = fs.readFileSync(agentMdPath, 'utf-8').trim();
+      if (content && !seenContent.has(content) && !isOnlyComments(content)) {
+        parts.push(`---\n\n<!-- Agent-level rules (${agentMdPath}) -->\n\n${content}`);
+        seenContent.add(content);
+      }
+    } catch {
+      // 文件不存在时静默
+    }
+  }
+
+  if (parts.length === 0) return undefined;
+
+  let merged = parts.join('\n\n');
+  if (merged.length > maxLen) {
+    merged = merged.slice(0, maxLen) + '\n\n... (truncated)';
+  }
+
+  const pathLines = [`Global path: ${globalPath}`];
+  if (agentMdPath) pathLines.push(`Agent path: ${agentMdPath}`);
+
+  return `<system_agents_md>
+This is the system-wide AGENTS.md protocol file. It contains identity, rules, and shared context
+that ALL agents MUST follow. You may update the Agent-level copy in your Agent Home directory.
+
+${pathLines.join('\n')}
+
+${merged}
+</system_agents_md>`;
+}
+
+/**
+ * 判断内容是否仅包含 Markdown 注释
+ */
+function isOnlyComments(content: string): boolean {
+  const stripped = content
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      return trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('<!--') && !trimmed.endsWith('-->');
+    })
+    .join('')
+    .trim();
+  return stripped.length === 0;
 }
 
 // ==================== 核心执行协议 ====================
@@ -133,10 +299,54 @@ function buildExecutionProtocol(_skillManager?: SkillManager): string {
 When you receive a user request, follow this protocol:
 
 1. **Intent & Goal Extraction** - Identify core intent and define verifiable criteria
+   - **CRITICAL**: For non-trivial tasks, persist the goal by writing a \`GOAL.md\` file in the workspace root:
+     \`\`\`
+     write({ path: "<workspace>/GOAL.md", content: "# Goal\\n\\n## Original Request\\n...\\n## Objectives\\n...\\n## Verifiable Criteria\\n..." })
+     \`\`\`
+   - This ensures the goal survives across many conversation turns and context window truncation
+   - If GOAL.md already exists (shown in <current_goal> above), review it — update if the user's intent has changed
 2. **Plan & Execute** - Create plan and execute step by step
-3. **Self-Evaluation** - Compare output against criteria
-4. **Self-Repair** - Fix issues if needed (max 3 rounds)
+3. **Self-Evaluation (MANDATORY for complex tasks)** - Compare output against criteria (from GOAL.md)
+   - **You MUST actually verify** every criterion by running real checks (e.g., execute commands, inspect files, test outputs)
+   - Do NOT just claim "completed" — provide evidence for each criterion
+   - Load the \`self-reflection\` Skill for the detailed evaluation methodology (quality scoring, process scoring, repair decision tree)
+4. **Self-Repair** - Fix issues if evaluation score < 80 (max 3 rounds)
+   - Follow the repair priority: fix output → change strategy → re-analyze intent → ask user
 5. **Report & Memorize** - Summarize results and save valuable knowledge
+   - When task is complete, update GOAL.md status or remove it
+   - **IMPORTANT**: Use the \`memory\` tool to persist reusable knowledge:
+     · User preferences discovered → \`memory(action='write', file='memory/preferences.md', content='...', append=true)\`
+     · Lessons from errors/debugging → \`memory(action='write', file='memory/lessons.md', content='...', append=true)\`
+     · Core project knowledge → \`memory(action='write', file='MEMORY.md', content='...', append=true)\`
+     · Only save durable, reusable knowledge — NOT session-specific details
+   - At the **start** of non-trivial tasks, check existing memory: \`memory(action='list')\` or \`memory(action='search', query='...')\`
+
+## Quality Assurance — NEVER Skip
+
+**Every goal must be verified with real data.** When your task produces outputs (files, code, analysis, etc.):
+
+1. **Test the output** — run commands, check file existence, validate content matches criteria
+2. **Score your work** — use the self-reflection methodology (quality × 60% + process × 40%)
+3. **Iterate if needed** — if score < 80, repair and re-evaluate before reporting to user
+4. **Be honest** — if you cannot verify a criterion, explicitly state it (don't fabricate results)
+
+### Dialectical Verification (for complex tasks)
+
+Self-evaluation has an inherent bias — you wrote the code AND you judge it.
+For **complex, high-stakes tasks** (multi-step, multi-file, or mission-critical), use dialectical verification:
+
+1. **Delegate verification to a sub-agent** via \`delegate_to_agent\`:
+   - The verifier sub-agent has a fresh context (no implementation bias)
+   - Give it the GOAL.md criteria + output location, ask it to independently evaluate
+   - The verifier should run real checks, not just review descriptions
+2. **Compare results** — if the verifier finds issues you missed, fix them
+3. **When to use dialectical verification**:
+   - Task involves 3+ files or 100+ lines of changes
+   - Task is user-critical (deployment, data migration, security)
+   - Your self-evaluation score is borderline (75–85)
+   - You are unsure about edge cases
+
+When using multi-agent modes (swarm, orchestrator), the **main agent MUST aggregate and verify** all sub-agent outputs before reporting to the user. Do not blindly trust sub-agent results.
 
 ## Brain Knowledge Base Integration
 
@@ -176,44 +386,30 @@ async function buildAgentDiscoveryHint(): Promise<string | undefined> {
     const agentList =
       agents.length > 0
         ? agents.map((a) => `- **${a.name}** (\`${a.id}\`): ${a.description}`).join('\n')
-        : '_No registered agents yet. Use `manage_agent(create)` to create one._';
+        : '_No registered agents yet. New agents are created via the AI Creator or HTTP API._';
 
     return `<agent_discovery>
 ## Registered Agents
 
 ${agentList}
 
-## Multi-Agent Modes
+## Multi-Agent Collaboration
 
-You have three ways to collaborate with other agents:
-
-1. **Tool Delegation** (\`delegate_to_agent\`)
-   - You maintain control; sub-agent is like a tool call
-   - Best for: specific, well-defined sub-tasks
-   - Usage: manage_agent(list) → delegate_to_agent(agentId, task)
-
-2. **Orchestrator** (programmatic plan → parallel workers)
-   - A Planner decomposes the task, then workers execute in stages
-   - Best for: complex tasks that can be pre-decomposed
-   - Currently available as OrchestratorRuntime (not yet exposed as tool)
-
-3. **Swarm** (dynamic handoff between specialist agents)
-   - Triage routes to specialists; agents hand off to each other
-   - Best for: exploratory tasks where the path is unclear
-   - Currently available as SwarmRuntime (not yet exposed as tool)
+You can collaborate with other agents using \`delegate_to_agent\`:
+- You maintain control; the sub-agent runs like a tool call
+- Best for: specific, well-defined sub-tasks
+- Usage: pick an agent from the list above → delegate_to_agent(agentId, task)
 
 ### Decision Guide
 
-- Simple sub-task → delegate_to_agent
-- Complex, decomposable task → Orchestrator (future)
-- Exploratory, uncertain task → Swarm (future)
-- Need a new specialist? → manage_agent(create) first, then delegate
+- Simple sub-task → delegate_to_agent(agentId, task)
+- Need a new specialist? → Describe the need; the system's AI Creator handles agent creation
+- Agent definitions are managed via the HTTP REST API (/gateway/agents/*)
 
 ### Agent Lifecycle
 
-- Use \`manage_agent(list)\` to discover registered agents
-- Use \`manage_agent(create)\` to create reusable specialists
-- Use \`manage_agent(get, id)\` to read an agent's full definition
+- Registered agents are listed above; use \`delegate_to_agent\` to invoke them
+- New agents are created through the AI Creator service or HTTP API, not via tools
 - Temporary agents in Orchestrator/Swarm are session-scoped and auto-destroyed
 </agent_discovery>`;
   } catch (error) {
@@ -341,12 +537,13 @@ async function buildToolExecutionContext(
     // 工作目录
     cwd,
 
-    // 工作空间子目录
-    sessionsDir: path.join(workspace, 'sessions'),
-    contextsDir: path.join(workspace, 'contexts'),
-    eventsDir: path.join(workspace, 'events'),
+    // 工作空间目录
     tasksDir: path.join(workspace, 'tasks'),
-    outputDir: path.join(workspace, 'output'),
+
+    // 系统空间（.runtime/）
+    sessionsDir: path.join(workspace, '.runtime', 'sessions'),
+    contextsDir: path.join(workspace, '.runtime', 'contexts'),
+    eventsDir: path.join(workspace, '.runtime', 'events'),
 
     // 系统路径
     userHome,
@@ -365,4 +562,28 @@ async function buildToolExecutionContext(
   };
 
   return toolCtx;
+}
+
+// ==================== Extension 指令注入 ====================
+
+/**
+ * 收集所有 Extension 注入的指令
+ *
+ * Extension 可通过 extension.json 的 injectInstructions 字段声明运行时指令，
+ * 这些指令会在每次 Agent 运行时自动追加到 appendInstructions 中。
+ *
+ * 适用场景：核心功能的使用指导（如 memory-smart 召回）对所有 Agent 生效，无需修改 Agent 定义。
+ */
+function collectExtensionInstructions(): string[] {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ExtensionManager } = require('@main/common/extension');
+    const registry = ExtensionManager.getRegistry();
+    if (registry) {
+      return registry.getInjectInstructions();
+    }
+  } catch {
+    // Extension 系统未初始化时忽略
+  }
+  return [];
 }

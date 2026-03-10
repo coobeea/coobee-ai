@@ -3,51 +3,51 @@
  *
  * 管理所有已注册的 Provider 配置，支持从配置系统加载。
  */
-import type { CoobeeConfig } from '@main/common/config/schema'
+import type { CoobeeConfig } from '@main/common/config/schema';
 
-import type { ProviderConfig } from './types'
+import type { ProviderConfig } from './types';
 
 export class ProviderRegistry {
-  private providers = new Map<string, ProviderConfig>()
+  private providers = new Map<string, ProviderConfig>();
 
   /** 注册一个 Provider */
   register(config: ProviderConfig): void {
-    this.providers.set(config.id, config)
+    this.providers.set(config.id, config);
   }
 
   /** 注销一个 Provider */
   unregister(id: string): boolean {
-    return this.providers.delete(id)
+    return this.providers.delete(id);
   }
 
   /** 获取指定 Provider */
   get(id: string): ProviderConfig | undefined {
-    return this.providers.get(id)
+    return this.providers.get(id);
   }
 
   /** 获取所有已注册的 Provider */
   getAll(): ProviderConfig[] {
-    return Array.from(this.providers.values())
+    return Array.from(this.providers.values());
   }
 
   /** 获取所有启用的 Provider */
   getEnabled(): ProviderConfig[] {
-    return this.getAll().filter((p) => p.enabled)
+    return this.getAll().filter((p) => p.enabled);
   }
 
   /** 是否存在指定 Provider */
   has(id: string): boolean {
-    return this.providers.has(id)
+    return this.providers.has(id);
   }
 
   /** 已注册的 Provider 数量 */
   get size(): number {
-    return this.providers.size
+    return this.providers.size;
   }
 
   /** 清空所有 Provider */
   clear(): void {
-    this.providers.clear()
+    this.providers.clear();
   }
 
   /**
@@ -56,9 +56,9 @@ export class ProviderRegistry {
    * 会清空现有 Provider 再加载。
    */
   loadFromConfig(config: CoobeeConfig): void {
-    this.clear()
-    const providers = config.models?.providers
-    if (!providers) return
+    this.clear();
+    const providers = config.models?.providers;
+    if (!providers) return;
 
     for (const [id, providerConf] of Object.entries(providers)) {
       this.register({
@@ -82,7 +82,7 @@ export class ProviderRegistry {
           cost: m.cost
         })),
         enabled: providerConf.enabled ?? true
-      })
+      });
     }
   }
 }

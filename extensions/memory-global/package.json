@@ -1,0 +1,10 @@
+{
+  "name": "memory-global",
+  "version": "1.0.0",
+  "description": "Global long-term memory with LanceDB vector storage",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "@lancedb/lancedb": "^0.26.2"
+  }
+}

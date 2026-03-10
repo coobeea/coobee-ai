@@ -11,19 +11,19 @@ Agent 可以处理图片和文件等非文本内容。SDK 支持多种方式传�
 ### 本地图片（Base64）
 
 ```typescript
-import { Agent, run } from '@openai/agents'
-import fs from 'fs'
+import { Agent, run } from '@openai/agents';
+import fs from 'fs';
 
 function imageToBase64(filePath: string): string {
-  return fs.readFileSync(filePath).toString('base64')
+  return fs.readFileSync(filePath).toString('base64');
 }
 
 const agent = new Agent({
   name: 'Vision Agent',
   instructions: 'You describe images in detail.'
-})
+});
 
-const b64Image = imageToBase64('./photo.jpg')
+const b64Image = imageToBase64('./photo.jpg');
 
 const result = await run(agent, [
   {
@@ -42,15 +42,15 @@ const result = await run(agent, [
     role: 'user',
     content: 'What do you see in this image?'
   }
-])
+]);
 
-console.log(result.finalOutput)
+console.log(result.finalOutput);
 ```
 
 ### 远程图片（URL）
 
 ```typescript
-const url = 'https://images.unsplash.com/photo-1505761671935-60b3a7427bad'
+const url = 'https://images.unsplash.com/photo-1505761671935-60b3a7427bad';
 
 const result = await run(agent, [
   {
@@ -69,7 +69,7 @@ const result = await run(agent, [
     role: 'user',
     content: 'What do you see in this image?'
   }
-])
+]);
 ```
 
 ### detail 参数
@@ -86,10 +86,10 @@ const result = await run(agent, [
 
 ```typescript
 function fileToBase64(filePath: string): string {
-  return fs.readFileSync(filePath).toString('base64')
+  return fs.readFileSync(filePath).toString('base64');
 }
 
-const b64File = fileToBase64('./document.pdf')
+const b64File = fileToBase64('./document.pdf');
 
 const result = await run(agent, [
   {
@@ -108,13 +108,13 @@ const result = await run(agent, [
     role: 'user',
     content: 'What is the first sentence of the introduction?'
   }
-])
+]);
 ```
 
 ### 远程文件（URL）
 
 ```typescript
-const url = 'https://www.example.com/report.pdf'
+const url = 'https://www.example.com/report.pdf';
 
 const result = await run(agent, [
   {
@@ -130,7 +130,7 @@ const result = await run(agent, [
     role: 'user',
     content: 'Can you summarize this document?'
   }
-])
+]);
 ```
 
 ## 工具返回图片
@@ -138,8 +138,8 @@ const result = await run(agent, [
 工具可以返回图片，Agent 会理解并描述图片：
 
 ```typescript
-import { Agent, run, tool, ToolOutputImage } from '@openai/agents'
-import { z } from 'zod'
+import { Agent, run, tool, ToolOutputImage } from '@openai/agents';
+import { z } from 'zod';
 
 const fetchRandomImage = tool({
   name: 'fetch_random_image',
@@ -150,15 +150,15 @@ const fetchRandomImage = tool({
       type: 'image',
       image: 'https://images.unsplash.com/photo-1505761671935-60b3a7427bad',
       detail: 'auto'
-    }
+    };
   }
-})
+});
 
 const agent = new Agent({
   name: 'Image Agent',
   instructions: 'Call the tool and describe the image.',
   tools: [fetchRandomImage]
-})
+});
 ```
 
 ## 工具返回文件
@@ -166,15 +166,15 @@ const agent = new Agent({
 工具可以返回二进制文件，如 PDF：
 
 ```typescript
-import { Agent, run, tool, ToolOutputFileContent } from '@openai/agents'
-import { z } from 'zod'
+import { Agent, run, tool, ToolOutputFileContent } from '@openai/agents';
+import { z } from 'zod';
 
 const fetchDocument = tool({
   name: 'fetch_document',
   description: 'Fetch a PDF document.',
   parameters: z.object({ topic: z.string() }),
   execute: async ({ topic }): Promise<ToolOutputFileContent> => {
-    const pdfPath = path.join(__dirname, 'documents', `${topic}.pdf`)
+    const pdfPath = path.join(__dirname, 'documents', `${topic}.pdf`);
     return {
       type: 'file',
       file: {
@@ -182,21 +182,21 @@ const fetchDocument = tool({
         mediaType: 'application/pdf',
         filename: `${topic}.pdf`
       }
-    }
+    };
   }
-})
+});
 ```
 
 ### ToolOutputFileContent 结构
 
 ```typescript
 interface ToolOutputFileContent {
-  type: 'file'
+  type: 'file';
   file: {
-    data: Buffer // 文件二进制数据
-    mediaType: string // MIME 类型
-    filename: string // 文件名
-  }
+    data: Buffer; // 文件二进制数据
+    mediaType: string; // MIME 类型
+    filename: string; // 文件名
+  };
 }
 ```
 
@@ -204,9 +204,9 @@ interface ToolOutputFileContent {
 
 ```typescript
 interface ToolOutputImage {
-  type: 'image'
-  image: string // URL 或 base64 数据 URI
-  detail?: 'auto' | 'low' | 'high'
+  type: 'image';
+  image: string; // URL 或 base64 数据 URI
+  detail?: 'auto' | 'low' | 'high';
 }
 ```
 
@@ -227,9 +227,9 @@ const fetchImageData = tool({
         image: imageDataUrl,
         providerData: { filename: 'sample.jpg' }
       }
-    ]
+    ];
   }
-})
+});
 ```
 
 ## 输入格式总结

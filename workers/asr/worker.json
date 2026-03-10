@@ -4,7 +4,7 @@
   "enable": true,
   "entry": "server.py",
   "port": 18100,
-  "autoStart": false,
+  "autoStart": true,
   "autoRestart": true,
   "maxRestarts": 3,
   "healthCheckTimeout": 120000

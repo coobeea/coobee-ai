@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['./vitest.setup.ts'],
     include: [
       'src/main/ai/**/__tests__/**/*.test.ts',
       'src/main/common/server/**/__tests__/**/*.test.ts',
@@ -13,7 +14,11 @@ export default defineConfig({
       'src/main/common/config/__tests__/**/*.test.ts',
       'src/main/common/middleware/__tests__/**/*.test.ts',
       'src/main/common/worker/**/__tests__/**/*.test.ts',
+      'src/main/common/database/__tests__/**/*.test.ts',
+      'src/main/common/ipc/__tests__/**/*.test.ts',
+      'src/main/common/errors/__tests__/**/*.test.ts',
       'src/main/lifecycle/__tests__/**/*.test.ts',
+      'src/main/terminal/__tests__/**/*.test.ts',
       'src/main/channels/__tests__/**/*.test.ts',
       'src/renderer/**/__tests__/**/*.test.ts',
       'extensions/**/__tests__/**/*.test.ts'
@@ -31,6 +36,9 @@ export default defineConfig({
         'src/main/common/extension/**/*.ts',
         'src/main/common/config/**/*.ts',
         'src/main/common/middleware/**/*.ts',
+        'src/main/common/database/**/*.ts',
+        'src/main/common/ipc/**/*.ts',
+        'src/main/common/errors/**/*.ts',
         'src/main/lifecycle/**/*.ts'
       ],
       exclude: [
@@ -41,6 +49,9 @@ export default defineConfig({
         'src/main/common/extension/__tests__/**',
         'src/main/common/config/__tests__/**',
         'src/main/common/middleware/__tests__/**',
+        'src/main/common/database/__tests__/**',
+        'src/main/common/ipc/__tests__/**',
+        'src/main/common/errors/__tests__/**',
         'src/main/lifecycle/__tests__/**'
       ]
     },

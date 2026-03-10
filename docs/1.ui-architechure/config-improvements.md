@@ -210,13 +210,13 @@ docs/
 
 ```typescript
 // src/main/index.ts
-import { IPC_CHANNELS } from '@shared/constants'
-import type { AppSettings } from '@shared/types'
-import { someUtil } from '@/utils/helper'
+import { IPC_CHANNELS } from '@shared/constants';
+import type { AppSettings } from '@shared/types';
+import { someUtil } from '@/utils/helper';
 
 ipcMain.handle(IPC_CHANNELS.STORE_GET, async (_, key) => {
   // ...
-})
+});
 ```
 
 ### 在 Renderer 进程中使用
@@ -240,15 +240,15 @@ const settings: AppSettings = {
 
 ```typescript
 // src/preload/index.ts
-import { IPC_CHANNELS } from '@shared/constants'
-import { contextBridge, ipcRenderer } from 'electron'
+import { IPC_CHANNELS } from '@shared/constants';
+import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electron', {
   store: {
     get: (key: string) => ipcRenderer.invoke(IPC_CHANNELS.STORE_GET, key),
     set: (key: string, value: any) => ipcRenderer.invoke(IPC_CHANNELS.STORE_SET, key, value)
   }
-})
+});
 ```
 
 ---
@@ -326,7 +326,7 @@ optimizeDeps: {
     '@vueuse/core',
     'pinia',
     'vue-router'
-  ]
+  ];
 }
 ```
 

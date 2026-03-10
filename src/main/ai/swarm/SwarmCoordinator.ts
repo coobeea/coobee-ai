@@ -15,7 +15,7 @@
 import { createLogger } from '@main/common/logger';
 import type { AgentRuntime } from '../runtime/AgentRuntime';
 import type { ToolDefinition } from '../tools/types';
-import type { AgentRole, SwarmConfig, SwarmState, SwarmTask } from './types';
+import type { AgentRole, ISwarmContext, SwarmConfig, SwarmState, SwarmTask } from './types';
 import { createInitialSwarmState, extractHandoffTarget } from './types';
 import { AgentPool } from './AgentPool';
 import { HandoffRouter } from './HandoffRouter';
@@ -26,6 +26,9 @@ import { KnowledgeBase } from './KnowledgeBase';
 import { ConcurrencyManager, type SwarmSubTask } from './ConcurrencyManager';
 import { createSwarmTools } from './tools';
 import { RoleRegistry } from './roles';
+import { injectEnv } from '../AgentEnvInjector';
+import { WorkspaceManager } from '../storage/WorkspaceManager';
+import path from 'node:path';
 
 const log = createLogger('swarm:coordinator');
 
@@ -37,6 +40,11 @@ export type SwarmEvent =
   | { type: 'handoff'; data: { from: string; to: string; depth: number; reason?: string } }
   | { type: 'agent:start'; data: { roleId: string; input: string } }
   | { type: 'agent:done'; data: { roleId: string; output: string } }
+  | { type: 'discussion:turn'; data: { round: number; roleId: string; roleName: string; content: string } }
+  | {
+      type: 'discussion:consensus';
+      data: { round: number; reached: boolean; score: number; conclusion?: string };
+    }
   | { type: 'complete'; data: { output: string; handoffCount: number; rolesUsed: string[] } }
   | { type: 'error'; data: { message: string } };
 
@@ -44,12 +52,21 @@ export type SwarmEventCallback = (event: SwarmEvent) => void;
 
 // ========== 协调结果 ==========
 
+export interface RoleOutput {
+  roleId: string;
+  output: string;
+}
+
 export interface CoordinationResult {
   output: string;
   state: SwarmState;
   rolesUsed: string[];
   handoffCount: number;
   duration: number;
+  /** 每个角色的独立输出 */
+  roleOutputs?: RoleOutput[];
+  /** 协作产生的中间产物（文件、文档等） */
+  artifacts?: Array<{ name: string; path: string; type: string; createdBy: string }>;
 }
 
 // ========== Triage 指令 ==========
@@ -69,16 +86,28 @@ const TRIAGE_INSTRUCTIONS = `你是一个智能任务分诊员（Triage Agent）
 - 文档编写和说明 → 交接给写作专家
 - 数据分析和统计 → 交接给分析专家
 
+工作模式说明：
+**串行交接模式（当前）**：
+- 你一次只能交接给一个专家（使用 transfer_to_xxx 工具）
+- 专家完成后，可能会交接给下一个专家（形成串行链）
+- 适合有明确先后顺序的任务
+
+**如果用户需要多智能体并行协作**：
+- 请直接告知用户："您的需求需要多个专家协作，系统将自动切换到并行模式"
+- 然后用 write_shared_context 记录任务分析（包含需要哪些专家、各自负责什么）
+- **不要承诺"广播消息"或"同时启动多个专家"**，系统会自动处理
+
 通信能力：
 - 你可以使用 write_shared_context 工具在共享上下文中留下任务分析结果
-- 你可以使用 send_message 工具给专家发送补充说明
+- 你可以使用 send_message 工具给专家发送补充说明（但消息不会立即触发专家行动）
 - 你可以使用 report_progress 工具记录分诊过程
 
 注意事项：
 - 仔细分析用户需求，不要误判
 - 如果不确定，可以先简要回复并说明你的判断
 - 对于综合性任务，选择最核心的专家先交接
-- 交接前，先将任务分析结果写入共享上下文，方便专家参考`;
+- 交接前，先将任务分析结果写入共享上下文，方便专家参考
+- **重要**：不要说"已广播给所有专家"或"已启动多智能体协作"，因为在串行模式下这是不准确的`;
 
 import { AsyncLock } from '../utils/AsyncLock';
 
@@ -88,7 +117,7 @@ import { AsyncLock } from '../utils/AsyncLock';
 export class SwarmCoordinator {
   readonly pool: AgentPool;
   readonly router: HandoffRouter;
-  readonly context: SwarmContext;
+  readonly context: ISwarmContext;
   readonly monitor: SwarmMonitor;
   readonly messageBus: MessageBus;
   readonly concurrency: ConcurrencyManager;
@@ -169,6 +198,7 @@ export class SwarmCoordinator {
 
       await this.updateState({ status: 'executing' });
       let finalOutput = '';
+      const roleOutputs: RoleOutput[] = [];
 
       for (let depth = 0; depth <= this.config.maxHandoffDepth; depth++) {
         log.info(`[SwarmCoordinator] Loop depth=${depth}, roleId=${currentRoleId}, inputLength=${currentInput.length}`);
@@ -195,8 +225,10 @@ export class SwarmCoordinator {
           );
         }
 
-        this.emit({ type: 'agent:done', data: { roleId: currentRoleId, output: output.substring(0, 200) } });
-        log.info(`[SwarmCoordinator] Emitted agent:done for ${currentRoleId}`);
+        this.emit({ type: 'agent:done', data: { roleId: currentRoleId, output } });
+        log.info(`[SwarmCoordinator] Emitted agent:done for ${currentRoleId}, output length: ${output.length}`);
+
+        roleOutputs.push({ roleId: currentRoleId, output });
 
         const handoffTarget = this.detectHandoff(result);
 
@@ -257,6 +289,9 @@ export class SwarmCoordinator {
       const routerStats = this.router.getStats();
       const rolesUsed = this.router.getCurrentChain();
 
+      // 🆕 收集并导出所有 artifacts 到主 workspace
+      const artifacts = await this.exportArtifacts();
+
       this.emit({
         type: 'complete',
         data: { output: finalOutput, handoffCount: routerStats.totalHandoffs, rolesUsed }
@@ -267,6 +302,8 @@ export class SwarmCoordinator {
         state: { ...this.state },
         rolesUsed,
         handoffCount: routerStats.totalHandoffs,
+        roleOutputs,
+        artifacts,
         duration: Date.now() - startTime
       };
     } catch (error) {
@@ -322,6 +359,9 @@ export class SwarmCoordinator {
           this.pool.releaseAgent(poolId, true);
         }
 
+        // 🆕 收集并导出所有 artifacts
+        const artifacts = await this.exportArtifacts();
+
         this.updateState({
           status: 'completed',
           completedAt: Date.now(),
@@ -334,6 +374,7 @@ export class SwarmCoordinator {
           state: { ...this.state },
           rolesUsed: [...new Set(parallelResult.results.map((r) => r.roleId))],
           handoffCount: 0,
+          artifacts,
           duration: Date.now() - startTime
         };
       } catch (error) {
@@ -365,16 +406,147 @@ export class SwarmCoordinator {
   // ========== 混合执行 ==========
 
   async coordinateHybrid(task: SwarmTask): Promise<CoordinationResult> {
+    // 1. 讨论模式优先
+    if (this.detectDiscussionIntent(task.input)) {
+      return this.coordinateDiscussion(task);
+    }
+
+    // 2. 检测并行意图
     const needsParallel = this.detectParallelIntent(task.input);
 
     if (needsParallel) {
+      log.info(`[SwarmCoordinator] Parallel intent detected: "${task.input.substring(0, 100)}"`);
+      this.emit({
+        type: 'triage:start',
+        data: { taskId: task.id, input: task.input }
+      });
+
       const subTasks = await this.decomposeTask(task);
       if (subTasks.length > 1) {
+        log.info(`[SwarmCoordinator] Task decomposed into ${subTasks.length} subtasks, switching to parallel mode`);
         return this.coordinateParallel(task, subTasks);
+      } else {
+        log.warn(
+          `[SwarmCoordinator] Parallel intent detected but decomposition returned ${subTasks.length} subtasks, falling back to serial`
+        );
       }
     }
 
+    // 3. 默认串行模式
     return this.coordinate(task);
+  }
+
+  // ========== 讨论模式 ==========
+
+  /**
+   * 发起多智能体讨论
+   *
+   * 让多个 Agent 围绕一个话题轮流发言，通过主持人评估共识，最终生成结论。
+   */
+  async coordinateDiscussion(
+    task: SwarmTask,
+    discussionConfig?: Partial<import('./DiscussionCoordinator').DiscussionConfig>
+  ): Promise<CoordinationResult> {
+    const startTime = Date.now();
+    this.state.status = 'executing';
+    this.state.startedAt = startTime;
+
+    this.setupContext(task);
+    this.context.set('execution_mode', 'discussion', 'system');
+
+    try {
+      const { DiscussionCoordinator } = await import('./DiscussionCoordinator');
+
+      const participantRoleIds = discussionConfig?.participantRoleIds?.length
+        ? discussionConfig.participantRoleIds
+        : this.getAvailableRoles().map((r) => r.id);
+
+      const coordinator = new DiscussionCoordinator(this.config, {
+        ...discussionConfig,
+        participantRoleIds
+      });
+
+      for (const role of this.getAvailableRoles()) {
+        coordinator.registerRole(role);
+      }
+
+      coordinator.setOnEvent((event: import('./DiscussionCoordinator').DiscussionEvent) => {
+        switch (event.type) {
+          case 'discussion:start':
+            this.emit({
+              type: 'agent:start',
+              data: { roleId: 'moderator', input: `讨论: ${event.data.topic}` }
+            });
+            break;
+          case 'discussion:turn':
+            this.emit({
+              type: 'discussion:turn',
+              data: event.data
+            });
+            break;
+          case 'discussion:consensus_check':
+            this.emit({
+              type: 'discussion:consensus',
+              data: {
+                round: event.data.round,
+                reached: event.data.reached,
+                score: event.data.score,
+                conclusion: event.data.reached ? undefined : undefined
+              }
+            });
+            break;
+          case 'discussion:done':
+            this.emit({
+              type: 'complete',
+              data: {
+                output: `讨论完成 (${event.data.totalRounds} 轮)`,
+                handoffCount: 0,
+                rolesUsed: participantRoleIds
+              }
+            });
+            break;
+        }
+      });
+
+      const result = await coordinator.discuss(task);
+
+      // 🆕 收集并导出所有 artifacts
+      const artifacts = await this.exportArtifacts();
+
+      await this.updateState({
+        status: 'completed',
+        completedAt: Date.now(),
+        progress: 100
+      });
+      this.monitor.completeExecution(true);
+
+      await coordinator.destroy();
+
+      return {
+        output: result.conclusion,
+        state: { ...this.state },
+        rolesUsed: result.participantRoles,
+        handoffCount: 0,
+        artifacts,
+        duration: Date.now() - startTime
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await this.updateState({
+        status: 'failed',
+        error: errorMessage,
+        completedAt: Date.now()
+      });
+      this.monitor.completeExecution(false, errorMessage);
+
+      return {
+        output: `讨论失败: ${errorMessage}`,
+        state: { ...this.state },
+        rolesUsed: [],
+        handoffCount: 0,
+        duration: Date.now() - startTime
+      };
+    }
   }
 
   // ========== 内部方法 ==========
@@ -430,6 +602,20 @@ export class SwarmCoordinator {
       ? `${this.config.parentSessionId}:triage`
       : `triage-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+    // 🆕 获取主 workspace 并创建嵌套子 Agent workspace
+    const mainThreadId = this.config.parentSessionId || sessionId;
+    const { Env } = await import('@main/common/env');
+    const mainWorkspace = await Env.getAgentWorkspaceDir(mainThreadId);
+
+    const subAgentWorkspace = WorkspaceManager.getOrCreateSubAgentWorkspace({
+      agentName: 'triage',
+      sessionId,
+      type: 'triage',
+      threadWorkspace: mainWorkspace,
+      enableSkills: true,
+      enableExtensions: true
+    });
+
     const rolesDescription = roles.map((r) => `- **${r.name}** (${r.id}): ${r.description}`).join('\n');
 
     const instructions = `${TRIAGE_INSTRUCTIONS}\n\n## 可用专家\n\n${rolesDescription}\n\n${this.config.triageInstructions || ''}`;
@@ -439,16 +625,23 @@ export class SwarmCoordinator {
     const builder = agentExecutor
       .piMono()
       .name('SwarmTriage')
-      .mode('chat')
+      .mode('agent')
       .sessionMode('file')
       .instructions(instructions)
-      .sessionId(sessionId);
+      .sessionId(sessionId)
+      // 🆕 手动设置子 Agent workspace
+      .sessionDir(path.join(subAgentWorkspace, '.runtime', 'sessions'))
+      .workspaceRoot(subAgentWorkspace)
+      .contextDir(path.join(subAgentWorkspace, '.runtime', 'contexts'));
 
     if (this.config.triageModel) {
       builder.model(this.config.triageModel);
     }
 
     builder.tools(allTools);
+
+    // 注入执行协议、Skill 发现提示（会检查已设置的 workspace，不会重复创建）
+    await injectEnv(sessionId, builder);
 
     return await builder.build();
   }
@@ -463,15 +656,34 @@ export class SwarmCoordinator {
   ): Promise<AgentRuntime> {
     const { agentExecutor } = await import('../AgentExecutor');
 
+    // 🆕 获取主 workspace 并创建嵌套子 Agent workspace
+    const mainThreadId = sessionId.split(':')[0]; // 提取主 threadId
+    const { Env } = await import('@main/common/env');
+    const mainWorkspace = await Env.getAgentWorkspaceDir(mainThreadId);
+
+    const subAgentWorkspace = WorkspaceManager.getOrCreateSubAgentWorkspace({
+      agentName: `swarm-${role.id}`,
+      sessionId,
+      type: 'swarm',
+      threadWorkspace: mainWorkspace,
+      enableSkills: true,
+      enableExtensions: true,
+      enableMemory: true
+    });
+
     const specialistInstructions = this.buildSpecialistInstructions(role);
 
     const builder = agentExecutor
       .piMono()
       .name(`${role.name} (Swarm)`)
-      .mode('chat')
+      .mode('agent')
       .sessionMode('file')
       .instructions(specialistInstructions)
-      .sessionId(sessionId);
+      .sessionId(sessionId)
+      // 🆕 手动设置子 Agent workspace
+      .sessionDir(path.join(subAgentWorkspace, '.runtime', 'sessions'))
+      .workspaceRoot(subAgentWorkspace)
+      .contextDir(path.join(subAgentWorkspace, '.runtime', 'contexts'));
 
     if (role.model) {
       builder.model(role.model);
@@ -481,6 +693,9 @@ export class SwarmCoordinator {
     if (allTools.length > 0) {
       builder.tools(allTools);
     }
+
+    // 注入执行协议、Skill 发现提示（会检查已设置的 workspace，不会重复创建）
+    await injectEnv(sessionId, builder);
 
     return await builder.build();
   }
@@ -533,8 +748,30 @@ ${contextSection}
     this.context.addProgressNote('任务开始处理', 'triage');
   }
 
+  private detectDiscussionIntent(input: string): boolean {
+    const keywords = [
+      '讨论',
+      '辩论',
+      '商议',
+      '探讨',
+      '各方意见',
+      '多方讨论',
+      '集思广益',
+      '头脑风暴',
+      '圆桌',
+      'discuss',
+      'debate',
+      'brainstorm',
+      'deliberate',
+      'round-table'
+    ];
+    const lower = input.toLowerCase();
+    return keywords.some((kw) => lower.includes(kw));
+  }
+
   private detectParallelIntent(input: string): boolean {
     const keywords = [
+      // 并行/同时关键词
       '同时',
       '并行',
       '一起',
@@ -545,7 +782,27 @@ ${contextSection}
       'concurrently',
       'at the same time',
       '多个',
-      '多方面'
+      '多方面',
+      // 🆕 多智能体/协作关键词
+      '多智能体',
+      '多个智能体',
+      '多agent',
+      '多 agent',
+      '协作',
+      '共同',
+      '合作',
+      '一起完成',
+      '分工合作',
+      '分工协作',
+      '多专家',
+      '多个专家',
+      '多方',
+      'multi-agent',
+      'multiple agents',
+      'collaborate',
+      'cooperation',
+      'work together',
+      'multiple experts'
     ];
     const lower = input.toLowerCase();
     return keywords.some((kw) => lower.includes(kw));
@@ -567,18 +824,33 @@ ${contextSection}
         .instructions(
           `你是一个任务分解专家。分析用户需求，将其拆分为可以并行执行的子任务。
 
+**任务**：${task.input}
+
 返回 JSON 数组格式：
 [
   { "id": "subtask-1", "input": "子任务描述", "roleId": "角色ID", "dependencies": [] },
   { "id": "subtask-2", "input": "子任务描述", "roleId": "角色ID", "dependencies": ["subtask-1"] }
 ]
 
-可用角色: ${roles.map((r) => `${r.id}(${r.name})`).join(', ')}
+**可用角色及职责**：
+${roles.map((r) => `- **${r.id}** (${r.name}): ${r.description}`).join('\n')}
 
-规则：
-- 独立的子任务不需要 dependencies
-- 有前后依赖的子任务需要在 dependencies 中指定
-- roleId 必须是可用角色中的一个`
+**分解规则**：
+1. 如果任务需要多个专家协作，拆分为多个并行子任务
+2. 独立的子任务不需要 dependencies（可并行执行）
+3. 有前后依赖的子任务需要在 dependencies 中指定（按顺序执行）
+4. roleId 必须是可用角色中的一个
+5. 每个子任务的 input 要具体明确，专家看到后能直接开始工作
+
+**示例**：
+用户："我需要编写项目文档并进行代码审查"
+→ 拆分为：
+[
+  { "id": "doc-write", "input": "编写项目设计文档，包含架构、模块、技术栈", "roleId": "writer", "dependencies": [] },
+  { "id": "code-review", "input": "审查项目代码质量，检查是否符合规范", "roleId": "reviewer", "dependencies": [] }
+]
+
+**请只返回 JSON 数组，不要有其他文字说明。**`
         )
         .sessionId(sessionId);
 
@@ -638,6 +910,40 @@ ${contextSection}
 
   // ========== 监控桥接 ==========
 
+  /**
+   * 导出 artifacts 到主 workspace 的 output 目录
+   */
+  private async exportArtifacts(): Promise<Array<{ name: string; path: string; type: string; createdBy: string }>> {
+    const artifacts = this.context.getArtifacts();
+    if (artifacts.length === 0) return [];
+
+    const fs = await import('fs-extra');
+    const { Env } = await import('@main/common/env');
+    const mainThreadId = this.config.parentSessionId;
+    if (!mainThreadId) return [];
+
+    const mainWorkspace = await Env.getAgentWorkspaceDir(mainThreadId);
+    const outputDir = path.join(mainWorkspace, 'output');
+    await fs.ensureDir(outputDir);
+
+    const result: Array<{ name: string; path: string; type: string; createdBy: string }> = [];
+
+    for (const artifact of artifacts) {
+      const outputPath = path.join(outputDir, artifact.name);
+      await fs.writeFile(outputPath, artifact.content, 'utf-8');
+      log.info(`[SwarmCoordinator] Exported artifact: ${artifact.name} (${artifact.content.length} chars)`);
+
+      result.push({
+        name: artifact.name,
+        path: outputPath,
+        type: artifact.type || 'unknown',
+        createdBy: artifact.createdBy
+      });
+    }
+
+    return result;
+  }
+
   private setupMonitoringBridge(): void {
     this.pool.addEventListener((event) => {
       if (event.type === 'agent_created') {
@@ -690,7 +996,7 @@ ${contextSection}
           });
         }
       } catch (error) {
-        console.error('[SwarmCoordinator] Failed to record to knowledge base:', error);
+        log.error('Failed to record to knowledge base:', error);
       }
     });
   }

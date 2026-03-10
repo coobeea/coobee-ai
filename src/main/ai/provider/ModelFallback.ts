@@ -3,15 +3,15 @@
  *
  * 按顺序尝试候选模型，遇到可重试错误时自动切换。
  */
-import { ExtensionManager } from '@main/common/extension/ExtensionManager'
+import { ExtensionManager } from '@main/common/extension/ExtensionManager';
 
-import type { FallbackResult, ModelRef } from './types'
-import { formatModelRef, parseModelRef } from './types'
+import type { FallbackResult, ModelRef } from './types';
+import { formatModelRef, parseModelRef } from './types';
 
 /** 默认可重试错误判断 */
 function defaultIsRetryable(error: unknown): boolean {
   if (error instanceof Error) {
-    const msg = error.message.toLowerCase()
+    const msg = error.message.toLowerCase();
     // Rate limit / timeout / server errors
     return (
       msg.includes('rate limit') ||
@@ -22,24 +22,24 @@ function defaultIsRetryable(error: unknown): boolean {
       msg.includes('502') ||
       msg.includes('500') ||
       msg.includes('overloaded')
-    )
+    );
   }
-  return false
+  return false;
 }
 
 /** 用户取消错误判断（不应重试） */
 function isAbortError(error: unknown): boolean {
   if (error instanceof Error) {
-    return error.name === 'AbortError' || error.message.includes('abort')
+    return error.name === 'AbortError' || error.message.includes('abort');
   }
-  return false
+  return false;
 }
 
 export interface FallbackOptions {
   /** 自定义可重试判断 */
-  isRetryable?: (error: unknown) => boolean
+  isRetryable?: (error: unknown) => boolean;
   /** 每次重试前等待时间（ms） */
-  delayMs?: number
+  delayMs?: number;
 }
 
 export class ModelFallback {
@@ -56,71 +56,65 @@ export class ModelFallback {
     execute: (ref: ModelRef) => Promise<T>,
     opts?: FallbackOptions
   ): Promise<FallbackResult<T>> {
-    const isRetryable = opts?.isRetryable ?? defaultIsRetryable
-    const delayMs = opts?.delayMs ?? 0
-    const failedModels: string[] = []
-    let attempts = 0
+    const isRetryable = opts?.isRetryable ?? defaultIsRetryable;
+    const delayMs = opts?.delayMs ?? 0;
+    const failedModels: string[] = [];
+    let attempts = 0;
 
     for (const candidate of candidates) {
-      const ref = typeof candidate === 'string' ? parseModelRef(candidate) : candidate
-      const refStr = formatModelRef(ref)
-      attempts++
+      const ref = typeof candidate === 'string' ? parseModelRef(candidate) : candidate;
+      const refStr = formatModelRef(ref);
+      attempts++;
 
       try {
-        const result = await execute(ref)
+        const result = await execute(ref);
         return {
           result,
           provider: ref.provider,
           model: ref.model,
           attempts,
           failedModels
-        }
+        };
       } catch (error) {
         // 用户取消 → 立即停止
         if (isAbortError(error)) {
-          throw error
+          throw error;
         }
 
-        failedModels.push(refStr)
+        failedModels.push(refStr);
 
         // 触发 model_fallback 钩子
-        const nextIdx = candidates.indexOf(candidate) + 1
+        const nextIdx = candidates.indexOf(candidate) + 1;
         if (nextIdx < candidates.length) {
-          const nextCandidate = candidates[nextIdx]
-          const nextRef =
-            typeof nextCandidate === 'string' ? parseModelRef(nextCandidate) : nextCandidate
-          this.fireModelFallback(refStr, formatModelRef(nextRef), error, attempts)
+          const nextCandidate = candidates[nextIdx];
+          const nextRef = typeof nextCandidate === 'string' ? parseModelRef(nextCandidate) : nextCandidate;
+          this.fireModelFallback(refStr, formatModelRef(nextRef), error, attempts);
         }
 
         // 最后一个候选 → 抛出原始错误
         if (candidates.indexOf(candidate) === candidates.length - 1) {
-          throw error
+          throw error;
         }
 
         // 不可重试的错误 → 也抛出
         if (!isRetryable(error)) {
-          throw error
+          throw error;
         }
 
         // 可重试 → 等待后尝试下一个
         if (delayMs > 0) {
-          await sleep(delayMs)
+          await sleep(delayMs);
         }
       }
     }
 
     // 不应到达这里
-    throw new Error('No candidates provided for fallback')
+    throw new Error('No candidates provided for fallback');
   }
 
   /** 触发 model_fallback 扩展钩子 */
-  private fireModelFallback(
-    failedRef: string,
-    fallbackRef: string,
-    error: unknown,
-    attemptIndex: number
-  ): void {
-    const errMsg = error instanceof Error ? error.message : String(error)
+  private fireModelFallback(failedRef: string, fallbackRef: string, error: unknown, attemptIndex: number): void {
+    const errMsg = error instanceof Error ? error.message : String(error);
     ExtensionManager.getHookRunner()
       ?.runVoidHook('model_fallback', {
         sessionId: '', // Fallback 层不一定有 sessionId
@@ -131,10 +125,10 @@ export class ModelFallback {
       })
       .catch(() => {
         /* hook 错误不影响主流程 */
-      })
+      });
   }
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

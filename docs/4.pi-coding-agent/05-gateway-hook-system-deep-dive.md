@@ -136,17 +136,17 @@ Gateway 在 WebSocket 连接建立时进行认证，然后将请求分发给对�
 // src/gateway/server-methods.ts (L193-219)
 export async function handleGatewayRequest(opts) {
   // 1. 权限检查
-  const authError = authorizeGatewayMethod(req.method, client)
+  const authError = authorizeGatewayMethod(req.method, client);
   if (authError) {
-    respond(false, undefined, authError)
-    return
+    respond(false, undefined, authError);
+    return;
   }
 
   // 2. 查找 handler（先查插件注册的，再查核心的）
-  const handler = opts.extraHandlers?.[req.method] ?? coreGatewayHandlers[req.method]
+  const handler = opts.extraHandlers?.[req.method] ?? coreGatewayHandlers[req.method];
 
   // 3. 执行 handler
-  await handler({ req, params, client, respond, context })
+  await handler({ req, params, client, respond, context });
 }
 ```
 
@@ -186,8 +186,8 @@ FinalizedMsgContext {
 ```typescript
 // src/auto-reply/reply/dispatch-from-config.ts (L143-146)
 if (shouldSkipDuplicateInbound(ctx)) {
-  recordProcessed('skipped', { reason: 'duplicate' })
-  return { queuedFinal: false, counts: dispatcher.getQueuedCounts() }
+  recordProcessed('skipped', { reason: 'duplicate' });
+  return { queuedFinal: false, counts: dispatcher.getQueuedCounts() };
 }
 ```
 
@@ -199,7 +199,7 @@ if (shouldSkipDuplicateInbound(ctx)) {
 
 ```typescript
 // src/auto-reply/reply/dispatch-from-config.ts (L150-198)
-const hookRunner = getGlobalHookRunner()
+const hookRunner = getGlobalHookRunner();
 if (hookRunner?.hasHooks('message_received')) {
   void hookRunner
     .runMessageReceived(
@@ -225,8 +225,8 @@ if (hookRunner?.hasHooks('message_received')) {
       }
     )
     .catch((err) => {
-      logVerbose(`dispatch-from-config: message_received hook failed: ${String(err)}`)
-    })
+      logVerbose(`dispatch-from-config: message_received hook failed: ${String(err)}`);
+    });
 }
 ```
 
@@ -256,8 +256,8 @@ api.on('message_received', async (event, ctx) => {
     content: event.content,
     channel: ctx.channelId,
     timestamp: event.timestamp
-  })
-})
+  });
+});
 ```
 
 ---
@@ -269,7 +269,7 @@ api.on('message_received', async (event, ctx) => {
 ```typescript
 // src/auto-reply/reply/commands-core.ts (L74-107)
 if (resetRequested && params.command.isAuthorizedSender) {
-  const commandAction = resetMatch?.[1] ?? 'new' // "new" 或 "reset"
+  const commandAction = resetMatch?.[1] ?? 'new'; // "new" 或 "reset"
 
   // 创建事件
   const hookEvent = createInternalHookEvent('command', commandAction, params.sessionKey ?? '', {
@@ -278,21 +278,21 @@ if (resetRequested && params.command.isAuthorizedSender) {
     commandSource: params.command.surface,
     senderId: params.command.senderId,
     cfg: params.cfg
-  })
+  });
 
   // 触发钩子
-  await triggerInternalHook(hookEvent)
+  await triggerInternalHook(hookEvent);
 
   // 钩子可以通过 event.messages 数组回传消息给用户
   if (hookEvent.messages.length > 0) {
-    const hookReply = { text: hookEvent.messages.join('\n\n') }
+    const hookReply = { text: hookEvent.messages.join('\n\n') };
     await routeReply({
       payload: hookReply,
       channel: channel,
       to: to,
       sessionKey: params.sessionKey
       // ...
-    })
+    });
   }
 }
 ```
@@ -305,14 +305,14 @@ Internal Hook 是一套更老的事件系统，它使用字符串键匹配（`co
 // 某个 Internal Hook handler 的例子
 registerInternalHook('command:new', async (event) => {
   // 用户执行了 /new，旧会话即将被清除
-  const sessionEntry = event.context.sessionEntry
+  const sessionEntry = event.context.sessionEntry;
 
   // 把旧会话摘要存到记忆系统
-  await memory.saveSummary(event.sessionKey, sessionEntry)
+  await memory.saveSummary(event.sessionKey, sessionEntry);
 
   // 可以回传一条消息给用户
-  event.messages.push('已保存上一轮对话到记忆中 ✓')
-})
+  event.messages.push('已保存上一轮对话到记忆中 ✓');
+});
 ```
 
 ---
@@ -323,12 +323,12 @@ registerInternalHook('command:new', async (event) => {
 
 ```typescript
 // src/agents/pi-embedded-runner/run/attempt.ts (L710-749)
-const hookRunner = getGlobalHookRunner()
+const hookRunner = getGlobalHookRunner();
 
 // ... 准备好 AgentSession, SessionManager 等 ...
 
 // Agent 开始执行前，给插件一个注入上下文的机会
-let effectivePrompt = params.prompt
+let effectivePrompt = params.prompt;
 if (hookRunner?.hasHooks('before_agent_start')) {
   try {
     const hookResult = await hookRunner.runBeforeAgentStart(
@@ -342,15 +342,15 @@ if (hookRunner?.hasHooks('before_agent_start')) {
         workspaceDir: params.workspaceDir, // 工作区路径
         messageProvider: params.messageProvider // "telegram"/"web"/...
       }
-    )
+    );
 
     // 如果插件返回了 prependContext，把它拼到用户消息前面
     if (hookResult?.prependContext) {
-      effectivePrompt = `${hookResult.prependContext}\n\n${params.prompt}`
-      log.debug(`hooks: prepended context to prompt (${hookResult.prependContext.length} chars)`)
+      effectivePrompt = `${hookResult.prependContext}\n\n${params.prompt}`;
+      log.debug(`hooks: prepended context to prompt (${hookResult.prependContext.length} chars)`);
     }
   } catch (hookErr) {
-    log.warn(`before_agent_start hook failed: ${String(hookErr)}`)
+    log.warn(`before_agent_start hook failed: ${String(hookErr)}`);
   }
 }
 
@@ -384,18 +384,16 @@ api.on(
   'before_agent_start',
   async (event, ctx) => {
     // 从向量数据库中搜索与当前消息相关的历史记忆
-    const memories = await vectorDB.search(event.prompt, { limit: 5 })
+    const memories = await vectorDB.search(event.prompt, { limit: 5 });
 
     if (memories.length > 0) {
       return {
-        prependContext: `以下是与当前话题相关的历史记忆:\n${memories
-          .map((m) => `- ${m.text}`)
-          .join('\n')}`
-      }
+        prependContext: `以下是与当前话题相关的历史记忆:\n${memories.map((m) => `- ${m.text}`).join('\n')}`
+      };
     }
   },
   { priority: 100 }
-) // 高优先级，确保记忆最先被注入
+); // 高优先级，确保记忆最先被注入
 ```
 
 ---
@@ -409,8 +407,8 @@ Agent 在执行过程中会调用工具（读文件、执行命令、搜索等�
 ```typescript
 // src/agents/pi-tools.before-tool-call.ts (L64-88)
 export function wrapToolWithBeforeToolCallHook(tool, ctx) {
-  const execute = tool.execute
-  const toolName = tool.name || 'tool'
+  const execute = tool.execute;
+  const toolName = tool.name || 'tool';
 
   return {
     ...tool,
@@ -421,17 +419,17 @@ export function wrapToolWithBeforeToolCallHook(tool, ctx) {
         params,
         toolCallId,
         ctx
-      })
+      });
 
       // ② 如果钩子说"阻止"，直接报错，工具不会执行
       if (outcome.blocked) {
-        throw new Error(outcome.reason)
+        throw new Error(outcome.reason);
       }
 
       // ③ 用（可能被修改过的）参数执行工具
-      return await execute(toolCallId, outcome.params, signal, onUpdate)
+      return await execute(toolCallId, outcome.params, signal, onUpdate);
     }
-  }
+  };
 }
 ```
 
@@ -440,33 +438,33 @@ export function wrapToolWithBeforeToolCallHook(tool, ctx) {
 ```typescript
 // src/agents/pi-tools.before-tool-call.ts (L16-62)
 export async function runBeforeToolCallHook(args) {
-  const hookRunner = getGlobalHookRunner()
+  const hookRunner = getGlobalHookRunner();
 
   // 快速路径：没有注册钩子就直接跳过
   if (!hookRunner?.hasHooks('before_tool_call')) {
-    return { blocked: false, params: args.params }
+    return { blocked: false, params: args.params };
   }
 
   const hookResult = await hookRunner.runBeforeToolCall(
     { toolName, params: normalizedParams }, // Event: 告诉插件 "哪个工具" + "什么参数"
     { toolName, agentId, sessionKey } // Context: 会话信息
-  )
+  );
 
   // 插件说阻止？
   if (hookResult?.block) {
     return {
       blocked: true,
       reason: hookResult.blockReason || 'Tool call blocked'
-    }
+    };
   }
 
   // 插件修改了参数？
   if (hookResult?.params) {
-    return { blocked: false, params: { ...params, ...hookResult.params } }
+    return { blocked: false, params: { ...params, ...hookResult.params } };
   }
 
   // 默认：放行
-  return { blocked: false, params }
+  return { blocked: false, params };
 }
 ```
 
@@ -485,19 +483,19 @@ export async function runBeforeToolCallHook(args) {
 api.on('before_tool_call', async (event, ctx) => {
   // 拦截所有 exec 工具调用
   if (event.toolName === 'exec') {
-    const command = event.params.command
+    const command = event.params.command;
 
     // 阻止删除操作
     if (command.includes('rm -rf')) {
-      return { block: true, blockReason: '危险操作被安全策略阻止: rm -rf' }
+      return { block: true, blockReason: '危险操作被安全策略阻止: rm -rf' };
     }
 
     // 自动添加 --dry-run 标志
     if (command.startsWith('terraform')) {
-      return { params: { command: command + ' --dry-run' } }
+      return { params: { command: command + ' --dry-run' } };
     }
   }
-})
+});
 ```
 
 **和 HITL（命令执行审批）的关系**：
@@ -529,7 +527,7 @@ exec 工具内部逻辑
 
 ```typescript
 // src/agents/session-tool-result-guard-wrapper.ts (L26-46)
-const hookRunner = getGlobalHookRunner()
+const hookRunner = getGlobalHookRunner();
 const transform = hookRunner?.hasHooks('tool_result_persist')
   ? (message, meta) => {
       const out = hookRunner.runToolResultPersist(
@@ -545,15 +543,15 @@ const transform = hookRunner?.hasHooks('tool_result_persist')
           toolName: meta.toolName,
           toolCallId: meta.toolCallId
         }
-      )
-      return out?.message ?? message // 返回修改后的消息（或原始消息）
+      );
+      return out?.message ?? message; // 返回修改后的消息（或原始消息）
     }
-  : undefined
+  : undefined;
 
 // 把 transform 函数安装到 SessionManager
 const guard = installSessionToolResultGuard(sessionManager, {
   transformToolResultForPersistence: transform
-})
+});
 ```
 
 **特殊设计 — 同步钩子**：
@@ -564,9 +562,9 @@ const guard = installSessionToolResultGuard(sessionManager, {
 // src/plugins/hooks.ts (L346-354)
 // 防御：检测意外的异步 handler
 if (out && typeof (out as any).then === 'function') {
-  const msg = `tool_result_persist handler returned a Promise; this hook is synchronous`
-  logger?.warn?.(msg)
-  continue // 跳过这个 handler
+  const msg = `tool_result_persist handler returned a Promise; this hook is synchronous`;
+  logger?.warn?.(msg);
+  continue; // 跳过这个 handler
 }
 ```
 
@@ -578,7 +576,7 @@ api.on('tool_result_persist', (event, ctx) => {
   // event.toolName = "read"
   // event.message = { role: "tool", content: [{ type: "text", text: "...巨长的文件内容..." }] }
 
-  const content = event.message.content
+  const content = event.message.content;
   if (Array.isArray(content)) {
     for (const part of content) {
       if (part.type === 'text' && part.text.length > 10000) {
@@ -593,11 +591,11 @@ api.on('tool_result_persist', (event, ctx) => {
               }
             ]
           }
-        }
+        };
       }
     }
   }
-})
+});
 ```
 
 ---
@@ -626,8 +624,8 @@ if (hookRunner?.hasHooks('agent_end')) {
       }
     )
     .catch((err) => {
-      log.warn(`agent_end hook failed: ${err}`)
-    })
+      log.warn(`agent_end hook failed: ${err}`);
+    });
 }
 ```
 
@@ -650,13 +648,13 @@ api.on('agent_end', async (event, ctx) => {
     durationMs: event.durationMs,
     messageCount: event.messages.length,
     error: event.error
-  })
+  });
 
   // 如果执行失败，发送告警
   if (!event.success && event.error) {
-    await alertService.notify(`Agent ${ctx.agentId} 执行失败: ${event.error}`)
+    await alertService.notify(`Agent ${ctx.agentId} 执行失败: ${event.error}`);
   }
-})
+});
 ```
 
 ---
@@ -687,16 +685,16 @@ Agent 的回复要发送给用户之前，`message_sending` 钩子可以修改�
 // 内容过滤插件
 api.on('message_sending', async (event, ctx) => {
   // 检查消息是否包含敏感信息
-  const hasSensitive = await contentFilter.check(event.content)
+  const hasSensitive = await contentFilter.check(event.content);
 
   if (hasSensitive) {
     // 方案1：修改内容
-    return { content: event.content.replace(/密码:\s*\S+/g, '密码: [已隐藏]') }
+    return { content: event.content.replace(/密码:\s*\S+/g, '密码: [已隐藏]') };
 
     // 方案2：完全取消发送
     // return { cancel: true };
   }
-})
+});
 ```
 
 ---
@@ -739,7 +737,7 @@ Gateway HTTP Server
 // src/gateway/server/hooks.ts (L32-105)
 const dispatchAgentHook = (value) => {
   // 1. 创建隔离的 sessionKey
-  const sessionKey = value.sessionKey.trim() || `hook:${randomUUID()}`
+  const sessionKey = value.sessionKey.trim() || `hook:${randomUUID()}`;
 
   // 2. 构造临时任务
   const job: CronJob = {
@@ -753,7 +751,7 @@ const dispatchAgentHook = (value) => {
       channel: value.channel, // 发送到哪个渠道（telegram/discord/...）
       to: value.to // 发送给谁
     }
-  }
+  };
 
   // 3. 异步执行（HTTP 立即返回 200）
   void (async () => {
@@ -764,13 +762,13 @@ const dispatchAgentHook = (value) => {
       message: value.message,
       sessionKey,
       lane: 'cron'
-    })
+    });
     // 结果记录到系统事件
     enqueueSystemEvent(`Hook ${value.name}: ${result.summary}`, {
       sessionKey: mainSessionKey
-    })
-  })()
-}
+    });
+  })();
+};
 ```
 
 **Hook Mapping — 更灵活的外部对接**：
@@ -814,16 +812,16 @@ export function register(api: OpenClawPluginApi) {
     description: '搜索 JIRA 工单',
     parameters: { type: 'object', properties: { query: { type: 'string' } } },
     execute: async (toolCallId, params) => {
-      const results = await jiraClient.search(params.query)
-      return { content: [{ type: 'text', text: JSON.stringify(results) }] }
+      const results = await jiraClient.search(params.query);
+      return { content: [{ type: 'text', text: JSON.stringify(results) }] };
     }
-  })
+  });
 
   // ② 注册生命周期钩子
   api.on('before_agent_start', async (event, ctx) => {
     // 在 Agent 思考前注入 JIRA 项目上下文
-    return { prependContext: '当前活跃的 JIRA Sprint: PROJ-2024-Q1' }
-  })
+    return { prependContext: '当前活跃的 JIRA Sprint: PROJ-2024-Q1' };
+  });
 
   api.on('before_tool_call', async (event, ctx) => {
     // 记录所有工具调用
@@ -831,38 +829,38 @@ export function register(api: OpenClawPluginApi) {
       tool: event.toolName,
       params: event.params,
       agent: ctx.agentId
-    })
-  })
+    });
+  });
 
   // ③ 注册 Gateway RPC 方法 — Web UI 可以调用
   api.registerGatewayMethod('jira.status', async ({ params, respond }) => {
-    const status = await jiraClient.getProjectStatus()
-    respond(true, status)
-  })
+    const status = await jiraClient.getProjectStatus();
+    respond(true, status);
+  });
 
   // ④ 注册 HTTP 路由 — 外部系统回调
   api.registerHttpRoute({
     path: '/plugins/jira/webhook',
     handler: async (req, res) => {
       // 处理 JIRA Webhook 通知
-      const body = await readBody(req)
+      const body = await readBody(req);
       // ...
-      res.statusCode = 200
-      res.end('ok')
+      res.statusCode = 200;
+      res.end('ok');
     }
-  })
+  });
 
   // ⑤ 注册聊天命令 — 用户可以直接在聊天里使用
   api.registerCommand({
     name: 'jira',
     description: '查询 JIRA 工单状态',
     handler: async (ctx) => {
-      const status = await jiraClient.getMyTasks()
+      const status = await jiraClient.getMyTasks();
       return {
         text: `你的待办工单:\n${status.map((t) => `- ${t.key}: ${t.summary}`).join('\n')}`
-      }
+      };
     }
-  })
+  });
 }
 ```
 

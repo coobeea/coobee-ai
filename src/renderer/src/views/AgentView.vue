@@ -6,11 +6,12 @@
  * 点击智能体卡片 → 创建 Thread → 跳转 /thread/:id。
  */
 
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAgentsStore } from '@/stores/agents';
 import { useThreadsStore, type AgentType } from '@/stores/threads';
 import { useChatStore } from '@/stores/chat';
+import { gateway } from '@/plugins/gatewaySetup';
 import configManager from '@/config';
 
 const isMac = navigator.platform?.includes('Mac') ?? false;
@@ -26,9 +27,11 @@ const aiInputRef = ref<HTMLTextAreaElement | null>(null);
 /** 是否显示创建区域 */
 const showCreateArea = ref(false);
 
-/** 技能编辑：当前编辑的 Agent ID */
-const editSkillsAgentId = ref<string | null>(null);
+/** 编辑弹窗：当前编辑的 Agent ID */
+const editAgentId = ref<string | null>(null);
 const editSkillsList = ref<string[]>([]);
+const editModel = ref('');
+const editActiveTab = ref<'skills' | 'model'>('skills');
 
 /** 可用技能列表（从后端获取） */
 interface SkillInfo {
@@ -37,6 +40,43 @@ interface SkillInfo {
 }
 const availableSkills = ref<SkillInfo[]>([]);
 const skillsLoading = ref(false);
+
+/** 运行弹窗的临时模型覆盖 */
+// const runModelOverride = ref('');
+
+/** 模型平铺列表 */
+interface ModelItem {
+  value: string;
+  label: string;
+  description: string;
+  provider: string;
+  type: 'group' | 'model';
+  features?: string[];
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  reasoning?: boolean;
+  functionCalling?: boolean;
+  vision?: boolean;
+  webSearch?: boolean;
+}
+const flatModelList = ref<ModelItem[]>([]);
+const modelSearchQuery = ref('');
+
+const filteredModelList = computed(() => {
+  const q = modelSearchQuery.value.trim().toLowerCase();
+  if (!q) return flatModelList.value;
+  return flatModelList.value.filter(
+    (m) =>
+      m.label.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q) || m.value.toLowerCase().includes(q)
+  );
+});
+
+/** 文件/目录选择相关 */
+interface AttachmentRef {
+  path: string;
+  name: string;
+  type: 'file' | 'directory';
+}
 
 onMounted(() => {
   agentsStore.fetchAgents();
@@ -63,68 +103,227 @@ async function handleAiCreate(): Promise<void> {
 
 const confirmDeleteId = ref<string | null>(null);
 
-/** 运行模式选择弹窗状态 */
-const showModeSelector = ref(false);
+/** 运行弹窗状态 */
+const showRunDialog = ref(false);
 const pendingAgentId = ref<string | null>(null);
 const selectedMode = ref<AgentType>('agent');
+/** 弹窗中的可选配置（默认折叠） */
+const showAdvancedOptions = ref(false);
+const taskDescription = ref('');
+const taskAttachments = ref<AttachmentRef[]>([]);
+const taskSkills = ref<string[]>([]);
 
 /** 运行模式选项 */
 const modeOptions: { value: AgentType; label: string; description: string; icon: string }[] = [
   {
     value: 'agent',
-    label: '单 Agent',
-    description: '标准模式，单个智能体独立完成任务',
+    label: '自主模式',
+    description: '智能体独立执行，可按需调度子智能体协助',
     icon: 'i-carbon-bot'
   },
   {
     value: 'orchestrator',
-    label: '编排器',
-    description: '自动分解任务，多个子 Agent 并行协作',
+    label: '编排模式',
+    description: '自动分解任务，多个子智能体并行协作',
     icon: 'i-carbon-flow'
   },
   {
     value: 'swarm',
-    label: 'Swarm',
+    label: '蜂群模式',
     description: '智能体群组，动态切换处理不同子任务',
     icon: 'i-carbon-network-3'
+  },
+  {
+    value: 'quality-loop',
+    label: '质量循环',
+    description: '执行→验证→修复闭环，确保输出质量达标',
+    icon: 'i-carbon-checkmark-outline'
   }
 ];
 
-function openModeSelector(agentId: string): void {
+async function openRunDialog(agentId: string): Promise<void> {
   pendingAgentId.value = agentId;
   selectedMode.value = 'agent';
-  showModeSelector.value = true;
+  showAdvancedOptions.value = false;
+  taskDescription.value = '';
+  taskAttachments.value = [];
+
+  const agent = agentsStore.agents.find((a) => a.id === agentId);
+  taskSkills.value = agent?.skills ? [...agent.skills] : [];
+
+  showRunDialog.value = true;
+
+  await loadAvailableSkills();
 }
 
-function closeModeSelector(): void {
-  showModeSelector.value = false;
+function closeRunDialog(): void {
+  showRunDialog.value = false;
   pendingAgentId.value = null;
 }
 
-async function confirmStartTask(): Promise<void> {
+async function loadAvailableSkills(): Promise<void> {
+  if (skillsLoading.value) return;
+  skillsLoading.value = true;
+  try {
+    const url = `${configManager.getBaseUrl()}/gateway/skills`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = (await res.json()) as { skills: SkillInfo[] };
+      availableSkills.value = data.skills;
+    }
+  } catch (err) {
+    console.warn('[AgentView] Failed to fetch skills:', err);
+  } finally {
+    skillsLoading.value = false;
+  }
+}
+
+async function loadModelList(): Promise<void> {
+  if (flatModelList.value.length > 0) return;
+  try {
+    const data = await gateway.request<Record<string, unknown>>('config.getAll');
+    const modelsConfig = data?.models as Record<string, unknown> | undefined;
+    const items: ModelItem[] = [];
+
+    const groups = modelsConfig?.groups as Record<string, unknown> | undefined;
+    if (groups) {
+      for (const [id, cfg] of Object.entries(groups)) {
+        const g = cfg as Record<string, unknown>;
+        if (g.enabled !== false) {
+          const models = (g.models as string[]) || [];
+          const strategy = (g.strategy as string) || 'round-robin';
+          items.push({
+            value: `@group:${id}`,
+            label: (g.name as string) || id,
+            description: `${models.length} 个模型 · ${strategy}`,
+            provider: '模型分组',
+            type: 'group'
+          });
+        }
+      }
+    }
+
+    const providers = modelsConfig?.providers as Record<string, unknown> | undefined;
+    if (providers) {
+      for (const [providerId, provCfg] of Object.entries(providers)) {
+        const prov = provCfg as Record<string, unknown>;
+        const provName = (prov.name as string) || providerId;
+        const models = prov.models as Array<Record<string, unknown>> | undefined;
+        if (models) {
+          for (const m of models) {
+            items.push({
+              value: `${providerId}/${m.id as string}`,
+              label: (m.name as string) || (m.id as string),
+              description: (m.description as string) || '',
+              provider: provName,
+              type: 'model',
+              features: (m.features as string[]) || undefined,
+              contextWindow: m.contextWindow as number | undefined,
+              maxOutputTokens: m.maxOutputTokens as number | undefined,
+              reasoning: m.reasoning as boolean | undefined,
+              functionCalling: m.functionCalling as boolean | undefined,
+              vision: m.vision as boolean | undefined,
+              webSearch: m.webSearch as boolean | undefined
+            });
+          }
+        }
+      }
+    }
+    flatModelList.value = items;
+  } catch (err) {
+    console.warn('[AgentView] Failed to load models:', err);
+  }
+}
+
+function toggleRunSkill(skillName: string): void {
+  const idx = taskSkills.value.indexOf(skillName);
+  if (idx >= 0) {
+    taskSkills.value.splice(idx, 1);
+  } else {
+    taskSkills.value.push(skillName);
+  }
+}
+
+async function handleAddAttachment(): Promise<void> {
+  try {
+    const result = await window.api.openFile({
+      properties: ['openFile', 'openDirectory', 'multiSelections']
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      for (const filePath of result.filePaths) {
+        const name = filePath.split('/').pop() || filePath;
+        const exists = taskAttachments.value.some((a) => a.path === filePath);
+        if (!exists) {
+          taskAttachments.value.push({ path: filePath, name, type: 'file' });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[AgentView] File dialog failed:', err);
+  }
+}
+
+function removeAttachment(index: number): void {
+  taskAttachments.value.splice(index, 1);
+}
+
+/** 构建初始消息 */
+function buildInitialMessage(): string {
+  const parts: string[] = [];
+
+  if (taskDescription.value.trim()) {
+    parts.push(taskDescription.value.trim());
+  } else {
+    parts.push('你好');
+  }
+
+  if (taskAttachments.value.length > 0) {
+    parts.push('');
+    parts.push('相关资料：');
+    for (const att of taskAttachments.value) {
+      parts.push(`- ${att.path}`);
+    }
+  }
+
+  return parts.join('\n');
+}
+
+async function confirmStartTask(background = false): Promise<void> {
   if (!pendingAgentId.value) return;
   const agentId = pendingAgentId.value;
   const mode = selectedMode.value;
-  closeModeSelector();
-  await handleStartTask(agentId, mode);
+  const message = buildInitialMessage();
+  closeRunDialog();
+  await handleStartTask(agentId, mode, message, background);
 }
 
-async function handleStartTask(agentId: string, mode: AgentType = 'agent'): Promise<void> {
+async function handleStartTask(
+  agentId: string,
+  mode: AgentType = 'agent',
+  initialMessage = '你好',
+  background = false
+): Promise<void> {
   agentsStore.selectAgent(agentId);
   const agent = agentsStore.agents.find((a) => a.id === agentId);
-  const title = agent ? `${agent.name} 的任务` : '新任务';
+  const title = taskDescription.value.trim()
+    ? taskDescription.value.trim().slice(0, 30) + (taskDescription.value.trim().length > 30 ? '...' : '')
+    : agent
+      ? `${agent.name} 的任务`
+      : '新任务';
   const thread = await threadsStore.createThread(title, agentId, mode);
   if (thread) {
-    // 跳转到 Thread 页面
-    await router.push(`/thread/${thread.id}`);
+    if (!background) {
+      await router.push(`/thread/${thread.id}`);
+    }
 
-    // 等待页面加载完成，然后自动发送初始消息启动 Agent
     await nextTick();
-    setTimeout(() => {
-      const chatStore = useChatStore();
-      // 发送一条简单的启动消息，让 Agent 根据自己的 instructions 决定如何响应
-      chatStore.sendMessage('你好');
-    }, 300);
+    setTimeout(
+      () => {
+        const chatStore = useChatStore();
+        chatStore.sendMessage(initialMessage);
+      },
+      background ? 100 : 300
+    );
   }
 }
 
@@ -137,27 +336,16 @@ async function handleDelete(agentId: string): Promise<void> {
   await agentsStore.deleteAgent(agentId);
 }
 
-async function openSkillsEditor(agentId: string): Promise<void> {
+async function openAgentEditor(agentId: string): Promise<void> {
   const agent = agentsStore.agents.find((a) => a.id === agentId);
   if (!agent) return;
-  editSkillsAgentId.value = agentId;
+  editAgentId.value = agentId;
   editSkillsList.value = [...(agent.skills ?? [])];
+  editModel.value = agent.model ?? '';
+  editActiveTab.value = 'skills';
 
-  if (availableSkills.value.length === 0) {
-    skillsLoading.value = true;
-    try {
-      const url = `${configManager.getBaseUrl()}/gateway/skills`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = (await res.json()) as { skills: SkillInfo[] };
-        availableSkills.value = data.skills;
-      }
-    } catch (err) {
-      console.warn('[AgentView] Failed to fetch skills:', err);
-    } finally {
-      skillsLoading.value = false;
-    }
-  }
+  modelSearchQuery.value = '';
+  await Promise.all([loadAvailableSkills(), loadModelList()]);
 }
 
 function toggleSkill(skillName: string): void {
@@ -169,16 +357,17 @@ function toggleSkill(skillName: string): void {
   }
 }
 
-async function saveSkills(): Promise<void> {
-  if (!editSkillsAgentId.value) return;
-  await agentsStore.updateAgent(editSkillsAgentId.value, {
-    skills: editSkillsList.value
+async function saveAgentConfig(): Promise<void> {
+  if (!editAgentId.value) return;
+  await agentsStore.updateAgent(editAgentId.value, {
+    skills: editSkillsList.value,
+    model: editModel.value || undefined
   });
-  editSkillsAgentId.value = null;
+  editAgentId.value = null;
 }
 
-function cancelSkillsEdit(): void {
-  editSkillsAgentId.value = null;
+function cancelAgentEdit(): void {
+  editAgentId.value = null;
 }
 
 function stepIcon(step: string): string {
@@ -371,14 +560,22 @@ function formatTime(iso: string): string {
               <span v-if="agent.skills.length > 3" class="skill-more"> +{{ agent.skills.length - 3 }} </span>
             </div>
 
+            <!-- 模型标签 -->
+            <div class="card-meta">
+              <span v-if="agent.model" class="meta-tag model" :title="agent.model">
+                <span class="i-carbon-machine-learning-model inline-block h-3 w-3" />
+                {{ agent.model.startsWith('@group:') ? agent.model.slice(7) : agent.model.split('/').pop() }}
+              </span>
+            </div>
+
             <div class="card-footer">
-              <button class="start-task-btn" @click="openModeSelector(agent.id)">
+              <button class="start-task-btn" @click="openRunDialog(agent.id)">
                 <span class="i-carbon-play-filled-alt inline-block h-3.5 w-3.5" />
                 <span>运行任务</span>
               </button>
               <div class="card-actions-right">
                 <template v-if="confirmDeleteId !== agent.id">
-                  <button class="action-icon" title="编辑技能" @click="openSkillsEditor(agent.id)">
+                  <button class="action-icon" title="编辑配置" @click="openAgentEditor(agent.id)">
                     <span class="i-carbon-edit inline-block h-3.5 w-3.5" />
                   </button>
                   <button
@@ -400,77 +597,274 @@ function formatTime(iso: string): string {
       </div>
     </div>
 
-    <!-- 技能编辑弹窗 -->
+    <!-- 编辑智能体弹窗 -->
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="editSkillsAgentId" class="skills-overlay" @click.self="cancelSkillsEdit">
-          <div class="skills-dialog">
+        <div v-if="editAgentId" class="skills-overlay" @click.self="cancelAgentEdit">
+          <div class="skills-dialog edit-agent-dialog">
             <div class="skills-dialog-header">
-              <span class="i-carbon-skill-level-advanced inline-block h-4 w-4" />
-              <span>编辑技能</span>
+              <span class="i-carbon-settings-adjust inline-block h-4 w-4" />
+              <span>编辑配置</span>
             </div>
+
+            <!-- Tab 切换 -->
+            <div class="edit-tabs">
+              <button :class="['edit-tab', { active: editActiveTab === 'model' }]" @click="editActiveTab = 'model'">
+                <span class="i-carbon-machine-learning-model inline-block h-3 w-3" />
+                模型
+              </button>
+              <button :class="['edit-tab', { active: editActiveTab === 'skills' }]" @click="editActiveTab = 'skills'">
+                <span class="i-carbon-skill-level-advanced inline-block h-3 w-3" />
+                技能
+                <span v-if="editSkillsList.length > 0" class="edit-tab-count">{{ editSkillsList.length }}</span>
+              </button>
+            </div>
+
             <div class="skills-dialog-body">
-              <div v-if="skillsLoading" class="skills-loading">
-                <span class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
-                <span>加载技能列表...</span>
-              </div>
-              <p v-else-if="availableSkills.length === 0" class="skills-empty"> 暂无可用技能 </p>
-              <label
-                v-for="skill in availableSkills"
-                v-else
-                :key="skill.name"
-                class="skill-checkbox"
-                :class="{ checked: editSkillsList.includes(skill.name) }">
-                <input
-                  type="checkbox"
-                  :checked="editSkillsList.includes(skill.name)"
-                  @change="toggleSkill(skill.name)" />
-                <div class="skill-label">
-                  <span class="skill-label-name">{{ skill.name }}</span>
-                  <span v-if="skill.description" class="skill-label-desc">{{ skill.description }}</span>
+              <!-- 模型 Tab -->
+              <template v-if="editActiveTab === 'model'">
+                <div class="edit-section-hint">选择此智能体使用的模型，留空则使用系统默认模型</div>
+                <!-- 搜索框 -->
+                <div class="model-search">
+                  <span class="i-carbon-search inline-block h-3 w-3 model-search-icon" />
+                  <input
+                    v-model="modelSearchQuery"
+                    type="text"
+                    placeholder="搜索模型名称或供应商..."
+                    class="model-search-input" />
                 </div>
-              </label>
+                <!-- 默认选项 -->
+                <label class="skill-checkbox" :class="{ checked: !editModel }" @click="editModel = ''">
+                  <input type="radio" name="editModel" :checked="!editModel" class="model-radio" />
+                  <div class="skill-label">
+                    <span class="skill-label-name">默认模型</span>
+                    <span class="skill-label-desc">跟随系统配置</span>
+                  </div>
+                </label>
+                <!-- 模型分组 -->
+                <template v-if="filteredModelList.filter((m) => m.type === 'group').length > 0">
+                  <div class="model-group-header">
+                    <span class="i-carbon-group-objects inline-block h-3 w-3" />
+                    模型分组
+                  </div>
+                  <label
+                    v-for="item in filteredModelList.filter((m) => m.type === 'group')"
+                    :key="item.value"
+                    class="skill-checkbox"
+                    :class="{ checked: editModel === item.value }"
+                    @click="editModel = item.value">
+                    <input type="radio" name="editModel" :checked="editModel === item.value" class="model-radio" />
+                    <div class="skill-label">
+                      <span class="skill-label-name">{{ item.label }}</span>
+                      <span class="skill-label-desc">{{ item.description }}</span>
+                    </div>
+                  </label>
+                </template>
+                <!-- 按供应商展示模型 -->
+                <template
+                  v-for="providerName in [
+                    ...new Set(filteredModelList.filter((m) => m.type === 'model').map((m) => m.provider))
+                  ]"
+                  :key="providerName">
+                  <div class="model-group-header">
+                    <span class="i-carbon-cloud inline-block h-3 w-3" />
+                    {{ providerName }}
+                  </div>
+                  <label
+                    v-for="item in filteredModelList.filter((m) => m.type === 'model' && m.provider === providerName)"
+                    :key="item.value"
+                    class="model-item"
+                    :class="{ checked: editModel === item.value }"
+                    @click="editModel = item.value">
+                    <input type="radio" name="editModel" :checked="editModel === item.value" class="model-radio" />
+                    <div class="model-item-body">
+                      <div class="model-item-header">
+                        <span class="model-item-name">{{ item.label }}</span>
+                        <!-- 能力图标 -->
+                        <span v-if="item.reasoning" class="model-cap" title="推理/思考">
+                          <span class="i-carbon-watson inline-block h-3 w-3" />
+                        </span>
+                        <span v-if="item.vision" class="model-cap" title="视觉理解">
+                          <span class="i-carbon-view inline-block h-3 w-3" />
+                        </span>
+                        <span v-if="item.functionCalling" class="model-cap" title="工具调用">
+                          <span class="i-carbon-function inline-block h-3 w-3" />
+                        </span>
+                        <span v-if="item.webSearch" class="model-cap" title="联网搜索">
+                          <span class="i-carbon-search inline-block h-3 w-3" />
+                        </span>
+                      </div>
+                      <!-- 特性标签 -->
+                      <div v-if="item.features && item.features.length > 0" class="model-features">
+                        <span v-for="feat in item.features" :key="feat" class="model-feat-tag">{{ feat }}</span>
+                      </div>
+                    </div>
+                  </label>
+                </template>
+                <p v-if="filteredModelList.length === 0 && modelSearchQuery" class="skills-empty"> 未找到匹配的模型 </p>
+              </template>
+
+              <!-- 技能 Tab -->
+              <template v-if="editActiveTab === 'skills'">
+                <div v-if="skillsLoading" class="skills-loading">
+                  <span class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
+                  <span>加载技能列表...</span>
+                </div>
+                <p v-else-if="availableSkills.length === 0" class="skills-empty"> 暂无可用技能 </p>
+                <template v-else>
+                  <label
+                    v-for="skill in availableSkills"
+                    :key="skill.name"
+                    class="skill-checkbox"
+                    :class="{ checked: editSkillsList.includes(skill.name) }">
+                    <input
+                      type="checkbox"
+                      :checked="editSkillsList.includes(skill.name)"
+                      @change="toggleSkill(skill.name)" />
+                    <div class="skill-label">
+                      <span class="skill-label-name">{{ skill.name }}</span>
+                      <span v-if="skill.description" class="skill-label-desc">{{ skill.description }}</span>
+                    </div>
+                  </label>
+                </template>
+              </template>
             </div>
             <div class="skills-dialog-footer">
-              <button class="text-btn" @click="cancelSkillsEdit">取消</button>
-              <button class="primary-btn" @click="saveSkills">保存</button>
+              <button class="text-btn" @click="cancelAgentEdit">取消</button>
+              <button class="primary-btn" @click="saveAgentConfig">保存</button>
             </div>
           </div>
         </div>
       </Transition>
     </Teleport>
 
-    <!-- 运行模式选择弹窗 -->
+    <!-- 运行任务弹窗 -->
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="showModeSelector" class="skills-overlay" @click.self="closeModeSelector">
-          <div class="skills-dialog mode-dialog">
+        <div v-if="showRunDialog" class="skills-overlay" @click.self="closeRunDialog">
+          <div class="skills-dialog run-dialog">
             <div class="skills-dialog-header">
               <span class="i-carbon-play-filled-alt inline-block h-4 w-4" />
-              <span>选择运行模式</span>
+              <span>运行任务</span>
             </div>
-            <div class="skills-dialog-body mode-options">
-              <label
-                v-for="option in modeOptions"
-                :key="option.value"
-                class="mode-option"
-                :class="{ selected: selectedMode === option.value }">
-                <input v-model="selectedMode" type="radio" name="agentMode" :value="option.value" class="mode-radio" />
-                <div class="mode-icon">
-                  <span :class="option.icon" class="inline-block h-5 w-5" />
+
+            <div class="run-dialog-body">
+              <!-- 运行模式选择 -->
+              <section class="run-section">
+                <h4 class="run-section-title">运行模式</h4>
+                <div class="mode-options-compact">
+                  <label
+                    v-for="option in modeOptions"
+                    :key="option.value"
+                    class="mode-chip"
+                    :class="{ selected: selectedMode === option.value }">
+                    <input
+                      v-model="selectedMode"
+                      type="radio"
+                      name="agentMode"
+                      :value="option.value"
+                      class="mode-radio" />
+                    <span :class="option.icon" class="inline-block h-3.5 w-3.5" />
+                    <span class="mode-chip-label">{{ option.label }}</span>
+                  </label>
                 </div>
-                <div class="mode-info">
-                  <span class="mode-label">{{ option.label }}</span>
-                  <span class="mode-desc">{{ option.description }}</span>
-                </div>
-              </label>
-            </div>
-            <div class="skills-dialog-footer">
-              <button class="text-btn" @click="closeModeSelector">取消</button>
-              <button class="primary-btn" @click="confirmStartTask">
-                <span class="i-carbon-play-filled-alt inline-block h-3.5 w-3.5" />
-                开始
+                <p class="run-section-hint">
+                  {{ modeOptions.find((o) => o.value === selectedMode)?.description }}
+                </p>
+              </section>
+
+              <!-- 折叠区：高级选项 -->
+              <button class="advanced-toggle" @click="showAdvancedOptions = !showAdvancedOptions">
+                <span
+                  class="i-carbon-chevron-right inline-block h-3 w-3 transition-transform"
+                  :class="{ 'rotate-90': showAdvancedOptions }" />
+                <span>高级选项</span>
+                <span
+                  v-if="taskDescription || taskAttachments.length > 0 || taskSkills.length > 0"
+                  class="advanced-dot">
+                </span>
               </button>
+
+              <Transition name="slide-down">
+                <div v-if="showAdvancedOptions" class="advanced-options">
+                  <!-- 任务描述 -->
+                  <div class="run-field">
+                    <label class="run-field-label">
+                      <span class="i-carbon-document inline-block h-3 w-3" />
+                      任务描述
+                    </label>
+                    <textarea
+                      v-model="taskDescription"
+                      placeholder="描述你想完成的任务..."
+                      rows="2"
+                      class="run-textarea"></textarea>
+                  </div>
+
+                  <!-- 相关资料 -->
+                  <div class="run-field">
+                    <label class="run-field-label">
+                      <span class="i-carbon-folder-add inline-block h-3 w-3" />
+                      相关资料
+                    </label>
+                    <div v-if="taskAttachments.length > 0" class="attachment-list">
+                      <div v-for="(att, idx) in taskAttachments" :key="att.path" class="attachment-item">
+                        <span class="i-carbon-document inline-block h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span class="attachment-path" :title="att.path">{{ att.name }}</span>
+                        <button class="attachment-remove" @click="removeAttachment(idx)">
+                          <span class="i-carbon-close inline-block h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <button class="add-attachment-btn" @click="handleAddAttachment">
+                      <span class="i-carbon-add inline-block h-3 w-3" />
+                      添加文件或目录
+                    </button>
+                    <p class="run-field-hint">选择的路径将作为上下文信息传递给智能体</p>
+                  </div>
+
+                  <!-- 技能选择 -->
+                  <div class="run-field">
+                    <label class="run-field-label">
+                      <span class="i-carbon-skill-level-advanced inline-block h-3 w-3" />
+                      技能
+                      <span v-if="taskSkills.length > 0" class="skill-count">{{ taskSkills.length }}</span>
+                    </label>
+                    <div v-if="skillsLoading" class="run-field-hint">
+                      <span class="i-carbon-renew inline-block h-3 w-3 animate-spin" />
+                      加载中...
+                    </div>
+                    <div v-else class="skill-chips">
+                      <label
+                        v-for="skill in availableSkills"
+                        :key="skill.name"
+                        class="skill-chip"
+                        :class="{ active: taskSkills.includes(skill.name) }"
+                        :title="skill.description">
+                        <input
+                          type="checkbox"
+                          :checked="taskSkills.includes(skill.name)"
+                          class="sr-only"
+                          @change="toggleRunSkill(skill.name)" />
+                        {{ skill.name }}
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </Transition>
+            </div>
+
+            <div class="skills-dialog-footer run-footer">
+              <button class="text-btn" @click="closeRunDialog">取消</button>
+              <div class="flex items-center gap-2">
+                <button class="secondary-btn" title="创建任务但不跳转" @click="confirmStartTask(true)">
+                  <span class="i-carbon-send-to-back inline-block h-3.5 w-3.5" />
+                  后台运行
+                </button>
+                <button class="primary-btn" @click="confirmStartTask(false)">
+                  <span class="i-carbon-play-filled-alt inline-block h-3.5 w-3.5" />
+                  运行
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -499,8 +893,8 @@ function formatTime(iso: string): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 52px;
-  padding: 0 20px;
+  height: 42px;
+  padding: 0 16px;
   flex-shrink: 0;
   border-bottom: 1px solid hsl(var(--border) / 0.3);
   background: hsl(var(--surface) / 0.6);
@@ -517,15 +911,15 @@ function formatTime(iso: string): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   background: hsl(var(--primary) / 0.1);
   color: hsl(var(--primary));
 }
 
 .header-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: hsl(var(--foreground));
   letter-spacing: -0.01em;
@@ -1280,35 +1674,72 @@ function formatTime(iso: string): string {
   border-top: 1px solid hsl(var(--border) / 0.25);
 }
 
-/* 运行模式选择弹窗样式 */
-.mode-dialog {
-  width: 420px;
+/* 运行任务弹窗样式 */
+.run-dialog {
+  width: 540px;
+  max-height: 600px;
 }
 
-.mode-options {
+.run-dialog-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.run-section {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.mode-option {
+.run-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.run-section-hint {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  line-height: 1.4;
+}
+
+.mode-options-compact {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 10px;
+  gap: 6px;
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
-  border: 1px solid hsl(var(--border) / 0.3);
+  border: 1px solid hsl(var(--border) / 0.35);
   background: hsl(var(--surface) / 0.5);
+  color: hsl(var(--muted-foreground) / 0.7);
 }
 
-.mode-option:hover {
+.mode-chip:hover {
   background: hsl(var(--surface));
-  border-color: hsl(var(--border) / 0.5);
+  border-color: hsl(var(--border) / 0.6);
 }
 
-.mode-option.selected {
-  background: hsl(var(--primary) / 0.06);
-  border-color: hsl(var(--primary) / 0.25);
+.mode-chip.selected {
+  background: hsl(var(--primary) / 0.08);
+  border-color: hsl(var(--primary) / 0.3);
+  color: hsl(var(--primary));
+}
+
+.mode-chip-label {
+  line-height: 1;
 }
 
 .mode-radio {
@@ -1317,45 +1748,462 @@ function formatTime(iso: string): string {
   pointer-events: none;
 }
 
-.mode-icon {
+/* 高级选项折叠 */
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.6);
+  transition: color 0.15s ease;
+}
+
+.advanced-toggle:hover {
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.advanced-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+}
+
+.advanced-options {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+.run-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.run-field-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: hsl(var(--foreground) / 0.6);
+}
+
+.run-field-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: hsl(var(--muted-foreground) / 0.4);
+}
+
+.run-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.4);
+  border-radius: 8px;
+  outline: none;
+  resize: vertical;
+  min-height: 48px;
+  transition: border-color 0.15s ease;
+}
+
+.run-textarea:focus {
+  border-color: hsl(var(--primary) / 0.4);
+}
+
+.run-textarea::placeholder {
+  color: hsl(var(--muted-foreground) / 0.3);
+}
+
+/* 附件列表 */
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: hsl(var(--foreground) / 0.03);
+  font-size: 11.5px;
+}
+
+.attachment-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.attachment-remove {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground) / 0.4);
   flex-shrink: 0;
-  background: hsl(var(--foreground) / 0.04);
-  color: hsl(var(--muted-foreground) / 0.5);
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
 }
 
-.mode-option.selected .mode-icon {
-  background: hsl(var(--primary) / 0.1);
+.attachment-remove:hover {
+  background: hsl(var(--error) / 0.08);
+  color: hsl(var(--error));
+}
+
+.add-attachment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.6);
+  border: 1px dashed hsl(var(--border) / 0.4);
+  transition: all 0.15s ease;
+  align-self: flex-start;
+}
+
+.add-attachment-btn:hover {
+  background: hsl(var(--foreground) / 0.03);
+  border-color: hsl(var(--primary) / 0.3);
   color: hsl(var(--primary));
 }
 
-.mode-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+/* 技能选择 */
+.skill-count {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  line-height: 1.6;
 }
 
-.mode-label {
-  font-size: 14px;
+.skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.skill-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  background: hsl(var(--foreground) / 0.04);
+  color: hsl(var(--muted-foreground) / 0.6);
+  border: 1px solid transparent;
+}
+
+.skill-chip:hover {
+  background: hsl(var(--foreground) / 0.06);
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.skill-chip.active {
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+  border-color: hsl(var(--primary) / 0.2);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+/* 弹窗底部 */
+.run-footer {
+  justify-content: space-between;
+}
+
+.secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.7);
+  background: hsl(var(--foreground) / 0.05);
+  transition: all 0.15s ease;
+}
+
+.secondary-btn:hover {
+  background: hsl(var(--foreground) / 0.08);
+  color: hsl(var(--foreground) / 0.8);
+}
+
+/* Agent 卡片 meta 标签 */
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.meta-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.meta-tag.model {
+  background: hsl(var(--warning) / 0.08);
+  color: hsl(var(--warning) / 0.7);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 编辑弹窗增强 */
+.edit-agent-dialog {
+  width: 440px;
+  max-height: 560px;
+}
+
+.edit-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 16px 0;
+  border-bottom: 1px solid hsl(var(--border) / 0.2);
+}
+
+.edit-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.55);
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.edit-tab:hover {
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.edit-tab.active {
+  color: hsl(var(--primary));
+  border-bottom-color: hsl(var(--primary));
+}
+
+.edit-tab-count {
+  font-size: 9px;
   font-weight: 600;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  line-height: 1.6;
+}
+
+.edit-section-hint {
+  font-size: 11.5px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+/* 模型搜索框 */
+.model-search {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.model-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: hsl(var(--muted-foreground) / 0.35);
+  pointer-events: none;
+}
+
+.model-search-input {
+  width: 100%;
+  padding: 7px 10px 7px 30px;
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.4);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.model-search-input:focus {
+  border-color: hsl(var(--primary) / 0.4);
+}
+
+.model-search-input::placeholder {
+  color: hsl(var(--muted-foreground) / 0.3);
+}
+
+/* 模型分组标题 */
+.model-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground) / 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.model-radio {
+  width: 14px;
+  height: 14px;
+  accent-color: hsl(var(--primary));
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* 模型列表项（富信息版） */
+.model-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  border: 1px solid transparent;
+}
+
+.model-item:hover {
+  background: hsl(var(--foreground) / 0.03);
+}
+
+.model-item.checked {
+  background: hsl(var(--primary) / 0.04);
+  border-color: hsl(var(--primary) / 0.12);
+}
+
+.model-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.model-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.model-item-name {
+  font-size: 13px;
+  font-weight: 500;
   color: hsl(var(--foreground) / 0.85);
   line-height: 1.3;
 }
 
-.mode-option.selected .mode-label {
-  color: hsl(var(--primary));
+.model-cap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: hsl(var(--primary) / 0.06);
+  color: hsl(var(--primary) / 0.5);
 }
 
-.mode-desc {
-  font-size: 12px;
-  color: hsl(var(--muted-foreground) / 0.55);
-  line-height: 1.5;
+.model-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.model-feat-tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: hsl(var(--foreground) / 0.04);
+  color: hsl(var(--muted-foreground) / 0.6);
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+/* 运行弹窗中的模型 chip 选择 */
+.run-model-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.run-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  background: hsl(var(--foreground) / 0.04);
+  color: hsl(var(--muted-foreground) / 0.6);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.run-model-chip:hover {
+  background: hsl(var(--foreground) / 0.06);
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.run-model-chip.selected {
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+  border-color: hsl(var(--primary) / 0.2);
 }
 </style>

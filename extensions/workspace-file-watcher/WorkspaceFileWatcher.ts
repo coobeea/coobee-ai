@@ -28,15 +28,21 @@ import type { ExtensionLogger, ExtensionEventBus } from '../../src/main/common/e
 let StreamEventType: any;
 let log: ExtensionLogger;
 let eventBus: ExtensionEventBus;
+let apiRef: import('../../src/main/common/extension/types').ExtensionApi | null = null;
 
-async function initDeps(logger: ExtensionLogger, bus: ExtensionEventBus): Promise<void> {
+async function initDeps(
+  logger: ExtensionLogger,
+  bus: ExtensionEventBus,
+  api: import('../../src/main/common/extension/types').ExtensionApi
+): Promise<void> {
   if (StreamEventType) return;
 
   log = logger;
   eventBus = bus;
+  apiRef = api; // ✅ 保存 api 引用
 
-  const streamingModule = await import('../../src/main/ai/streaming/types');
-  StreamEventType = streamingModule.StreamEventType;
+  // ✅ 通过 ExtensionApi 统一获取类型定义
+  StreamEventType = await api.services.types.getStreamEventType();
 }
 
 /** 单个监控实例 */
@@ -113,28 +119,19 @@ export class WorkspaceFileWatcher {
   /**
    * 启动监听 EventBus 事件
    */
-  async start(logger: ExtensionLogger, bus: ExtensionEventBus): Promise<void> {
+  async start(
+    logger: ExtensionLogger,
+    bus: ExtensionEventBus,
+    api: import('../../src/main/common/extension/types').ExtensionApi
+  ): Promise<void> {
     if (this.listening) return;
 
     // Initialize dependencies
-    await initDeps(logger, bus);
+    await initDeps(logger, bus, api);
 
-    // 获取并缓存 workspacesDir 路径（避免每次 startWatch 时动态 import）
-    try {
-      const envModule = await import('../../src/main/common/env');
-      const Env = envModule.Env || envModule.default;
-
-      if (!Env || !Env.paths || !Env.paths.workspacesDir) {
-        log.error('[WorkspaceFileWatcher] Failed to get workspacesDir from Env, Extension will not function properly');
-        this.workspacesDir = null;
-      } else {
-        this.workspacesDir = Env.paths.workspacesDir;
-        log.info(`[WorkspaceFileWatcher] Initialized with workspacesDir: ${this.workspacesDir}`);
-      }
-    } catch (err) {
-      log.error('[WorkspaceFileWatcher] Failed to import Env module:', err);
-      this.workspacesDir = null;
-    }
+    // workspacesDir 采用 lazy 获取策略：
+    // Extension 在 priority 50 阶段加载，而 Env.paths 在 priority 55 (ReadyInfraHook) 才初始化。
+    // 因此不在 start() 中获取，而是延迟到首次 startWatch() 时按需获取。
 
     // 创建 bound 函数引用（保证 on/off 使用相同引用）
     this.boundHandlers.message = this.handleStreamMessage.bind(this);
@@ -251,14 +248,23 @@ export class WorkspaceFileWatcher {
       return;
     }
 
-    // 使用缓存的 workspacesDir 路径
+    // Lazy 获取 workspacesDir（通过 ExtensionApi 统一获取）
+    if (!this.workspacesDir && apiRef) {
+      try {
+        // ✅ 通过 ExtensionApi 统一获取工作空间根目录
+        this.workspacesDir = await apiRef.services.paths.getWorkspacesDir();
+        log.info(`[WorkspaceFileWatcher] Resolved workspacesDir: ${this.workspacesDir}`);
+      } catch (err) {
+        log.error(`[WorkspaceFileWatcher] Failed to resolve workspacesDir:`, err);
+        // Env not available yet, will retry on next startWatch call
+      }
+    }
+
     if (!this.workspacesDir) {
-      // 只记录一次错误，避免终端日志刷屏
       if (!this.workspacesDirErrorLogged) {
-        log.error(
-          `[WorkspaceFileWatcher] workspacesDir not available, Extension cannot function. ` +
-            `This usually means Env.paths was not initialized when Extension started. ` +
-            `All subsequent watch requests will be silently ignored.`
+        log.warn(
+          `[WorkspaceFileWatcher] workspacesDir not available yet. ` +
+            `Watch request for ${threadId} skipped. Will retry on next event.`
         );
         this.workspacesDirErrorLogged = true;
       }

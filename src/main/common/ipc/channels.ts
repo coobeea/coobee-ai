@@ -10,4 +10,4 @@ export {
   type WindowChannel,
   type TabChannel,
   type EventChannel
-} from '@shared/ipc'
+} from '@shared/ipc';

@@ -19,6 +19,7 @@ import { createLogger } from '@main/common/logger';
 import type { AgentRuntime } from '../runtime/AgentRuntime';
 import type { StreamChunk, ExecutionResult } from '../runtime/types';
 import type { SubTask, WorkerInfo } from './types';
+import { injectEnv } from '../AgentEnvInjector';
 
 const log = createLogger('orchestration:worker');
 
@@ -224,10 +225,27 @@ export class WorkerCoordinator implements IWorkerCoordinator {
    */
   private async createWorkerRuntime(workerType: string, subTask: SubTask): Promise<AgentRuntime> {
     const { agentExecutor } = await import('../AgentExecutor');
+    const { WorkspaceManager } = await import('../storage/WorkspaceManager');
+    const path = await import('node:path');
 
     const sessionId = this.config?.parentSessionId
       ? `${this.config.parentSessionId}:worker:${subTask.id}`
       : `worker-${subTask.id}-${Date.now()}`;
+
+    // 🆕 创建嵌套 workspace
+    let subAgentWorkspace: string | undefined;
+    if (this.config?.parentSessionId) {
+      const { Env } = await import('@main/common/env');
+      const mainWorkspace = await Env.getAgentWorkspaceDir(this.config.parentSessionId);
+      subAgentWorkspace = WorkspaceManager.getOrCreateSubAgentWorkspace({
+        agentName: `worker-${subTask.id}`,
+        sessionId,
+        type: 'worker',
+        threadWorkspace: mainWorkspace,
+        enableSkills: true,
+        enableExtensions: true
+      });
+    }
 
     // 尝试从 AgentStore 加载已有 Agent 定义
     const agentDef = await this.tryLoadAgentDefinition(workerType);
@@ -241,7 +259,8 @@ export class WorkerCoordinator implements IWorkerCoordinator {
         .name(agentDef.name || agentDef.id)
         .mode('agent')
         .sessionMode('file')
-        .instructions(agentDef.instructions);
+        .instructions(agentDef.instructions)
+        .sessionId(sessionId);
 
       if (agentDef.model) {
         builder.model(agentDef.model);
@@ -249,8 +268,15 @@ export class WorkerCoordinator implements IWorkerCoordinator {
         builder.model(this.config.model);
       }
 
-      builder.sessionId(sessionId);
+      // 🆕 如果有嵌套 workspace，手动设置
+      if (subAgentWorkspace) {
+        builder
+          .sessionDir(path.join(subAgentWorkspace, '.runtime', 'sessions'))
+          .workspaceRoot(subAgentWorkspace)
+          .contextDir(path.join(subAgentWorkspace, '.runtime', 'contexts'));
+      }
 
+      await injectEnv(sessionId, builder);
       return await builder.build();
     }
 
@@ -262,14 +288,22 @@ export class WorkerCoordinator implements IWorkerCoordinator {
       .name(preset.name)
       .mode('agent')
       .sessionMode('file')
-      .instructions(preset.instructions);
+      .instructions(preset.instructions)
+      .sessionId(sessionId);
 
     if (this.config?.model) {
       builder.model(this.config.model);
     }
 
-    builder.sessionId(sessionId);
+    // 🆕 如果有嵌套 workspace，手动设置
+    if (subAgentWorkspace) {
+      builder
+        .sessionDir(path.join(subAgentWorkspace, '.runtime', 'sessions'))
+        .workspaceRoot(subAgentWorkspace)
+        .contextDir(path.join(subAgentWorkspace, '.runtime', 'contexts'));
+    }
 
+    await injectEnv(sessionId, builder);
     return await builder.build();
   }
 

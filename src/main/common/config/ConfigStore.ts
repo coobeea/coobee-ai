@@ -3,18 +3,18 @@
  *
  * 提供类型安全的 get/set/patch，读写 coobee.json5。
  */
-import fs from 'fs'
-import path from 'path'
-import crypto from 'crypto'
-import JSON5 from 'json5'
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import JSON5 from 'json5';
 
-import { ConfigLoader } from './ConfigLoader'
-import { CoobeeConfigSchema, type CoobeeConfig } from './schema'
+import { ConfigLoader } from './ConfigLoader';
+import { CoobeeConfigSchema, type CoobeeConfig } from './schema';
 
 /** 深度部分类型 */
 type DeepPartial<T> = {
-  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P]
-}
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
 
 export class ConfigStore {
   constructor(private loader: ConfigLoader) {}
@@ -23,69 +23,69 @@ export class ConfigStore {
    * 获取指定配置节
    */
   get<K extends keyof CoobeeConfig>(key: K): CoobeeConfig[K] {
-    const config = this.loader.load()
-    return config[key]
+    const config = this.loader.load();
+    return config[key];
   }
 
   /**
    * 设置指定配置节
    */
   set<K extends keyof CoobeeConfig>(key: K, value: CoobeeConfig[K]): void {
-    const raw = this.readRawConfig()
-    raw[key] = value
-    this.writeRawConfig(raw)
-    this.loader.clearCache()
+    const raw = this.readRawConfig();
+    raw[key] = value;
+    this.writeRawConfig(raw);
+    this.loader.clearCache();
   }
 
   /**
    * 部分更新配置（深度合并）
    */
   patch(partial: DeepPartial<CoobeeConfig>): void {
-    const raw = this.readRawConfig()
-    const merged = deepMerge(raw, partial as Record<string, unknown>)
-    this.writeRawConfig(merged as Record<string, unknown>)
-    this.loader.clearCache()
+    const raw = this.readRawConfig();
+    const merged = deepMerge(raw, partial as Record<string, unknown>);
+    this.writeRawConfig(merged as Record<string, unknown>);
+    this.loader.clearCache();
   }
 
   /**
    * 获取完整配置
    */
   getAll(): CoobeeConfig {
-    return this.loader.load()
+    return this.loader.load();
   }
 
   // ─── 私有方法 ─────────────────────────────────────
 
   /** 读取原始 JSON5 对象（不经过 Zod 校验） */
   private readRawConfig(): Record<string, unknown> {
-    const filePath = this.loader.configPath
+    const filePath = this.loader.configPath;
     if (!fs.existsSync(filePath)) {
-      return {}
+      return {};
     }
-    const raw = fs.readFileSync(filePath, 'utf-8')
+    const raw = fs.readFileSync(filePath, 'utf-8');
     // 解析失败抛出异常，避免静默丢弃用户配置
-    return JSON5.parse(raw) as Record<string, unknown>
+    return JSON5.parse(raw) as Record<string, unknown>;
   }
 
   /** 写入 JSON5 配置文件（脱敏 → 校验 → 序列化 → 写入） */
   private writeRawConfig(config: Record<string, unknown>): void {
     // 写入前剥离 secrets 中的 API Key，避免泄漏到主配置文件
-    const sanitized = this.stripSecretsApiKeys(config)
+    const sanitized = this.stripSecretsApiKeys(config);
 
     // 写入前校验，防止畸形数据破坏配置文件
-    const result = CoobeeConfigSchema.safeParse(sanitized)
+    const result = CoobeeConfigSchema.safeParse(sanitized);
     if (!result.success) {
-      throw new Error(`Config validation failed: ${result.error.message}`)
+      throw new Error(`Config validation failed: ${result.error.message}`);
     }
-    this.loader.ensureConfigFile()
-    const content = JSON5.stringify(sanitized, null, 2)
+    this.loader.ensureConfigFile();
+    const content = JSON5.stringify(sanitized, null, 2);
     // 原子写入：先写临时文件再 rename，防止写入中断导致配置文件损坏
     const tmpPath = path.join(
       path.dirname(this.loader.configPath),
       `.coobee.json5.${crypto.randomBytes(4).toString('hex')}.tmp`
-    )
-    fs.writeFileSync(tmpPath, content, 'utf-8')
-    fs.renameSync(tmpPath, this.loader.configPath)
+    );
+    fs.writeFileSync(tmpPath, content, 'utf-8');
+    fs.renameSync(tmpPath, this.loader.configPath);
   }
 
   /**
@@ -95,33 +95,35 @@ export class ConfigStore {
    * 避免将 secrets 合并后的真实 key 持久化到主配置文件。
    */
   private stripSecretsApiKeys(config: Record<string, unknown>): Record<string, unknown> {
-    const original = this.readRawConfig()
+    const original = this.readRawConfig();
     const originalProviders = (original.models as Record<string, unknown>)?.providers as
       | Record<string, Record<string, unknown>>
-      | undefined
-    const configProviders = ((config as Record<string, unknown>).models as Record<string, unknown>)
-      ?.providers as Record<string, Record<string, unknown>> | undefined
+      | undefined;
+    const configProviders = ((config as Record<string, unknown>).models as Record<string, unknown>)?.providers as
+      | Record<string, Record<string, unknown>>
+      | undefined;
 
-    if (!originalProviders || !configProviders) return config
+    if (!originalProviders || !configProviders) return config;
 
-    const cloned = structuredClone(config)
-    const clonedProviders = ((cloned as Record<string, unknown>).models as Record<string, unknown>)
-      ?.providers as Record<string, Record<string, unknown>> | undefined
+    const cloned = structuredClone(config);
+    const clonedProviders = ((cloned as Record<string, unknown>).models as Record<string, unknown>)?.providers as
+      | Record<string, Record<string, unknown>>
+      | undefined;
 
-    if (!clonedProviders) return config
+    if (!clonedProviders) return config;
 
     for (const [id, provider] of Object.entries(clonedProviders)) {
       if (originalProviders[id]) {
         // 还原为原始配置文件中的 apiKey（通常是 ${VAR} 模板）
-        provider.apiKey = originalProviders[id].apiKey
+        provider.apiKey = originalProviders[id].apiKey;
       } else if (provider.apiKey && typeof provider.apiKey === 'string') {
         // 新增的 Provider：清空 apiKey，防止真实 key 泄漏到主配置文件
         // 用户应将新 Provider 的 key 放入 secrets.json5
-        provider.apiKey = ''
+        provider.apiKey = '';
       }
     }
 
-    return cloned
+    return cloned;
   }
 }
 
@@ -130,27 +132,24 @@ export class ConfigStore {
  *
  * Gateway 方法通过此变量访问 ConfigStore。
  */
-export let configStoreInstance: ConfigStore | null = null
+export let configStoreInstance: ConfigStore | null = null;
 
 /**
  * 设置全局 ConfigStore 实例
  */
 export function setConfigStoreInstance(store: ConfigStore): void {
-  configStoreInstance = store
+  configStoreInstance = store;
 }
 
 /** 递归深度合并 */
-function deepMerge(
-  target: Record<string, unknown>,
-  source: Record<string, unknown>
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...target }
+function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...target };
 
   for (const key of Object.keys(source)) {
-    const sv = source[key]
-    const tv = target[key]
+    const sv = source[key];
+    const tv = target[key];
 
-    if (sv === undefined) continue
+    if (sv === undefined) continue;
 
     if (
       sv !== null &&
@@ -160,11 +159,11 @@ function deepMerge(
       typeof tv === 'object' &&
       !Array.isArray(tv)
     ) {
-      result[key] = deepMerge(tv as Record<string, unknown>, sv as Record<string, unknown>)
+      result[key] = deepMerge(tv as Record<string, unknown>, sv as Record<string, unknown>);
     } else {
-      result[key] = sv
+      result[key] = sv;
     }
   }
 
-  return result
+  return result;
 }

@@ -16,6 +16,7 @@
  *   - 错误统一返回 { error: string } + 对应 HTTP 状态码
  */
 
+import { PassThrough } from 'stream';
 import type Router from '@koa/router';
 import { createLogger } from '@main/common/logger';
 import { AgentStore } from '@main/ai/agents/AgentStore';
@@ -51,6 +52,30 @@ export function registerAgentRoutes(router: Router): void {
     }
   });
 
+  // ==================== AVAILABLE TOOLS ====================
+
+  router.get('/agents/tools', async (ctx) => {
+    try {
+      const extensionTools = ToolRegistry.getInstance().getAll();
+      const toolMap = new Map(builtinTools.map((t) => [t.name, t]));
+      for (const ext of extensionTools) {
+        toolMap.set(ext.name, ext);
+      }
+
+      const tools = Array.from(toolMap.values()).map((t) => ({
+        name: t.name,
+        description: t.description || '',
+        category: t.category || 'general'
+      }));
+
+      ctx.body = { tools };
+    } catch (err) {
+      log.error('[agents.tools] Error:', err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // ==================== GET ====================
 
   router.get('/agents/:id', async (ctx) => {
@@ -81,13 +106,14 @@ export function registerAgentRoutes(router: Router): void {
 
   router.post('/agents', async (ctx) => {
     const body = ctx.request.body as Record<string, unknown> | undefined;
-    const { id, name, description, instructions, tools, skills } = (body ?? {}) as {
+    const { id, name, description, instructions, tools, skills, model } = (body ?? {}) as {
       id?: string;
       name?: string;
       description?: string;
       instructions?: string;
       tools?: string[];
       skills?: string[];
+      model?: string;
     };
 
     if (!id || !name || !description || !instructions) {
@@ -97,14 +123,26 @@ export function registerAgentRoutes(router: Router): void {
     }
 
     try {
+      // 工具默认全选：未指定时自动使用全部可用工具
+      let finalTools = tools;
+      if (!finalTools || finalTools.length === 0) {
+        const extensionTools = ToolRegistry.getInstance().getAll();
+        const toolMap = new Map(builtinTools.map((t) => [t.name, t]));
+        for (const ext of extensionTools) {
+          toolMap.set(ext.name, ext);
+        }
+        finalTools = Array.from(toolMap.keys());
+      }
+
       const store = await AgentStore.getInstance();
       const agent = await store.create({
         id,
         name,
         description,
         instructions,
-        tools,
+        // tools 已移除，默认全部可用
         skills,
+        model,
         createdBy: 'user'
       });
       ctx.status = 201;
@@ -136,7 +174,6 @@ export function registerAgentRoutes(router: Router): void {
     ctx.set('Connection', 'keep-alive');
     ctx.set('X-Accel-Buffering', 'no');
 
-    const { PassThrough } = await import('stream');
     const stream = new PassThrough();
     ctx.body = stream;
     ctx.status = 200;
@@ -186,7 +223,7 @@ export function registerAgentRoutes(router: Router): void {
         name: body.name as string | undefined,
         description: body.description as string | undefined,
         instructions: body.instructions as string | undefined,
-        tools: body.tools as string[] | undefined,
+        excludeTools: body.excludeTools as string[] | undefined,
         skills: body.skills as string[] | undefined,
         model: body.model as string | undefined,
         metadata: body.metadata as Record<string, unknown> | undefined
@@ -232,6 +269,45 @@ export function registerAgentRoutes(router: Router): void {
     }
   });
 
+  // ==================== AGENT SKILLS ====================
+
+  router.get('/agents/:id/skills', async (ctx) => {
+    const agentId = ctx.params.id;
+    if (!agentId) {
+      ctx.status = 400;
+      ctx.body = { error: 'agentId is required' };
+      return;
+    }
+
+    try {
+      const store = await AgentStore.getInstance();
+      const agent = await store.get(agentId);
+      if (!agent) {
+        ctx.status = 404;
+        ctx.body = { error: `Agent "${agentId}" not found` };
+        return;
+      }
+
+      const skillNames = agent.skills ?? [];
+      if (skillNames.length === 0) {
+        ctx.body = { skills: [] };
+        return;
+      }
+
+      const skillDefs = loadSkillDefinitions(skillNames);
+      const skills = skillDefs.map((s) => ({
+        name: s.name,
+        description: s.description || ''
+      }));
+
+      ctx.body = { skills };
+    } catch (err) {
+      log.error(`[agents.skills] Error (${agentId}):`, err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // ==================== QUICK CHAT (SSE) ====================
 
   router.post('/agents/:id/quick-chat', async (ctx) => {
@@ -274,7 +350,6 @@ export function registerAgentRoutes(router: Router): void {
     ctx.set('Connection', 'keep-alive');
     ctx.set('X-Accel-Buffering', 'no');
 
-    const { PassThrough } = await import('stream');
     const stream = new PassThrough();
     ctx.body = stream;
     ctx.status = 200;
@@ -335,6 +410,7 @@ function createBuilderFromAgentDef(
   const builder = agentExecutor
     .piMono()
     .name(def.name || def.id)
+    .agentId(def.id)
     .mode(agentMode)
     .sessionMode('memory')
     .lightweight(true)
@@ -347,19 +423,11 @@ function createBuilderFromAgentDef(
     toolMap.set(ext.name, ext);
   }
 
-  // 工具过滤逻辑（两层过滤）
-  let candidateTools;
-  if (def.tools && def.tools.length > 0) {
-    // 1. Agent 定义中明确指定了工具列表 → 按配置加载
-    candidateTools = def.tools
-      .map((name) => toolMap.get(name))
-      .filter((t): t is NonNullable<typeof t> => t !== undefined);
-  } else {
-    // 2. 未配置工具 → 加载所有可用工具（向后兼容）
-    candidateTools = Array.from(toolMap.values());
-  }
+  // 工具过滤逻辑（默认全部可用，支持黑名单排除）
+  const excludeSet = new Set(def.excludeTools || []);
+  const candidateTools = Array.from(toolMap.values()).filter((t) => !excludeSet.has(t.name));
 
-  // 3. 根据模式进行二次过滤（chat 模式强制排除危险工具）
+  // 根据模式进行二次过滤（chat 模式强制排除危险工具）
   const finalTools =
     agentMode === 'chat' ? candidateTools.filter((t) => !CHAT_MODE_BLOCKED_TOOLS.has(t.name)) : candidateTools;
 

@@ -12,9 +12,12 @@
  * - clearSession(): Promise<void>
  */
 
-import type { Session, AgentInputItem } from '@openai/agents'
-import type { SessionMemoryStore } from './SessionMemoryStore'
-import type { Message } from './types'
+import type { Session, AgentInputItem } from '@openai/agents';
+import { createLogger } from '@main/common/logger';
+import type { SessionMemoryStore } from './SessionMemoryStore';
+import type { Message } from './types';
+
+const log = createLogger('memory:session-adapter');
 
 /**
  * 将项目 Message 转换为 SDK AgentInputItem
@@ -26,7 +29,7 @@ function messageToInputItem(message: Message): AgentInputItem {
     return {
       role: 'user',
       content: message.content
-    } as unknown as AgentInputItem
+    } as unknown as AgentInputItem;
   }
 
   if (message.role === 'assistant') {
@@ -34,21 +37,21 @@ function messageToInputItem(message: Message): AgentInputItem {
       role: 'assistant',
       status: 'completed',
       content: [{ type: 'output_text', text: message.content }]
-    } as unknown as AgentInputItem
+    } as unknown as AgentInputItem;
   }
 
   if (message.role === 'system') {
     return {
       role: 'system',
       content: message.content
-    } as unknown as AgentInputItem
+    } as unknown as AgentInputItem;
   }
 
   // tool 消息 - 转为 user 消息
   return {
     role: 'user',
     content: `[Tool result] ${message.content}`
-  } as unknown as AgentInputItem
+  } as unknown as AgentInputItem;
 }
 
 /**
@@ -56,31 +59,31 @@ function messageToInputItem(message: Message): AgentInputItem {
  */
 function inputItemToMessage(item: AgentInputItem): Message {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const anyItem = item as any
-  const role = (anyItem.role as string) || 'assistant'
-  let content = ''
+  const anyItem = item as any;
+  const role = (anyItem.role as string) || 'assistant';
+  let content = '';
 
   if (typeof anyItem.content === 'string') {
-    content = anyItem.content
+    content = anyItem.content;
   } else if (Array.isArray(anyItem.content)) {
     // 从 content 数组提取文本
     content = (anyItem.content as Array<{ type?: string; text?: string }>)
       .filter((c) => c.type === 'output_text' || c.type === 'input_text')
       .map((c) => c.text || '')
-      .join('')
+      .join('');
   }
 
   // 映射角色
-  let mappedRole: Message['role'] = 'assistant'
-  if (role === 'user') mappedRole = 'user'
-  else if (role === 'developer' || role === 'system') mappedRole = 'system'
-  else if (role === 'tool') mappedRole = 'tool'
+  let mappedRole: Message['role'] = 'assistant';
+  if (role === 'user') mappedRole = 'user';
+  else if (role === 'developer' || role === 'system') mappedRole = 'system';
+  else if (role === 'tool') mappedRole = 'tool';
 
   return {
     role: mappedRole,
     content,
     timestamp: Date.now()
-  }
+  };
 }
 
 /**
@@ -99,7 +102,7 @@ export class SessionAdapter implements Session {
    * 返回会话 ID
    */
   async getSessionId(): Promise<string> {
-    return this.sessionId
+    return this.sessionId;
   }
 
   /**
@@ -107,8 +110,8 @@ export class SessionAdapter implements Session {
    * SDK 在每次 run() 前调用此方法获取上下文
    */
   async getItems(limit?: number): Promise<AgentInputItem[]> {
-    const messages = await this.store.getHistory(limit)
-    return messages.map(messageToInputItem)
+    const messages = await this.store.getHistory(limit);
+    return messages.map(messageToInputItem);
   }
 
   /**
@@ -116,8 +119,8 @@ export class SessionAdapter implements Session {
    * SDK 在每次 run() 后调用此方法保存新消息
    */
   async addItems(items: AgentInputItem[]): Promise<void> {
-    const messages = items.map(inputItemToMessage)
-    await this.store.appendMessages(messages)
+    const messages = items.map(inputItemToMessage);
+    await this.store.appendMessages(messages);
   }
 
   /**
@@ -126,15 +129,15 @@ export class SessionAdapter implements Session {
   async popItem(): Promise<AgentInputItem | undefined> {
     // SessionMemoryStore 目前不支持 pop 操作
     // 返回 undefined 表示无法弹出
-    console.warn('[SessionAdapter] popItem not fully supported, returning undefined')
-    return undefined
+    log.warn('popItem not fully supported, returning undefined');
+    return undefined;
   }
 
   /**
    * 清空会话
    */
   async clearSession(): Promise<void> {
-    await this.store.clearHistory()
+    await this.store.clearHistory();
   }
 }
 
@@ -142,5 +145,5 @@ export class SessionAdapter implements Session {
  * 创建 SDK Session 适配器
  */
 export function createSessionAdapter(store: SessionMemoryStore, sessionId: string): Session {
-  return new SessionAdapter(store, sessionId)
+  return new SessionAdapter(store, sessionId);
 }

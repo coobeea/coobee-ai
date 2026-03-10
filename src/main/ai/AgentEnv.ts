@@ -76,6 +76,12 @@ export interface AgentEnv {
   /** 已加载的 Extension ID 列表 */
   loadedExtensions: string[];
 
+  // --- Agent Home ---
+  /** Agent 定义 ID（关联了 AgentDefinition 时存在） */
+  agentId?: string;
+  /** Agent Home 目录（homes/{agentId}/，跨会话持久化空间） */
+  agentHome?: string;
+
   // --- 记忆系统 ---
   /** 记忆总根目录 */
   memoryDir: string;
@@ -200,6 +206,10 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
     userExtensionsDir: Env.paths.userExtensionsDir,
     loadedExtensions,
 
+    // Agent Home（由 injectEnv 在获取到 agentId 后补充）
+    agentId: undefined,
+    agentHome: undefined,
+
     // 记忆系统
     memoryDir: Env.paths.memoryDir,
 
@@ -227,28 +237,66 @@ export function formatRuntimePaths(env: AgentEnv): string {
   // 格式化扩展列表
   const extensionsList = env.loadedExtensions.length > 0 ? env.loadedExtensions.join(', ') : 'none';
 
+  const agentHomeSection = env.agentHome
+    ? `
+**Agent Home (Your Root Directory)**: ${env.agentHome}/
+  ├── SOUL.md, USER.md, MEMORY.md           — Your identity and long-term memory
+  ├── AGENTS.md                             — Your skill and tool configuration
+  ├── output/                               — Your persistent output files (training results, data)
+  ├── skill-data/                           — Structured data from skills (survives across sessions)
+  └── memory/                               — Your daily conversation logs
+
+  **PURPOSE**: This is YOUR permanent space. Store training results, accumulated knowledge,
+  and any data you want to reuse in future tasks here.
+`
+    : '';
+
   return `<runtime_environment>
 Your Runtime Environment:
 - Session: ${env.sessionId}
-- Workspace: ${env.workspace}
+- Current Task Directory: ${env.workspace}
 - Platform: ${env.platform}/${env.arch} (${env.isDev ? 'dev' : 'prod'})
 - Security: sandbox=${env.sandboxMode}, exec=${env.execApproval}
 - Model: ${env.defaultModel} (thinking=${env.thinkingLevel})
 - Extensions: ${extensionsList}
 
-Key Directories:
+Directory Structure:
+${agentHomeSection}
+**Current Task Workspace (Temporary)**: ${env.workspace}/
+  ├── .runtime/                             — System internal files (sessions, contexts, logs)
+  ├── tasks/                                — Multi-agent collaboration area
+  └── GOAL.md                               — Task goal file
+
+  **PURPOSE**: This is the temporary sandbox for the CURRENT task.
+  Files here are task-specific and may be cleaned up after task completion.
+
+Key System Directories:
 - Config: ${env.configDir}
 - Memory: ${env.memoryDir}
-- Threads: ${env.threadsDir}
 - Skills: builtin=${env.builtinSkillsDir}, user=${env.userSkillsDir}
 - Agents: builtin=${env.builtinAgentsDir}, user=${env.userAgentsDir}
 
-Multi-Agent Tasks Convention:
-When using delegate_to_agent or multi-agent workflows, write all data under {workspace}/tasks/{taskId}/:
-- plan.md (task plan), status.json (status tracking)
-- agents/{agentId}/ (sub-agent workspace)
-- results/{agentId}.md (final output)
+File Output Guidelines:
 
-Use manage_agent(list) before creating new agents. For simple delegations, taskId is auto-generated.
+**Where to save files?**
+
+1. **Persistent Outputs (Training Results, Knowledge)** → Agent Home
+   - {agentHome}/output/           — General persistent files
+   - {agentHome}/skill-data/       — Structured data from skills
+   Example: Model checkpoints, curated datasets, configuration templates
+
+2. **Temporary Task Files** → Current Task Workspace
+   - {workspace}/                  — Task-specific temporary files
+   Example: Intermediate results, debug logs, scratch files
+
+3. **System Files** (DO NOT manually modify)
+   - {workspace}/.runtime/         — Managed by system
+
+**Decision Rule**:
+- Will you need this file in future tasks? → Agent Home
+- Is this file only for current task? → Workspace
+- Not sure? → Ask yourself: "Is this training/accumulation or task-specific?"
+
+**IMPORTANT**: When user asks "check our root directory" or similar, they usually mean Agent Home (${env.agentHome || 'N/A'}), not the temporary workspace.
 </runtime_environment>`;
 }

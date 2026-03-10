@@ -32,8 +32,8 @@
 ```vue
 <script setup lang="ts">
 // 导入格式：~icons/{图标集名称}/{图标名称}
-import IconMdiHome from '~icons/mdi/home'
-import IconMdiAccount from '~icons/mdi/account'
+import IconMdiHome from '~icons/mdi/home';
+import IconMdiAccount from '~icons/mdi/account';
 </script>
 
 <template>
@@ -83,7 +83,7 @@ import IconMdiAccount from '~icons/mdi/account'
 </template>
 
 <script setup>
-const iconName = ref('home') // 可以动态改变
+const iconName = ref('home'); // 可以动态改变
 </script>
 ```
 
@@ -262,9 +262,9 @@ Tailwind CSS 官方图标
 ### 1. electron.vite.config.ts（unplugin-icons）
 
 ```typescript
-import Icons from 'unplugin-icons/vite'
-import IconsResolver from 'unplugin-icons/resolver'
-import Components from 'unplugin-vue-components/vite'
+import Icons from 'unplugin-icons/vite';
+import IconsResolver from 'unplugin-icons/resolver';
+import Components from 'unplugin-vue-components/vite';
 
 export default defineConfig({
   renderer: {
@@ -284,7 +284,7 @@ export default defineConfig({
       })
     ]
   }
-})
+});
 ```
 
 ### 2. tailwind.css（@egoist/tailwindcss-icons）

@@ -3,14 +3,14 @@
  */
 
 // 窗口管理器（对外唯一接口）
-export { WindowManager } from './WindowManager'
+export { WindowManager } from './WindowManager';
 
 // 创建并导出 windowManager 单例
-import { WindowManager } from './WindowManager'
-export const windowManager = new WindowManager()
+import { WindowManager } from './WindowManager';
+export const windowManager = new WindowManager();
 
 // 常量定义
-export { CHROME_HEIGHT, getWindowPresets, BrowserWindowEvents } from './types'
+export { CHROME_HEIGHT, getWindowPresets, BrowserWindowEvents } from './types';
 
 // 所有类型定义
 export type {
@@ -29,4 +29,4 @@ export type {
   ChromeConfig,
   // 管理器接口（仅导出 IWindowManager）
   IWindowManager
-} from './types'
+} from './types';

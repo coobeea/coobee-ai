@@ -23,37 +23,37 @@
  * ```
  */
 
-import { defineStore } from 'pinia'
-import { reactive, watch } from 'vue'
+import { defineStore } from 'pinia';
+import { reactive, watch } from 'vue';
 
 // 偏好设置值类型
-export type PreferenceValue = string | number | boolean | object | null
+export type PreferenceValue = string | number | boolean | object | null;
 
 // 偏好设置记录类型
-export type PreferenceRecord = Record<string, PreferenceValue>
+export type PreferenceRecord = Record<string, PreferenceValue>;
 
 // localStorage 键名
-const STORAGE_KEY = 'preference-store'
+const STORAGE_KEY = 'preference-store';
 
 /**
  * 从 localStorage 读取数据
  */
 function loadFromStorage(): Map<string, PreferenceValue> {
-  const map = new Map<string, PreferenceValue>()
+  const map = new Map<string, PreferenceValue>();
   try {
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored)
+      const parsed = JSON.parse(stored);
       if (parsed && typeof parsed === 'object') {
         for (const [key, value] of Object.entries(parsed)) {
-          map.set(key, value as PreferenceValue)
+          map.set(key, value as PreferenceValue);
         }
       }
     }
   } catch (error) {
-    console.warn('[PreferenceStore] Failed to load from storage:', error)
+    console.warn('[PreferenceStore] Failed to load from storage:', error);
   }
-  return map
+  return map;
 }
 
 /**
@@ -61,13 +61,13 @@ function loadFromStorage(): Map<string, PreferenceValue> {
  */
 function saveToStorage(preferences: Map<string, PreferenceValue>): void {
   try {
-    const obj: PreferenceRecord = {}
+    const obj: PreferenceRecord = {};
     for (const [key, value] of preferences.entries()) {
-      obj[key] = value
+      obj[key] = value;
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(obj))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
   } catch (error) {
-    console.warn('[PreferenceStore] Failed to save to storage:', error)
+    console.warn('[PreferenceStore] Failed to save to storage:', error);
   }
 }
 
@@ -78,14 +78,14 @@ export const usePreferenceStore = defineStore(
   'preference',
   () => {
     // 从 localStorage 恢复数据初始化 Map
-    const preferences = reactive<Map<string, PreferenceValue>>(loadFromStorage())
+    const preferences = reactive<Map<string, PreferenceValue>>(loadFromStorage());
 
     // 监听变化，自动保存到 localStorage
     watch(
       () => preferences,
       () => saveToStorage(preferences),
       { deep: true }
-    )
+    );
 
     /**
      * 获取偏好设置值
@@ -94,9 +94,9 @@ export const usePreferenceStore = defineStore(
      */
     function get<T extends PreferenceValue>(key: string, defaultValue: T): T {
       if (preferences.has(key)) {
-        return preferences.get(key) as T
+        return preferences.get(key) as T;
       }
-      return defaultValue
+      return defaultValue;
     }
 
     /**
@@ -105,7 +105,7 @@ export const usePreferenceStore = defineStore(
      * @param value 设置值
      */
     function set<T extends PreferenceValue>(key: string, value: T): void {
-      preferences.set(key, value)
+      preferences.set(key, value);
     }
 
     /**
@@ -113,7 +113,7 @@ export const usePreferenceStore = defineStore(
      * @param key 设置键名
      */
     function has(key: string): boolean {
-      return preferences.has(key)
+      return preferences.has(key);
     }
 
     /**
@@ -121,7 +121,7 @@ export const usePreferenceStore = defineStore(
      * @param key 设置键名
      */
     function remove(key: string): boolean {
-      return preferences.delete(key)
+      return preferences.delete(key);
     }
 
     /**
@@ -129,31 +129,31 @@ export const usePreferenceStore = defineStore(
      * @param namespace 命名空间前缀
      */
     function clearNamespace(namespace: string): number {
-      let count = 0
-      const prefix = namespace.endsWith('.') ? namespace : `${namespace}.`
+      let count = 0;
+      const prefix = namespace.endsWith('.') ? namespace : `${namespace}.`;
 
       for (const key of preferences.keys()) {
         if (key.startsWith(prefix)) {
-          preferences.delete(key)
-          count++
+          preferences.delete(key);
+          count++;
         }
       }
 
-      return count
+      return count;
     }
 
     /**
      * 清除所有偏好设置
      */
     function clearAll(): void {
-      preferences.clear()
+      preferences.clear();
     }
 
     /**
      * 获取所有偏好设置键名
      */
     function keys(): string[] {
-      return Array.from(preferences.keys())
+      return Array.from(preferences.keys());
     }
 
     /**
@@ -161,18 +161,18 @@ export const usePreferenceStore = defineStore(
      * @param namespace 命名空间前缀
      */
     function getNamespace(namespace: string): PreferenceRecord {
-      const prefix = namespace.endsWith('.') ? namespace : `${namespace}.`
-      const result: PreferenceRecord = {}
+      const prefix = namespace.endsWith('.') ? namespace : `${namespace}.`;
+      const result: PreferenceRecord = {};
 
       for (const [key, value] of preferences.entries()) {
         if (key.startsWith(prefix)) {
           // 去掉前缀
-          const shortKey = key.substring(prefix.length)
-          result[shortKey] = value
+          const shortKey = key.substring(prefix.length);
+          result[shortKey] = value;
         }
       }
 
-      return result
+      return result;
     }
 
     /**
@@ -181,10 +181,10 @@ export const usePreferenceStore = defineStore(
      * @param namespace 可选的命名空间前缀
      */
     function setMany(values: PreferenceRecord, namespace?: string): void {
-      const prefix = namespace ? (namespace.endsWith('.') ? namespace : `${namespace}.`) : ''
+      const prefix = namespace ? (namespace.endsWith('.') ? namespace : `${namespace}.`) : '';
 
       for (const [key, value] of Object.entries(values)) {
-        preferences.set(`${prefix}${key}`, value)
+        preferences.set(`${prefix}${key}`, value);
       }
     }
 
@@ -194,10 +194,10 @@ export const usePreferenceStore = defineStore(
      * @param defaultValue 默认值
      */
     function toggle(key: string, defaultValue: boolean = false): boolean {
-      const current = get(key, defaultValue)
-      const newValue = !current
-      set(key, newValue)
-      return newValue
+      const current = get(key, defaultValue);
+      const newValue = !current;
+      set(key, newValue);
+      return newValue;
     }
 
     /**
@@ -207,26 +207,26 @@ export const usePreferenceStore = defineStore(
      * @param defaultValue 默认值
      */
     function increment(key: string, amount: number = 1, defaultValue: number = 0): number {
-      const current = get(key, defaultValue)
-      const newValue = current + amount
-      set(key, newValue)
-      return newValue
+      const current = get(key, defaultValue);
+      const newValue = current + amount;
+      set(key, newValue);
+      return newValue;
     }
 
     // 将 Map 转换为普通对象用于持久化
     function toObject(): PreferenceRecord {
-      const result: PreferenceRecord = {}
+      const result: PreferenceRecord = {};
       for (const [key, value] of preferences.entries()) {
-        result[key] = value
+        result[key] = value;
       }
-      return result
+      return result;
     }
 
     // 从普通对象恢复 Map
     function fromObject(obj: PreferenceRecord): void {
-      preferences.clear()
+      preferences.clear();
       for (const [key, value] of Object.entries(obj)) {
-        preferences.set(key, value)
+        preferences.set(key, value);
       }
     }
 
@@ -250,12 +250,12 @@ export const usePreferenceStore = defineStore(
       // 序列化方法（供持久化插件使用）
       toObject,
       fromObject
-    }
+    };
   },
   {
     persist: false // 禁用自动持久化，手动处理
   }
-)
+);
 
 /**
  * 创建响应式偏好设置 composable
@@ -265,23 +265,20 @@ export const usePreferenceStore = defineStore(
  * @param key 偏好设置键名
  * @param defaultValue 默认值
  */
-export function usePreferenceValue<T extends PreferenceValue>(
-  key: string,
-  defaultValue: T
-): { value: T } {
-  const store = usePreferenceStore()
+export function usePreferenceValue<T extends PreferenceValue>(key: string, defaultValue: T): { value: T } {
+  const store = usePreferenceStore();
 
   // 初始化值
   if (!store.has(key)) {
-    store.set(key, defaultValue)
+    store.set(key, defaultValue);
   }
 
   return {
     get value(): T {
-      return store.get(key, defaultValue)
+      return store.get(key, defaultValue);
     },
     set value(newValue: T) {
-      store.set(key, newValue)
+      store.set(key, newValue);
     }
-  }
+  };
 }

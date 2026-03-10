@@ -6,27 +6,27 @@
  * 支持多种使用方式：
  *
  * 1. 完整配置对象（最灵活）
- * <button v-ai-generate="{ agent: 'task-analyzer', prompt: noteContent, onSuccess: handleResult }">
+ * <button v-ai-generate="{ agent: 'app-copilot', prompt: noteContent, onSuccess: handleResult }">
  *   AI 生成
  * </button>
  *
- * 2. 字符串模式（使用默认 agent: 'task-analyzer'）
+ * 2. 字符串模式（使用默认 agent: 'app-copilot'）
  * <button v-ai-generate="'根据以下内容生成任务列表'">
  *   AI 生成任务
  * </button>
  *
  * 3. 数组模式 [agent, prompt]（快速指定 agent）
- * <button v-ai-generate="['title-generator', '为这段文字生成标题']">
+ * <button v-ai-generate="['one-line-summary', '为这段文字生成标题']">
  *   生成标题
  * </button>
  *
  * 4. 修饰符模式（通过修饰符指定 agent）
- * <button v-ai-generate.title-generator="'为这段文字生成标题'">
+ * <button v-ai-generate.one-line-summary="'为这段文字生成标题'">
  *   生成标题
  * </button>
  *
  * 5. 函数提示词（动态获取内容）
- * <button v-ai-generate="{ agent: 'task-analyzer', prompt: () => editor.getText() }">
+ * <button v-ai-generate="{ agent: 'app-copilot', prompt: () => editor.getText() }">
  *   分析任务
  * </button>
  */
@@ -40,8 +40,8 @@ import { quickChat } from '@/composables/useQuickChat';
 export interface AIDirectiveConfig {
   /**
    * Agent ID
-   * @default 'task-analyzer'
-   * @example 'task-analyzer' | 'title-generator'
+   * @default 'app-copilot'
+   * @example 'app-copilot' | 'one-line-summary'
    */
   agent?: string;
 
@@ -135,7 +135,7 @@ function normalizeConfig(value: AIDirectiveValue, modifiers: Partial<Record<stri
     // 检查修饰符，从修饰符中获取 agent
     const agentFromModifier = Object.keys(modifiers).find((key) => modifiers[key]);
     return {
-      agent: agentFromModifier || 'task-analyzer', // 默认使用 task-analyzer
+      agent: agentFromModifier || 'app-copilot', // 默认使用 app-copilot
       prompt: value
     };
   }
@@ -144,7 +144,7 @@ function normalizeConfig(value: AIDirectiveValue, modifiers: Partial<Record<stri
   if (Array.isArray(value)) {
     const [agent, prompt] = value;
     return {
-      agent: agent || 'task-analyzer',
+      agent: agent || 'app-copilot',
       prompt: prompt
     };
   }
@@ -152,7 +152,7 @@ function normalizeConfig(value: AIDirectiveValue, modifiers: Partial<Record<stri
   // 3. 配置对象：确保有默认的 agent
   return {
     ...value,
-    agent: value.agent || 'task-analyzer'
+    agent: value.agent || 'app-copilot'
   };
 }
 
@@ -178,7 +178,7 @@ async function handleClick(el: HTMLElement, config: AIDirectiveConfig): Promise<
     }
 
     // 调用 quick-chat
-    const output = await quickChat(config.agent || 'task-analyzer', prompt);
+    const output = await quickChat(config.agent || 'app-copilot', prompt);
 
     if (!output) {
       throw new Error('AI 返回内容为空');

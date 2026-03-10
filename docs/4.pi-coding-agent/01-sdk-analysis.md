@@ -14,7 +14,7 @@
 ### 1.1 入口：`createAgentSession()`
 
 ```typescript
-import { createAgentSession } from '@mariozechner/pi-coding-agent'
+import { createAgentSession } from '@mariozechner/pi-coding-agent';
 
 const { session } = await createAgentSession({
   // 模型
@@ -39,7 +39,7 @@ const { session } = await createAgentSession({
   // 工作目录
   cwd: process.cwd(),
   agentDir: '~/.pi/agent'
-})
+});
 ```
 
 **返回值**：
@@ -100,7 +100,7 @@ session.subscribe((event) => {
     case 'auto_retry_start': // 自动重试开始
     case 'auto_retry_end': // 自动重试结束
   }
-})
+});
 ```
 
 ### 2.2 每个事件的字段
@@ -261,14 +261,14 @@ agent_end
 通过 `DefaultResourceLoader` 的 `systemPromptOverride` 和 `appendSystemPromptOverride` 控制：
 
 ```typescript
-import { DefaultResourceLoader } from '@mariozechner/pi-coding-agent'
+import { DefaultResourceLoader } from '@mariozechner/pi-coding-agent';
 
 // 方式 1：完全替换 system prompt
 const loader1 = new DefaultResourceLoader({
   systemPromptOverride: () => `You are a helpful assistant.`,
   appendSystemPromptOverride: () => [] // 清除追加内容
-})
-await loader1.reload()
+});
+await loader1.reload();
 
 // 方式 2：在默认 prompt 后追加指令
 const loader2 = new DefaultResourceLoader({
@@ -276,13 +276,13 @@ const loader2 = new DefaultResourceLoader({
     ...base,
     '## Additional Instructions\n- Always be concise\n- Use bullet points'
   ]
-})
-await loader2.reload()
+});
+await loader2.reload();
 
 const { session } = await createAgentSession({
   resourceLoader: loader2,
   sessionManager: SessionManager.inMemory()
-})
+});
 ```
 
 **关键点**：`systemPromptOverride` 是替换，`appendSystemPromptOverride` 是追加。两者可组合使用。
@@ -292,7 +292,7 @@ const { session } = await createAgentSession({
 Skills 是注入到 system prompt 中的专用指令，自动从 `cwd/.pi/skills/` 和 `~/.pi/agent/skills/` 目录发现：
 
 ```typescript
-import { type Skill } from '@mariozechner/pi-coding-agent'
+import { type Skill } from '@mariozechner/pi-coding-agent';
 
 // 自定义 skill
 const customSkill: Skill = {
@@ -302,7 +302,7 @@ const customSkill: Skill = {
   baseDir: '/virtual',
   source: 'path',
   disableModelInvocation: false
-}
+};
 
 const loader = new DefaultResourceLoader({
   skillsOverride: (current) => ({
@@ -310,11 +310,11 @@ const loader = new DefaultResourceLoader({
     skills: [...current.skills.filter((s) => s.name.includes('browser')), customSkill],
     diagnostics: current.diagnostics
   })
-})
-await loader.reload()
+});
+await loader.reload();
 
 // 查看发现的 skills
-const { skills, diagnostics } = loader.getSkills()
+const { skills, diagnostics } = loader.getSkills();
 ```
 
 ### 3.3 Context Files / AGENTS.md（07-context-files）
@@ -332,11 +332,11 @@ const loader = new DefaultResourceLoader({
       }
     ]
   })
-})
-await loader.reload()
+});
+await loader.reload();
 
 // 查看发现的上下文文件
-const discovered = loader.getAgentsFiles().agentsFiles
+const discovered = loader.getAgentsFiles().agentsFiles;
 ```
 
 ### 3.4 Prompt Templates（08-prompt-templates）
@@ -344,7 +344,7 @@ const discovered = loader.getAgentsFiles().agentsFiles
 文件模板，通过 `/templatename` 触发注入：
 
 ```typescript
-import { type PromptTemplate } from '@mariozechner/pi-coding-agent'
+import { type PromptTemplate } from '@mariozechner/pi-coding-agent';
 
 const deployTemplate: PromptTemplate = {
   name: 'deploy',
@@ -352,15 +352,15 @@ const deployTemplate: PromptTemplate = {
   source: 'path',
   filePath: '/virtual/prompts/deploy.md',
   content: `# Deploy Instructions\n1. Build\n2. Test\n3. Deploy`
-}
+};
 
 const loader = new DefaultResourceLoader({
   promptsOverride: (current) => ({
     prompts: [...current.prompts, deployTemplate],
     diagnostics: current.diagnostics
   })
-})
-await loader.reload()
+});
+await loader.reload();
 ```
 
 **模板发现路径**：`cwd/.pi/prompts/` 和 `~/.pi/agent/prompts/`
@@ -368,21 +368,21 @@ await loader.reload()
 ### 3.5 API Keys 与 OAuth（09-api-keys-and-oauth）
 
 ```typescript
-import { AuthStorage, ModelRegistry } from '@mariozechner/pi-coding-agent'
+import { AuthStorage, ModelRegistry } from '@mariozechner/pi-coding-agent';
 
 // 默认路径：~/.pi/agent/auth.json
-const authStorage = new AuthStorage()
-const modelRegistry = new ModelRegistry(authStorage)
+const authStorage = new AuthStorage();
+const modelRegistry = new ModelRegistry(authStorage);
 
 // 自定义路径
-const customAuth = new AuthStorage('/tmp/my-app/auth.json')
-const customRegistry = new ModelRegistry(customAuth, '/tmp/my-app/models.json')
+const customAuth = new AuthStorage('/tmp/my-app/auth.json');
+const customRegistry = new ModelRegistry(customAuth, '/tmp/my-app/models.json');
 
 // 运行时 API Key（不持久化到磁盘）
-authStorage.setRuntimeApiKey('anthropic', 'sk-my-temp-key')
+authStorage.setRuntimeApiKey('anthropic', 'sk-my-temp-key');
 
 // 无 models.json，只用内置模型
-const simpleRegistry = new ModelRegistry(authStorage)
+const simpleRegistry = new ModelRegistry(authStorage);
 ```
 
 **支持的 Provider**：`anthropic`、`openai` 等，通过 `@mariozechner/pi-ai` 的 `getModel()` 选择具体模型。
@@ -390,22 +390,22 @@ const simpleRegistry = new ModelRegistry(authStorage)
 ### 3.6 Settings 覆盖（10-settings）
 
 ```typescript
-import { SettingsManager } from '@mariozechner/pi-coding-agent'
+import { SettingsManager } from '@mariozechner/pi-coding-agent';
 
 // 从磁盘加载（global + project 合并）
-const settings = SettingsManager.create()
+const settings = SettingsManager.create();
 
 // 覆盖设置
 settings.applyOverrides({
   compaction: { enabled: false },
   retry: { enabled: true, maxRetries: 5, baseDelayMs: 1000 }
-})
+});
 
 // 内存模式（测试用）
 const inMemorySettings = SettingsManager.inMemory({
   compaction: { enabled: false },
   retry: { enabled: false }
-})
+});
 ```
 
 **可配置项**：`compaction`（压缩）、`retry`（重试）、`terminal`（终端）等。
@@ -429,15 +429,15 @@ const inMemorySettings = SettingsManager.inMemory({
 ### 4.2 工具集预设
 
 ```typescript
-codingTools = [read, bash, edit, write] // 默认
-readOnlyTools = [read, grep, find, ls] // 只读
-allTools = { read, bash, edit, write, grep, find, ls }
+codingTools = [read, bash, edit, write]; // 默认
+readOnlyTools = [read, grep, find, ls]; // 只读
+allTools = { read, bash, edit, write, grep, find, ls };
 ```
 
 ### 4.3 自定义工具
 
 ```typescript
-import { Type } from '@sinclair/typebox'
+import { Type } from '@sinclair/typebox';
 
 const myTool: ToolDefinition = {
   name: 'my_tool',
@@ -450,11 +450,11 @@ const myTool: ToolDefinition = {
     content: [{ type: 'text', text: `Result: ${params.input}` }],
     details: {}
   })
-}
+};
 
 const { session } = await createAgentSession({
   customTools: [{ tool: myTool }]
-})
+});
 ```
 
 ---
@@ -539,14 +539,14 @@ export default function (pi: ExtensionAPI) {
 完全自定义，不依赖任何自动发现：
 
 ```typescript
-import { getModel } from '@mariozechner/pi-ai'
+import { getModel } from '@mariozechner/pi-ai';
 
-const customAuth = new AuthStorage('/tmp/my-agent/auth.json')
+const customAuth = new AuthStorage('/tmp/my-agent/auth.json');
 if (process.env.MY_ANTHROPIC_KEY) {
-  customAuth.setRuntimeApiKey('anthropic', process.env.MY_ANTHROPIC_KEY)
+  customAuth.setRuntimeApiKey('anthropic', process.env.MY_ANTHROPIC_KEY);
 }
 
-const model = getModel('anthropic', 'claude-sonnet-4-20250514')
+const model = getModel('anthropic', 'claude-sonnet-4-20250514');
 
 // 完全自定义 ResourceLoader（不发现任何文件）
 const resourceLoader: ResourceLoader = {
@@ -560,7 +560,7 @@ const resourceLoader: ResourceLoader = {
   getPathMetadata: () => new Map(),
   extendResources: () => {},
   reload: async () => {}
-}
+};
 
 const { session } = await createAgentSession({
   cwd: process.cwd(),
@@ -573,7 +573,7 @@ const { session } = await createAgentSession({
   tools: [createReadTool(cwd), createBashTool(cwd)], // 工厂函数绑定 cwd
   sessionManager: SessionManager.inMemory(),
   settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } })
-})
+});
 ```
 
 **关键点**：使用自定义 `cwd` 时必须使用工具工厂函数（`createReadTool(cwd)` 等），否则工具的路径解析会基于 `process.cwd()` 而非你指定的 `cwd`。
@@ -615,15 +615,15 @@ const { session } = await createAgentSession({
   modelRegistry,
   tools: codingTools, // read, bash, edit, write
   sessionManager: SessionManager.inMemory() // 或持久化
-})
+});
 
 // 2. 订阅事件
 session.subscribe((event) => {
   // 转换为我们的 StreamChunk 事件格式
-})
+});
 
 // 3. 执行
-await session.prompt('实现一个 XXX 功能')
+await session.prompt('实现一个 XXX 功能');
 ```
 
 ### 9.2 事件映射
@@ -687,13 +687,13 @@ pi-coding-agent 事件到我们 StreamChunk 的映射：
 ## 十一、最小可用示例
 
 ```typescript
-import { createAgentSession, SessionManager } from '@mariozechner/pi-coding-agent'
-import { AuthStorage, ModelRegistry } from '@mariozechner/pi-coding-agent'
+import { createAgentSession, SessionManager } from '@mariozechner/pi-coding-agent';
+import { AuthStorage, ModelRegistry } from '@mariozechner/pi-coding-agent';
 
 // 认证
-const authStorage = new AuthStorage()
-authStorage.setRuntimeApiKey('anthropic', process.env.ANTHROPIC_API_KEY!)
-const modelRegistry = new ModelRegistry(authStorage)
+const authStorage = new AuthStorage();
+authStorage.setRuntimeApiKey('anthropic', process.env.ANTHROPIC_API_KEY!);
+const modelRegistry = new ModelRegistry(authStorage);
 
 // 创建会话
 const { session } = await createAgentSession({
@@ -701,34 +701,34 @@ const { session } = await createAgentSession({
   modelRegistry,
   thinkingLevel: 'medium',
   sessionManager: SessionManager.inMemory()
-})
+});
 
 // 事件监听
 session.subscribe((event) => {
   switch (event.type) {
     case 'agent_start':
-      console.log('🚀 开始')
-      break
+      console.log('🚀 开始');
+      break;
     case 'message_update':
       if (event.assistantMessageEvent.type === 'text_delta') {
-        process.stdout.write(event.assistantMessageEvent.delta)
+        process.stdout.write(event.assistantMessageEvent.delta);
       }
       if (event.assistantMessageEvent.type === 'thinking_delta') {
         // 思考内容（可选展示）
       }
-      break
+      break;
     case 'tool_execution_start':
-      console.log(`\n🔧 ${event.toolName}(${JSON.stringify(event.args)})`)
-      break
+      console.log(`\n🔧 ${event.toolName}(${JSON.stringify(event.args)})`);
+      break;
     case 'tool_execution_end':
-      console.log(`✅ ${event.toolName} → ${event.isError ? '失败' : '成功'}`)
-      break
+      console.log(`✅ ${event.toolName} → ${event.isError ? '失败' : '成功'}`);
+      break;
     case 'agent_end':
-      console.log('\n✨ 完成')
-      break
+      console.log('\n✨ 完成');
+      break;
   }
-})
+});
 
 // 执行
-await session.prompt('读取 package.json 并告诉我项目名称')
+await session.prompt('读取 package.json 并告诉我项目名称');
 ```

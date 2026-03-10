@@ -11,7 +11,7 @@
 ### 完整配置项
 
 ```typescript
-import { Agent } from '@openai/agents'
+import { Agent } from '@openai/agents';
 
 const agent = new Agent({
   // 基础配置
@@ -49,7 +49,7 @@ const agent = new Agent({
     version: '1',
     variables: { key: 'value' }
   }
-})
+});
 ```
 
 ### 模型选择
@@ -67,7 +67,7 @@ const agent = new Agent({
     reasoning: { effort: 'minimal' },
     text: { verbosity: 'low' }
   }
-})
+});
 
 // GPT-5.1（禁用 reasoning）
 const agent51 = new Agent({
@@ -77,14 +77,14 @@ const agent51 = new Agent({
     reasoning: { effort: 'none' },
     text: { verbosity: 'low' }
   }
-})
+});
 ```
 
 #### 使用自定义模型（本地 / 第三方）
 
 ```typescript
-import { Agent, OpenAIChatCompletionsModel } from '@openai/agents'
-import OpenAI from 'openai'
+import { Agent, OpenAIChatCompletionsModel } from '@openai/agents';
+import OpenAI from 'openai';
 
 // 使用 Ollama 本地模型
 const agent = new Agent({
@@ -98,27 +98,27 @@ const agent = new Agent({
   ),
   instructions: 'You answer questions concisely.',
   modelSettings: { reasoning: { effort: 'low' } }
-})
+});
 ```
 
 ### 结构化输出
 
 ```typescript
-import { z } from 'zod'
+import { z } from 'zod';
 
 const output = z.object({
   title: z.string(),
   description: z.string()
-})
+});
 
 const agent = new Agent({
   name: 'Structured Agent',
   model: 'gpt-5',
   instructions: "You're a helpful assistant.",
   outputType: output
-})
+});
 
-const result = await run(agent, 'Describe TypeScript')
+const result = await run(agent, 'Describe TypeScript');
 // result.finalOutput 的类型为 { title: string; description: string }
 ```
 
@@ -127,10 +127,10 @@ const result = await run(agent, 'Describe TypeScript')
 ### 简洁方式：`run()` 函数
 
 ```typescript
-import { run } from '@openai/agents'
+import { run } from '@openai/agents';
 
 // 最简用法
-const result = await run(agent, 'Hello')
+const result = await run(agent, 'Hello');
 
 // 带选项
 const result = await run(agent, 'Hello', {
@@ -138,21 +138,21 @@ const result = await run(agent, 'Hello', {
   maxTurns: 10, // 最大轮次
   context: myContext, // 自定义上下文
   session: mySession // 会话管理
-})
+});
 ```
 
 ### 高级方式：`Runner` 实例
 
 ```typescript
-import { Runner } from '@openai/agents'
+import { Runner } from '@openai/agents';
 
 const runner = new Runner({
   model: 'gpt-4.1-mini', // 默认模型
   groupId: 'My group', // 分组 ID
   traceMetadata: { user_id: '123' } // 追踪元数据
-})
+});
 
-const result = await runner.run(agent, 'Hello')
+const result = await runner.run(agent, 'Hello');
 ```
 
 `Runner` 实例的优势：
@@ -166,26 +166,26 @@ const result = await runner.run(agent, 'Hello')
 使用 `history` 保持对话上下文：
 
 ```typescript
-import { Agent, run, user } from '@openai/agents'
-import type { AgentInputItem } from '@openai/agents'
+import { Agent, run, user } from '@openai/agents';
+import type { AgentInputItem } from '@openai/agents';
 
-let history: AgentInputItem[] = []
-let latestAgent: Agent = agent
+let history: AgentInputItem[] = [];
+let latestAgent: Agent = agent;
 
 // 对话循环
 while (true) {
-  const message = getUserInput()
-  history.push(user(message))
+  const message = getUserInput();
+  history.push(user(message));
 
-  const result = await run(latestAgent, history)
-  console.log(result.finalOutput)
+  const result = await run(latestAgent, history);
+  console.log(result.finalOutput);
 
   // 更新 Agent（可能因 handoff 而改变）
   if (result.lastAgent) {
-    latestAgent = result.lastAgent
+    latestAgent = result.lastAgent;
   }
   // 更新历史记录
-  history = result.history
+  history = result.history;
 }
 ```
 
@@ -201,19 +201,19 @@ while (true) {
 
 ```typescript
 // 非流式
-let result = await run(agent, 'What is the largest country in South America?')
+let result = await run(agent, 'What is the largest country in South America?');
 
 result = await run(agent, 'What is the capital of that country?', {
   previousResponseId: result.lastResponseId
-})
+});
 
 // 流式模式同样支持
-let stream = await run(agent, 'Tell me a story', { stream: true })
+let stream = await run(agent, 'Tell me a story', { stream: true });
 // ... 处理流
 stream = await run(agent, 'Continue the story', {
   stream: true,
   previousResponseId: stream.lastResponseId
-})
+});
 ```
 
 ## 使用 Conversations API
@@ -221,18 +221,18 @@ stream = await run(agent, 'Continue the story', {
 OpenAI Conversations API 在服务端管理对话上下文：
 
 ```typescript
-import { Agent, run } from '@openai/agents'
-import OpenAI from 'openai'
+import { Agent, run } from '@openai/agents';
+import OpenAI from 'openai';
 
-const client = new OpenAI()
-const newConvo = await client.conversations.create({})
-const conversationId = newConvo.id
+const client = new OpenAI();
+const newConvo = await client.conversations.create({});
+const conversationId = newConvo.id;
 
-const options = { conversationId }
+const options = { conversationId };
 
-let result = await run(agent, 'What is the largest country in South America?', options)
-result = await run(agent, 'What is the capital of that country?', options)
-result = await run(agent, 'What is the weather there today?', options)
+let result = await run(agent, 'What is the largest country in South America?', options);
+result = await run(agent, 'What is the capital of that country?', options);
+result = await run(agent, 'What is the weather there today?', options);
 ```
 
 优势：无需在客户端管理 history，OpenAI 服务端自动维护。

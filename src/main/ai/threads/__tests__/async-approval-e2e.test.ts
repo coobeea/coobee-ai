@@ -82,7 +82,7 @@ describe('异步审批 E2E', () => {
     // approval.ts 发出 thread:wake 事件（这里模拟事件内容）
     const wakeEvent = {
       threadId,
-      reason: 'approval-done' as const,
+      reason: 'tool-done' as const,
       approvalDecision: 'approve-once',
       toolName: 'exec',
       toolParams: { command: 'echo hello' }
@@ -102,7 +102,7 @@ describe('异步审批 E2E', () => {
 
     // wake event 结构完整
     expect(wakeEvent.threadId).toBe(threadId);
-    expect(wakeEvent.reason).toBe('approval-done');
+    expect(wakeEvent.reason).toBe('tool-done');
     expect(wakeEvent.approvalDecision).toBe('approve-once');
   });
 

@@ -4,133 +4,33 @@
  * 提供酒馆任务系统的 HTTP API。
  * 挂载到 GatewayServer 的 Koa Router（prefix = /gateway），最终路径：
  *
- *   GET    /gateway/tavern/tasks           — 获取任务列表
- *   GET    /gateway/tavern/tasks/:id       — 获取任务详情
- *   POST   /gateway/tavern/tasks           — 发布新任务
- *   PATCH  /gateway/tavern/tasks/:id       — 更新任务状态
- *   DELETE /gateway/tavern/tasks/:id       — 删除任务
+ *   GET    /gateway/tavern/tasks              — 获取任务列表
+ *   GET    /gateway/tavern/tasks/:id          — 获取任务详情
+ *   POST   /gateway/tavern/tasks              — 发布新任务
+ *   PATCH  /gateway/tavern/tasks/:id          — 更新任务状态
+ *   DELETE /gateway/tavern/tasks/:id          — 删除任务
+ *   GET    /gateway/tavern/scheduler/status   — TaskScheduler 运行状态
+ *   POST   /gateway/tavern/scheduler/start    — 启动 TaskScheduler
+ *   POST   /gateway/tavern/scheduler/stop     — 停止 TaskScheduler
  *
- * 数据存储：
- *   - 使用文件系统存储
- *   - 目录结构：~/.coobee-ai/tavern/
- *     - tasks.jsonl（任务列表索引，JSONL 格式，每行一个任务）
- *     - tasks/[taskId]/（每个任务一个文件夹）
- *       - meta.json（任务元数据）
+ * 存储层委托给 TavernStore（src/main/ai/tavern/TavernStore.ts）。
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
 import type Router from '@koa/router';
 import { createLogger } from '@main/common/logger';
 import { nanoid } from 'nanoid';
-import { Env } from '@main/common/env';
+import { TavernStore, type Task, type TaskResult } from '@main/ai/tavern/TavernStore';
+import { TaskScheduler } from '@main/ai/tavern/TaskScheduler';
 
 const log = createLogger('gateway-http-tavern');
 
-export interface TaskResult {
-  textResult: string;
-  fileResults: string[];
-}
-
-export interface Task {
-  id: string;
-  title: string;
-  description: string;
-  amount: number;
-  files: string[];
-  status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
-  result?: TaskResult;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// 获取酒馆数据目录
-function getTavernDir(): string {
-  return path.join(Env.paths.userHome, 'tavern');
-}
-
-// 获取任务列表文件路径（JSONL 格式）
-function getTasksIndexPath(): string {
-  return path.join(getTavernDir(), 'tasks.jsonl');
-}
-
-// 获取任务文件夹路径
-function getTaskDir(taskId: string): string {
-  return path.join(getTavernDir(), 'tasks', taskId);
-}
-
-// 确保目录存在
-async function ensureDir(dirPath: string): Promise<void> {
-  try {
-    await fs.promises.mkdir(dirPath, { recursive: true });
-  } catch (err) {
-    log.error(`Failed to create directory ${dirPath}:`, err);
-    throw err;
-  }
-}
-
-// 读取任务列表索引（JSONL 格式：每行一个 JSON 对象）
-async function readTasksIndex(): Promise<Task[]> {
-  const indexPath = getTasksIndexPath();
-  try {
-    const content = await fs.promises.readFile(indexPath, 'utf-8');
-    const lines = content
-      .trim()
-      .split('\n')
-      .filter((line) => line.trim());
-    return lines.map((line) => JSON.parse(line) as Task);
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      return [];
-    }
-    throw err;
-  }
-}
-
-// 写入任务列表索引（JSONL 格式：每行一个 JSON 对象）
-async function writeTasksIndex(tasks: Task[]): Promise<void> {
-  await ensureDir(getTavernDir());
-  const indexPath = getTasksIndexPath();
-  const lines = tasks.map((task) => JSON.stringify(task)).join('\n');
-  await fs.promises.writeFile(indexPath, lines + (tasks.length > 0 ? '\n' : ''), 'utf-8');
-}
-
-// 追加任务到索引（避免读取整个文件）
-async function appendTaskToIndex(task: Task): Promise<void> {
-  await ensureDir(getTavernDir());
-  const indexPath = getTasksIndexPath();
-  const line = JSON.stringify(task) + '\n';
-  await fs.promises.appendFile(indexPath, line, 'utf-8');
-}
-
-// 读取任务元数据
-async function readTaskMeta(taskId: string): Promise<Task | null> {
-  const metaPath = path.join(getTaskDir(taskId), 'meta.json');
-  try {
-    const content = await fs.promises.readFile(metaPath, 'utf-8');
-    return JSON.parse(content) as Task;
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      return null;
-    }
-    throw err;
-  }
-}
-
-// 写入任务元数据
-async function writeTaskMeta(taskId: string, task: Task): Promise<void> {
-  const taskDir = getTaskDir(taskId);
-  await ensureDir(taskDir);
-  const metaPath = path.join(taskDir, 'meta.json');
-  await fs.promises.writeFile(metaPath, JSON.stringify(task, null, 2), 'utf-8');
-}
+export type { Task, TaskResult };
 
 export function registerTavernRoutes(router: Router): void {
-  // 获取任务列表
   router.get('/tavern/tasks', async (ctx) => {
     try {
-      const tasks = await readTasksIndex();
-      // 按创建时间倒序排列
+      const store = await TavernStore.getInstance();
+      const tasks = await store.readIndex();
       tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       ctx.body = { tasks };
     } catch (err) {
@@ -140,7 +40,6 @@ export function registerTavernRoutes(router: Router): void {
     }
   });
 
-  // 获取任务详情
   router.get('/tavern/tasks/:id', async (ctx) => {
     const taskId = ctx.params.id;
     if (!taskId) {
@@ -150,7 +49,8 @@ export function registerTavernRoutes(router: Router): void {
     }
 
     try {
-      const task = await readTaskMeta(taskId);
+      const store = await TavernStore.getInstance();
+      const task = await store.readMeta(taskId);
       if (!task) {
         ctx.status = 404;
         ctx.body = { error: 'Task not found' };
@@ -164,7 +64,6 @@ export function registerTavernRoutes(router: Router): void {
     }
   });
 
-  // 发布新任务
   router.post('/tavern/tasks', async (ctx) => {
     try {
       const body = ctx.request.body as Record<string, unknown>;
@@ -186,11 +85,8 @@ export function registerTavernRoutes(router: Router): void {
         return;
       }
 
-      // 创建任务
       const taskId = nanoid();
       const now = new Date().toISOString();
-
-      // 文件路径列表（前端传递文件路径引用）
       const filePaths = filePathsInput || [];
 
       const task: Task = {
@@ -204,11 +100,9 @@ export function registerTavernRoutes(router: Router): void {
         updatedAt: now
       };
 
-      // 写入任务元数据
-      await writeTaskMeta(taskId, task);
-
-      // 追加到任务列表索引（JSONL 格式，追加新行）
-      await appendTaskToIndex(task);
+      const store = await TavernStore.getInstance();
+      await store.writeMeta(taskId, task);
+      await store.appendToIndex(task);
 
       log.info(`Task created: ${taskId}`);
       ctx.body = { task };
@@ -219,7 +113,6 @@ export function registerTavernRoutes(router: Router): void {
     }
   });
 
-  // 更新任务状态和结果
   router.patch('/tavern/tasks/:id', async (ctx) => {
     const taskId = ctx.params.id;
     if (!taskId) {
@@ -233,33 +126,25 @@ export function registerTavernRoutes(router: Router): void {
       const status = body.status as Task['status'] | undefined;
       const result = body.result as TaskResult | undefined;
 
-      const task = await readTaskMeta(taskId);
+      const store = await TavernStore.getInstance();
+      const task = await store.readMeta(taskId);
       if (!task) {
         ctx.status = 404;
         ctx.body = { error: 'Task not found' };
         return;
       }
 
-      // 更新状态
-      if (status) {
-        task.status = status;
-      }
-
-      // 更新结果
-      if (result) {
-        task.result = result;
-      }
-
+      if (status) task.status = status;
+      if (result) task.result = result;
       task.updatedAt = new Date().toISOString();
 
-      await writeTaskMeta(taskId, task);
+      await store.writeMeta(taskId, task);
 
-      // 更新索引
-      const tasks = await readTasksIndex();
+      const tasks = await store.readIndex();
       const index = tasks.findIndex((t) => t.id === taskId);
       if (index >= 0) {
         tasks[index] = task;
-        await writeTasksIndex(tasks);
+        await store.writeIndex(tasks);
       }
 
       log.info(`Task updated: ${taskId}${status ? `, status: ${status}` : ''}${result ? ', result updated' : ''}`);
@@ -271,7 +156,6 @@ export function registerTavernRoutes(router: Router): void {
     }
   });
 
-  // 删除任务
   router.delete('/tavern/tasks/:id', async (ctx) => {
     const taskId = ctx.params.id;
     if (!taskId) {
@@ -281,21 +165,15 @@ export function registerTavernRoutes(router: Router): void {
     }
 
     try {
-      const task = await readTaskMeta(taskId);
+      const store = await TavernStore.getInstance();
+      const task = await store.readMeta(taskId);
       if (!task) {
         ctx.status = 404;
         ctx.body = { error: 'Task not found' };
         return;
       }
 
-      // 删除任务文件夹
-      const taskDir = getTaskDir(taskId);
-      await fs.promises.rm(taskDir, { recursive: true, force: true });
-
-      // 从索引中移除
-      const tasks = await readTasksIndex();
-      const filtered = tasks.filter((t) => t.id !== taskId);
-      await writeTasksIndex(filtered);
+      await store.deleteTask(taskId);
 
       log.info(`Task deleted: ${taskId}`);
       ctx.body = { success: true };
@@ -304,5 +182,27 @@ export function registerTavernRoutes(router: Router): void {
       ctx.status = 500;
       ctx.body = { error: 'Failed to delete task' };
     }
+  });
+
+  // ==================== TaskScheduler 管理 ====================
+
+  router.get('/tavern/scheduler/status', (ctx) => {
+    const scheduler = TaskScheduler.getInstance();
+    ctx.body = {
+      running: scheduler.isRunning(),
+      activeExecutions: scheduler.getActiveExecutions()
+    };
+  });
+
+  router.post('/tavern/scheduler/start', (ctx) => {
+    const scheduler = TaskScheduler.getInstance();
+    scheduler.start();
+    ctx.body = { success: true, running: scheduler.isRunning() };
+  });
+
+  router.post('/tavern/scheduler/stop', (ctx) => {
+    const scheduler = TaskScheduler.getInstance();
+    scheduler.stop();
+    ctx.body = { success: true, running: scheduler.isRunning() };
   });
 }

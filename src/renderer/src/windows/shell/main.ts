@@ -1,17 +1,17 @@
-import '@/assets/tailwind.css'
-import '@/assets/main.css'
+import '@/assets/tailwind.css';
+import '@/assets/main.css';
 
-import { createApp } from 'vue'
-import { createPinia } from 'pinia'
-import ShellApp from './ShellApp.vue'
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
+import ShellApp from './ShellApp.vue';
 
 // 创建 Vue 应用
-const app = createApp(ShellApp)
+const app = createApp(ShellApp);
 
 // 创建 Pinia 实例
-const pinia = createPinia()
+const pinia = createPinia();
 
-app.use(pinia)
+app.use(pinia);
 
 // 挂载到 DOM
-app.mount('#app')
+app.mount('#app');

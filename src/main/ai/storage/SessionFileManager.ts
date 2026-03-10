@@ -11,7 +11,10 @@
  * └── shared/          # 共享目录
  */
 
+import { createLogger } from '@main/common/logger';
 import { mkdir, writeFile, readFile, readdir, stat } from 'fs/promises';
+
+const log = createLogger('SessionFileManager');
 import { join } from 'path';
 import { app } from 'electron';
 import { existsSync } from 'fs';
@@ -71,7 +74,7 @@ export class SessionFileManager {
     }
 
     this.initialized = true;
-    console.log(`[SessionFileManager] Initialized session directory: ${this.basePath}`);
+    log.info(`Initialized session directory: ${this.basePath}`);
   }
 
   /**
@@ -514,7 +517,7 @@ export class SessionFileManager {
           planVersions = plans.filter((f) => f.endsWith('.json')).length;
         }
       } catch (error) {
-        console.error('[SessionFileManager] Failed to get stats:', error);
+        log.error('Failed to get stats:', error);
       }
     }
 
@@ -555,6 +558,9 @@ export class SessionFileManager {
   }
 }
 
+/** 会话管理器缓存最大实例数，防止内存泄漏 */
+const MAX_SESSION_CACHE = 50;
+
 /**
  * 会话文件管理器工厂
  * 维护会话管理器实例的缓存
@@ -567,6 +573,12 @@ class SessionFileManagerFactory {
    */
   static getInstance(sessionId: string): SessionFileManager {
     if (!this.instances.has(sessionId)) {
+      if (this.instances.size >= MAX_SESSION_CACHE) {
+        const oldestKey = this.instances.keys().next().value;
+        if (oldestKey !== undefined) {
+          this.instances.delete(oldestKey);
+        }
+      }
       this.instances.set(sessionId, new SessionFileManager(sessionId));
     }
     return this.instances.get(sessionId)!;

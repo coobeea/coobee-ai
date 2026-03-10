@@ -14,6 +14,17 @@ const router = createRouter({
           component: () => import('@/views/AgentView.vue')
         },
         {
+          path: 'employee',
+          name: 'employee',
+          component: () => import('@/views/EmployeeView.vue')
+        },
+        {
+          path: 'employee/:id/chat',
+          name: 'employee-chat',
+          component: () => import('@/views/EmployeeChatView.vue'),
+          meta: { fullscreen: true } // 标记为全屏模式，隐藏侧边栏（需要在 Layout 处理）
+        },
+        {
           path: 'thread/:id',
           name: 'thread',
           component: () => import('@/views/ThreadView.vue')
@@ -34,9 +45,19 @@ const router = createRouter({
           component: () => import('@/views/BrainView.vue')
         },
         {
+          path: 'brain-monitor',
+          name: 'brain-monitor',
+          component: () => import('@/views/BrainMonitorView.vue')
+        },
+        {
           path: 'cron',
           name: 'cron',
           component: () => import('@/views/CronView.vue')
+        },
+        {
+          path: 'shared-drive',
+          name: 'shared-drive',
+          component: () => import('@/views/SharedDriveView.vue')
         },
         {
           path: 'logs',
@@ -47,6 +68,26 @@ const router = createRouter({
           path: 'settings',
           name: 'settings',
           component: () => import('@/views/SettingsView.vue')
+        },
+        {
+          path: 'observability',
+          name: 'observability',
+          component: () => import('@/views/observability/ObservabilityView.vue')
+        },
+        {
+          path: 'discussion',
+          name: 'discussion',
+          component: () => import('@/views/DiscussionView.vue')
+        },
+        {
+          path: 'consultation',
+          name: 'consultation',
+          component: () => import('@/views/DiscussionView.vue') // ✅ 复用 DiscussionView
+        },
+        {
+          path: 'designer',
+          name: 'designer',
+          component: () => import('@/views/AgentDesigner.vue')
         }
       ]
     }

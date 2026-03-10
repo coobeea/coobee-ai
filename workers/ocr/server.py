@@ -34,7 +34,31 @@ except ImportError:
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_NAME = "GLM-OCR"
-MODEL_DIR = os.environ.get("MODEL_DIR", "/Users/lifeng/data/models")
+
+# 默认路径
+DEFAULT_MODEL_DIR = os.path.join(os.environ.get("HOME", ""), ".cache", "modelscope", "hub")
+MODEL_DIR = os.environ.get("MODEL_DIR", DEFAULT_MODEL_DIR)
+
+# 尝试读取本地配置覆盖 (local_config.json)
+local_config_path = os.path.join(SCRIPT_DIR, "local_config.json")
+if os.path.exists(local_config_path):
+    try:
+        import json
+        with open(local_config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        if isinstance(config, dict):
+            if "model_dir" in config and isinstance(config["model_dir"], str):
+                p = config["model_dir"]
+                if not os.path.isabs(p):
+                    p = os.path.abspath(os.path.join(SCRIPT_DIR, p))
+                MODEL_DIR = p
+                print(f"[OCR Config] MODEL_DIR -> {MODEL_DIR}")
+
+            if "model_name" in config and isinstance(config["model_name"], str) and config["model_name"].strip():
+                MODEL_NAME = config["model_name"].strip()
+                print(f"[OCR Config] MODEL_NAME -> {MODEL_NAME}")
+    except Exception as e:
+        print(f"[OCR Config] 读取本地配置失败: {e}", file=sys.stderr)
 
 logging.basicConfig(level=logging.INFO, format="[OCR] %(message)s")
 log = logging.getLogger("ocr")

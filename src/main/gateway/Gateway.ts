@@ -21,7 +21,17 @@ import { registerThreadRoutes } from './http/threads';
 import { registerSkillRoutes } from './http/skills';
 import { registerFileRoutes } from './http/files';
 import { registerTavernRoutes } from './http/tavern';
+import { registerSharedDriveRoutes } from './http/shared-drive';
+import { registerEmployeeRoutes } from './http/employee';
 import { registerCronJobRoutes } from './http/cron-jobs';
+import { registerBrainMetricsRoutes } from './http/brain-metrics';
+import { registerMetricsRoutes } from './http/metrics';
+import { registerMonitoringRoutes } from './http/monitoring';
+import { registerProcessRoutes } from './http/processes';
+import { registerTerminalRoutes } from './http/terminals';
+import { registerAgentHomeRoutes } from './http/agent-home';
+import { registerWebhookRoutes } from './http/webhooks';
+import { registerDiscussionRoutes } from './http/discussion';
 import { GatewayErrorCode, GatewayMethodError } from './protocol/errors';
 import type {
   GatewayRequest,
@@ -92,7 +102,78 @@ export class Gateway implements GatewayApi {
     // 启动网络层
     this.server.start();
 
+    // 初始化并启动 Cron 调度器（不阻塞 Gateway 启动，失败不影响主流程）
+    void this.startCronSystem().catch((err) => {
+      log.error('[Gateway] Cron system start failed', err);
+    });
+
+    // 启动 TaskScheduler（自主任务调度，不阻塞 Gateway）
+    void this.startTaskScheduler().catch((err) => {
+      log.error('[Gateway] TaskScheduler start failed', err);
+    });
+
     log.info(`[Gateway] Started with ${this.methods.size} method(s)`);
+  }
+
+  /**
+   * 初始化 Cron 子系统并加载所有 active 状态的定时任务
+   */
+  private async startCronSystem(): Promise<void> {
+    try {
+      const { initializeCronSystem, getCronScheduler } = await import('@main/ai/cron');
+      await initializeCronSystem();
+
+      const scheduler = getCronScheduler();
+      await scheduler.start();
+
+      log.info('[Gateway] Cron scheduler started');
+    } catch (error) {
+      log.error('[Gateway] Cron system initialization failed', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 启动 TaskScheduler（自主任务调度器）
+   */
+  private async startTaskScheduler(): Promise<void> {
+    try {
+      const { TaskScheduler } = await import('@main/ai/tavern/TaskScheduler');
+      const scheduler = TaskScheduler.getInstance();
+      scheduler.start();
+      log.info('[Gateway] TaskScheduler started');
+    } catch (error) {
+      log.error('[Gateway] TaskScheduler initialization failed', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 停止 TaskScheduler
+   */
+  private async stopTaskScheduler(): Promise<void> {
+    try {
+      const { TaskScheduler } = await import('@main/ai/tavern/TaskScheduler');
+      TaskScheduler.getInstance().stop();
+      log.info('[Gateway] TaskScheduler stopped');
+    } catch (error) {
+      log.error('[Gateway] TaskScheduler stop failed', error);
+    }
+  }
+
+  /**
+   * 停止 Cron 调度器
+   */
+  private async stopCronSystem(): Promise<void> {
+    try {
+      const { getCronScheduler } = await import('@main/ai/cron');
+      const scheduler = getCronScheduler();
+      await scheduler.stop();
+      log.info('[Gateway] Cron scheduler stopped');
+    } catch (error) {
+      log.error('[Gateway] Cron system stop failed', error);
+      // 不抛出，避免阻塞关闭流程
+    }
   }
 
   // ==================== 方法发现（类比 WsHub.discoverChannels） ====================
@@ -183,12 +264,22 @@ export class Gateway implements GatewayApi {
   private registerHttpRoutes(): void {
     if (!this.server) return;
     const router = this.server.getRouter();
+    registerAgentHomeRoutes(router);
     registerAgentRoutes(router);
     registerThreadRoutes(router);
     registerSkillRoutes(router);
     registerFileRoutes(router);
     registerTavernRoutes(router);
+    registerSharedDriveRoutes(router);
+    registerEmployeeRoutes(router);
     registerCronJobRoutes(router);
+    registerBrainMetricsRoutes(router);
+    registerMetricsRoutes(router);
+    registerMonitoringRoutes(router);
+    registerProcessRoutes(router);
+    registerTerminalRoutes(router);
+    registerWebhookRoutes(router);
+    registerDiscussionRoutes(router);
 
     // 动态挂载 Extension 注册的 HTTP 路由
     this.mountExtensionHttpRoutes(router);
@@ -376,6 +467,12 @@ export class Gateway implements GatewayApi {
 
   /** 关闭 Gateway */
   async close(): Promise<void> {
+    // 停止 TaskScheduler
+    await this.stopTaskScheduler();
+
+    // 停止 Cron 调度器
+    await this.stopCronSystem();
+
     // 清理所有 EventBridge 监听器
     for (const cleanup of this.eventBridgeCleanups) {
       try {

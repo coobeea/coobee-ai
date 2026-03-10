@@ -5,8 +5,11 @@
  * 供 SessionCompressor 和 FileSession 使用，替代之前的手写正则估算。
  */
 
-import { estimateTokenCount, isWithinTokenLimit } from 'tokenx'
-import type { AgentInputItem } from '@openai/agents'
+import { estimateTokenCount, isWithinTokenLimit } from 'tokenx';
+import type { AgentInputItem } from '@openai/agents';
+import { createLogger } from '@main/common/logger';
+
+const log = createLogger('runtime:token-counter');
 
 /**
  * 估算文本的 token 数量
@@ -15,13 +18,13 @@ import type { AgentInputItem } from '@openai/agents'
  * @returns token 数量
  */
 export function countTokens(text: string | null | undefined): number {
-  if (!text) return 0
+  if (!text) return 0;
 
   try {
-    return estimateTokenCount(text)
+    return estimateTokenCount(text);
   } catch (error) {
-    console.error('[TokenCounter] 计算失败，降级到简单估算:', error)
-    return estimateFallback(text)
+    log.error('计算失败，降级到简单估算:', error);
+    return estimateFallback(text);
   }
 }
 
@@ -34,14 +37,14 @@ export function countTokens(text: string | null | undefined): number {
  * @returns token 数量
  */
 export function countItemTokens(item: AgentInputItem): number {
-  if (!item) return 0
+  if (!item) return 0;
 
   try {
-    const text = JSON.stringify(item)
-    return countTokens(text)
+    const text = JSON.stringify(item);
+    return countTokens(text);
   } catch (error) {
-    console.error('[TokenCounter] Item 序列化失败:', error)
-    return 0
+    log.error('Item 序列化失败:', error);
+    return 0;
   }
 }
 
@@ -52,13 +55,13 @@ export function countItemTokens(item: AgentInputItem): number {
  * @returns 总 token 数量
  */
 export function countItemsTokens(items: AgentInputItem[]): number {
-  if (!items || items.length === 0) return 0
+  if (!items || items.length === 0) return 0;
 
-  let total = 0
+  let total = 0;
   for (const item of items) {
-    total += countItemTokens(item)
+    total += countItemTokens(item);
   }
-  return total
+  return total;
 }
 
 /**
@@ -69,12 +72,12 @@ export function countItemsTokens(items: AgentInputItem[]): number {
  * @returns 是否在限制内
  */
 export function isWithinLimit(text: string, limit: number): boolean {
-  if (!text) return true
+  if (!text) return true;
 
   try {
-    return isWithinTokenLimit(text, limit)
+    return isWithinTokenLimit(text, limit);
   } catch {
-    return countTokens(text) <= limit
+    return countTokens(text) <= limit;
   }
 }
 
@@ -86,11 +89,11 @@ export function isWithinLimit(text: string, limit: number): boolean {
  */
 export function formatTokens(tokens: number): string {
   if (tokens < 1000) {
-    return `${tokens} tokens`
+    return `${tokens} tokens`;
   } else if (tokens < 1000000) {
-    return `${(tokens / 1000).toFixed(1)}K tokens`
+    return `${(tokens / 1000).toFixed(1)}K tokens`;
   } else {
-    return `${(tokens / 1000000).toFixed(2)}M tokens`
+    return `${(tokens / 1000000).toFixed(2)}M tokens`;
   }
 }
 
@@ -98,11 +101,11 @@ export function formatTokens(tokens: number): string {
  * 降级估算方法（当 tokenx 失败时使用）
  */
 function estimateFallback(text: string): number {
-  if (!text) return 0
+  if (!text) return 0;
 
-  const chinese = (text.match(/[\u4e00-\u9fa5]/g) || []).length
-  const english = (text.match(/[a-zA-Z]+/g) || []).join('').length
-  const numbers = (text.match(/\d+/g) || []).join('').length
+  const chinese = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const english = (text.match(/[a-zA-Z]+/g) || []).join('').length;
+  const numbers = (text.match(/\d+/g) || []).join('').length;
 
-  return Math.ceil(chinese * 1.5 + english / 4 + numbers / 3)
+  return Math.ceil(chinese * 1.5 + english / 4 + numbers / 3);
 }

@@ -74,7 +74,7 @@ Extension 可以注册以下能力：
 ### 3. 创建 index.ts（代码入口）
 
 ```typescript
-import type { ExtensionApi } from '@main/common/extension'
+import type { ExtensionApi } from '@main/common/extension';
 
 export default {
   id: 'my-extension',
@@ -82,7 +82,7 @@ export default {
   register(api: ExtensionApi) {
     // 在这里注册能力
   }
-}
+};
 ```
 
 `register` 函数接收一个 `ExtensionApi` 对象，支持以下方法：
@@ -102,9 +102,9 @@ api.registerTool({
     required: ['input']
   },
   execute: async (params) => {
-    return `处理结果: ${params.input}`
+    return `处理结果: ${params.input}`;
   }
-})
+});
 ```
 
 #### on — 注册生命周期钩子
@@ -128,35 +128,35 @@ api.registerTool({
 api.on('before_agent_start', async (event) => {
   return {
     prependContext: '额外上下文信息...'
-  }
-})
+  };
+});
 
 api.on(
   'before_tool_call',
   async (event) => {
     if (event.toolName === 'dangerous_tool') {
-      return { block: true, blockReason: '该工具当前被禁用' }
+      return { block: true, blockReason: '该工具当前被禁用' };
     }
-    return { params: { ...event.params, extra: 'value' } }
+    return { params: { ...event.params, extra: 'value' } };
   },
   { priority: 10 }
-)
+);
 ```
 
 **void 钩子**用于观察/记录：
 
 ```typescript
 api.on('agent_end', async (event) => {
-  console.log(`Agent 完成: ${event.success}, 耗时: ${event.durationMs}ms`)
-})
+  console.log(`Agent 完成: ${event.success}, 耗时: ${event.durationMs}ms`);
+});
 ```
 
 #### registerGatewayMethod — 注册 RPC 方法
 
 ```typescript
 api.registerGatewayMethod('myext.status', async (params) => {
-  return { status: 'running', uptime: process.uptime() }
-})
+  return { status: 'running', uptime: process.uptime() };
+});
 ```
 
 注意：方法名必须包含 `.`（命名空间），不能使用 `system.` 前缀（保留给系统）。
@@ -204,7 +204,7 @@ my-skill-pack/
 ### index.ts
 
 ```typescript
-import type { ExtensionApi } from '@main/common/extension'
+import type { ExtensionApi } from '@main/common/extension';
 
 export default {
   id: 'translate-helper',
@@ -224,15 +224,15 @@ export default {
       },
       execute: async (params) => {
         // 实际翻译逻辑
-        return `[翻译结果] ${params.text} → ${params.targetLang}`
+        return `[翻译结果] ${params.text} → ${params.targetLang}`;
       }
-    })
+    });
 
     api.on('after_tool_call', async (event) => {
-      api.logger.info(`工具 ${event.toolName} 执行完成，耗时 ${event.durationMs}ms`)
-    })
+      api.logger.info(`工具 ${event.toolName} 执行完成，耗时 ${event.durationMs}ms`);
+    });
   }
-}
+};
 ```
 
 ### skills/translate-guide/SKILL.md

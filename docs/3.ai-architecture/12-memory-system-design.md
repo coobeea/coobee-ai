@@ -137,26 +137,26 @@ export class SessionMemoryStore {
    * 追加消息到会话历史
    */
   async appendMessage(message: {
-    role: 'user' | 'assistant' | 'tool'
-    content: string
-    timestamp?: number
-    metadata?: Record<string, unknown>
+    role: 'user' | 'assistant' | 'tool';
+    content: string;
+    timestamp?: number;
+    metadata?: Record<string, unknown>;
   }): Promise<void> {
     const entry = {
       ...message,
       timestamp: message.timestamp || Date.now()
-    }
+    };
 
     // 写入 JSONL 文件
-    await this.sessionManager.appendMessage(entry)
+    await this.sessionManager.appendMessage(entry);
   }
 
   /**
    * 获取完整对话历史
    */
   async getHistory(limit?: number): Promise<Message[]> {
-    const messages = await this.sessionManager.readMessages()
-    return limit ? messages.slice(-limit) : messages
+    const messages = await this.sessionManager.readMessages();
+    return limit ? messages.slice(-limit) : messages;
   }
 
   /**
@@ -164,7 +164,7 @@ export class SessionMemoryStore {
    */
   async clearHistory(): Promise<void> {
     // 清空文件
-    await this.sessionManager.clearSession()
+    await this.sessionManager.clearSession();
   }
 }
 ```
@@ -178,39 +178,39 @@ export class SessionMemoryStore {
 ```typescript
 // src/main/ai/memory/TrimmingSession.ts
 
-import { SessionABC } from '@openai/agents'
-import type { TResponseInputItem } from '@openai/agents'
+import { SessionABC } from '@openai/agents';
+import type { TResponseInputItem } from '@openai/agents';
 
 /**
  * 修剪式 Session
  * 只保留最近 N 轮对话
  */
 export class TrimmingSession extends SessionABC {
-  private items: TResponseInputItem[] = []
+  private items: TResponseInputItem[] = [];
 
   constructor(
     private sessionId: string,
     private maxTurns: number = 8 // 保留最近8轮
   ) {
-    super()
+    super();
   }
 
   async getItems(limit?: number): Promise<TResponseInputItem[]> {
-    const trimmed = this.trimToLastTurns(this.items)
-    return limit ? trimmed.slice(-limit) : trimmed
+    const trimmed = this.trimToLastTurns(this.items);
+    return limit ? trimmed.slice(-limit) : trimmed;
   }
 
   async addItems(items: TResponseInputItem[]): Promise<void> {
-    this.items.push(...items)
-    this.items = this.trimToLastTurns(this.items)
+    this.items.push(...items);
+    this.items = this.trimToLastTurns(this.items);
   }
 
   async popItem(): Promise<TResponseInputItem | null> {
-    return this.items.pop() || null
+    return this.items.pop() || null;
   }
 
   async clearSession(): Promise<void> {
-    this.items = []
+    this.items = [];
   }
 
   /**
@@ -218,28 +218,28 @@ export class TrimmingSession extends SessionABC {
    * 一轮 = 一个 user 消息 + 之后的所有内容（assistant、tool）
    */
   private trimToLastTurns(items: TResponseInputItem[]): TResponseInputItem[] {
-    let count = 0
-    let startIdx = 0
+    let count = 0;
+    let startIdx = 0;
 
     // 从后往前扫描，找到第 N 个 user 消息
     for (let i = items.length - 1; i >= 0; i--) {
       if (this.isUserMessage(items[i])) {
-        count++
+        count++;
         if (count === this.maxTurns) {
-          startIdx = i
-          break
+          startIdx = i;
+          break;
         }
       }
     }
 
-    return items.slice(startIdx)
+    return items.slice(startIdx);
   }
 
   private isUserMessage(item: TResponseInputItem): boolean {
     if (typeof item === 'object' && item !== null) {
-      return (item as any).role === 'user'
+      return (item as any).role === 'user';
     }
-    return false
+    return false;
   }
 }
 ```
@@ -249,9 +249,9 @@ export class TrimmingSession extends SessionABC {
 ```typescript
 // src/main/ai/memory/SummarizingSession.ts
 
-import { SessionABC } from '@openai/agents'
-import type { TResponseInputItem } from '@openai/agents'
-import { OpenAI } from 'openai'
+import { SessionABC } from '@openai/agents';
+import type { TResponseInputItem } from '@openai/agents';
+import { OpenAI } from 'openai';
 
 /**
  * 总结式 Session
@@ -259,9 +259,9 @@ import { OpenAI } from 'openai'
  */
 export class SummarizingSession extends SessionABC {
   private records: Array<{
-    msg: Record<string, unknown>
-    meta: { synthetic?: boolean; kind?: string }
-  }> = []
+    msg: Record<string, unknown>;
+    meta: { synthetic?: boolean; kind?: string };
+  }> = [];
 
   constructor(
     private sessionId: string,
@@ -270,12 +270,12 @@ export class SummarizingSession extends SessionABC {
     private openai: OpenAI,
     private summaryModel: string = 'gpt-4o'
   ) {
-    super()
+    super();
   }
 
   async getItems(limit?: number): Promise<TResponseInputItem[]> {
-    const msgs = this.records.map((r) => r.msg as TResponseInputItem)
-    return limit ? msgs.slice(-limit) : msgs
+    const msgs = this.records.map((r) => r.msg as TResponseInputItem);
+    return limit ? msgs.slice(-limit) : msgs;
   }
 
   async addItems(items: TResponseInputItem[]): Promise<void> {
@@ -284,31 +284,31 @@ export class SummarizingSession extends SessionABC {
       this.records.push({
         msg: item as Record<string, unknown>,
         meta: { synthetic: false }
-      })
+      });
     }
 
     // 2. 检查是否需要总结
-    const userCount = this.countUserMessages()
+    const userCount = this.countUserMessages();
 
     if (userCount > this.contextLimit) {
-      await this.summarizeOldTurns()
+      await this.summarizeOldTurns();
     }
   }
 
   async popItem(): Promise<TResponseInputItem | null> {
-    const rec = this.records.pop()
-    return (rec?.msg as TResponseInputItem) || null
+    const rec = this.records.pop();
+    return (rec?.msg as TResponseInputItem) || null;
   }
 
   async clearSession(): Promise<void> {
-    this.records = []
+    this.records = [];
   }
 
   /**
    * 统计 user 消息数量
    */
   private countUserMessages(): number {
-    return this.records.filter((r) => r.msg.role === 'user' && !r.meta.synthetic).length
+    return this.records.filter((r) => r.msg.role === 'user' && !r.meta.synthetic).length;
   }
 
   /**
@@ -316,18 +316,18 @@ export class SummarizingSession extends SessionABC {
    */
   private async summarizeOldTurns(): Promise<void> {
     // 1. 找到保留边界（最近 N 轮的起点）
-    const boundary = this.findKeepBoundary()
+    const boundary = this.findKeepBoundary();
 
     // 2. 需要总结的部分
-    const toSummarize = this.records.slice(0, boundary)
-    const toKeep = this.records.slice(boundary)
+    const toSummarize = this.records.slice(0, boundary);
+    const toKeep = this.records.slice(boundary);
 
     if (toSummarize.length === 0) {
-      return
+      return;
     }
 
     // 3. 调用 LLM 生成摘要
-    const summary = await this.generateSummary(toSummarize.map((r) => r.msg))
+    const summary = await this.generateSummary(toSummarize.map((r) => r.msg));
 
     // 4. 替换为摘要 + 保留的最近 N 轮
     this.records = [
@@ -346,23 +346,23 @@ export class SummarizingSession extends SessionABC {
         meta: { synthetic: true, kind: 'summary' }
       },
       ...toKeep
-    ]
+    ];
   }
 
   /**
    * 找到保留边界（最近 N 轮的起点）
    */
   private findKeepBoundary(): number {
-    let count = 0
+    let count = 0;
     for (let i = this.records.length - 1; i >= 0; i--) {
       if (this.records[i].msg.role === 'user' && !this.records[i].meta.synthetic) {
-        count++
+        count++;
         if (count === this.keepLastNTurns) {
-          return i
+          return i;
         }
       }
     }
-    return 0
+    return 0;
   }
 
   /**
@@ -385,11 +385,9 @@ export class SummarizingSession extends SessionABC {
 - **进行中**: [正在处理的任务]
 - **待办**: [未解决的问题]
 - **关键信息**: [重要的数据、决策、约束]
-    `.trim()
+    `.trim();
 
-    const historyText = messages
-      .map((m) => `${String(m.role).toUpperCase()}: ${m.content}`)
-      .join('\n')
+    const historyText = messages.map((m) => `${String(m.role).toUpperCase()}: ${m.content}`).join('\n');
 
     const response = await this.openai.chat.completions.create({
       model: this.summaryModel,
@@ -399,9 +397,9 @@ export class SummarizingSession extends SessionABC {
       ],
       max_tokens: 400,
       temperature: 0.3 // 低温度，保证稳定性
-    })
+    });
 
-    return response.choices[0]?.message?.content || '无法生成摘要'
+    return response.choices[0]?.message?.content || '无法生成摘要';
   }
 }
 ```
@@ -417,33 +415,33 @@ export class SummarizingSession extends SessionABC {
  * 会话状态
  */
 export interface SessionState {
-  sessionId: string
+  sessionId: string;
 
   // 当前计划
   currentPlan?: {
-    planVersion: number
-    totalSubTasks: number
-    completedSubTasks: number
-  }
+    planVersion: number;
+    totalSubTasks: number;
+    completedSubTasks: number;
+  };
 
   // 子任务状态
-  completedSubtasks: string[]
-  pendingSubtasks: string[]
-  failedSubtasks: string[]
+  completedSubtasks: string[];
+  pendingSubtasks: string[];
+  failedSubtasks: string[];
 
   // 检查点（断点续传）
   checkpoints: Array<{
-    id: string
-    timestamp: number
-    state: Record<string, unknown>
-  }>
+    id: string;
+    timestamp: number;
+    state: Record<string, unknown>;
+  }>;
 
   // 自定义变量
-  variables: Record<string, unknown>
+  variables: Record<string, unknown>;
 
   // 元数据
-  createdAt: number
-  updatedAt: number
+  createdAt: number;
+  updatedAt: number;
 }
 
 /**
@@ -451,7 +449,7 @@ export interface SessionState {
  * 管理会话级别的临时状态
  */
 export class WorkingMemoryStore {
-  private state: SessionState
+  private state: SessionState;
 
   constructor(
     private sessionManager: SessionFileManager,
@@ -466,20 +464,20 @@ export class WorkingMemoryStore {
       variables: {},
       createdAt: Date.now(),
       updatedAt: Date.now()
-    }
+    };
   }
 
   /**
    * 初始化（从文件加载状态）
    */
   async initialize(): Promise<void> {
-    const savedState = await this.sessionManager.readSharedContext()
+    const savedState = await this.sessionManager.readSharedContext();
 
     if (savedState && typeof savedState === 'object') {
-      this.state = savedState as SessionState
+      this.state = savedState as SessionState;
     }
 
-    console.log(`[WorkingMemoryStore] Initialized for session: ${this.sessionId}`)
+    console.log(`[WorkingMemoryStore] Initialized for session: ${this.sessionId}`);
   }
 
   // ========== 变量管理 ==========
@@ -488,32 +486,32 @@ export class WorkingMemoryStore {
    * 设置变量
    */
   async setVariable(key: string, value: unknown): Promise<void> {
-    this.state.variables[key] = value
-    this.state.updatedAt = Date.now()
-    await this.persist()
+    this.state.variables[key] = value;
+    this.state.updatedAt = Date.now();
+    await this.persist();
   }
 
   /**
    * 获取变量
    */
   getVariable<T = unknown>(key: string): T | undefined {
-    return this.state.variables[key] as T | undefined
+    return this.state.variables[key] as T | undefined;
   }
 
   /**
    * 删除变量
    */
   async deleteVariable(key: string): Promise<void> {
-    delete this.state.variables[key]
-    this.state.updatedAt = Date.now()
-    await this.persist()
+    delete this.state.variables[key];
+    this.state.updatedAt = Date.now();
+    await this.persist();
   }
 
   /**
    * 获取所有变量
    */
   getAllVariables(): Record<string, unknown> {
-    return { ...this.state.variables }
+    return { ...this.state.variables };
   }
 
   // ========== 计划状态 ==========
@@ -521,21 +519,17 @@ export class WorkingMemoryStore {
   /**
    * 设置当前计划
    */
-  async setCurrentPlan(plan: {
-    planVersion: number
-    totalSubTasks: number
-    completedSubTasks: number
-  }): Promise<void> {
-    this.state.currentPlan = plan
-    this.state.updatedAt = Date.now()
-    await this.persist()
+  async setCurrentPlan(plan: { planVersion: number; totalSubTasks: number; completedSubTasks: number }): Promise<void> {
+    this.state.currentPlan = plan;
+    this.state.updatedAt = Date.now();
+    await this.persist();
   }
 
   /**
    * 获取当前计划
    */
   getCurrentPlan() {
-    return this.state.currentPlan
+    return this.state.currentPlan;
   }
 
   // ========== 子任务状态 ==========
@@ -545,15 +539,15 @@ export class WorkingMemoryStore {
    */
   async markSubtaskCompleted(subtaskId: string): Promise<void> {
     // 从 pending 移除
-    this.state.pendingSubtasks = this.state.pendingSubtasks.filter((id) => id !== subtaskId)
+    this.state.pendingSubtasks = this.state.pendingSubtasks.filter((id) => id !== subtaskId);
 
     // 添加到 completed
     if (!this.state.completedSubtasks.includes(subtaskId)) {
-      this.state.completedSubtasks.push(subtaskId)
+      this.state.completedSubtasks.push(subtaskId);
     }
 
-    this.state.updatedAt = Date.now()
-    await this.persist()
+    this.state.updatedAt = Date.now();
+    await this.persist();
   }
 
   /**
@@ -561,15 +555,15 @@ export class WorkingMemoryStore {
    */
   async markSubtaskFailed(subtaskId: string): Promise<void> {
     // 从 pending 移除
-    this.state.pendingSubtasks = this.state.pendingSubtasks.filter((id) => id !== subtaskId)
+    this.state.pendingSubtasks = this.state.pendingSubtasks.filter((id) => id !== subtaskId);
 
     // 添加到 failed
     if (!this.state.failedSubtasks.includes(subtaskId)) {
-      this.state.failedSubtasks.push(subtaskId)
+      this.state.failedSubtasks.push(subtaskId);
     }
 
-    this.state.updatedAt = Date.now()
-    await this.persist()
+    this.state.updatedAt = Date.now();
+    await this.persist();
   }
 
   /**
@@ -578,12 +572,12 @@ export class WorkingMemoryStore {
   async addPendingSubtasks(subtaskIds: string[]): Promise<void> {
     for (const id of subtaskIds) {
       if (!this.state.pendingSubtasks.includes(id)) {
-        this.state.pendingSubtasks.push(id)
+        this.state.pendingSubtasks.push(id);
       }
     }
 
-    this.state.updatedAt = Date.now()
-    await this.persist()
+    this.state.updatedAt = Date.now();
+    await this.persist();
   }
 
   /**
@@ -594,7 +588,7 @@ export class WorkingMemoryStore {
       completed: [...this.state.completedSubtasks],
       pending: [...this.state.pendingSubtasks],
       failed: [...this.state.failedSubtasks]
-    }
+    };
   }
 
   // ========== 检查点管理 ==========
@@ -610,30 +604,30 @@ export class WorkingMemoryStore {
         ...this.state,
         ...customState
       }
-    }
+    };
 
-    this.state.checkpoints.push(checkpoint)
-    await this.persist()
+    this.state.checkpoints.push(checkpoint);
+    await this.persist();
 
-    console.log(`[WorkingMemoryStore] Created checkpoint: ${checkpoint.id}`)
-    return checkpoint.id
+    console.log(`[WorkingMemoryStore] Created checkpoint: ${checkpoint.id}`);
+    return checkpoint.id;
   }
 
   /**
    * 恢复到检查点
    */
   async restoreCheckpoint(checkpointId: string): Promise<boolean> {
-    const checkpoint = this.state.checkpoints.find((cp) => cp.id === checkpointId)
+    const checkpoint = this.state.checkpoints.find((cp) => cp.id === checkpointId);
 
     if (!checkpoint) {
-      return false
+      return false;
     }
 
-    this.state = checkpoint.state as SessionState
-    await this.persist()
+    this.state = checkpoint.state as SessionState;
+    await this.persist();
 
-    console.log(`[WorkingMemoryStore] Restored checkpoint: ${checkpointId}`)
-    return true
+    console.log(`[WorkingMemoryStore] Restored checkpoint: ${checkpointId}`);
+    return true;
   }
 
   /**
@@ -643,7 +637,7 @@ export class WorkingMemoryStore {
     return this.state.checkpoints.map((cp) => ({
       id: cp.id,
       timestamp: cp.timestamp
-    }))
+    }));
   }
 
   // ========== 持久化 ==========
@@ -652,14 +646,14 @@ export class WorkingMemoryStore {
    * 持久化状态到文件
    */
   private async persist(): Promise<void> {
-    await this.sessionManager.writeSharedContext(this.state)
+    await this.sessionManager.writeSharedContext(this.state);
   }
 
   /**
    * 获取完整状态
    */
   getState(): SessionState {
-    return { ...this.state }
+    return { ...this.state };
   }
 
   /**
@@ -675,9 +669,9 @@ export class WorkingMemoryStore {
       variables: {},
       createdAt: this.state.createdAt,
       updatedAt: Date.now()
-    }
+    };
 
-    await this.persist()
+    await this.persist();
   }
 }
 ```
@@ -685,32 +679,32 @@ export class WorkingMemoryStore {
 **使用示例**：
 
 ```typescript
-const workingMemory = new WorkingMemoryStore(sessionManager, sessionId)
-await workingMemory.initialize()
+const workingMemory = new WorkingMemoryStore(sessionManager, sessionId);
+await workingMemory.initialize();
 
 // 存储任务 ID
-await workingMemory.setVariable('currentTaskId', 'task-001')
+await workingMemory.setVariable('currentTaskId', 'task-001');
 
 // 存储用户偏好
-await workingMemory.setVariable('preferredLanguage', 'zh-CN')
+await workingMemory.setVariable('preferredLanguage', 'zh-CN');
 
 // 更新计划状态
 await workingMemory.setCurrentPlan({
   planVersion: 2,
   totalSubTasks: 6,
   completedSubTasks: 3
-})
+});
 
 // 标记子任务完成
-await workingMemory.markSubtaskCompleted('subtask-001')
+await workingMemory.markSubtaskCompleted('subtask-001');
 
 // 创建检查点（断点续传）
 const checkpointId = await workingMemory.createCheckpoint({
   customData: 'some important state'
-})
+});
 
 // 恢复检查点
-await workingMemory.restoreCheckpoint(checkpointId)
+await workingMemory.restoreCheckpoint(checkpointId);
 ```
 
 ### 4. Long-Term Memory（长期记忆）
@@ -731,14 +725,14 @@ export class LongTermMemoryStore {
    * 保存记忆条目
    */
   async saveMemory(memory: {
-    type: 'preference' | 'lesson' | 'experience'
-    content: string
-    context?: string
-    importance: number // 1-10
-    userId?: string
-    sessionId?: string
+    type: 'preference' | 'lesson' | 'experience';
+    content: string;
+    context?: string;
+    importance: number; // 1-10
+    userId?: string;
+    sessionId?: string;
   }): Promise<string> {
-    const id = generateSnowflakeId()
+    const id = generateSnowflakeId();
 
     await this.db.execute(
       `INSERT INTO long_term_memory 
@@ -754,62 +748,62 @@ export class LongTermMemoryStore {
         memory.sessionId || null,
         Date.now()
       ]
-    )
+    );
 
-    return id
+    return id;
   }
 
   /**
    * 检索相关记忆
    */
   async retrieveMemories(query: {
-    userId?: string
-    type?: string
-    limit?: number
-    minImportance?: number
+    userId?: string;
+    type?: string;
+    limit?: number;
+    minImportance?: number;
   }): Promise<Memory[]> {
-    let sql = `SELECT * FROM long_term_memory WHERE 1=1`
-    const params: unknown[] = []
+    let sql = `SELECT * FROM long_term_memory WHERE 1=1`;
+    const params: unknown[] = [];
 
     if (query.userId) {
-      sql += ` AND user_id = ?`
-      params.push(query.userId)
+      sql += ` AND user_id = ?`;
+      params.push(query.userId);
     }
 
     if (query.type) {
-      sql += ` AND type = ?`
-      params.push(query.type)
+      sql += ` AND type = ?`;
+      params.push(query.type);
     }
 
     if (query.minImportance) {
-      sql += ` AND importance >= ?`
-      params.push(query.minImportance)
+      sql += ` AND importance >= ?`;
+      params.push(query.minImportance);
     }
 
-    sql += ` ORDER BY importance DESC, created_at DESC`
+    sql += ` ORDER BY importance DESC, created_at DESC`;
 
     if (query.limit) {
-      sql += ` LIMIT ?`
-      params.push(query.limit)
+      sql += ` LIMIT ?`;
+      params.push(query.limit);
     }
 
-    const rows = await this.db.query<Record<string, unknown>>(sql, params)
-    return rows as Memory[]
+    const rows = await this.db.query<Record<string, unknown>>(sql, params);
+    return rows as Memory[];
   }
 
   /**
    * 删除过期记忆
    */
   async cleanupOldMemories(daysToKeep: number = 90): Promise<number> {
-    const cutoffTime = Date.now() - daysToKeep * 24 * 60 * 60 * 1000
+    const cutoffTime = Date.now() - daysToKeep * 24 * 60 * 60 * 1000;
 
     const result = await this.db.execute(
       `DELETE FROM long_term_memory 
        WHERE created_at < ? AND importance < 5`,
       [cutoffTime]
-    )
+    );
 
-    return result.changes || 0
+    return result.changes || 0;
   }
 }
 ```
@@ -848,22 +842,17 @@ CREATE INDEX IF NOT EXISTS idx_ltm_created
 ## 🎯 综合使用示例
 
 ```typescript
-import {
-  SessionMemoryStore,
-  TrimmingSession,
-  SummarizingSession,
-  LongTermMemoryStore
-} from '@main/ai/memory'
-import { getSessionFileManager } from '@main/ai/storage'
-import { OpenAI } from 'openai'
+import { SessionMemoryStore, TrimmingSession, SummarizingSession, LongTermMemoryStore } from '@main/ai/memory';
+import { getSessionFileManager } from '@main/ai/storage';
+import { OpenAI } from 'openai';
 
 async function createMemorySystem(sessionId: string, userId?: string) {
   // 1. 会话文件管理器
-  const sessionManager = getSessionFileManager(sessionId)
-  await sessionManager.initialize()
+  const sessionManager = getSessionFileManager(sessionId);
+  await sessionManager.initialize();
 
   // 2. Session Memory（完整历史）
-  const sessionMemory = new SessionMemoryStore(sessionManager, sessionId)
+  const sessionMemory = new SessionMemoryStore(sessionManager, sessionId);
 
   // 3. Short-Term Memory（上下文窗口）
   // 选择策略：对于独立任务用 Trimming，复杂任务用 Summarizing
@@ -873,10 +862,10 @@ async function createMemorySystem(sessionId: string, userId?: string) {
     5, // 超过5轮触发总结
     new OpenAI(),
     'gpt-4o'
-  )
+  );
 
   // 4. Long-Term Memory（跨会话知识）
-  const longTermMemory = new LongTermMemoryStore(db)
+  const longTermMemory = new LongTermMemoryStore(db);
 
   return {
     sessionMemory,
@@ -885,20 +874,20 @@ async function createMemorySystem(sessionId: string, userId?: string) {
 
     // 便捷方法
     async addUserMessage(content: string) {
-      const msg = { role: 'user' as const, content, timestamp: Date.now() }
+      const msg = { role: 'user' as const, content, timestamp: Date.now() };
 
       // 存储到完整历史
-      await sessionMemory.appendMessage(msg)
+      await sessionMemory.appendMessage(msg);
 
       // 添加到上下文窗口
-      await shortTermMemory.addItems([msg])
+      await shortTermMemory.addItems([msg]);
     },
 
     async addAssistantMessage(content: string) {
-      const msg = { role: 'assistant' as const, content, timestamp: Date.now() }
+      const msg = { role: 'assistant' as const, content, timestamp: Date.now() };
 
-      await sessionMemory.appendMessage(msg)
-      await shortTermMemory.addItems([msg])
+      await sessionMemory.appendMessage(msg);
+      await shortTermMemory.addItems([msg]);
     },
 
     async saveImportantMemory(content: string, type: string, importance: number) {
@@ -908,7 +897,7 @@ async function createMemorySystem(sessionId: string, userId?: string) {
         importance,
         userId,
         sessionId
-      })
+      });
     },
 
     async getRelevantMemories(type?: string) {
@@ -917,23 +906,23 @@ async function createMemorySystem(sessionId: string, userId?: string) {
         type,
         minImportance: 5,
         limit: 10
-      })
+      });
     }
-  }
+  };
 }
 
 // 使用示例
-const memory = await createMemorySystem('session-123', 'user-456')
+const memory = await createMemorySystem('session-123', 'user-456');
 
 // 添加消息
-await memory.addUserMessage('我想开发一个登录功能')
-await memory.addAssistantMessage('好的，我们使用JWT认证')
+await memory.addUserMessage('我想开发一个登录功能');
+await memory.addAssistantMessage('好的，我们使用JWT认证');
 
 // 保存重要信息到长期记忆
-await memory.saveImportantMemory('用户偏好使用JWT认证', 'preference', 8)
+await memory.saveImportantMemory('用户偏好使用JWT认证', 'preference', 8);
 
 // 检索相关记忆
-const preferences = await memory.getRelevantMemories('preference')
+const preferences = await memory.getRelevantMemories('preference');
 ```
 
 ---

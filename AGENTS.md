@@ -113,6 +113,18 @@ Usage notes:
 <location>local</location>
 </skill>
 
+<skill>
+<name>gitea</name>
+<description>Gitea 代码托管平台操作指南。通过 REST API 管理仓库、Issue 工单、Pull Request、标签、里程碑、Release 发布等。Use when: (1) creating/managing git repositories, (2) creating/updating issues or tickets, (3) managing pull requests and code review, (4) creating releases or tags, (5) managing labels and milestones. Triggers on: 创建仓库, 提交工单, 提Issue, 合并PR, 发布版本, create repo, create issue, merge PR, create release, Gitea.</description>
+<location>local</location>
+</skill>
+
+<skill>
+<name>experience-manager</name>
+<description>通用经验管理系统（三层结构）。自动捕获和管理任何Skill运行过程中的问题和解决方案，支持一问多解、推导追溯、自动检索。设计理念：问题（第1层）→ 解决方案（第2层：具体实现）→ 推导过程（第3层：为什么）。完全自动化，大模型自主查询和沉淀，用户无感知。Use when: (1) 执行任何Skill前自动查询类似问题，(2) 执行中遇到困难自动查备选方案，(3) 执行后自动沉淀经验。Triggers: 自动触发，无需人工干预。</description>
+<location>local</location>
+</skill>
+
 </available_skills>
 
 <!-- SKILLS_TABLE_END -->

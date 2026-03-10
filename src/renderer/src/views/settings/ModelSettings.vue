@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * ModelSettings - 模型设置组件
+ * ModelSettings - 模型供应商管理
  *
  * 左右分栏：
  * - 左侧：供应商列表
@@ -28,6 +28,7 @@ interface Provider {
   modelCount: number;
 }
 
+// ===== 供应商相关 =====
 const providers = ref<Provider[]>([]);
 const selectedProvider = ref<string>('');
 const loading = ref(true);
@@ -69,7 +70,6 @@ async function loadProviders(): Promise<void> {
         };
       });
 
-      // 默认选中第一个
       if (providers.value.length > 0 && !selectedProvider.value) {
         selectProvider(providers.value[0].id);
       }
@@ -160,22 +160,13 @@ onMounted(() => {
 
 <template>
   <div class="flex h-full">
-    <!-- 左侧：Provider 列表 -->
+    <!-- 左侧：供应商列表 -->
     <div class="flex w-64 flex-col border-r border-border bg-card">
-      <!-- 头部区域 -->
-      <div class="p-4 border-b border-border">
-        <div class="flex items-center justify-between">
-          <h2 class="text-sm font-bold flex items-center">
-            <span class="i-carbon-cloud-service-management mr-2 inline-block h-4 w-4 text-primary"></span>
-            AI 供应商
-          </h2>
-          <span class="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {{ providers.length }}
-          </span>
-        </div>
+      <div class="border-b border-border px-4 py-3">
+        <h2 class="text-sm font-semibold">模型供应商</h2>
+        <p class="mt-0.5 text-[10px] text-muted-foreground">{{ providers.length }} 个供应商</p>
       </div>
 
-      <!-- Provider 列表 -->
       <div class="flex-1 overflow-y-auto p-3">
         <!-- 加载中 -->
         <div v-if="loading" class="flex flex-col items-center justify-center py-8 text-muted-foreground">

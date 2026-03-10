@@ -317,20 +317,20 @@ pnpm build              # 构建生产版本
 
 ```typescript
 // 查看 Agent 缓存统计
-import { agentFactory } from '@main/ai/agents'
-console.log(agentFactory.getCacheStats())
+import { agentFactory } from '@main/ai/agents';
+console.log(agentFactory.getCacheStats());
 
 // 查看性能统计
-import { performanceMonitor } from '@main/ai/monitoring'
-console.log(performanceMonitor.getStats())
+import { performanceMonitor } from '@main/ai/monitoring';
+console.log(performanceMonitor.getStats());
 
 // 查看 Stream 队列统计
-import { streamStore } from '@main/ai/streaming/consumers'
-console.log(streamStore.getQueueStats())
+import { streamStore } from '@main/ai/streaming/consumers';
+console.log(streamStore.getQueueStats());
 
 // 查看 WebSocket 统计
-import { webSocketBroadcaster } from '@main/ai/streaming/consumers'
-console.log(webSocketBroadcaster.getStats())
+import { webSocketBroadcaster } from '@main/ai/streaming/consumers';
+console.log(webSocketBroadcaster.getStats());
 ```
 
 ---
@@ -510,27 +510,27 @@ $ git diff --stat HEAD~1
 
 ```typescript
 // 1. 创建 Agent (自动缓存)
-import { agentFactory } from '@main/ai/agents'
-const agent = await agentFactory.getOrCreateAgent(sessionId)
+import { agentFactory } from '@main/ai/agents';
+const agent = await agentFactory.getOrCreateAgent(sessionId);
 
 // 2. 使用工具
 const agent = await agentFactory.createAgent(sessionId, {
   tools: ['read_file', 'web_search']
-})
+});
 
 // 3. 使用技能
-import { codeGenerationSkill } from '@main/ai/skills/builtin'
+import { codeGenerationSkill } from '@main/ai/skills/builtin';
 const result = await codeGenerationSkill.execute({
   sessionId,
   agent,
   userInput: '生成代码'
-})
+});
 
 // 4. 性能监控
-import { performanceMonitor } from '@main/ai/monitoring'
+import { performanceMonitor } from '@main/ai/monitoring';
 await performanceMonitor.measure('module', 'op', async () => {
   // 你的操作
-})
+});
 ```
 
 ---

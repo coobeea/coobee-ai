@@ -9,7 +9,10 @@
  * 程序重启时自动从文件恢复状态。
  */
 
+import { createLogger } from '@main/common/logger';
 import { SwarmContext } from './SwarmContext';
+
+const log = createLogger('FileSwarmContext');
 import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 
@@ -113,7 +116,7 @@ export class FileSwarmContext extends SwarmContext {
               break;
           }
         } catch (error) {
-          console.error('[FileSwarmContext] Failed to replay entry:', line, error);
+          log.error('Failed to replay entry:', line, error);
         }
       }
     }
@@ -139,7 +142,7 @@ export class FileSwarmContext extends SwarmContext {
             super.addArtifact(file, content, 'system');
           }
         } catch (error) {
-          console.error('[FileSwarmContext] Failed to restore artifact:', file, error);
+          log.error('Failed to restore artifact:', file, error);
         }
       }
     }
@@ -199,21 +202,9 @@ export class FileSwarmContext extends SwarmContext {
         type
       };
       writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
-
-      // 🆕 触发产物创建事件（供外部监听，如 KnowledgeBase）
-      this.emitArtifactCreated(name, createdBy, type);
     } catch (error) {
-      console.error('[FileSwarmContext] Failed to write artifact:', name, error);
+      log.error('Failed to write artifact:', name, error);
     }
-  }
-
-  /**
-   * 🆕 触发产物创建事件
-   * 供 SwarmCoordinator 监听并记录到 KnowledgeBase
-   */
-  private emitArtifactCreated(_name: string, _createdBy: string, _type?: string): void {
-    // 使用父类的 changeListeners 机制
-    // SwarmCoordinator 会监听这些事件
   }
 
   // ========== 覆盖方法：进度持久化 ==========
@@ -239,7 +230,7 @@ export class FileSwarmContext extends SwarmContext {
       const line = JSON.stringify(entry) + '\n';
       appendFileSync(this.contextLogPath, line, 'utf-8');
     } catch (error) {
-      console.error('[FileSwarmContext] Failed to append context log:', error);
+      log.error('Failed to append context log:', error);
     }
   }
 
@@ -251,7 +242,7 @@ export class FileSwarmContext extends SwarmContext {
       const line = JSON.stringify(entry) + '\n';
       appendFileSync(this.progressLogPath, line, 'utf-8');
     } catch (error) {
-      console.error('[FileSwarmContext] Failed to append progress log:', error);
+      log.error('Failed to append progress log:', error);
     }
   }
 

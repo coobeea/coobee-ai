@@ -11,16 +11,16 @@
 只需在 `run()` 调用中添加 `stream: true`：
 
 ```typescript
-import { Agent, run } from '@openai/agents'
+import { Agent, run } from '@openai/agents';
 
 const agent = new Agent({
   name: 'Storyteller',
   instructions: 'You tell engaging stories.'
-})
+});
 
 const stream = await run(agent, 'Please tell me 5 jokes.', {
   stream: true
-})
+});
 ```
 
 ## 纯文本流：`toTextStream()`
@@ -28,10 +28,10 @@ const stream = await run(agent, 'Please tell me 5 jokes.', {
 最简单的流式处理方式，只获取文本输出：
 
 ```typescript
-const stream = await run(agent, 'Tell me a story.', { stream: true })
+const stream = await run(agent, 'Tell me a story.', { stream: true });
 
 for await (const event of stream.toTextStream()) {
-  process.stdout.write(event)
+  process.stdout.write(event);
 }
 ```
 
@@ -40,11 +40,11 @@ for await (const event of stream.toTextStream()) {
 可以直接 pipe 到 Node.js 标准输出或其他 Writable Stream：
 
 ```typescript
-const stream = await run(agent, 'Tell me a story.', { stream: true })
+const stream = await run(agent, 'Tell me a story.', { stream: true });
 
-stream.toTextStream({ compatibleWithNodeStreams: true }).pipe(process.stdout)
+stream.toTextStream({ compatibleWithNodeStreams: true }).pipe(process.stdout);
 
-await stream.completed
+await stream.completed;
 ```
 
 关键点：
@@ -57,30 +57,30 @@ await stream.completed
 获取所有事件的详细信息，包括工具调用、Agent 切换等：
 
 ```typescript
-const stream = await run(agent, 'Hello', { stream: true })
+const stream = await run(agent, 'Hello', { stream: true });
 
 for await (const event of stream.toStream()) {
   switch (event.type) {
     case 'raw_model_stream_event':
       // 原始模型流事件（最底层）
       // event.data 包含模型的原始输出
-      break
+      break;
 
     case 'agent_updated_stream_event':
       // Agent 切换事件
-      console.log(`Agent updated: ${event.agent.name}`)
-      break
+      console.log(`Agent updated: ${event.agent.name}`);
+      break;
 
     case 'run_item_stream_event':
       // SDK 运行项事件
       if (event.item.type === 'tool_call_item') {
-        console.log('Tool was called')
+        console.log('Tool was called');
       } else if (event.item.type === 'tool_call_output_item') {
-        console.log(`Tool output: ${event.item.output}`)
+        console.log(`Tool output: ${event.item.output}`);
       } else if (event.item.type === 'message_output_item') {
-        console.log(`Message: ${event.item.content}`)
+        console.log(`Message: ${event.item.content}`);
       }
-      break
+      break;
   }
 }
 ```
@@ -90,17 +90,17 @@ for await (const event of stream.toStream()) {
 也可以直接使用 `for await` 迭代流对象：
 
 ```typescript
-const stream = await run(agent, 'Hello', { stream: true })
+const stream = await run(agent, 'Hello', { stream: true });
 
 for await (const event of stream) {
   if (event.type === 'raw_model_stream_event') {
-    console.log('Raw event:', event.data)
+    console.log('Raw event:', event.data);
   }
   if (event.type === 'agent_updated_stream_event') {
-    console.log('New agent:', event.agent.name)
+    console.log('New agent:', event.agent.name);
   }
   if (event.type === 'run_item_stream_event') {
-    console.log('Run item:', event.item)
+    console.log('Run item:', event.item);
   }
 }
 ```
@@ -146,23 +146,23 @@ graph TD
 const subAgent = new Agent({
   name: 'Billing Agent',
   tools: [billingStatusChecker]
-})
+});
 
 const billingTool = subAgent.asTool({
   toolName: 'billing_agent',
   toolDescription: 'Handle billing queries.',
   onStream: (event) => {
     // 接收子 Agent 的流式事件
-    console.log(`Streaming from ${event.agent.name}:`, event)
+    console.log(`Streaming from ${event.agent.name}:`, event);
   }
-})
+});
 
 const mainAgent = new Agent({
   name: 'Main Agent',
   tools: [billingTool]
-})
+});
 
-const stream = await run(mainAgent, 'Check my billing status', { stream: true })
+const stream = await run(mainAgent, 'Check my billing status', { stream: true });
 ```
 
 ## 流式结果属性
@@ -185,17 +185,17 @@ const stream = await run(mainAgent, 'Check my billing status', { stream: true })
 ## 使用 Runner 实例的流式处理
 
 ```typescript
-import { Runner } from '@openai/agents'
+import { Runner } from '@openai/agents';
 
 const runner = new Runner({
   model: 'gpt-4.1-mini'
-})
+});
 
-const stream = await runner.run(agent, 'Tell me a story', { stream: true })
+const stream = await runner.run(agent, 'Tell me a story', { stream: true });
 
-stream.toTextStream({ compatibleWithNodeStreams: true }).pipe(process.stdout)
+stream.toTextStream({ compatibleWithNodeStreams: true }).pipe(process.stdout);
 
-await stream.completed
+await stream.completed;
 ```
 
 ## 最佳实践

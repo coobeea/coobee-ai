@@ -10,6 +10,7 @@
 
 import { ref, type Ref } from 'vue';
 import type { StreamMessage, HitlApprovalDecision } from '@shared/stream-protocol';
+import configManager from '@/config';
 
 // ==================== 共享类型 ====================
 
@@ -40,11 +41,20 @@ export interface PendingApproval {
   canShow?: boolean;
 }
 
+export interface ExecOutputEntry {
+  timestamp: number;
+  type: 'progress' | 'output' | 'result';
+  toolName: string;
+  content: string;
+}
+
 export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'thinking'; text: string }
   | { type: 'tool'; tool: ToolCallInfo }
-  | { type: 'delegate'; delegate: DelegateInfo };
+  | { type: 'delegate'; delegate: DelegateInfo }
+  | { type: 'quality'; status: string; detail?: string }
+  | { type: 'audio'; src: string; title?: string };
 
 export type MessageStatus = 'sending' | 'streaming' | 'done' | 'error' | 'interrupted';
 
@@ -71,6 +81,7 @@ interface StreamHandlerOptions {
 export interface StreamHandlerReturn {
   messages: Ref<StreamChatMessage[]>;
   isStreaming: Ref<boolean>;
+  execOutputs: Ref<ExecOutputEntry[]>;
   getCurrentAssistantMessage: () => StreamChatMessage | undefined;
   createAssistantMessage: () => StreamChatMessage;
   addUserMessage: (text: string) => StreamChatMessage;
@@ -84,6 +95,7 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
 
   const messages = ref<StreamChatMessage[]>([]);
   const isStreaming = ref(false);
+  const execOutputs = ref<ExecOutputEntry[]>([]);
 
   // 消息计数器，确保 ID 唯一
   let messageCounter = 0;
@@ -141,6 +153,22 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
     return msg;
   }
 
+  const EXEC_TOOL_NAMES = new Set(['exec_command', 'exec']);
+
+  function isExecTool(name: string): boolean {
+    return EXEC_TOOL_NAMES.has(name);
+  }
+
+  function findLastCallingTool(assistantMsg: StreamChatMessage): ToolCallInfo | undefined {
+    for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
+      const block = assistantMsg.blocks[i];
+      if (block.type === 'tool' && block.tool.status === 'calling') {
+        return block.tool;
+      }
+    }
+    return undefined;
+  }
+
   /**
    * StreamMessage → StreamChatMessage 的核心映射
    *
@@ -191,6 +219,21 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
         break;
       }
 
+      case 'tool:delta': {
+        if (assistantMsg) {
+          const currentTool = findLastCallingTool(assistantMsg);
+          if (currentTool && isExecTool(currentTool.name)) {
+            execOutputs.value.push({
+              timestamp: Date.now(),
+              type: 'progress',
+              toolName: currentTool.name,
+              content: msg.content
+            });
+          }
+        }
+        break;
+      }
+
       case 'tool:done': {
         if (assistantMsg) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -199,14 +242,42 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
           for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
             const block = assistantMsg.blocks[i];
             if (block.type === 'tool' && block.tool.status === 'calling') {
+              if (isExecTool(block.tool.name)) {
+                execOutputs.value.push({
+                  timestamp: Date.now(),
+                  type: 'result',
+                  toolName: block.tool.name,
+                  content: msg.content
+                });
+              }
               block.tool.result = msg.content;
 
-              // 如果工具需要审批，状态设置为 approval-pending，而不是 done
               if (suspended) {
                 block.tool.status = 'approval-pending';
               } else {
                 block.tool.status = 'done';
               }
+
+              // 检测 write 工具写入的音频文件，插入可播放的 audio block
+              if (block.tool.name === 'write') {
+                const audioMatch = msg.content.match(/["']?([^"'\s]+\.(mp3|wav|m4a|aac|flac|webm))["']?/i);
+                if (audioMatch) {
+                  const absPath = audioMatch[1];
+                  const baseUrl = configManager.getBaseUrl();
+                  const audioUrl = `${baseUrl}/gateway/files/serve?path=${encodeURIComponent(absPath)}`;
+                  const fileName =
+                    absPath
+                      .split('/')
+                      .pop()
+                      ?.replace(/\.(mp3|wav|m4a|aac|flac|webm)$/i, '') || '语音';
+                  assistantMsg.blocks.push({
+                    type: 'audio',
+                    src: audioUrl,
+                    title: fileName
+                  });
+                }
+              }
+
               break;
             }
           }
@@ -305,15 +376,41 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
 
       case 'delegate:done': {
         if (assistantMsg) {
+          const agentId = msg.data?.agentId as string | undefined;
+          // 🔄 修改：根据 agentId 精确匹配 delegate block
           for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
             const block = assistantMsg.blocks[i];
-            if (block.type === 'delegate' && block.delegate.status === 'running') {
+            if (
+              block.type === 'delegate' &&
+              block.delegate.status === 'running' &&
+              (!agentId || block.delegate.agentId === agentId)
+            ) {
               block.delegate.status = 'done';
               block.delegate.output = msg.content || undefined;
               block.delegate.duration = msg.data?.duration as number | undefined;
               break;
             }
           }
+        }
+        break;
+      }
+
+      case 'quality:round_start':
+      case 'quality:validating':
+      case 'quality:score':
+      case 'quality:repairing':
+      case 'quality:done': {
+        if (!assistantMsg) assistantMsg = createAssistantMessage();
+        const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1];
+        if (lastBlock && lastBlock.type === 'quality') {
+          lastBlock.status = msg.content;
+          lastBlock.detail = msg.data ? JSON.stringify(msg.data) : undefined;
+        } else {
+          assistantMsg.blocks.push({
+            type: 'quality',
+            status: msg.content,
+            detail: msg.data ? JSON.stringify(msg.data) : undefined
+          });
         }
         break;
       }
@@ -326,12 +423,14 @@ export function useStreamHandler(options: StreamHandlerOptions = {}): StreamHand
   function resetAll(): void {
     messages.value = [];
     isStreaming.value = false;
-    messageCounter = 0; // 重置计数器
+    execOutputs.value = [];
+    messageCounter = 0;
   }
 
   return {
     messages,
     isStreaming,
+    execOutputs,
     getCurrentAssistantMessage,
     createAssistantMessage,
     addUserMessage,

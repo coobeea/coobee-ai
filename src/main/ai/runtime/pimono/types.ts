@@ -9,7 +9,7 @@
  *   通过 baseURL 指向不同的 OpenAI 兼容服务（MiniMax、DeepSeek 等）。
  */
 
-import type { AgentRuntimeOptions } from '../types'
+import type { AgentRuntimeOptions } from '../types';
 
 // ========== Pi-Mono Agent 运行时选项 ==========
 
@@ -23,7 +23,7 @@ import type { AgentRuntimeOptions } from '../types'
  *   - high: 深度思考
  *   - xhigh: 极深度思考
  */
-export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
 /**
  * PiMonoAgentRuntime 创建选项
@@ -36,7 +36,7 @@ export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
  */
 export interface PiMonoAgentRuntimeOptions extends AgentRuntimeOptions {
   /** API Key（运行时注入，OpenAI 格式的 Bearer token） */
-  apiKey: string
+  apiKey: string;
 
   /**
    * OpenAI 兼容 API 的 Base URL
@@ -49,13 +49,13 @@ export interface PiMonoAgentRuntimeOptions extends AgentRuntimeOptions {
    *
    * 默认：https://api.minimaxi.com/v1
    */
-  baseURL?: string
+  baseURL?: string;
 
   /** 思考级别（默认 'medium'） */
-  thinkingLevel?: ThinkingLevel
+  thinkingLevel?: ThinkingLevel;
 
   /** 工作目录（默认 process.cwd()） */
-  cwd?: string
+  cwd?: string;
 
   /**
    * SDK 原生工具定义列表
@@ -64,7 +64,7 @@ export interface PiMonoAgentRuntimeOptions extends AgentRuntimeOptions {
    * 与 AgentRuntimeOptions.tools（统一格式）共存，SDK 原生工具优先。
    * 命名与 OpenAI Runtime 的 sdkTools 统一。
    */
-  sdkTools?: unknown[]
+  sdkTools?: unknown[];
 
   /**
    * Session 持久化模式
@@ -72,7 +72,7 @@ export interface PiMonoAgentRuntimeOptions extends AgentRuntimeOptions {
    * - 'memory': 内存模式（默认，适合测试）
    * - 'file': 文件模式（持久化到 cwd/.pi/sessions/）
    */
-  sessionMode?: 'memory' | 'file'
+  sessionMode?: 'memory' | 'file';
 
   /**
    * 压缩配置
@@ -81,8 +81,8 @@ export interface PiMonoAgentRuntimeOptions extends AgentRuntimeOptions {
    * enabled=false 时禁用自动压缩。
    */
   compaction?: {
-    enabled?: boolean
-  }
+    enabled?: boolean;
+  };
 
   /**
    * 重试配置
@@ -90,10 +90,10 @@ export interface PiMonoAgentRuntimeOptions extends AgentRuntimeOptions {
    * SDK 内置自动重试，通过 SettingsManager 配置。
    */
   retry?: {
-    enabled?: boolean
-    maxRetries?: number
-    baseDelayMs?: number
-  }
+    enabled?: boolean;
+    maxRetries?: number;
+    baseDelayMs?: number;
+  };
 
   /**
    * 模型元数据（从 coobee.json5 模型配置透传）
@@ -103,14 +103,14 @@ export interface PiMonoAgentRuntimeOptions extends AgentRuntimeOptions {
    */
   modelMeta?: {
     /** 是否支持推理/思考模式 */
-    reasoning?: boolean
+    reasoning?: boolean;
     /** 上下文窗口大小 */
-    contextWindow?: number
+    contextWindow?: number;
     /** 最大输出 token 数 */
-    maxOutputTokens?: number
+    maxOutputTokens?: number;
     /** 最大思维链 token 数 */
-    maxThinkingTokens?: number
+    maxThinkingTokens?: number;
     /** 是否支持工具调用 */
-    functionCalling?: boolean
-  }
+    functionCalling?: boolean;
+  };
 }

@@ -9,8 +9,8 @@
 ## 基础工具定义
 
 ```typescript
-import { Agent, run, tool } from '@openai/agents'
-import { z } from 'zod'
+import { Agent, run, tool } from '@openai/agents';
+import { z } from 'zod';
 
 const getWeather = tool({
   name: 'get_weather',
@@ -23,17 +23,17 @@ const getWeather = tool({
       city,
       temperatureRange: '14-20C',
       conditions: 'Sunny with wind.'
-    }
+    };
   }
-})
+});
 
 const agent = new Agent({
   name: 'Weather Agent',
   instructions: 'You help users check the weather.',
   tools: [getWeather]
-})
+});
 
-const result = await run(agent, 'What is the weather in Tokyo?')
+const result = await run(agent, 'What is the weather in Tokyo?');
 ```
 
 ### 工具定义参数
@@ -61,13 +61,13 @@ const getWeather = tool({
   description: 'Get the weather for a city.',
   parameters: z.object({ city: z.string() }),
   execute: async ({ city }) => {
-    return { city, conditions: 'Sunny' }
+    return { city, conditions: 'Sunny' };
   },
   inputGuardrails: [
     {
       name: 'get_weather_input_guardrail',
       run: async ({ toolCall }) => {
-        const toolArgs = JSON.parse(toolCall.arguments)
+        const toolArgs = JSON.parse(toolCall.arguments);
         // 只允许查询日本城市
         if (toolArgs.city.toLowerCase() !== 'tokyo') {
           return {
@@ -75,13 +75,13 @@ const getWeather = tool({
               type: 'rejectContent',
               message: 'I can help you only for cities in Japan.'
             }
-          }
+          };
         }
-        return { behavior: { type: 'allow' } }
+        return { behavior: { type: 'allow' } };
       }
     }
   ]
-})
+});
 ```
 
 ### 输出护栏
@@ -95,11 +95,11 @@ const getWeather = tool({
       name: 'get_weather_output_guardrail',
       run: async ({ output }) => {
         // 检查输出是否包含敏感信息
-        return { behavior: { type: 'allow' } }
+        return { behavior: { type: 'allow' } };
       }
     }
   ]
-})
+});
 ```
 
 护栏行为类型：
@@ -121,7 +121,7 @@ const agent = new Agent({
   tools: [getWeather]
   // 默认行为，无需显式设置
   // toolUseBehavior: 'run_llm_again',
-})
+});
 ```
 
 ### 方式二：在指定工具处停止 — `stopAtToolNames`
@@ -136,10 +136,10 @@ const agent = new Agent({
     stopAtToolNames: ['get_weather']
   },
   outputType: WeatherSchema
-})
+});
 
 // Agent 调用 get_weather 后直接返回，不会再调用 LLM
-const result = await run(agent, 'Weather in Tokyo?')
+const result = await run(agent, 'Weather in Tokyo?');
 ```
 
 ### 方式三：自定义函数
@@ -147,28 +147,25 @@ const result = await run(agent, 'Weather in Tokyo?')
 完全控制工具结果的处理方式：
 
 ```typescript
-import type { ToolToFinalOutputFunction, FunctionToolResult } from '@openai/agents'
+import type { ToolToFinalOutputFunction, FunctionToolResult } from '@openai/agents';
 
-const customBehavior: ToolToFinalOutputFunction = async (
-  _context,
-  results: FunctionToolResult[]
-) => {
-  const outputResult = results.find((r) => r.type === 'function_output')
+const customBehavior: ToolToFinalOutputFunction = async (_context, results: FunctionToolResult[]) => {
+  const outputResult = results.find((r) => r.type === 'function_output');
   if (!outputResult) {
-    return { isFinalOutput: false, isInterrupted: undefined }
+    return { isFinalOutput: false, isInterrupted: undefined };
   }
-  const weather = outputResult.output as Weather
+  const weather = outputResult.output as Weather;
   return {
     isFinalOutput: true,
     finalOutput: `${weather.city} is ${weather.conditions}.`
-  }
-}
+  };
+};
 
 const agent = new Agent({
   name: 'Custom Agent',
   tools: [getWeather],
   toolUseBehavior: customBehavior
-})
+});
 ```
 
 ## 强制使用工具
@@ -182,7 +179,7 @@ const agent = new Agent({
   modelSettings: {
     toolChoice: 'required' // 强制使用工具
   }
-})
+});
 ```
 
 `toolChoice` 选项：
@@ -196,7 +193,7 @@ const agent = new Agent({
 工具可以返回文件内容，Agent 会分析文件：
 
 ```typescript
-import { Agent, run, tool, ToolOutputFileContent } from '@openai/agents'
+import { Agent, run, tool, ToolOutputFileContent } from '@openai/agents';
 
 const fetchSystemCard = tool({
   name: 'fetch_system_card',
@@ -210,15 +207,15 @@ const fetchSystemCard = tool({
         mediaType: 'application/pdf',
         filename: 'system-card.pdf'
       }
-    }
+    };
   }
-})
+});
 ```
 
 ## 工具返回图片
 
 ```typescript
-import { Agent, run, tool, ToolOutputImage } from '@openai/agents'
+import { Agent, run, tool, ToolOutputImage } from '@openai/agents';
 
 const fetchImage = tool({
   name: 'fetch_image',
@@ -229,9 +226,9 @@ const fetchImage = tool({
       type: 'image',
       image: 'https://example.com/image.jpg',
       detail: 'auto' // 'auto' | 'low' | 'high'
-    }
+    };
   }
-})
+});
 ```
 
 ## 条件启用工具
@@ -239,25 +236,25 @@ const fetchImage = tool({
 根据运行时上下文动态启用或禁用工具：
 
 ```typescript
-import { Agent, RunContext } from '@openai/agents'
+import { Agent, RunContext } from '@openai/agents';
 
-type AppContext = { isPremiumUser: boolean }
+type AppContext = { isPremiumUser: boolean };
 
 const premiumTool = tool({
   name: 'premium_feature'
   // ...
-})
+});
 
 const agent = new Agent<AppContext>({
   tools: [
     someAgent.asTool({
       toolName: 'premium_agent',
       isEnabled: ({ runContext }: { runContext: RunContext<AppContext> }) => {
-        return runContext.context.isPremiumUser
+        return runContext.context.isPremiumUser;
       }
     })
   ]
-})
+});
 ```
 
 ## 最佳实践

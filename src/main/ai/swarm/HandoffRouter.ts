@@ -12,6 +12,9 @@
 
 import type { HandoffRecord, SwarmConfig } from './types';
 
+/** Handoff 历史最大条数，防止内存泄漏 */
+const MAX_HANDOFF_HISTORY = 200;
+
 /**
  * Handoff 回调函数类型
  */
@@ -48,6 +51,9 @@ export class HandoffRouter {
     };
 
     this.history.push(record);
+    if (this.history.length > MAX_HANDOFF_HISTORY) {
+      this.history.shift();
+    }
 
     if (this.onHandoffCallback) {
       this.onHandoffCallback(fromRoleId, toRoleId, inputData);

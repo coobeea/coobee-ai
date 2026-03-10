@@ -72,7 +72,6 @@ watch(
 async function handleSend(data: { text: string; files: { path: string; name: string }[] }): Promise<void> {
   if (!data.text) return;
   scrollToBottom();
-  // TODO: 将 files 数据传递给后端
   await copilot.sendMessage(data.text);
 }
 
@@ -83,10 +82,8 @@ async function handleStop(): Promise<void> {
 function handleApproval(approval: PendingApproval, decision: HitlApprovalDecision): void {
   if (!copilot.sessionId || approval.decision) return;
 
-  // 提交决策到后端
   copilot.submitDecision(copilot.sessionId, approval.index, decision);
 
-  // 添加一条用户消息，显示决策结果
   const decisionText = decision === 'approve-once' ? '已允许' : decision === 'approve-always' ? '始终允许' : '已拒绝';
 
   copilot.messages.push({
@@ -346,90 +343,5 @@ function handleApproval(approval: PendingApproval, decision: HitlApprovalDecisio
 .suggestion-btn:hover {
   background: hsl(var(--primary) / 0.12);
   border-color: hsl(var(--primary) / 0.2);
-}
-
-/* ====== 消息块 ====== */
-.msg-block {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.msg-role-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.msg-role-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-
-.msg-role-user {
-  background: hsl(var(--foreground) / 0.08);
-  color: hsl(var(--foreground) / 0.5);
-}
-
-.msg-role-assistant {
-  background: hsl(var(--primary) / 0.1);
-  color: hsl(var(--primary));
-}
-
-.msg-role-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: hsl(var(--foreground) / 0.7);
-}
-
-.msg-time {
-  font-size: 10px;
-  color: hsl(var(--muted-foreground) / 0.3);
-}
-
-.msg-content {
-  padding-left: 28px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: hsl(var(--foreground) / 0.85);
-  word-break: break-word;
-}
-
-.msg-text {
-  white-space: pre-wrap;
-}
-
-.msg-thinking {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 4px 0;
-  font-size: 11px;
-  color: hsl(var(--muted-foreground) / 0.5);
-  font-style: italic;
-}
-
-.msg-thinking-text {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.msg-tool {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  margin: 3px 0;
-  border-radius: 6px;
-  font-size: 11px;
-  color: hsl(var(--muted-foreground) / 0.6);
-  background: hsl(var(--foreground) / 0.03);
 }
 </style>

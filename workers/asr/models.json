@@ -1,0 +1,31 @@
+{
+  "configField": "model_name",
+  "options": [
+    {
+      "id": "fun-asr-nano",
+      "label": "FunASR Nano",
+      "type": "local",
+      "description": "轻量级本地模型，速度快，适合日常使用",
+      "configKey": "FunAudioLLM/Fun-ASR-Nano-2512",
+      "provider": "FunAudioLLM"
+    },
+    {
+      "id": "sensevoice-small",
+      "label": "SenseVoice Small",
+      "type": "local",
+      "description": "高精度本地模型，支持 50+ 语种，情感识别",
+      "configKey": "iic/SenseVoiceSmall",
+      "provider": "FunAudioLLM"
+    },
+    {
+      "id": "aliyun-qwen3-asr",
+      "label": "阿里云 Qwen3 ASR",
+      "type": "online",
+      "description": "工业级实时语音识别，支持方言/情感识别，首包延迟极低",
+      "configKey": "aliyun/qwen3-asr-flash-realtime",
+      "provider": "阿里云百炼",
+      "pricing": "按量计费",
+      "requiresApiKey": true
+    }
+  ]
+}

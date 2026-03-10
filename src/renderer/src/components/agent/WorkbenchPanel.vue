@@ -7,14 +7,60 @@
  * 无打开文件时显示空状态引导。
  */
 
-import { ref, watch, onMounted, onBeforeUnmount, nextTick, shallowRef } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount, nextTick, shallowRef, computed, defineAsyncComponent } from 'vue';
 import { monaco } from '@/utils/monaco-setup';
-import { useOpenFiles } from '@/composables/useOpenFiles';
+import { useOpenFiles, type OpenFile } from '@/composables/useOpenFiles';
+import { routePreview, type PreviewMode } from '@/utils/previewRouter';
+import eventBus from '@/eventbus';
+import { EventTypes } from '@shared/ipc/events';
+
+/** 判断当前是否为暗色模式（支持 class 和 prefers-color-scheme） */
+function isDarkMode(): boolean {
+  return (
+    document.documentElement.classList.contains('dark') || window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+}
+
+/** 根据暗色模式返回 Monaco 主题 */
+function getMonacoTheme(): 'vs' | 'vs-dark' {
+  return isDarkMode() ? 'vs-dark' : 'vs';
+}
+
+const PDFViewer = defineAsyncComponent(() => import('./preview/PDFViewer.vue'));
+const ImageViewer = defineAsyncComponent(() => import('./preview/ImageViewer.vue'));
+const VideoPlayer = defineAsyncComponent(() => import('./preview/VideoPlayer.vue'));
+const HTMLPreview = defineAsyncComponent(() => import('./preview/HTMLPreview.vue'));
+const MarkdownPreview = defineAsyncComponent(() => import('./preview/MarkdownPreview.vue'));
 
 const { openFiles, activeFilePath, activeFile, closeFile, activateFile, loadMoreContent } = useOpenFiles();
 
 const editorContainer = ref<HTMLDivElement | null>(null);
 const editorInstance = shallowRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+
+const previewMode = computed<PreviewMode>(() => {
+  if (!activeFile.value) return 'code';
+  if (activeFile.value.isWebUrl) return 'web';
+  const result = routePreview(activeFile.value.path);
+  return result.mode;
+});
+
+const previewComponent = computed(() => {
+  switch (previewMode.value) {
+    case 'pdf':
+      return PDFViewer;
+    case 'image':
+      return ImageViewer;
+    case 'video':
+      return VideoPlayer;
+    case 'html':
+    case 'web':
+      return HTMLPreview;
+    case 'markdown':
+      return MarkdownPreview;
+    default:
+      return null;
+  }
+});
 
 function initEditor(): void {
   if (!editorContainer.value) {
@@ -37,7 +83,7 @@ function initEditor(): void {
   editorInstance.value = monaco.editor.create(editorContainer.value, {
     value: '',
     language: 'plaintext',
-    theme: 'vs',
+    theme: getMonacoTheme(),
     readOnly: true,
     minimap: { enabled: false },
     fontSize: 12,
@@ -59,6 +105,13 @@ function initEditor(): void {
 
   // 设置滚动监听（用于大文件自动加载更多）
   setupScrollListener();
+}
+
+/** 根据当前主题更新 Monaco 编辑器主题 */
+function applyMonacoTheme(): void {
+  if (editorInstance.value) {
+    monaco.editor.setTheme(getMonacoTheme());
+  }
 }
 
 function updateEditorContent(): void {
@@ -153,21 +206,35 @@ watch(
   }
 );
 
+// 主题变更监听：matchMedia + config:theme:changed
+let mediaQueryList: MediaQueryList | null = null;
+
 onMounted(async () => {
   if (openFiles.value.length > 0) {
     await nextTick();
     initEditor();
     updateEditorContent();
   }
+
+  // 监听系统/Electron 主题变化（prefers-color-scheme）
+  mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
+  mediaQueryList.addEventListener('change', applyMonacoTheme);
+
+  // 监听配置主题变更（用户切换 light/dark/auto）
+  eventBus.on(EventTypes.CONFIG_THEME_CHANGED, applyMonacoTheme);
 });
 
 onBeforeUnmount(() => {
+  mediaQueryList?.removeEventListener('change', applyMonacoTheme);
+  mediaQueryList = null;
+  eventBus.off(EventTypes.CONFIG_THEME_CHANGED, applyMonacoTheme);
   editorInstance.value?.dispose();
   editorInstance.value = null;
 });
 
-function getFileIcon(name: string): string {
-  const ext = name.split('.').pop()?.toLowerCase();
+function getFileIcon(file: OpenFile): string {
+  if (file.isWebUrl) return 'i-carbon-earth text-blue-400';
+  const ext = file.name.split('.').pop()?.toLowerCase();
   switch (ext) {
     case 'ts':
     case 'tsx':
@@ -224,7 +291,7 @@ function getFileIcon(name: string): string {
           :class="{ active: file.path === activeFilePath }"
           :title="file.path"
           @click="activateFile(file.path)">
-          <span :class="getFileIcon(file.name)" class="inline-block h-3 w-3 shrink-0"></span>
+          <span :class="getFileIcon(file)" class="inline-block h-3 w-3 shrink-0"></span>
           <span class="max-w-[120px] truncate text-[11px]">{{ file.name }}</span>
           <button class="tab-close" @click.stop="closeFile(file.path)">
             <span class="i-carbon-close inline-block h-2.5 w-2.5"></span>
@@ -254,11 +321,23 @@ function getFileIcon(name: string): string {
         </div>
       </div>
 
-      <!-- Monaco Editor 容器（始终存在，避免被销毁） -->
+      <!-- 🆕 多模态预览容器 -->
       <div
         v-show="activeFile && !activeFile.loading && !activeFile.error"
         class="relative flex min-h-0 flex-1 flex-col">
-        <div ref="editorContainer" class="min-h-0 flex-1 bg-white"></div>
+        <!-- 特殊格式预览（根据文件类型自动切换） -->
+        <Transition name="preview-fade" mode="out-in">
+          <component
+            :is="previewComponent"
+            v-if="previewComponent"
+            :key="activeFile!.path"
+            :file-path="activeFile!.path"
+            :content="activeFile!.content"
+            class="min-h-0 flex-1" />
+        </Transition>
+
+        <!-- Monaco Editor（代码文件） -->
+        <div v-if="!previewComponent" ref="editorContainer" class="min-h-0 flex-1 bg-white"></div>
 
         <!-- 大文件加载提示（底部浮动） -->
         <div

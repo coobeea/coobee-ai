@@ -19,6 +19,7 @@
 import { createLogger } from '@main/common/logger';
 import { Planner, type IPlanner } from './Planner';
 import { WorkerCoordinator, type IWorkerCoordinator, type WorkerExecutionResult } from './WorkerCoordinator';
+import { AggregatorAgent, type IAggregator } from './AggregatorAgent';
 import type { Task, SubTask, ExecutionPlan, TaskExecutionResult, SubTaskExecutionResult } from './types';
 
 const log = createLogger('orchestration');
@@ -110,6 +111,7 @@ export class Orchestrator implements IOrchestrator {
   constructor(
     private readonly planner: IPlanner,
     private readonly workerCoordinator: IWorkerCoordinator,
+    private readonly aggregator: IAggregator,
     config?: OrchestratorConfig
   ) {
     this.resolvedConfig = {
@@ -158,15 +160,44 @@ export class Orchestrator implements IOrchestrator {
 
       log.info(`[Orchestrator] Plan created: ${plan.subTasks.length} subtasks, ${plan.stages.length} stages`);
 
+      // 🆕 保存任务定义和计划到文件
+      await this.saveTaskDefinitionAndPlan(task, plan);
+
       // ── 2. 执行阶段 ──
       log.info('[Orchestrator] Phase 2: Executing...');
       const subTaskResults = await this.executePlan(task, plan);
 
+      // 🆕 保存每个子任务的结果到 tasks/{taskId}/results/
+      await this.saveSubTaskResults(task.id, subTaskResults);
+
       // ── 3. 聚合阶段 ──
       this.emit({ type: 'aggregate:start' });
       log.info('[Orchestrator] Phase 3: Aggregating results...');
-      const finalOutput = this.aggregateResults(plan, subTaskResults);
-      this.emit({ type: 'aggregate:done', data: { resultCount: subTaskResults.length } });
+
+      // 🔄 修改：委托给 Aggregator Agent，而非直接调用 LLM
+      const { Env } = await import('@main/common/env');
+      const path = await import('node:path');
+      const workspaceDir = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId || task.id);
+      const taskDirPath = path.join(workspaceDir, 'tasks', task.id);
+
+      const aggregationResult = await this.aggregator.aggregate(task, plan, subTaskResults, taskDirPath);
+
+      this.emit({
+        type: 'aggregate:done',
+        data: { resultCount: subTaskResults.length, duration: aggregationResult.duration }
+      });
+
+      // 构建最终输出（包含汇总内容）
+      const finalOutput = {
+        summary: aggregationResult.summary,
+        results: subTaskResults.filter((r) => r.result).map((r) => r.result)
+      };
+
+      // 🆕 保存最终汇总结果到主会话
+      await this.saveFinalSummary(task.id, finalOutput, subTaskResults);
+
+      // 🆕 导出所有 Worker 产出文件
+      const artifacts = await this.exportWorkerArtifacts(plan.subTasks);
 
       // 完成
       this.runningTasks.delete(task.id);
@@ -189,6 +220,7 @@ export class Orchestrator implements IOrchestrator {
         status: failedCount === 0 ? 'success' : failedCount < plan.subTasks.length ? 'partial' : 'failed',
         finalOutput,
         subTaskResults,
+        artifacts,
         stats: {
           startTime,
           endTime,
@@ -283,13 +315,16 @@ export class Orchestrator implements IOrchestrator {
             results.push({
               subTaskId: stageTasks[index].id,
               status: 'completed',
-              result: result.value.output
+              result: result.value.output,
+              duration: result.value.duration,
+              timestamp: Date.now()
             });
           } else {
             results.push({
               subTaskId: stageTasks[index].id,
               status: 'failed',
-              error: result.reason?.message || 'Unknown error'
+              error: result.reason?.message || 'Unknown error',
+              timestamp: Date.now()
             });
           }
         });
@@ -303,13 +338,16 @@ export class Orchestrator implements IOrchestrator {
             results.push({
               subTaskId: subTask.id,
               status: 'completed',
-              result: workerResult.output
+              result: workerResult.output,
+              duration: workerResult.duration,
+              timestamp: Date.now()
             });
           } catch (error: unknown) {
             results.push({
               subTaskId: subTask.id,
               status: 'failed',
-              error: error instanceof Error ? error.message : String(error)
+              error: error instanceof Error ? error.message : String(error),
+              timestamp: Date.now()
             });
             log.warn(`[Orchestrator] SubTask ${subTask.id} failed, continuing...`);
           }
@@ -452,38 +490,9 @@ export class Orchestrator implements IOrchestrator {
     return null;
   }
 
-  /**
-   * 聚合结果
-   */
-  private aggregateResults(
-    plan: ExecutionPlan,
-    subTaskResults: SubTaskExecutionResult[]
-  ): { summary: string; results: unknown[] } {
-    const completed = subTaskResults.filter((r) => r.status === 'completed');
-    const failed = subTaskResults.filter((r) => r.status === 'failed');
-
-    const results = completed.filter((r) => r.result).map((r) => r.result);
-
-    const lines: string[] = [`Task completed: ${completed.length}/${subTaskResults.length} subtasks succeeded.`];
-
-    if (failed.length > 0) {
-      lines.push(`Failed subtasks: ${failed.map((f) => f.subTaskId).join(', ')}`);
-    }
-
-    // 包含所有成功子任务的输出
-    for (const r of completed) {
-      if (r.result && typeof r.result === 'string' && r.result.length > 0) {
-        const subTask = plan.subTasks.find((st) => st.id === r.subTaskId);
-        lines.push(`\n--- ${subTask?.name || r.subTaskId} ---`);
-        lines.push(r.result as string);
-      }
-    }
-
-    return {
-      summary: lines.join('\n'),
-      results
-    };
-  }
+  // ========== 已移除 aggregateResults 方法 ==========
+  // 原先直接拼接子任务输出的方法已被 Aggregator Agent 替代
+  // Aggregator Agent 使用工具读取文件，生成简洁的汇总
 
   // ========== 辅助方法 ==========
 
@@ -498,6 +507,232 @@ export class Orchestrator implements IOrchestrator {
     return false;
   }
 
+  /**
+   * 🆕 保存任务定义和计划到文件
+   */
+  private async saveTaskDefinitionAndPlan(task: Task, plan: ExecutionPlan): Promise<void> {
+    if (!this.resolvedConfig.parentSessionId) return;
+
+    const fs = await import('fs-extra');
+    const path = await import('node:path');
+    const { Env } = await import('@main/common/env');
+
+    const mainWorkspace = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId);
+    const tasksDir = path.join(mainWorkspace, 'tasks', task.id);
+    await fs.ensureDir(tasksDir);
+
+    // 保存任务定义
+    const definitionContent = [
+      '# 任务定义',
+      '',
+      `**任务 ID**: ${task.id}`,
+      `**目标**: ${task.objective}`,
+      `**创建时间**: ${new Date().toISOString()}`,
+      '',
+      '## 任务描述',
+      task.description || '（无）',
+      '',
+      '## 需求清单',
+      ...(task.requirements || []).map((r) => `- ${r}`),
+      '',
+      '## 约束条件',
+      ...(task.constraints || []).map((c) => `- ${c}`)
+    ].join('\n');
+    await fs.writeFile(path.join(tasksDir, 'definition.md'), definitionContent, 'utf-8');
+
+    // 保存执行计划
+    const planContent = [
+      '# 执行计划',
+      '',
+      `**生成时间**: ${new Date(plan.createdAt).toISOString()}`,
+      `**子任务数量**: ${plan.subTasks.length}`,
+      `**执行阶段**: ${plan.stages.length}`,
+      '',
+      '## 子任务列表',
+      '',
+      ...plan.subTasks.map(
+        (st) =>
+          `### ${st.id}: ${st.name}\n` +
+          `- **描述**: ${st.description}\n` +
+          `- **分配给**: ${st.assignedWorker}\n` +
+          `- **依赖**: ${st.dependencies?.length ? st.dependencies.join(', ') : '无'}\n`
+      ),
+      '',
+      '## 执行阶段',
+      '',
+      ...plan.stages.map(
+        (stage) =>
+          `### ${stage.name} (${stage.id})\n` +
+          `- **顺序**: ${stage.order}\n` +
+          `- **并行**: ${stage.parallel ? '是' : '否'}\n` +
+          `- **子任务**: ${stage.tasks.map((t) => t.id).join(', ')}\n`
+      )
+    ].join('\n');
+    await fs.writeFile(path.join(tasksDir, 'plan.md'), planContent, 'utf-8');
+
+    log.info(`[Orchestrator] Saved task definition and plan to ${tasksDir}`);
+  }
+
+  /**
+   * 🆕 保存子任务执行结果到 tasks/{taskId}/results/
+   */
+  private async saveSubTaskResults(taskId: string, results: SubTaskExecutionResult[]): Promise<void> {
+    if (!this.resolvedConfig.parentSessionId) return;
+
+    const fs = await import('fs-extra');
+    const path = await import('node:path');
+    const { Env } = await import('@main/common/env');
+
+    const mainWorkspace = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId);
+    const resultsDir = path.join(mainWorkspace, 'tasks', taskId, 'results');
+    await fs.ensureDir(resultsDir);
+
+    for (const result of results) {
+      const resultContent = [
+        `# ${result.subTaskId} 执行结果`,
+        '',
+        `**状态**: ${result.status}`,
+        `**执行时长**: ${result.duration || 0}ms`,
+        `**时间戳**: ${new Date(result.timestamp || Date.now()).toISOString()}`,
+        '',
+        '## 输出',
+        '',
+        typeof result.result === 'string' ? result.result : JSON.stringify(result.result, null, 2),
+        '',
+        result.error ? `## 错误\n\n${result.error}` : ''
+      ].join('\n');
+
+      await fs.writeFile(path.join(resultsDir, `${result.subTaskId}.md`), resultContent, 'utf-8');
+    }
+
+    log.info(`[Orchestrator] Saved ${results.length} subtask results to ${resultsDir}`);
+  }
+
+  /**
+   * 🆕 保存最终汇总结果到主会话
+   *
+   * 🔄 修改：保存 Aggregator Agent 的简洁汇总到 aggregation.md
+   */
+  private async saveFinalSummary(
+    taskId: string,
+    finalOutput: { summary: string; results: unknown[] },
+    subTaskResults: SubTaskExecutionResult[]
+  ): Promise<void> {
+    if (!this.resolvedConfig.parentSessionId) return;
+
+    const fs = await import('fs-extra');
+    const path = await import('node:path');
+    const { Env } = await import('@main/common/env');
+
+    const mainWorkspace = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId);
+    const tasksDir = path.join(mainWorkspace, 'tasks', taskId);
+    await fs.ensureDir(tasksDir);
+
+    // 🆕 保存简洁的汇总到 aggregation.md（来自 Aggregator Agent）
+    const aggregationContent = [
+      '# 任务执行汇总',
+      '',
+      `**任务 ID**: ${taskId}`,
+      `**完成时间**: ${new Date().toISOString()}`,
+      '',
+      finalOutput.summary
+    ].join('\n');
+
+    await fs.writeFile(path.join(tasksDir, 'aggregation.md'), aggregationContent, 'utf-8');
+
+    // 保留详细的 summary.md（包含所有子任务完整输出）
+    const detailedSummary = [
+      '# 任务执行详细记录',
+      '',
+      `**任务 ID**: ${taskId}`,
+      `**完成时间**: ${new Date().toISOString()}`,
+      '',
+      '## 子任务结果',
+      '',
+      ...subTaskResults.map(
+        (r) =>
+          `### ${r.subTaskId}` +
+          `\n- **状态**: ${r.status === 'completed' ? '✅ 完成' : '❌ 失败'}` +
+          `\n- **耗时**: ${r.duration || 0}ms` +
+          (r.error ? `\n- **错误**: ${r.error}` : '') +
+          '\n'
+      ),
+      '',
+      '## 完整输出',
+      '',
+      ...subTaskResults
+        .filter((r) => r.status === 'completed' && r.result)
+        .map(
+          (r) =>
+            `### ${r.subTaskId}\n\n${typeof r.result === 'string' ? r.result : JSON.stringify(r.result, null, 2)}\n`
+        )
+    ].join('\n');
+
+    await fs.writeFile(path.join(tasksDir, 'summary.md'), detailedSummary, 'utf-8');
+
+    // 保存状态 JSON
+    const statusData = {
+      taskId,
+      status: subTaskResults.every((r) => r.status === 'completed')
+        ? 'success'
+        : subTaskResults.some((r) => r.status === 'completed')
+          ? 'partial'
+          : 'failed',
+      completedAt: new Date().toISOString(),
+      subTaskCount: subTaskResults.length,
+      completedCount: subTaskResults.filter((r) => r.status === 'completed').length,
+      failedCount: subTaskResults.filter((r) => r.status === 'failed').length
+    };
+    await fs.writeFile(path.join(tasksDir, 'status.json'), JSON.stringify(statusData, null, 2), 'utf-8');
+
+    log.info(`[Orchestrator] Saved final summary to ${tasksDir}`);
+  }
+
+  /**
+   * 导出所有 Worker 产出的文件到主 workspace 的 output/
+   */
+  private async exportWorkerArtifacts(
+    subTasks: SubTask[]
+  ): Promise<Array<{ name: string; path: string; workerId: string }>> {
+    if (!this.resolvedConfig.parentSessionId) return [];
+
+    const fs = await import('fs-extra');
+    const path = await import('node:path');
+    const { Env } = await import('@main/common/env');
+
+    const mainWorkspace = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId);
+    const mainOutputDir = path.join(mainWorkspace, 'output');
+    await fs.ensureDir(mainOutputDir);
+
+    const artifacts: Array<{ name: string; path: string; workerId: string }> = [];
+
+    // 遍历所有 Worker 的 output 目录
+    for (const subTask of subTasks) {
+      const workerWorkspace = path.join(mainWorkspace, 'agents', `worker-${subTask.id}`);
+      const workerOutputDir = path.join(workerWorkspace, 'output');
+
+      if (await fs.pathExists(workerOutputDir)) {
+        const files = await fs.readdir(workerOutputDir);
+        for (const file of files) {
+          const sourcePath = path.join(workerOutputDir, file);
+          const destPath = path.join(mainOutputDir, `${subTask.id}-${file}`);
+
+          // 复制文件到主 workspace
+          await fs.copy(sourcePath, destPath, { overwrite: true });
+          log.info(`[Orchestrator] Exported artifact: ${subTask.id}-${file}`);
+
+          artifacts.push({
+            name: `${subTask.id}-${file}`,
+            path: destPath,
+            workerId: `worker-${subTask.id}`
+          });
+        }
+      }
+    }
+
+    return artifacts;
+  }
+
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -506,7 +741,7 @@ export class Orchestrator implements IOrchestrator {
 /**
  * 创建 Orchestrator 实例
  *
- * 工厂函数，自动创建 Planner 和 WorkerCoordinator。
+ * 工厂函数，自动创建 Planner、WorkerCoordinator 和 AggregatorAgent。
  */
 export function createOrchestrator(config?: OrchestratorConfig): Orchestrator {
   const planner = new Planner({
@@ -522,5 +757,11 @@ export function createOrchestrator(config?: OrchestratorConfig): Orchestrator {
     signal: config?.signal
   });
 
-  return new Orchestrator(planner, workerCoordinator, config);
+  const aggregator = new AggregatorAgent({
+    parentSessionId: config?.parentSessionId,
+    model: config?.model,
+    signal: config?.signal
+  });
+
+  return new Orchestrator(planner, workerCoordinator, aggregator, config);
 }

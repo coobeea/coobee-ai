@@ -1,0 +1,83 @@
+{
+  "name": "coobee-ai-vscode",
+  "displayName": "Coobee AI",
+  "description": "Coobee AI agent integration for VS Code",
+  "version": "0.1.0",
+  "publisher": "coobee",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:coobee.chat",
+    "onCommand:coobee.review",
+    "onCommand:coobee.explain"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "coobee.chat",
+        "title": "Coobee: Open Chat"
+      },
+      {
+        "command": "coobee.review",
+        "title": "Coobee: Review Code"
+      },
+      {
+        "command": "coobee.explain",
+        "title": "Coobee: Explain Selection"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "coobee-sidebar",
+          "title": "Coobee AI",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "coobee-sidebar": [
+        {
+          "id": "coobee-chat",
+          "name": "Chat"
+        },
+        {
+          "id": "coobee-agents",
+          "name": "Agents"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Coobee AI",
+      "properties": {
+        "coobee.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:13000",
+          "description": "Coobee AI API URL"
+        },
+        "coobee.apiKey": {
+          "type": "string",
+          "description": "API Key for authentication"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.0.0"
+  },
+  "dependencies": {}
+}

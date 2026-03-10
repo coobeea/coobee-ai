@@ -13,19 +13,19 @@ Session 是 SDK 内置的会话管理机制，自动处理多轮对话的历史�
 ```typescript
 interface Session {
   // 获取或创建会话 ID
-  getSessionId(): Promise<string>
+  getSessionId(): Promise<string>;
 
   // 获取会话历史项（可限制数量）
-  getItems(limit?: number): Promise<AgentInputItem[]>
+  getItems(limit?: number): Promise<AgentInputItem[]>;
 
   // 添加历史项
-  addItems(items: AgentInputItem[]): Promise<void>
+  addItems(items: AgentInputItem[]): Promise<void>;
 
   // 移除并返回最后一个项
-  popItem(): Promise<AgentInputItem | undefined>
+  popItem(): Promise<AgentInputItem | undefined>;
 
   // 清除整个会话
-  clearSession(): Promise<void>
+  clearSession(): Promise<void>;
 }
 ```
 
@@ -36,26 +36,26 @@ interface Session {
 最简单的实现，数据存储在进程内存中：
 
 ```typescript
-import { Agent, MemorySession, run } from '@openai/agents'
+import { Agent, MemorySession, run } from '@openai/agents';
 
-const session = new MemorySession()
+const session = new MemorySession();
 
 const agent = new Agent({
   name: 'Assistant',
   instructions: 'You are a helpful assistant.'
-})
+});
 
 // 第一轮
 let result = await run(agent, 'What is the largest country in South America?', {
   session
-})
-console.log(result.finalOutput) // "Brazil..."
+});
+console.log(result.finalOutput); // "Brazil..."
 
 // 第二轮 — Session 自动维护上下文
 result = await run(agent, 'What is the capital of that country?', {
   session
-})
-console.log(result.finalOutput) // "Brasilia..."
+});
+console.log(result.finalOutput); // "Brasilia..."
 ```
 
 **特点**：
@@ -69,17 +69,17 @@ console.log(result.finalOutput) // "Brasilia..."
 将会话数据持久化到本地 JSON 文件：
 
 ```typescript
-import { FileSession } from './sessions'
+import { FileSession } from './sessions';
 
-const session = new FileSession({ dir: './tmp/' })
+const session = new FileSession({ dir: './tmp/' });
 
-let result = await run(agent, 'Hello', { session })
+let result = await run(agent, 'Hello', { session });
 // 数据保存在 ./tmp/<sessionId>.json
 
 // 恢复会话（不同进程/重启后）
-const sessionId = await session.getSessionId()
-const restoredSession = new FileSession({ dir: './tmp/', sessionId })
-result = await run(agent, 'Continue our chat', { session: restoredSession })
+const sessionId = await session.getSessionId();
+const restoredSession = new FileSession({ dir: './tmp/', sessionId });
+result = await run(agent, 'Continue our chat', { session: restoredSession });
 ```
 
 **FileSession 实现要点**：
@@ -88,43 +88,43 @@ result = await run(agent, 'Continue our chat', { session: restoredSession })
 class FileSession implements Session {
   async getSessionId(): Promise<string> {
     if (!this.#sessionId) {
-      this.#sessionId = randomUUID().replace(/-/g, '').slice(0, 24)
+      this.#sessionId = randomUUID().replace(/-/g, '').slice(0, 24);
     }
     // 确保文件存在
-    const file = this.#filePath(this.#sessionId)
+    const file = this.#filePath(this.#sessionId);
     try {
-      await fs.access(file)
+      await fs.access(file);
     } catch {
-      await fs.writeFile(file, '[]', 'utf8')
+      await fs.writeFile(file, '[]', 'utf8');
     }
-    return this.#sessionId
+    return this.#sessionId;
   }
 
   async getItems(limit?: number): Promise<AgentInputItem[]> {
-    const items = await this.#readItems(sessionId)
+    const items = await this.#readItems(sessionId);
     if (typeof limit === 'number' && limit >= 0) {
-      return items.slice(-limit) // 返回最后 N 条
+      return items.slice(-limit); // 返回最后 N 条
     }
-    return items
+    return items;
   }
 
   async addItems(items: AgentInputItem[]): Promise<void> {
-    const current = await this.#readItems(sessionId)
+    const current = await this.#readItems(sessionId);
     // JSON 序列化/反序列化避免引用问题
-    const serialized = items.map((item) => JSON.parse(JSON.stringify(item)))
-    const next = current.concat(serialized)
-    await this.#writeItems(sessionId, next)
+    const serialized = items.map((item) => JSON.parse(JSON.stringify(item)));
+    const next = current.concat(serialized);
+    await this.#writeItems(sessionId, next);
   }
 
   async popItem(): Promise<AgentInputItem | undefined> {
-    const items = await this.#readItems(sessionId)
-    const last = items.pop()
-    await this.#writeItems(sessionId, items)
-    return last
+    const items = await this.#readItems(sessionId);
+    const last = items.pop();
+    await this.#writeItems(sessionId, items);
+    return last;
   }
 
   async clearSession(): Promise<void> {
-    await fs.unlink(this.#filePath(sessionId))
+    await fs.unlink(this.#filePath(sessionId));
   }
 }
 ```
@@ -140,11 +140,11 @@ class FileSession implements Session {
 利用 OpenAI Conversations API 管理会话：
 
 ```typescript
-import { OpenAIConversationsSession } from '@openai/agents'
+import { OpenAIConversationsSession } from '@openai/agents';
 
-const session = new OpenAIConversationsSession()
+const session = new OpenAIConversationsSession();
 
-let result = await run(agent, 'Hello', { session })
+let result = await run(agent, 'Hello', { session });
 // 会话数据存储在 OpenAI 服务端
 ```
 
@@ -159,17 +159,17 @@ let result = await run(agent, 'Hello', { session })
 基于 Prisma ORM 的数据库持久化：
 
 ```typescript
-import { PrismaSession } from './sessions'
-import { PrismaClient } from '@prisma/client'
+import { PrismaSession } from './sessions';
+import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient()
-const session = new PrismaSession({ client: prisma })
+const prisma = new PrismaClient();
+const session = new PrismaSession({ client: prisma });
 
 try {
-  let result = await run(agent, 'Hello', { session })
+  let result = await run(agent, 'Hello', { session });
   // 数据存储在数据库中
 } finally {
-  await prisma.$disconnect()
+  await prisma.$disconnect();
 }
 ```
 
@@ -202,13 +202,13 @@ model SessionItem {
 ```typescript
 class PrismaSession implements Session {
   async getItems(limit?: number): Promise<AgentInputItem[]> {
-    const take = typeof limit === 'number' && limit >= 0 ? limit : undefined
+    const take = typeof limit === 'number' && limit >= 0 ? limit : undefined;
     const records = await this.#client.sessionItem.findMany({
       where: { sessionId },
       orderBy: { position: take ? 'desc' : 'asc' },
       take
-    })
-    return records.map((r) => r.item as AgentInputItem)
+    });
+    return records.map((r) => r.item as AgentInputItem);
   }
 
   async addItems(items: AgentInputItem[]): Promise<void> {
@@ -217,17 +217,17 @@ class PrismaSession implements Session {
       const last = await client.sessionItem.findFirst({
         where: { sessionId },
         orderBy: { position: 'desc' }
-      })
-      let position = last?.position ?? 0
+      });
+      let position = last?.position ?? 0;
 
       const payload = items.map((item) => ({
         sessionId,
         position: ++position,
         item: JSON.parse(JSON.stringify(item))
-      }))
+      }));
 
-      await client.sessionItem.createMany({ data: payload })
-    })
+      await client.sessionItem.createMany({ data: payload });
+    });
   }
 }
 ```
@@ -255,21 +255,21 @@ class PrismaSession implements Session {
 ### 基础用法
 
 ```typescript
-import { OpenAIResponsesCompactionSession, MemorySession } from '@openai/agents'
+import { OpenAIResponsesCompactionSession, MemorySession } from '@openai/agents';
 
 const session = new OpenAIResponsesCompactionSession({
   model: 'gpt-5.2', // 用于压缩的模型
   underlyingSession: new MemorySession(), // 底层 Session
   shouldTriggerCompaction: ({ compactionCandidateItems }) => {
     // 当历史记录达到 4 条时触发压缩
-    return compactionCandidateItems.length >= 4
+    return compactionCandidateItems.length >= 4;
   }
-})
+});
 
-let result = await run(agent, 'First question', { session })
-result = await run(agent, 'Second question', { session })
-result = await run(agent, 'Third question', { session })
-result = await run(agent, 'Fourth question', { session })
+let result = await run(agent, 'First question', { session });
+result = await run(agent, 'Second question', { session });
+result = await run(agent, 'Third question', { session });
+result = await run(agent, 'Fourth question', { session });
 // 第四次运行时自动触发压缩
 ```
 
@@ -283,13 +283,13 @@ const session = new OpenAIResponsesCompactionSession({
   model: 'gpt-5.2',
   underlyingSession: new FileSession({ dir: './tmp/' }),
   shouldTriggerCompaction: ({ compactionCandidateItems }) => compactionCandidateItems.length >= 10
-})
+});
 ```
 
 ### 手动压缩
 
 ```typescript
-await session.runCompaction({ force: true })
+await session.runCompaction({ force: true });
 ```
 
 ### 无状态压缩
@@ -301,13 +301,13 @@ const agent = new Agent({
   modelSettings: {
     store: false // 禁用 OpenAI 端存储
   }
-})
+});
 
 const session = new OpenAIResponsesCompactionSession({
   model: 'gpt-5.2',
   underlyingSession: new MemorySession(),
   shouldTriggerCompaction: ({ compactionCandidateItems }) => compactionCandidateItems.length >= 4
-})
+});
 // 自动使用 input 压缩模式（而非默认的 responses.compact）
 ```
 
@@ -323,11 +323,11 @@ const session = new OpenAIResponsesCompactionSession({
 Session 同样支持流式模式：
 
 ```typescript
-const session = new MemorySession()
+const session = new MemorySession();
 
-const stream = await run(agent, 'Hello', { session, stream: true })
+const stream = await run(agent, 'Hello', { session, stream: true });
 for await (const event of stream.toTextStream()) {
-  process.stdout.write(event)
+  process.stdout.write(event);
 }
 ```
 
@@ -336,7 +336,7 @@ for await (const event of stream.toTextStream()) {
 实现 `Session` 接口即可创建自定义存储：
 
 ```typescript
-import type { Session, AgentInputItem } from '@openai/agents'
+import type { Session, AgentInputItem } from '@openai/agents';
 
 class RedisSession implements Session {
   constructor(
@@ -346,33 +346,33 @@ class RedisSession implements Session {
 
   async getSessionId(): Promise<string> {
     if (!this.sessionId) {
-      this.sessionId = generateId()
-      await this.redisClient.set(`session:${this.sessionId}`, '[]')
+      this.sessionId = generateId();
+      await this.redisClient.set(`session:${this.sessionId}`, '[]');
     }
-    return this.sessionId
+    return this.sessionId;
   }
 
   async getItems(limit?: number): Promise<AgentInputItem[]> {
-    const data = await this.redisClient.get(`session:${this.sessionId}`)
-    const items: AgentInputItem[] = JSON.parse(data || '[]')
-    return limit ? items.slice(-limit) : items
+    const data = await this.redisClient.get(`session:${this.sessionId}`);
+    const items: AgentInputItem[] = JSON.parse(data || '[]');
+    return limit ? items.slice(-limit) : items;
   }
 
   async addItems(items: AgentInputItem[]): Promise<void> {
-    const current = await this.getItems()
-    current.push(...items)
-    await this.redisClient.set(`session:${this.sessionId}`, JSON.stringify(current))
+    const current = await this.getItems();
+    current.push(...items);
+    await this.redisClient.set(`session:${this.sessionId}`, JSON.stringify(current));
   }
 
   async popItem(): Promise<AgentInputItem | undefined> {
-    const items = await this.getItems()
-    const last = items.pop()
-    await this.redisClient.set(`session:${this.sessionId}`, JSON.stringify(items))
-    return last
+    const items = await this.getItems();
+    const last = items.pop();
+    await this.redisClient.set(`session:${this.sessionId}`, JSON.stringify(items));
+    return last;
   }
 
   async clearSession(): Promise<void> {
-    await this.redisClient.del(`session:${this.sessionId}`)
+    await this.redisClient.del(`session:${this.sessionId}`);
   }
 }
 ```

@@ -418,19 +418,19 @@ hitl_decided  (void)  HITL 审批决策
 
 ```typescript
 interface TurnStartEvent {
-  sessionId: string
-  turnIndex: number // 从 1 开始
+  sessionId: string;
+  turnIndex: number; // 从 1 开始
 }
 
 interface TurnEndEvent {
-  sessionId: string
-  turnIndex: number
-  durationMs: number
-  toolCallCount: number
+  sessionId: string;
+  turnIndex: number;
+  durationMs: number;
+  toolCallCount: number;
   usage?: {
-    inputTokens: number
-    outputTokens: number
-  }
+    inputTokens: number;
+    outputTokens: number;
+  };
 }
 ```
 
@@ -447,23 +447,23 @@ interface TurnEndEvent {
 
 ```typescript
 interface BeforeCompactionEvent {
-  sessionId: string
-  messageCount: number // 待压缩消息数
-  totalTokens: number // 当前 token 总数
-  threshold: number // 触发阈值
+  sessionId: string;
+  messageCount: number; // 待压缩消息数
+  totalTokens: number; // 当前 token 总数
+  threshold: number; // 触发阈值
 }
 
 interface BeforeCompactionResult {
-  skipDefault?: boolean // 跳过默认压缩
-  customSummary?: string // 自定义摘要
+  skipDefault?: boolean; // 跳过默认压缩
+  customSummary?: string; // 自定义摘要
 }
 
 interface AfterCompactionEvent {
-  sessionId: string
-  originalTokens: number
-  compressedTokens: number
-  compressionRatio: number
-  duration: number // ms
+  sessionId: string;
+  originalTokens: number;
+  compressedTokens: number;
+  compressionRatio: number;
+  duration: number; // ms
 }
 ```
 
@@ -488,21 +488,21 @@ interface AfterCompactionEvent {
 
 ```typescript
 interface RunStartEvent {
-  sessionId: string
-  prompt: string
-  mode: AgentMode // 'chat' | 'agent'
+  sessionId: string;
+  prompt: string;
+  mode: AgentMode; // 'chat' | 'agent'
 }
 
 interface LlmDoneEvent {
-  sessionId: string
-  turnIndex: number
-  responseId?: string
+  sessionId: string;
+  turnIndex: number;
+  responseId?: string;
   usage?: {
-    inputTokens: number
-    outputTokens: number
-    totalTokens: number
-  }
-  durationMs: number
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
+  durationMs: number;
 }
 ```
 
@@ -567,17 +567,17 @@ case 'before_compaction':
 
 ```typescript
 hookRunner.runVoidHook('turn_start', event).catch((err) => {
-  console.error('[Hook] turn_start:', err)
-})
+  console.error('[Hook] turn_start:', err);
+});
 ```
 
 **modifying Hook**（必须等待结果）：
 
 ```typescript
-const result = await hookRunner.runModifyingHook('before_compaction', event)
+const result = await hookRunner.runModifyingHook('before_compaction', event);
 
 if (result?.skipDefault) {
-  return { summary: result.customSummary }
+  return { summary: result.customSummary };
 }
 // 继续默认压缩
 ```

@@ -60,14 +60,33 @@ interface SkillInfo {
  * 融合 agent-creator Skill 的完整流程：意图分析 → 能力规划 → 定义生成。
  * 注入工具和技能的详细信息，让 LLM 能精准匹配。
  */
+/** 默认必须包含的 Skills（所有 Agent 强制注入） */
+const MANDATORY_SKILLS = ['brain', 'dimension-architect', 'eval-refine-loop'];
+
 function buildSystemPrompt(tools: ToolInfo[], skills: SkillInfo[]): string {
   // 工具列表：name — description
   const toolSection =
     tools.length > 0 ? tools.map((t) => `- ${t.name} — ${t.description}`).join('\n') : '（无可用工具）';
 
-  // 技能列表：name — description
-  const skillSection =
-    skills.length > 0 ? skills.map((s) => `- ${s.name} — ${s.description}`).join('\n') : '（无可用技能）';
+  // 技能列表：区分必选和可选
+  const mandatorySkills = skills.filter((s) => MANDATORY_SKILLS.includes(s.name));
+  const optionalSkills = skills.filter((s) => !MANDATORY_SKILLS.includes(s.name));
+
+  const mandatorySection =
+    mandatorySkills.length > 0
+      ? mandatorySkills.map((s) => `- ${s.name} — ${s.description} ⚠️【必选，不可省略】`).join('\n')
+      : '';
+  const optionalSection =
+    optionalSkills.length > 0
+      ? optionalSkills.map((s) => `- ${s.name} — ${s.description}`).join('\n')
+      : '（无其他可选技能）';
+
+  const skillSection = [
+    mandatorySection ? `### 必选技能（必须包含，所有 Agent 强制使用）\n${mandatorySection}` : '',
+    `### 可选技能（根据 Agent 职责按需选择）\n${optionalSection}`
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   return `你是一个专业的 Agent 设计专家。你的任务是根据用户的自然语言需求，经过系统化分析，生成一个完整的 Agent 定义。
 
@@ -92,9 +111,11 @@ function buildSystemPrompt(tools: ToolInfo[], skills: SkillInfo[]): string {
 - 全能型 Agent → 选择所有需要的
 
 #### 技能匹配（重要！）
-仔细阅读每个可用技能的描述，选择与 Agent 职责相关的技能。
+技能列表分为两类：
+1. **必选技能**（brain、dimension-architect、eval-refine-loop）— 必须全部包含在 skills 列表中，无论 Agent 做什么
+2. **可选技能** — 根据 Agent 职责选择，匹配的一定要选上，不要遗漏
+
 技能会注入到 Agent 的知识库中，增强其专业能力。
-如果有匹配的技能，一定要选上，不要遗漏。
 
 #### 指令设计
 系统指令（instructions）是 Agent 的灵魂。好的指令包含：
@@ -133,7 +154,8 @@ ${skillSection}
 ## 重要约束
 - 所有文本使用中文
 - instructions 必须详细、专业、有指导价值
-- 工具和技能只选 Agent 真正需要的，但匹配的技能不要遗漏
+- **brain、dimension-architect、eval-refine-loop 三个技能必须出现在 skills 列表中**
+- 工具只选 Agent 真正需要的，可选技能中匹配的也不要遗漏
 - 必须严格输出 JSON 对象，不要有其他文字`;
 }
 
@@ -272,7 +294,6 @@ export async function aiCreateAgent(requirement: string, onProgress?: ProgressCa
     description?: string;
     instructions?: string;
   };
-  const rawTools = parsed.tools as string[] | undefined;
   const rawSkills = parsed.skills as string[] | undefined;
 
   if (!id || !name || !instructions) {
@@ -284,12 +305,10 @@ export async function aiCreateAgent(requirement: string, onProgress?: ProgressCa
   const toolNames = tools.map((t) => t.name);
   const skillNames = skills.map((s) => s.name);
 
-  const validTools = (rawTools ?? []).filter((t) => toolNames.includes(t));
+  // 工具默认全选：无论 LLM 选了哪些，都赋予全部工具
+  const validTools = [...toolNames];
   const validSkills = (rawSkills ?? []).filter((s) => skillNames.includes(s));
 
-  if (rawTools && validTools.length < rawTools.length) {
-    log.warn(`[AgentCreatorService] 过滤了无效工具: ${rawTools.filter((t) => !toolNames.includes(t)).join(', ')}`);
-  }
   if (rawSkills && validSkills.length < rawSkills.length) {
     log.warn(`[AgentCreatorService] 过滤了无效技能: ${rawSkills.filter((s) => !skillNames.includes(s)).join(', ')}`);
   }
@@ -312,7 +331,7 @@ export async function aiCreateAgent(requirement: string, onProgress?: ProgressCa
     name,
     description: description || name,
     instructions,
-    tools: validTools.length > 0 ? validTools : undefined,
+    // tools 已移除，默认全部可用
     skills: validSkills.length > 0 ? validSkills : undefined,
     createdBy: 'user'
   };

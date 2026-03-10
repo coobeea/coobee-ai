@@ -25,10 +25,7 @@ Gateway 是一个 **单进程多协议服务器**，默认监听 `127.0.0.1:1878
 
 ```typescript
 // src/gateway/server.impl.ts (L155-157)
-export async function startGatewayServer(
-  port = 18789,
-  opts: GatewayServerOptions = {}
-): Promise<GatewayServer>
+export async function startGatewayServer(port = 18789, opts: GatewayServerOptions = {}): Promise<GatewayServer>;
 ```
 
 它在一个端口上同时处理：
@@ -205,7 +202,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...ttsHandlers, // TTS — tts.enable, tts.convert
   ...wizardHandlers // 向导 — wizard.*
   // ...
-}
+};
 ```
 
 ---
@@ -309,7 +306,7 @@ export function createChannelManager(opts): ChannelManager {
     stopChannel, // 停止单个渠道
     getRuntimeSnapshot, // 获取所有渠道的运行状态
     markChannelLoggedOut
-  }
+  };
 }
 ```
 
@@ -415,23 +412,23 @@ Gateway 支持多种认证方式，按场景选择：
 ```typescript
 // src/gateway/server-methods.ts (L93-162) — 简化版
 function authorizeGatewayMethod(method, client) {
-  const role = client.connect.role // "operator" 或 "node"
-  const scopes = client.connect.scopes // ["operator.admin"] 等
+  const role = client.connect.role; // "operator" 或 "node"
+  const scopes = client.connect.scopes; // ["operator.admin"] 等
 
   // node 角色只能调 node.* 方法
   if (NODE_ROLE_METHODS.has(method)) {
-    return role === 'node' ? null : 'unauthorized role'
+    return role === 'node' ? null : 'unauthorized role';
   }
 
   // admin scope 可以调任何方法
-  if (scopes.includes('operator.admin')) return null
+  if (scopes.includes('operator.admin')) return null;
 
   // 按 scope 检查具体方法
   if (READ_METHODS.has(method)) {
-    return scopes.includes('operator.read') ? null : 'missing scope: operator.read'
+    return scopes.includes('operator.read') ? null : 'missing scope: operator.read';
   }
   if (WRITE_METHODS.has(method)) {
-    return scopes.includes('operator.write') ? null : 'missing scope: operator.write'
+    return scopes.includes('operator.write') ? null : 'missing scope: operator.write';
   }
   // ...
 }

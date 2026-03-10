@@ -3,15 +3,15 @@
  * 管理系统托盘图标和菜单
  */
 
-import { Menu, Tray, app } from 'electron'
-import { log } from './logger'
-import { getTrayNativeImage } from './icons'
-import { config } from './config'
-import { eventBus } from './eventbus'
-import { EventTypes } from '@shared/ipc/events'
+import { Menu, Tray, app } from 'electron';
+import { log } from './logger';
+import { getTrayNativeImage } from './icons';
+import { config } from './config';
+import { eventBus } from './eventbus';
+import { EventTypes } from '@shared/ipc/events';
 
 class TrayManager {
-  private tray: Tray | null = null
+  private tray: Tray | null = null;
 
   /**
    * 初始化托盘
@@ -20,47 +20,47 @@ class TrayManager {
     try {
       // 检查是否启用托盘
       if (!config.getShowTrayIcon()) {
-        log.info('[TrayManager] 托盘图标显示已禁用，跳过托盘创建')
-        return
+        log.info('[TrayManager] 托盘图标显示已禁用，跳过托盘创建');
+        return;
       }
 
       // 避免重复创建
       if (this.tray) {
-        log.warn('[TrayManager] 托盘已存在，跳过创建')
-        return
+        log.warn('[TrayManager] 托盘已存在，跳过创建');
+        return;
       }
 
       // 获取托盘图标（通过 IconManager 统一管理，内置错误处理）
-      const trayIcon = getTrayNativeImage()
+      const trayIcon = getTrayNativeImage();
 
       // 创建托盘
-      this.tray = new Tray(trayIcon)
-      this.tray.setToolTip('Coobee AI')
+      this.tray = new Tray(trayIcon);
+      this.tray.setToolTip('Coobee AI');
 
       // 设置菜单
-      this.updateMenu()
+      this.updateMenu();
 
       // 点击托盘图标时显示主窗口
       this.tray.on('click', async () => {
-        log.debug('[TrayManager] 托盘图标被点击')
+        log.debug('[TrayManager] 托盘图标被点击');
         // 动态导入 windowManager 避免循环依赖
-        const { windowManager } = await import('./window')
-        const mainWindow = windowManager.getMainWindow()
+        const { windowManager } = await import('./window');
+        const mainWindow = windowManager.getMainWindow();
         if (mainWindow) {
           if (mainWindow.isMinimized()) {
-            mainWindow.restore()
+            mainWindow.restore();
           }
-          mainWindow.show()
-          mainWindow.focus()
+          mainWindow.show();
+          mainWindow.focus();
         }
-      })
+      });
 
       // 监听配置变更，动态更新托盘菜单
-      this.setupConfigListeners()
+      this.setupConfigListeners();
 
-      log.info('[TrayManager] 托盘初始化成功')
+      log.info('[TrayManager] 托盘初始化成功');
     } catch (error) {
-      log.error('[TrayManager] 托盘初始化失败:', error)
+      log.error('[TrayManager] 托盘初始化失败:', error);
     }
   }
 
@@ -70,41 +70,41 @@ class TrayManager {
   private setupConfigListeners(): void {
     // 监听托盘图标显示配置变更
     eventBus.on(EventTypes.CONFIG_SHOW_TRAY_ICON_CHANGED, (payload) => {
-      log.info(`[TrayManager] 托盘图标显示配置变更: ${payload.value}`)
+      log.info(`[TrayManager] 托盘图标显示配置变更: ${payload.value}`);
       if (payload.value) {
-        this.recreate()
+        this.recreate();
       } else {
-        this.destroy()
+        this.destroy();
       }
-    })
+    });
 
     // 监听其他配置变更，更新菜单
-    eventBus.on(EventTypes.CONFIG_AUTO_START_CHANGED, () => this.updateMenu())
-    eventBus.on(EventTypes.CONFIG_CLOSE_TO_TRAY_CHANGED, () => this.updateMenu())
+    eventBus.on(EventTypes.CONFIG_AUTO_START_CHANGED, () => this.updateMenu());
+    eventBus.on(EventTypes.CONFIG_CLOSE_TO_TRAY_CHANGED, () => this.updateMenu());
   }
 
   /**
    * 更新托盘菜单
    */
   updateMenu(): void {
-    if (!this.tray) return
+    if (!this.tray) return;
 
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       {
         label: '创建窗口',
         click: async () => {
-          const { windowManager } = await import('./window')
+          const { windowManager } = await import('./window');
           windowManager.createWindow({
             type: 'agent',
             initialUrl: '/shell'
-          })
+          });
         }
       },
       {
         label: '显示控制台',
         click: async () => {
-          const { windowManager } = await import('./window')
-          windowManager.createConsoleWindow()
+          const { windowManager } = await import('./window');
+          windowManager.createConsoleWindow();
         }
       },
       { type: 'separator' },
@@ -113,12 +113,12 @@ class TrayManager {
         type: 'checkbox',
         checked: config.getAutoStart(),
         click: (menuItem) => {
-          config.setAutoStart(menuItem.checked)
+          config.setAutoStart(menuItem.checked);
           // 设置开机启动
           app.setLoginItemSettings({
             openAtLogin: menuItem.checked,
             openAsHidden: config.getStartToTray()
-          })
+          });
         }
       },
       {
@@ -126,21 +126,21 @@ class TrayManager {
         type: 'checkbox',
         checked: config.getCloseToTray(),
         click: (menuItem) => {
-          config.setCloseToTray(menuItem.checked)
+          config.setCloseToTray(menuItem.checked);
         }
       },
       {
         label: '退出',
         click: () => {
-          log.info('[TrayManager] 用户从托盘菜单退出应用')
+          log.info('[TrayManager] 用户从托盘菜单退出应用');
           // 设置标志，表示是主动退出
-          app.quit()
+          app.quit();
         }
       }
-    ]
+    ];
 
-    const contextMenu = Menu.buildFromTemplate(menuTemplate)
-    this.tray.setContextMenu(contextMenu)
+    const contextMenu = Menu.buildFromTemplate(menuTemplate);
+    this.tray.setContextMenu(contextMenu);
   }
 
   /**
@@ -148,9 +148,9 @@ class TrayManager {
    */
   destroy(): void {
     if (this.tray) {
-      this.tray.destroy()
-      this.tray = null
-      log.info('[TrayManager] 托盘已销毁')
+      this.tray.destroy();
+      this.tray = null;
+      log.info('[TrayManager] 托盘已销毁');
     }
   }
 
@@ -158,24 +158,24 @@ class TrayManager {
    * 重新创建托盘
    */
   recreate(): void {
-    this.destroy()
-    this.createTray()
+    this.destroy();
+    this.createTray();
   }
 
   /**
    * 检查托盘是否已创建
    */
   isCreated(): boolean {
-    return this.tray !== null
+    return this.tray !== null;
   }
 
   /**
    * 获取托盘实例
    */
   getTray(): Tray | null {
-    return this.tray
+    return this.tray;
   }
 }
 
 // 创建单例实例
-export const trayManager = new TrayManager()
+export const trayManager = new TrayManager();

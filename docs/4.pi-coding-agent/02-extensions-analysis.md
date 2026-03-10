@@ -59,34 +59,34 @@ export default function (pi: ExtensionAPI) {
 ### 1.2 ExtensionContext (ctx) 核心能力
 
 ```typescript
-ctx.cwd // 工作目录
-ctx.hasUI // 是否有 UI
-ctx.model // 当前模型
-ctx.modelRegistry // 模型注册表（find, getApiKey, getAvailable）
-ctx.sessionManager // 会话管理（getBranch, getEntries, getLeafEntry）
-ctx.getContextUsage() // 上下文 token 使用量
+ctx.cwd; // 工作目录
+ctx.hasUI; // 是否有 UI
+ctx.model; // 当前模型
+ctx.modelRegistry; // 模型注册表（find, getApiKey, getAvailable）
+ctx.sessionManager; // 会话管理（getBranch, getEntries, getLeafEntry）
+ctx.getContextUsage(); // 上下文 token 使用量
 
 // UI 能力
-ctx.ui.notify(message, level) // 通知
-ctx.ui.confirm(title, message) // 确认对话框
-ctx.ui.select(prompt, options) // 选择器
-ctx.ui.editor(title, initial) // 编辑器
-ctx.ui.setStatus(id, text) // 状态栏
-ctx.ui.setWidget(id, lines) // Widget
-ctx.ui.setFooter(component) // 自定义 Footer
-ctx.ui.setHeader(component) // 自定义 Header
-ctx.ui.setEditorText(text) // 设置编辑器内容
-ctx.ui.setEditorComponent(comp) // 自定义编辑器
-ctx.ui.custom(renderFn) // 完全自定义 UI
+ctx.ui.notify(message, level); // 通知
+ctx.ui.confirm(title, message); // 确认对话框
+ctx.ui.select(prompt, options); // 选择器
+ctx.ui.editor(title, initial); // 编辑器
+ctx.ui.setStatus(id, text); // 状态栏
+ctx.ui.setWidget(id, lines); // Widget
+ctx.ui.setFooter(component); // 自定义 Footer
+ctx.ui.setHeader(component); // 自定义 Header
+ctx.ui.setEditorText(text); // 设置编辑器内容
+ctx.ui.setEditorComponent(comp); // 自定义编辑器
+ctx.ui.custom(renderFn); // 完全自定义 UI
 
-ctx.ui.theme // 主题
-ctx.ui.theme.fg('accent', text) // 主题颜色
-ctx.ui.theme.bold(text) // 粗体
-ctx.ui.theme.strikethrough(text) // 删除线
+ctx.ui.theme; // 主题
+ctx.ui.theme.fg('accent', text); // 主题颜色
+ctx.ui.theme.bold(text); // 粗体
+ctx.ui.theme.strikethrough(text); // 删除线
 
-ctx.compact(options) // 触发压缩
-ctx.newSession(options) // 新建会话
-ctx.shutdown() // 关闭
+ctx.compact(options); // 触发压缩
+ctx.newSession(options); // 新建会话
+ctx.shutdown(); // 关闭
 ```
 
 ### 1.3 可拦截的事件
@@ -125,13 +125,13 @@ ctx.shutdown() // 关闭
 
 ```typescript
 pi.on('tool_call', async (event, ctx) => {
-  if (event.toolName !== 'bash') return
-  const command = event.input.command as string
+  if (event.toolName !== 'bash') return;
+  const command = event.input.command as string;
   if (dangerousPatterns.some((p) => p.test(command))) {
-    const choice = await ctx.ui.select('⚠️ Dangerous command', ['Yes', 'No'])
-    if (choice !== 'Yes') return { block: true, reason: 'Blocked by user' }
+    const choice = await ctx.ui.select('⚠️ Dangerous command', ['Yes', 'No']);
+    if (choice !== 'Yes') return { block: true, reason: 'Blocked by user' };
   }
-})
+});
 ```
 
 #### `protected-paths.ts` — 路径保护
@@ -344,17 +344,17 @@ pi.on("before_agent_start", async (event) => ({
 
 ```typescript
 pi.on('session_before_compact', async (event, ctx) => {
-  const { preparation } = event
-  const allMessages = [...preparation.messagesToSummarize, ...preparation.turnPrefixMessages]
+  const { preparation } = event;
+  const allMessages = [...preparation.messagesToSummarize, ...preparation.turnPrefixMessages];
 
   // 用 Gemini Flash 做便宜快速的摘要
-  const model = ctx.modelRegistry.find('google', 'gemini-2.5-flash')
-  const response = await complete(model, { messages: summaryMessages }, { apiKey })
+  const model = ctx.modelRegistry.find('google', 'gemini-2.5-flash');
+  const response = await complete(model, { messages: summaryMessages }, { apiKey });
 
   return {
     compaction: { summary, firstKeptEntryId, tokensBefore }
-  }
-})
+  };
+});
 ```
 
 #### `trigger-compact.ts` — 触发压缩
@@ -371,15 +371,15 @@ pi.on('session_before_compact', async (event, ctx) => {
 
 ```typescript
 pi.on('turn_start', async () => {
-  const { stdout } = await pi.exec('git', ['stash', 'create'])
-  checkpoints.set(currentEntryId, stdout.trim())
-})
+  const { stdout } = await pi.exec('git', ['stash', 'create']);
+  checkpoints.set(currentEntryId, stdout.trim());
+});
 
 pi.on('session_before_fork', async (event, ctx) => {
-  const ref = checkpoints.get(event.entryId)
+  const ref = checkpoints.get(event.entryId);
   // 提示用户是否恢复
-  await pi.exec('git', ['stash', 'apply', ref])
-})
+  await pi.exec('git', ['stash', 'apply', ref]);
+});
 ```
 
 #### `auto-commit-on-exit.ts` — 退出自动提交
@@ -435,7 +435,7 @@ pi.on('resources_discover', () => ({
   skillPaths: [join(baseDir, 'SKILL.md')],
   promptPaths: [join(baseDir, 'dynamic.md')],
   themePaths: [join(baseDir, 'dynamic.json')]
-}))
+}));
 ```
 
 ---
@@ -447,11 +447,11 @@ pi.on('resources_discover', () => ({
 ```typescript
 // 监听
 pi.events.on('my:notification', (data) => {
-  ctx.ui.notify(`Event from ${data.from}: ${data.message}`)
-})
+  ctx.ui.notify(`Event from ${data.from}: ${data.message}`);
+});
 
 // 发送
-pi.events.emit('my:notification', { message: 'hello', from: 'extension-a' })
+pi.events.emit('my:notification', { message: 'hello', from: 'extension-a' });
 ```
 
 ---
@@ -486,8 +486,8 @@ pi.registerTool({ name: "read" })  →  覆盖内置 read
 ### 3.3 Operations 抽象模式
 
 ```typescript
-createBashTool(cwd, { operations: customBashOps })
-createReadTool(cwd, { operations: customReadOps })
+createBashTool(cwd, { operations: customBashOps });
+createReadTool(cwd, { operations: customReadOps });
 ```
 
 工具的 I/O 操作可替换——本地、SSH、沙箱、Docker 等。
@@ -540,21 +540,21 @@ pi.on("user_bash") → { operations } → 替换 bash 执行
 ```typescript
 interface CodingExtensionAPI {
   // 事件拦截
-  on(event: string, handler: EventHandler): void
+  on(event: string, handler: EventHandler): void;
 
   // 工具注册
-  registerTool(tool: ToolDefinition): void
+  registerTool(tool: ToolDefinition): void;
 
   // 命令注册
-  registerCommand(name: string, handler: CommandHandler): void
+  registerCommand(name: string, handler: CommandHandler): void;
 
   // 工具管理
-  setActiveTools(tools: string[]): void
+  setActiveTools(tools: string[]): void;
 
   // 消息发送
-  sendMessage(msg: CustomMessage, options?: { triggerTurn: boolean }): void
+  sendMessage(msg: CustomMessage, options?: { triggerTurn: boolean }): void;
 
   // 会话持久化
-  appendEntry(type: string, data: any): void
+  appendEntry(type: string, data: any): void;
 }
 ```

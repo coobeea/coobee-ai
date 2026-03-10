@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Orchestrator, type OrchestratorEvent } from '../Orchestrator';
 import type { IPlanner } from '../Planner';
 import type { IWorkerCoordinator, WorkerExecutionResult } from '../WorkerCoordinator';
+import type { IAggregator, AggregationResult } from '../AggregatorAgent';
 import type { Task, ExecutionPlan, SubTask, Stage, WorkerInfo } from '../types';
 
 vi.mock('@main/common/logger', () => ({
@@ -52,6 +53,7 @@ const mockWorkerInfo: WorkerInfo = {
 describe('Orchestrator', () => {
   let mockPlanner: IPlanner;
   let mockWorkerCoordinator: IWorkerCoordinator;
+  let mockAggregator: IAggregator;
   let executeSubTaskFn: ReturnType<
     typeof vi.fn<(subTask: SubTask, worker: WorkerInfo) => Promise<WorkerExecutionResult>>
   >;
@@ -72,6 +74,13 @@ describe('Orchestrator', () => {
       getWorkerStatus: vi.fn().mockReturnValue(null),
       clear: vi.fn().mockResolvedValue(undefined)
     };
+
+    mockAggregator = {
+      aggregate: vi.fn().mockResolvedValue({
+        summary: '任务汇总完成',
+        duration: 100
+      } as AggregationResult)
+    };
   });
 
   it('规划 → 顺序执行 → 聚合结果', async () => {
@@ -91,7 +100,7 @@ describe('Orchestrator', () => {
       .mockResolvedValueOnce({ output: '需求已分析', duration: 100 })
       .mockResolvedValueOnce({ output: '代码已编写', duration: 200 });
 
-    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator);
+    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, mockAggregator);
     const result = await orchestrator.executeTask(task);
 
     expect(result.status).toBe('success');
@@ -118,7 +127,7 @@ describe('Orchestrator', () => {
     (mockPlanner.plan as ReturnType<typeof vi.fn>).mockResolvedValue(plan);
     executeSubTaskFn.mockResolvedValue({ output: '分析完成', duration: 100 });
 
-    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, {
+    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, mockAggregator, {
       allowParallel: true
     });
 
@@ -146,7 +155,7 @@ describe('Orchestrator', () => {
       .mockResolvedValueOnce({ output: '完成', duration: 100 })
       .mockRejectedValueOnce(new Error('执行失败'));
 
-    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, { maxRetries: 0 });
+    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, mockAggregator, { maxRetries: 0 });
     const result = await orchestrator.executeTask(task);
 
     expect(result.status).toBe('partial');
@@ -169,7 +178,7 @@ describe('Orchestrator', () => {
     executeSubTaskFn.mockResolvedValue({ output: '完成', duration: 50 });
 
     const events: OrchestratorEvent[] = [];
-    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, {
+    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, mockAggregator, {
       onEvent: (e) => events.push(e)
     });
 
@@ -190,7 +199,7 @@ describe('Orchestrator', () => {
     const task = createTask();
     (mockPlanner.plan as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('规划失败'));
 
-    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator);
+    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, mockAggregator);
     const result = await orchestrator.executeTask(task);
 
     expect(result.status).toBe('failed');
@@ -198,18 +207,18 @@ describe('Orchestrator', () => {
   });
 
   it('cancelTask 标记任务为已取消', () => {
-    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator);
+    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, mockAggregator);
     orchestrator.cancelTask('task-1');
   });
 
   it('cleanup 清理所有资源', async () => {
-    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator);
+    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, mockAggregator);
     await orchestrator.cleanup();
     expect(mockWorkerCoordinator.clear).toHaveBeenCalled();
   });
 
   it('parentSessionId 传递到配置', () => {
-    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, {
+    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, mockAggregator, {
       parentSessionId: 'thread-123'
     });
     expect(orchestrator).toBeDefined();
@@ -230,7 +239,7 @@ describe('Orchestrator', () => {
     (mockPlanner.plan as ReturnType<typeof vi.fn>).mockResolvedValue(plan);
     executeSubTaskFn.mockRejectedValue(new Error('fail'));
 
-    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, { maxRetries: 0 });
+    const orchestrator = new Orchestrator(mockPlanner, mockWorkerCoordinator, mockAggregator, { maxRetries: 0 });
     const result = await orchestrator.executeTask(task);
 
     expect(result.status).toBe('failed');

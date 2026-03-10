@@ -34,8 +34,8 @@
 
 ```vue
 <script setup lang="ts">
-import IconMdiHome from '~icons/mdi/home'
-import IconMdiAccount from '~icons/mdi/account'
+import IconMdiHome from '~icons/mdi/home';
+import IconMdiAccount from '~icons/mdi/account';
 </script>
 
 <template>
@@ -80,7 +80,7 @@ import IconMdiAccount from '~icons/mdi/account'
 </template>
 
 <script setup>
-const iconName = ref('home')
+const iconName = ref('home');
 </script>
 ```
 
@@ -97,9 +97,9 @@ const iconName = ref('home')
 ### 1. electron.vite.config.ts
 
 ```typescript
-import Icons from 'unplugin-icons/vite'
-import IconsResolver from 'unplugin-icons/resolver'
-import Components from 'unplugin-vue-components/vite'
+import Icons from 'unplugin-icons/vite';
+import IconsResolver from 'unplugin-icons/resolver';
+import Components from 'unplugin-vue-components/vite';
 
 export default defineConfig({
   renderer: {
@@ -120,7 +120,7 @@ export default defineConfig({
       vue()
     ]
   }
-})
+});
 ```
 
 ### 2. tailwind.css
@@ -206,12 +206,12 @@ export default defineConfig({
 ```vue
 <script setup lang="ts">
 // 常用导航图标 - 手动导入
-import IconMdiHome from '~icons/mdi/home'
-import IconMdiAccount from '~icons/mdi/account'
+import IconMdiHome from '~icons/mdi/home';
+import IconMdiAccount from '~icons/mdi/account';
 
 // 动态状态图标
-const statusIcon = ref('home')
-const iconList = ['home', 'heart', 'star', 'fire']
+const statusIcon = ref('home');
+const iconList = ['home', 'heart', 'star', 'fire'];
 </script>
 
 <template>

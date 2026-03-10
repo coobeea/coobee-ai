@@ -23,6 +23,10 @@ declare global {
         update: (req: UpdateTabRequest) => Promise<IpcResult<void>>;
       };
       openDirectory: () => Promise<string | null>;
+      openFile: (options?: {
+        properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>;
+        filters?: Array<{ name: string; extensions: string[] }>;
+      }) => Promise<{ canceled: boolean; filePaths: string[] }>;
       getClipboardFiles: () => Promise<string[]>;
       isBackendReady: () => Promise<boolean>;
       onEvent: (callback: (message: IpcEventMessage) => void) => void;

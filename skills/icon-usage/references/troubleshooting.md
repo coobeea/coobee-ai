@@ -87,11 +87,11 @@ In VSCode:
 
 ```typescript
 // ✅ Correct
-import IconMdiHome from '~icons/mdi/home'
+import IconMdiHome from '~icons/mdi/home';
 
 // ❌ Wrong
-import IconMdiHome from '@icons/mdi/home'
-import IconMdiHome from 'icons/mdi/home'
+import IconMdiHome from '@icons/mdi/home';
+import IconMdiHome from 'icons/mdi/home';
 ```
 
 ### Symptom: Type errors with icon components
@@ -100,7 +100,7 @@ import IconMdiHome from 'icons/mdi/home'
 
 ```typescript
 // If using composition API, types should be inferred automatically
-import IconMdiHome from '~icons/mdi/home'
+import IconMdiHome from '~icons/mdi/home';
 
 // Component type should be: DefineComponent<{}, {}, any>
 ```
@@ -122,8 +122,8 @@ If types are still not working:
 In `electron.vite.config.ts`:
 
 ```typescript
-import Components from 'unplugin-vue-components/vite'
-import IconsResolver from 'unplugin-icons/resolver'
+import Components from 'unplugin-vue-components/vite';
+import IconsResolver from 'unplugin-icons/resolver';
 
 export default defineConfig({
   renderer: {
@@ -141,7 +141,7 @@ export default defineConfig({
       })
     ]
   }
-})
+});
 ```
 
 **Check 2: Correct component name format**
@@ -167,7 +167,7 @@ Auto-imported components should be declared in `src/renderer/components.d.ts`:
 ```typescript
 declare module 'vue' {
   export interface GlobalComponents {
-    IconMdiHome: (typeof import('~icons/mdi/home'))['default']
+    IconMdiHome: (typeof import('~icons/mdi/home'))['default'];
     // ... other auto-imported components
   }
 }
@@ -327,12 +327,12 @@ If bundle size is unexpectedly large:
 
 ```typescript
 // ✅ Good: Import once at top
-import IconMdiHome from '~icons/mdi/home'
+import IconMdiHome from '~icons/mdi/home';
 
 // ❌ Bad: Don't import in loop
 icons.forEach((icon) => {
-  import(`~icons/mdi/${icon}`) // Won't work anyway
-})
+  import(`~icons/mdi/${icon}`); // Won't work anyway
+});
 ```
 
 **Solution 3: Use CSS method for large lists**
@@ -362,12 +362,12 @@ Each component needs its own imports:
 ```vue
 <!-- Component A -->
 <script setup lang="ts">
-import IconMdiHome from '~icons/mdi/home' // ✅ Import here
+import IconMdiHome from '~icons/mdi/home'; // ✅ Import here
 </script>
 
 <!-- Component B -->
 <script setup lang="ts">
-import IconMdiHome from '~icons/mdi/home' // ✅ Also import here
+import IconMdiHome from '~icons/mdi/home'; // ✅ Also import here
 </script>
 ```
 

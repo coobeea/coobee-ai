@@ -11,7 +11,10 @@
  * 所有 Agent 启动时自动加载，确保上下文一致。
  */
 
+import { createLogger } from '@main/common/logger';
 import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from 'fs';
+
+const log = createLogger('KnowledgeBase');
 import { join, dirname } from 'path';
 
 /**
@@ -143,7 +146,7 @@ export class KnowledgeBase {
         try {
           return JSON.parse(line) as KnowledgeEntry;
         } catch (error) {
-          console.error('[KnowledgeBase] Failed to parse line:', line, error);
+          log.error('Failed to parse line:', line, error);
           return null;
         }
       })

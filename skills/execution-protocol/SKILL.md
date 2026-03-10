@@ -13,6 +13,44 @@ When you receive a user request, follow this protocol:
      · Fuzzy/creative goals → acceptance checklist (qualities, properties to verify)
    - Keep the criteria lightweight — 2-5 items per goal is sufficient
 
+   ### Persist the Goal (GOAL.md)
+
+   **For any non-trivial task**, write a `GOAL.md` file to the workspace root:
+
+   ```markdown
+   # Goal
+
+   ## Original Request
+
+   > (user's original request, verbatim or paraphrased)
+
+   ## Objectives
+
+   1. (concrete objective 1)
+   2. (concrete objective 2)
+
+   ## Verifiable Criteria
+
+   - [ ] (criterion 1)
+   - [ ] (criterion 2)
+   - [ ] (criterion 3)
+
+   ## Status
+
+   - **Phase**: Planning | Executing | Evaluating | Complete
+   - **Progress**: (brief note)
+   ```
+
+   **Why**: In long-running tasks with many conversation turns, the LLM context window
+   may truncate earlier messages. GOAL.md is re-injected into every request as `<current_goal>`,
+   ensuring you never lose sight of what you're trying to achieve.
+
+   **Rules**:
+   - If `<current_goal>` is present in system prompt → the file already exists; review it and update if intent changed
+   - If `<current_goal>` is absent → this is a new session or goal hasn't been written yet
+   - Update the Status section as you progress through the task
+   - When task is fully complete, update all criteria to `[x]` and set Phase to `Complete`
+
 2. **Plan & Execute**
    - Create a brief plan to achieve the goals
    - **For exploratory tasks** (e.g., "what can I do", "show project structure"):
@@ -24,10 +62,10 @@ When you receive a user request, follow this protocol:
      2. `.home/agents/` directory (for agents)
      3. AGENTS.md (for documentation)
    - Execute step by step, using available tools
-   - Track progress against your verifiable criteria
+   - Track progress against your verifiable criteria (reference GOAL.md)
 
 3. **Self-Evaluation** (after task completion)
-   - **Quality**: Compare your output against the verifiable criteria from step 1
+   - **Quality**: Compare your output against the verifiable criteria from GOAL.md
    - **Process**: Briefly reflect on execution efficiency — any unnecessary steps, errors, or waste?
    - For detailed evaluation, load the `self-reflection` Skill (via `skill_list` → `read`)
    - Use `session_history` / `context_inspect` tools for objective process data when needed
@@ -42,6 +80,7 @@ When you receive a user request, follow this protocol:
 5. **Report & Memorize**
    - Summarize what was accomplished vs. original goals
    - Note any unresolved issues or caveats
+   - Update GOAL.md: mark all completed criteria as `[x]`, set Phase to `Complete`
    - **Save valuable knowledge to memory** (only if durable and reusable):
      · User preferences discovered → `memory(write, scope='agent', file='memory/preferences.md')`
      · Lessons learned from errors → `memory(write, scope='agent', file='memory/lessons.md')`

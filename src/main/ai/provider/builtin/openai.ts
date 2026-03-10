@@ -1,4 +1,4 @@
-import type { ProviderConfig } from '../types'
+import type { ProviderConfig } from '../types';
 
 export const openaiProvider: ProviderConfig = {
   id: 'openai',
@@ -36,4 +36,4 @@ export const openaiProvider: ProviderConfig = {
     }
   ],
   enabled: true
-}
+};

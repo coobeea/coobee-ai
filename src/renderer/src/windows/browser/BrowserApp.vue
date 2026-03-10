@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import IconMdiWeb from '~icons/mdi/web'
+import IconMdiWeb from '~icons/mdi/web';
 </script>
 
 <template>

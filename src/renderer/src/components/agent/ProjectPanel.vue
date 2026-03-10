@@ -5,12 +5,29 @@
  * 显示项目目录的文件树，通过 HTTP API 获取目录结构。
  * 支持目录展开/折叠、文件类型图标、手动刷新、文件选中。
  * 自动监听文件变化并刷新树。
+ * 支持切换显示"智能体目录"或"任务工作目录"。
  */
-import { ref, watch, provide, onUnmounted } from 'vue';
+import { ref, watch, provide, onUnmounted, inject, computed, type Ref } from 'vue';
 import configManager from '@/config';
 import { useOpenFiles } from '@/composables/useOpenFiles';
 import { watchThreadFiles, type WorkspaceFileChangedPayload } from '@/composables/useWorkspaceWatcher';
+import { useLogStore } from '@/stores/log';
 import FileTreeNodeVue from './FileTreeNode.vue';
+
+const logStore = useLogStore();
+
+// 从 ThreadView 注入目录模式
+type DirectoryMode = 'agent-home' | 'workspace';
+const directoryMode = inject<Ref<DirectoryMode>>('directoryMode', ref('agent-home'));
+const toggleDirectoryMode = inject<() => void>('toggleDirectoryMode', () => {});
+
+const directoryTitle = computed(() => {
+  return directoryMode.value === 'agent-home' ? '智能体目录' : '任务工作目录';
+});
+
+const directoryIcon = computed(() => {
+  return directoryMode.value === 'agent-home' ? 'i-carbon-user-avatar' : 'i-carbon-folder-shared';
+});
 
 const props = defineProps<{
   threadId?: string;
@@ -110,15 +127,15 @@ async function handleDeleteNode(nodePath: string): Promise<void> {
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('[ProjectPanel] 删除失败:', (data as { error?: string }).error);
+      logStore.error('user', '文件/目录删除失败', { path: nodePath, error: (data as { error?: string }).error });
       return;
     }
 
-    console.log('[ProjectPanel] 删除成功:', data);
+    logStore.info('user', '文件/目录删除成功', { path: nodePath, data });
     // 刷新文件树，保持展开状态
     await loadTree(false);
   } catch (err) {
-    console.error('[ProjectPanel] 删除错误:', err);
+    logStore.error('user', '文件/目录删除异常', { path: nodePath, error: err });
   }
 }
 
@@ -132,7 +149,7 @@ async function handlePaste(event: KeyboardEvent): Promise<void> {
       // 从剪贴板读取文件路径
       const filePaths = await window.api?.getClipboardFiles();
       if (!filePaths || filePaths.length === 0) {
-        console.log('[ProjectPanel] 剪贴板中没有文件');
+        logStore.debug('user', '剪贴板中没有文件');
         return;
       }
 
@@ -149,18 +166,18 @@ async function handlePaste(event: KeyboardEvent): Promise<void> {
       }
 
       if (!targetDir) {
-        console.error('[ProjectPanel] 无法确定目标目录');
+        logStore.error('user', '无法确定粘贴目标目录', { selectedPath: selectedPath.value });
         return;
       }
 
-      console.log('[ProjectPanel] 粘贴文件到:', targetDir, '文件:', filePaths);
+      logStore.info('user', '粘贴文件到工作区', { targetDir, filePaths });
 
       // 复制所有文件/目录
       for (const sourcePath of filePaths) {
         await copyFileToWorkspace(sourcePath, targetDir);
       }
     } catch (err) {
-      console.error('[ProjectPanel] 粘贴失败:', err);
+      logStore.error('user', '粘贴文件失败', { error: err });
     }
   }
 }
@@ -194,7 +211,7 @@ async function selectDirectory(): Promise<void> {
       projectPath.value = result;
     }
   } catch (err) {
-    console.warn('[ProjectPanel] 选择目录失败:', err);
+    logStore.warn('user', '选择目录失败', { error: err });
   }
 }
 
@@ -223,7 +240,7 @@ watch(
     // 创建新订阅
     if (newThreadId) {
       unwatchFiles = watchThreadFiles(newThreadId, (payload: WorkspaceFileChangedPayload) => {
-        console.log(`[ProjectPanel] 检测到文件变化: ${payload.files.join(', ')}`);
+        logStore.debug('event', `检测到工作区文件变化: ${payload.files.join(', ')}`);
         // 自动刷新文件树，保持展开状态
         loadTree(false);
       });
@@ -253,15 +270,15 @@ async function copyFileToWorkspace(sourcePath: string, targetDir: string): Promi
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('[ProjectPanel] 复制失败:', (data as { error?: string }).error);
+      logStore.error('user', '文件复制失败', { sourcePath, targetDir, error: (data as { error?: string }).error });
       return;
     }
 
-    console.log('[ProjectPanel] 复制成功:', data);
+    logStore.info('user', '文件复制成功', { sourcePath, targetDir, data });
     // 刷新文件树，保持展开状态
     await loadTree(false);
   } catch (err) {
-    console.error('[ProjectPanel] 复制错误:', err);
+    logStore.error('user', '文件复制异常', { sourcePath, targetDir, error: err });
   }
 }
 
@@ -288,15 +305,19 @@ async function uploadFileToWorkspace(file: File, targetDir: string): Promise<voi
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('[ProjectPanel] 上传失败:', (data as { error?: string }).error);
+      logStore.error('user', '文件上传失败', {
+        fileName: file.name,
+        targetDir,
+        error: (data as { error?: string }).error
+      });
       return;
     }
 
-    console.log('[ProjectPanel] 上传成功:', data);
+    logStore.info('user', '文件上传成功', { fileName: file.name, targetDir, data });
     // 刷新文件树，保持展开状态
     await loadTree(false);
   } catch (err) {
-    console.error('[ProjectPanel] 上传错误:', err);
+    logStore.error('user', '文件上传异常', { fileName: file.name, targetDir, error: err });
   }
 }
 
@@ -312,10 +333,17 @@ defineExpose({ selectDirectory });
     <!-- 面板标题 -->
     <div class="flex h-10 shrink-0 items-center justify-between border-b border-gray-200/60 px-3">
       <div class="flex items-center gap-1.5">
-        <span class="i-carbon-folder-shared inline-block h-3.5 w-3.5 text-gray-500"></span>
-        <span class="text-xs font-semibold text-gray-600">任务工作目录</span>
+        <span :class="directoryIcon" class="inline-block h-3.5 w-3.5 text-gray-500"></span>
+        <span class="text-xs font-semibold text-gray-600">{{ directoryTitle }}</span>
       </div>
       <div class="flex items-center gap-0.5">
+        <button
+          v-if="projectPath"
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
+          :title="directoryMode === 'agent-home' ? '切换到任务目录' : '切换到智能体目录'"
+          @click="toggleDirectoryMode">
+          <span class="i-carbon-switcher inline-block h-3 w-3"></span>
+        </button>
         <button
           v-if="projectPath"
           class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
@@ -353,18 +381,6 @@ defineExpose({ selectDirectory });
 
       <!-- 已选择目录 -->
       <template v-else>
-        <!-- 当前目录路径 -->
-        <div class="border-b border-gray-200/60 px-3 py-2">
-          <div class="flex items-center justify-between">
-            <p class="max-w-[160px] truncate font-mono text-[11px] text-gray-600" :title="projectPath">
-              {{ projectPath.split('/').pop() || projectPath }}
-            </p>
-            <button class="text-[10px] text-gray-400 transition hover:text-primary" @click="selectDirectory">
-              切换
-            </button>
-          </div>
-        </div>
-
         <!-- 加载中 -->
         <div v-if="loading && tree.length === 0" class="flex items-center gap-2 px-3 py-4 text-[11px] text-gray-400">
           <span class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin"></span>

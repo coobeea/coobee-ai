@@ -30,13 +30,13 @@ src/renderer/src/windows/browser/
 ### 在主进程中创建窗口
 
 ```typescript
-import { windowManager } from '@main/common/window'
+import { windowManager } from '@main/common/window';
 
 // 创建 Browser 窗口
 const browserWindow = windowManager.createWindow({
   type: 'browser',
   url: '/browser.html' // 加载 browser.html
-})
+});
 ```
 
 ## 🎨 设计规范

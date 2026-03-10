@@ -51,10 +51,10 @@ Preload 层桥接
 
 ```typescript
 class IpcEventBroadcaster {
-  init(): void // 初始化，设置事件监听
-  broadcast() // 广播到所有窗口
-  sendToWindow() // 发送到指定窗口
-  sendToWindowTabs() // 发送到窗口的所有 Tab
+  init(): void; // 初始化，设置事件监听
+  broadcast(); // 广播到所有窗口
+  sendToWindow(); // 发送到指定窗口
+  sendToWindowTabs(); // 发送到窗口的所有 Tab
 }
 ```
 
@@ -88,11 +88,11 @@ class IpcEventBroadcaster {
 
 ```typescript
 class FrontendEventBus {
-  on() // 订阅事件
-  off() // 取消订阅
-  emit() // 发送事件
-  once() // 单次订阅
-  clear() // 清空所有监听
+  on(); // 订阅事件
+  off(); // 取消订阅
+  emit(); // 发送事件
+  once(); // 单次订阅
+  clear(); // 清空所有监听
 }
 ```
 
@@ -111,7 +111,7 @@ export function useEventBus() {
     off, // 取消订阅
     once, // 单次订阅
     emit // 发送事件
-  }
+  };
 }
 ```
 
@@ -126,14 +126,14 @@ export function useEventBus() {
 **`tabEventsHandle.ts`** - Tab 事件处理示例
 
 ```typescript
-;-handleTabCreated() - handleTabClosed() - handleTabActivated() - handleTabUpdated() - setup() // 注册所有处理器
+-handleTabCreated() - handleTabClosed() - handleTabActivated() - handleTabUpdated() - setup(); // 注册所有处理器
 ```
 
 **`index.ts`** - 统一注册
 
 ```typescript
 export function setupEventHandlers(): void {
-  setupTabEvents()
+  setupTabEvents();
   // 其他处理器...
 }
 ```
@@ -166,24 +166,24 @@ export function setupEventHandlers(): void {
 ### 1. 初始化（在 `main.ts` 中）
 
 ```typescript
-import { eventBus } from './utils/eventBus'
-import { setupEventHandlers } from './eventbus/event_handles'
+import { eventBus } from './utils/eventBus';
+import { setupEventHandlers } from './eventbus/event_handles';
 
 // 1. 注册 EventBus 到 Preload
-window.api.registerEventBus(eventBus)
+window.api.registerEventBus(eventBus);
 
 // 2. 设置事件处理器
-setupEventHandlers()
+setupEventHandlers();
 
 // 3. 创建 Vue 应用
-const app = createApp(App)
-app.mount('#app')
+const app = createApp(App);
+app.mount('#app');
 ```
 
 ### 2. 主进程触发事件
 
 ```typescript
-import { eventBus } from '@main/common/eventbus'
+import { eventBus } from '@main/common/eventbus';
 
 // EventBus 触发，IpcEventBroadcaster 自动转发
 eventBus.emit('tab:created', {
@@ -192,22 +192,22 @@ eventBus.emit('tab:created', {
   title: 'New Tab',
   url: 'local://chat',
   position: 0
-})
+});
 ```
 
 ### 3. 前端监听事件
 
 ```vue
 <script setup lang="ts">
-import { useEventBus } from '@/composables/useEventBus'
-import { EventTypes } from '@shared/ipc/events'
+import { useEventBus } from '@/composables/useEventBus';
+import { EventTypes } from '@shared/ipc/events';
 
-const { on } = useEventBus()
+const { on } = useEventBus();
 
 // 自动清理的事件监听
 on(EventTypes.TAB_CREATED, (payload) => {
-  console.log('Tab 创建:', payload)
-})
+  console.log('Tab 创建:', payload);
+});
 </script>
 ```
 
@@ -275,8 +275,8 @@ export interface EventPayloads {
 
 ```typescript
 eventBus.on('my:event', (data: unknown) => {
-  this.broadcast('my:event', data as EventPayloads['my:event'])
-})
+  this.broadcast('my:event', data as EventPayloads['my:event']);
+});
 ```
 
 ### 2. 创建新的事件处理器
@@ -289,13 +289,13 @@ eventBus.on('my:event', (data: unknown) => {
 
 ```typescript
 // 全局广播
-ipcEventBroadcaster.broadcast('event', payload)
+ipcEventBroadcaster.broadcast('event', payload);
 
 // 指定窗口
-ipcEventBroadcaster.sendToWindow(windowId, 'event', payload)
+ipcEventBroadcaster.sendToWindow(windowId, 'event', payload);
 
 // 窗口所有 Tab
-ipcEventBroadcaster.sendToWindowTabs(windowId, 'event', payload)
+ipcEventBroadcaster.sendToWindowTabs(windowId, 'event', payload);
 ```
 
 ## 性能考虑

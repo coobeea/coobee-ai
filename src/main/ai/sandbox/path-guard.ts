@@ -58,8 +58,29 @@ export function resolveSandboxPath(
     absolutePath = resolve(root, filePath);
   }
 
-  // 读操作 或 沙箱关闭（mode='off'）：直接返回，不检查边界
+  // 读操作：不限制目录边界，但阻止已知敏感系统路径
   if (options?.readOnly) {
+    const BLOCKED_READ_PATTERNS = [
+      /\/etc\/shadow$/i,
+      /\/etc\/sudoers$/i,
+      /\/etc\/master\.passwd$/i,
+      /\.ssh\/id_/,
+      /\.ssh\/.*_key$/,
+      /\.gnupg\//,
+      /\.aws\/credentials$/,
+      /\.kube\/config$/
+    ];
+    const normalized = absolutePath.replace(/\\/g, '/');
+    const blocked = BLOCKED_READ_PATTERNS.some((re) => re.test(normalized));
+    if (blocked) {
+      return {
+        error: {
+          code: 'SANDBOX_VIOLATION' as const,
+          message: `Reading "${filePath}" is blocked — sensitive system file.`,
+          details: { filePath, absolutePath, boundary: root }
+        }
+      };
+    }
     return { path: absolutePath };
   }
 

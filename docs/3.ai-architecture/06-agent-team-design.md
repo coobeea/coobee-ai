@@ -119,53 +119,53 @@ CREATE INDEX IF NOT EXISTS idx_team_members_agent_id ON team_members(agent_id);
 export type OrchestrationType =
   | 'sequential' // 顺序执行（Chain）
   | 'parallel' // 并行执行（简单并行）
-  | 'planner' // 规划执行（使用 Planner Agent）
+  | 'planner'; // 规划执行（使用 Planner Agent）
 
 /**
  * Team 成员配置
  */
 export interface TeamMember {
-  id: string
-  agentId: string // 引用的 Agent ID
-  role: string // 成员角色
-  priority?: number // 优先级
+  id: string;
+  agentId: string; // 引用的 Agent ID
+  role: string; // 成员角色
+  priority?: number; // 优先级
 }
 
 /**
  * 路由规则
  */
 export interface RoutingRule {
-  condition: string // 条件描述（如 "包含代码相关"）
-  targetRole: string // 目标角色（如 "coder"）
+  condition: string; // 条件描述（如 "包含代码相关"）
+  targetRole: string; // 目标角色（如 "coder"）
 }
 
 /**
  * Team 配置
  */
 export interface TeamConfig {
-  id: string
-  name: string
-  description?: string
-  orchestrationType: OrchestrationType
-  members: TeamMember[]
-  routingRules?: RoutingRule[]
-  metadata?: Record<string, any>
-  createdAt: number
-  updatedAt: number
+  id: string;
+  name: string;
+  description?: string;
+  orchestrationType: OrchestrationType;
+  members: TeamMember[];
+  routingRules?: RoutingRule[];
+  metadata?: Record<string, any>;
+  createdAt: number;
+  updatedAt: number;
 }
 
 /**
  * Team 配置数据（数据库格式）
  */
 export interface TeamConfigData {
-  id: string
-  name: string
-  description?: string
-  orchestrationType: OrchestrationType
-  routingRules?: RoutingRule[]
-  metadata?: Record<string, any>
-  createdAt: number
-  updatedAt: number
+  id: string;
+  name: string;
+  description?: string;
+  orchestrationType: OrchestrationType;
+  routingRules?: RoutingRule[];
+  metadata?: Record<string, any>;
+  createdAt: number;
+  updatedAt: number;
 }
 ```
 
@@ -178,28 +178,28 @@ export interface TeamConfigData {
 ```typescript
 // src/main/ai/storage/TeamConfigStore.ts
 
-import { SQLiteService } from '@main/common/database'
-import type { TeamConfig, TeamConfigData, TeamMember } from '../teams/types'
+import { SQLiteService } from '@main/common/database';
+import type { TeamConfig, TeamConfigData, TeamMember } from '../teams/types';
 
 export class TeamConfigStore {
-  private db: SQLiteService
+  private db: SQLiteService;
 
   constructor() {
-    this.db = SQLiteService.getInstance()
+    this.db = SQLiteService.getInstance();
   }
 
   async initialize(): Promise<void> {
     // 执行 SQL schema
-    const schema = await readFile('./schemas/team_configs.sql', 'utf-8')
-    await this.db.execute(schema)
+    const schema = await readFile('./schemas/team_configs.sql', 'utf-8');
+    await this.db.execute(schema);
   }
 
   /**
    * 保存 Team 配置
    */
   async saveTeam(config: Omit<TeamConfig, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-    const teamId = `team_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
-    const now = Date.now()
+    const teamId = `team_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const now = Date.now();
 
     // 1. 保存 Team 基本信息
     await this.db.execute(
@@ -215,19 +215,19 @@ export class TeamConfigStore {
         now,
         now
       ]
-    )
+    );
 
     // 2. 保存 Team 成员
     for (const member of config.members) {
-      const memberId = `member_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+      const memberId = `member_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       await this.db.execute(
         `INSERT INTO team_members (id, team_id, agent_id, role, priority, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [memberId, teamId, member.agentId, member.role, member.priority || 0, now]
-      )
+      );
     }
 
-    return teamId
+    return teamId;
   }
 
   /**
@@ -235,22 +235,21 @@ export class TeamConfigStore {
    */
   async getTeam(teamId: string): Promise<TeamConfig | null> {
     // 1. 获取 Team 基本信息
-    const teamRow = await this.db.queryOne(`SELECT * FROM team_configs WHERE id = ?`, [teamId])
+    const teamRow = await this.db.queryOne(`SELECT * FROM team_configs WHERE id = ?`, [teamId]);
 
-    if (!teamRow) return null
+    if (!teamRow) return null;
 
     // 2. 获取成员列表
-    const memberRows = await this.db.query(
-      `SELECT * FROM team_members WHERE team_id = ? ORDER BY priority DESC`,
-      [teamId]
-    )
+    const memberRows = await this.db.query(`SELECT * FROM team_members WHERE team_id = ? ORDER BY priority DESC`, [
+      teamId
+    ]);
 
     const members: TeamMember[] = memberRows.map((row: any) => ({
       id: row.id,
       agentId: row.agent_id,
       role: row.role,
       priority: row.priority
-    }))
+    }));
 
     return {
       id: teamRow.id,
@@ -262,34 +261,34 @@ export class TeamConfigStore {
       metadata: JSON.parse(teamRow.metadata || '{}'),
       createdAt: teamRow.created_at,
       updatedAt: teamRow.updated_at
-    }
+    };
   }
 
   /**
    * 列出所有 Teams
    */
   async listTeams(): Promise<TeamConfig[]> {
-    const rows = await this.db.query(`SELECT id FROM team_configs`)
-    const teams: TeamConfig[] = []
+    const rows = await this.db.query(`SELECT id FROM team_configs`);
+    const teams: TeamConfig[] = [];
 
     for (const row of rows) {
-      const team = await this.getTeam(row.id)
-      if (team) teams.push(team)
+      const team = await this.getTeam(row.id);
+      if (team) teams.push(team);
     }
 
-    return teams
+    return teams;
   }
 
   /**
    * 删除 Team
    */
   async deleteTeam(teamId: string): Promise<void> {
-    await this.db.execute(`DELETE FROM team_configs WHERE id = ?`, [teamId])
+    await this.db.execute(`DELETE FROM team_configs WHERE id = ?`, [teamId]);
     // team_members 会通过 CASCADE 自动删除
   }
 }
 
-export const teamConfigStore = new TeamConfigStore()
+export const teamConfigStore = new TeamConfigStore();
 ```
 
 ---
@@ -299,10 +298,10 @@ export const teamConfigStore = new TeamConfigStore()
 ```typescript
 // src/main/ai/teams/TeamExecutor.ts
 
-import { agentFactory } from '../agents/AgentFactory'
-import { run } from '@openai/agents'
-import { teamConfigStore } from '../storage/TeamConfigStore'
-import type { TeamConfig } from './types'
+import { agentFactory } from '../agents/AgentFactory';
+import { run } from '@openai/agents';
+import { teamConfigStore } from '../storage/TeamConfigStore';
+import type { TeamConfig } from './types';
 
 export class TeamExecutor {
   /**
@@ -310,23 +309,23 @@ export class TeamExecutor {
    */
   async executeTeam(teamId: string, userInput: string): Promise<any> {
     // 1. 加载 Team 配置
-    const teamConfig = await teamConfigStore.getTeam(teamId)
+    const teamConfig = await teamConfigStore.getTeam(teamId);
     if (!teamConfig) {
-      throw new Error(`Team not found: ${teamId}`)
+      throw new Error(`Team not found: ${teamId}`);
     }
 
-    console.log(`[TeamExecutor] Executing team: ${teamConfig.name}`)
+    console.log(`[TeamExecutor] Executing team: ${teamConfig.name}`);
 
     // 2. 根据协作模式执行
     switch (teamConfig.orchestrationType) {
       case 'sequential':
-        return await this.executeSequential(teamConfig, userInput)
+        return await this.executeSequential(teamConfig, userInput);
       case 'parallel':
-        return await this.executeParallel(teamConfig, userInput)
+        return await this.executeParallel(teamConfig, userInput);
       case 'planner':
-        return await this.executeWithPlanner(teamConfig, userInput)
+        return await this.executeWithPlanner(teamConfig, userInput);
       default:
-        throw new Error(`Unknown orchestration type: ${teamConfig.orchestrationType}`)
+        throw new Error(`Unknown orchestration type: ${teamConfig.orchestrationType}`);
     }
   }
 
@@ -334,54 +333,52 @@ export class TeamExecutor {
    * 顺序执行（Chain）
    */
   private async executeSequential(teamConfig: TeamConfig, userInput: string): Promise<any> {
-    let currentOutput = userInput
+    let currentOutput = userInput;
 
     // 按优先级顺序执行每个成员
-    const sortedMembers = [...teamConfig.members].sort(
-      (a, b) => (b.priority || 0) - (a.priority || 0)
-    )
+    const sortedMembers = [...teamConfig.members].sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
     for (const member of sortedMembers) {
-      console.log(`[TeamExecutor] Running agent: ${member.role}`)
+      console.log(`[TeamExecutor] Running agent: ${member.role}`);
 
       // 创建或获取 Agent
       const agent = await agentFactory.createAgent(`team-${teamConfig.id}-${member.agentId}`, {
         configId: member.agentId
-      })
+      });
 
       // 执行
-      const result = await run(agent, currentOutput)
-      currentOutput = result.finalOutput || ''
+      const result = await run(agent, currentOutput);
+      currentOutput = result.finalOutput || '';
     }
 
-    return currentOutput
+    return currentOutput;
   }
 
   /**
    * 并行执行
    */
   private async executeParallel(teamConfig: TeamConfig, userInput: string): Promise<any> {
-    console.log(`[TeamExecutor] Running agents in parallel`)
+    console.log(`[TeamExecutor] Running agents in parallel`);
 
     const results = await Promise.all(
       teamConfig.members.map(async (member) => {
         const agent = await agentFactory.createAgent(`team-${teamConfig.id}-${member.agentId}`, {
           configId: member.agentId
-        })
+        });
 
-        const result = await run(agent, userInput)
+        const result = await run(agent, userInput);
         return {
           role: member.role,
           output: result.finalOutput
-        }
+        };
       })
-    )
+    );
 
     // 合并结果
     return {
       summary: 'Parallel execution completed',
       results
-    }
+    };
   }
 
   /**
@@ -390,14 +387,14 @@ export class TeamExecutor {
   private async executeWithPlanner(teamConfig: TeamConfig, userInput: string): Promise<any> {
     // TODO: 集成 Orchestrator
     // 使用 Planner 规划，然后将子任务分配给 Team 成员
-    console.log(`[TeamExecutor] Using Planner mode`)
+    console.log(`[TeamExecutor] Using Planner mode`);
 
     // 暂时回退到顺序执行
-    return await this.executeSequential(teamConfig, userInput)
+    return await this.executeSequential(teamConfig, userInput);
   }
 }
 
-export const teamExecutor = new TeamExecutor()
+export const teamExecutor = new TeamExecutor();
 ```
 
 ---
@@ -437,17 +434,17 @@ export const teamExecutor = new TeamExecutor()
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref } from 'vue';
 
-const agentName = ref('')
-const instructions = ref('')
-const selectedSkills = ref<string[]>([])
-const selectedModel = ref('gpt-4o')
+const agentName = ref('');
+const instructions = ref('');
+const selectedSkills = ref<string[]>([]);
+const selectedModel = ref('gpt-4o');
 
 const availableSkills = ref([
   { id: 'web-research', name: 'Web Research' },
   { id: 'code-generation', name: 'Code Generation' }
-])
+]);
 
 async function createAgent() {
   const config = {
@@ -455,11 +452,11 @@ async function createAgent() {
     instructions: instructions.value,
     model: selectedModel.value,
     skills: selectedSkills.value
-  }
+  };
 
   // 调用 API
-  const result = await window.api.createAgent(config)
-  console.log('Agent created:', result)
+  const result = await window.api.createAgent(config);
+  console.log('Agent created:', result);
 }
 </script>
 ```
@@ -505,25 +502,25 @@ async function createAgent() {
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted } from 'vue';
 
-const teamName = ref('')
-const description = ref('')
-const orchestrationType = ref('sequential')
-const members = ref([{ agentId: '', role: '', priority: 0 }])
-const availableAgents = ref<any[]>([])
+const teamName = ref('');
+const description = ref('');
+const orchestrationType = ref('sequential');
+const members = ref([{ agentId: '', role: '', priority: 0 }]);
+const availableAgents = ref<any[]>([]);
 
 onMounted(async () => {
   // 加载可用的 Agents
-  availableAgents.value = await window.api.listAgents()
-})
+  availableAgents.value = await window.api.listAgents();
+});
 
 function addMember() {
-  members.value.push({ agentId: '', role: '', priority: 0 })
+  members.value.push({ agentId: '', role: '', priority: 0 });
 }
 
 function removeMember(index: number) {
-  members.value.splice(index, 1)
+  members.value.splice(index, 1);
 }
 
 async function createTeam() {
@@ -532,11 +529,11 @@ async function createTeam() {
     description: description.value,
     orchestrationType: orchestrationType.value,
     members: members.value.filter((m) => m.agentId && m.role)
-  }
+  };
 
   // 调用 API
-  const result = await window.api.createTeam(config)
-  console.log('Team created:', result)
+  const result = await window.api.createTeam(config);
+  console.log('Team created:', result);
 }
 </script>
 ```
@@ -554,10 +551,10 @@ const agentId = await api.createAgent({
   instructions: 'You are a coding assistant',
   model: 'gpt-4o',
   skills: ['code-generation']
-})
+});
 
 // 2. 使用 Agent
-const result = await api.runAgent(agentId, 'Write a function to sort array')
+const result = await api.runAgent(agentId, 'Write a function to sort array');
 ```
 
 ---
@@ -574,10 +571,10 @@ const teamId = await api.createTeam({
     { agentId: 'agent-002', role: 'coder' },
     { agentId: 'agent-003', role: 'reviewer' }
   ]
-})
+});
 
 // 2. 使用 Team（对外接口统一）
-const result = await api.runTeam(teamId, '实现用户认证系统')
+const result = await api.runTeam(teamId, '实现用户认证系统');
 
 // Team 内部会：
 // - Planner 分解任务

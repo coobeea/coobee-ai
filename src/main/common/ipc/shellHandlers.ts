@@ -117,7 +117,7 @@ export function registerShellHandlers(): void {
     async (
       event,
       options?: {
-        properties?: Array<'openFile' | 'multiSelections'>;
+        properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>;
         filters?: Array<{ name: string; extensions: string[] }>;
       }
     ): Promise<{ canceled: boolean; filePaths: string[] }> => {

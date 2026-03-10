@@ -65,11 +65,11 @@ interface Config {} // 过于泛化
 
 ```typescript
 // ✅ 使用 Type 后缀或描述性名称
-type AgentPresetType = 'chat' | 'code' | 'research'
-type SessionStatus = 'active' | 'paused' | 'completed' | 'error'
+type AgentPresetType = 'chat' | 'code' | 'research';
+type SessionStatus = 'active' | 'paused' | 'completed' | 'error';
 
 // ❌ 避免
-type AgentType = string // 过于泛化
+type AgentType = string; // 过于泛化
 ```
 
 ### 2.3 枚举命名
@@ -109,22 +109,22 @@ class Factory {} // 过于泛化
 ```typescript
 // ✅ 统一
 interface SubTask {
-  id: string
-  name: string
-  assignedWorker: string
+  id: string;
+  name: string;
+  assignedWorker: string;
 }
 
 interface WorkerInfo {
-  id: string
-  name: string
+  id: string;
+  name: string;
 }
 
 // ❌ 不一致
 interface SubTask {
-  id: string
-  objective: string // 与 name 概念重复
-  workerId?: string // 与 assignedWorker 重复
-  assignedWorker?: string
+  id: string;
+  objective: string; // 与 name 概念重复
+  workerId?: string; // 与 assignedWorker 重复
+  assignedWorker?: string;
 }
 ```
 
@@ -145,20 +145,20 @@ export class AIError extends Error {
     public code: string,
     public details?: unknown
   ) {
-    super(message)
-    this.name = 'AIError'
+    super(message);
+    this.name = 'AIError';
   }
 }
 
 export class PlanningError extends AIError {
   constructor(message: string, details?: unknown) {
-    super(message, 'PLANNING_ERROR', details)
+    super(message, 'PLANNING_ERROR', details);
   }
 }
 
 export class ExecutionError extends AIError {
   constructor(message: string, details?: unknown) {
-    super(message, 'EXECUTION_ERROR', details)
+    super(message, 'EXECUTION_ERROR', details);
   }
 }
 ```
@@ -168,23 +168,23 @@ export class ExecutionError extends AIError {
 ```typescript
 // ✅ 捕获具体错误类型，提供上下文
 try {
-  const plan = await this.planner.plan(task)
+  const plan = await this.planner.plan(task);
 } catch (error) {
   if (error instanceof PlanningError) {
-    console.error('[Orchestrator] Planning failed:', error.code, error.details)
+    console.error('[Orchestrator] Planning failed:', error.code, error.details);
     // 特定处理
   }
   throw new ExecutionError('Task execution failed', {
     originalError: error,
     taskId: task.id
-  })
+  });
 }
 
 // ❌ 避免静默失败
 try {
-  const plan = await this.planner.plan(task)
+  const plan = await this.planner.plan(task);
 } catch (error) {
-  return { success: false } // 丢失错误信息
+  return { success: false }; // 丢失错误信息
 }
 ```
 
@@ -197,10 +197,10 @@ console.error('[ModuleName] Operation failed:', {
   sessionId: 'xxx',
   error: error.message,
   code: error.code
-})
+});
 
 // ❌ 简单字符串
-console.error('Error:', error)
+console.error('Error:', error);
 ```
 
 ---
@@ -213,19 +213,19 @@ console.error('Error:', error)
 
 ```typescript
 export class ResourceManager {
-  private initialized = false
+  private initialized = false;
 
   async initialize(): Promise<void> {
     if (this.initialized) {
-      return
+      return;
     }
     // 初始化资源
-    this.initialized = true
+    this.initialized = true;
   }
 
   async cleanup(): Promise<void> {
     // 释放资源
-    this.initialized = false
+    this.initialized = false;
   }
 }
 ```
@@ -237,28 +237,28 @@ export class ResourceManager {
 ```typescript
 // ✅ LRU 缓存
 class CacheManager {
-  private cache = new Map<string, { value: any; lastAccess: number }>()
-  private readonly maxSize = 100
-  private readonly timeout = 30 * 60 * 1000
+  private cache = new Map<string, { value: any; lastAccess: number }>();
+  private readonly maxSize = 100;
+  private readonly timeout = 30 * 60 * 1000;
 
   get(key: string): any | undefined {
-    const cached = this.cache.get(key)
-    if (!cached) return undefined
+    const cached = this.cache.get(key);
+    if (!cached) return undefined;
 
     // 检查过期
     if (Date.now() - cached.lastAccess > this.timeout) {
-      this.cache.delete(key)
-      return undefined
+      this.cache.delete(key);
+      return undefined;
     }
 
     // 更新访问时间
-    cached.lastAccess = Date.now()
-    return cached.value
+    cached.lastAccess = Date.now();
+    return cached.value;
   }
 
   set(key: string, value: any): void {
-    this.evictIfNeeded()
-    this.cache.set(key, { value, lastAccess: Date.now() })
+    this.evictIfNeeded();
+    this.cache.set(key, { value, lastAccess: Date.now() });
   }
 
   private evictIfNeeded(): void {
@@ -275,10 +275,10 @@ class CacheManager {
 
 ```typescript
 // ✅ 使用 fs/promises，自动管理
-import { readFile, writeFile } from 'fs/promises'
+import { readFile, writeFile } from 'fs/promises';
 
 async function saveData(path: string, data: string): Promise<void> {
-  await writeFile(path, data, 'utf-8')
+  await writeFile(path, data, 'utf-8');
 }
 
 // ❌ 避免手动管理句柄（除非必要）
@@ -288,18 +288,18 @@ async function saveData(path: string, data: string): Promise<void> {
 
 ```typescript
 class Timer {
-  private intervalId: NodeJS.Timeout | null = null
+  private intervalId: NodeJS.Timeout | null = null;
 
   start(): void {
     this.intervalId = setInterval(() => {
       // 定时任务
-    }, 1000)
+    }, 1000);
   }
 
   stop(): void {
     if (this.intervalId) {
-      clearInterval(this.intervalId)
-      this.intervalId = null
+      clearInterval(this.intervalId);
+      this.intervalId = null;
     }
   }
 }
@@ -316,21 +316,16 @@ class Timer {
 ```typescript
 // ✅ 参数对象
 interface CreateAgentOptions {
-  sessionId: string
-  configId?: string
-  preset?: AgentPresetType
-  tools?: string[]
+  sessionId: string;
+  configId?: string;
+  preset?: AgentPresetType;
+  tools?: string[];
 }
 
-async function createAgent(options: CreateAgentOptions): Promise<Agent>
+async function createAgent(options: CreateAgentOptions): Promise<Agent>;
 
 // ❌ 过多参数
-async function createAgent(
-  sessionId: string,
-  configId?: string,
-  preset?: string,
-  tools?: string[]
-): Promise<Agent>
+async function createAgent(sessionId: string, configId?: string, preset?: string, tools?: string[]): Promise<Agent>;
 ```
 
 ### 5.2 返回值一致性
@@ -338,25 +333,25 @@ async function createAgent(
 ```typescript
 // ✅ 统一返回结构
 interface ExecutionResult {
-  success: boolean
-  output?: string
-  error?: Error
-  metadata?: Record<string, unknown>
+  success: boolean;
+  output?: string;
+  error?: Error;
+  metadata?: Record<string, unknown>;
 }
 
 // ❌ 不一致
-function methodA(): string // 直接返回字符串
-function methodB(): { result: string } // 返回对象
+function methodA(): string; // 直接返回字符串
+function methodB(): { result: string }; // 返回对象
 ```
 
 ### 5.3 可选参数放最后
 
 ```typescript
 // ✅
-function execute(input: string, config?: ExecutionConfig): Promise<Result>
+function execute(input: string, config?: ExecutionConfig): Promise<Result>;
 
 // ❌
-function execute(config?: ExecutionConfig, input: string): Promise<Result>
+function execute(config?: ExecutionConfig, input: string): Promise<Result>;
 ```
 
 ### 5.4 异步优先
@@ -366,14 +361,14 @@ function execute(config?: ExecutionConfig, input: string): Promise<Result>
 ```typescript
 // ✅ 异步
 async function loadConfig(): Promise<Config> {
-  const data = await readFile(path, 'utf-8')
-  return JSON.parse(data)
+  const data = await readFile(path, 'utf-8');
+  return JSON.parse(data);
 }
 
 // ❌ 同步（除非有充分理由）
 function loadConfigSync(): Config {
-  const data = readFileSync(path, 'utf-8')
-  return JSON.parse(data)
+  const data = readFileSync(path, 'utf-8');
+  return JSON.parse(data);
 }
 ```
 
@@ -465,20 +460,20 @@ module/
 
 ```typescript
 // 1. Node.js 内置模块
-import { readFile } from 'fs/promises'
-import { join } from 'path'
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 
 // 2. 外部依赖
-import { Agent } from '@openai/agents'
-import OpenAI from 'openai'
+import { Agent } from '@openai/agents';
+import OpenAI from 'openai';
 
 // 3. 内部模块（按层级）
-import { eventBus } from '@main/common/eventbus'
-import { agentFactory } from '../agents'
-import type { ExecutionConfig } from './types'
+import { eventBus } from '@main/common/eventbus';
+import { agentFactory } from '../agents';
+import type { ExecutionConfig } from './types';
 
 // 4. 同级模块
-import { StreamEmitter } from './StreamEmitter'
+import { StreamEmitter } from './StreamEmitter';
 ```
 
 ### 7.3 导出规范
@@ -487,14 +482,14 @@ import { StreamEmitter } from './StreamEmitter'
 // index.ts - 统一导出
 
 // 导出类型
-export type { Task, SubTask, ExecutionPlan } from './types'
+export type { Task, SubTask, ExecutionPlan } from './types';
 
 // 导出类
-export { Orchestrator } from './Orchestrator'
-export { Planner } from './Planner'
+export { Orchestrator } from './Orchestrator';
+export { Planner } from './Planner';
 
 // 导出工厂函数
-export { createOrchestrator } from './Orchestrator'
+export { createOrchestrator } from './Orchestrator';
 ```
 
 ---
@@ -527,18 +522,18 @@ describe('AgentFactory', () => {
   describe('createAgent', () => {
     it('should create agent with preset', async () => {
       // ...
-    })
+    });
 
     it('should throw error when config not found', async () => {
       // ...
-    })
-  })
-})
+    });
+  });
+});
 
 // ❌ 不清晰
 describe('AgentFactory', () => {
-  it('test1', () => {})
-})
+  it('test1', () => {});
+});
 ```
 
 ---
@@ -549,11 +544,11 @@ describe('AgentFactory', () => {
 
 ```typescript
 // ✅ 批量查询
-const agents = await Promise.all(memberIds.map((id) => agentFactory.getAgent(id)))
+const agents = await Promise.all(memberIds.map((id) => agentFactory.getAgent(id)));
 
 // ❌ 循环查询
 for (const id of memberIds) {
-  const agent = await agentFactory.getAgent(id)
+  const agent = await agentFactory.getAgent(id);
 }
 ```
 
@@ -563,13 +558,13 @@ for (const id of memberIds) {
 // ✅ 批量写入
 await db.transaction(async () => {
   for (const msg of messages) {
-    await db.insert(msg)
+    await db.insert(msg);
   }
-})
+});
 
 // ❌ 逐条写入
 for (const msg of messages) {
-  await db.insert(msg)
+  await db.insert(msg);
 }
 ```
 
@@ -589,7 +584,7 @@ for (const msg of messages) {
 // ✅ 验证输入
 function createAgent(sessionId: string): Agent {
   if (!sessionId || typeof sessionId !== 'string') {
-    throw new Error('Invalid sessionId')
+    throw new Error('Invalid sessionId');
   }
   // ...
 }
@@ -599,20 +594,20 @@ function createAgent(sessionId: string): Agent {
 
 ```typescript
 // ✅ 使用参数化查询
-await db.query('SELECT * FROM agents WHERE id = ?', [agentId])
+await db.query('SELECT * FROM agents WHERE id = ?', [agentId]);
 
 // ❌ 字符串拼接
-await db.query(`SELECT * FROM agents WHERE id = '${agentId}'`)
+await db.query(`SELECT * FROM agents WHERE id = '${agentId}'`);
 ```
 
 ### 10.3 敏感信息
 
 ```typescript
 // ✅ 不记录敏感信息
-console.log('Agent created:', { agentId, sessionId })
+console.log('Agent created:', { agentId, sessionId });
 
 // ❌ 记录敏感信息
-console.log('Agent created:', { apiKey: 'sk-...' })
+console.log('Agent created:', { apiKey: 'sk-...' });
 ```
 
 ---
@@ -634,8 +629,8 @@ console.log('Agent created:', { apiKey: 'sk-...' })
  * @deprecated Use createAgent() instead. Will be removed in v2.0.0
  */
 export function createAgentOld(): Agent {
-  console.warn('createAgentOld() is deprecated, use createAgent() instead')
-  return createAgent()
+  console.warn('createAgentOld() is deprecated, use createAgent() instead');
+  return createAgent();
 }
 ```
 

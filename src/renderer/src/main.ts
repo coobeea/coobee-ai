@@ -10,8 +10,6 @@ import gatewaySetup from './plugins/gatewaySetup';
 import pinia from './stores';
 import components from './components';
 import directives from './directives';
-import ConfirmPlugin from './components/Confirm';
-import MessagePlugin from './components/Message';
 
 // 注意：pinia 必须在其他插件之前注册，因为 ipcSetup / gatewaySetup 中使用了 Store
 createApp(App)
@@ -19,8 +17,6 @@ createApp(App)
   .use(router)
   .use(components)
   .use(directives)
-  .use(ConfirmPlugin)
-  .use(MessagePlugin)
   .use(ipcSetup)
   .use(eventbusSetup)
   .use(gatewaySetup)

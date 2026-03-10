@@ -7,7 +7,10 @@
  * 程序重启时自动从文件恢复消息历史。
  */
 
+import { createLogger } from '@main/common/logger';
 import { MessageBus } from './MessageBus';
+
+const log = createLogger('FileMessageBus');
 import type { SwarmMessage } from './MessageBus';
 import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -70,27 +73,20 @@ export class FileMessageBus extends MessageBus {
         // 直接添加到内存（不触发持久化）
         this.restoreMessage(message);
       } catch (error) {
-        console.error('[FileMessageBus] Failed to restore message:', line, error);
+        log.error('Failed to restore message:', line, error);
       }
     }
   }
 
   /**
    * 恢复单条消息到内存（不触发持久化）
-   *
-   * 注意：这是内部方法，直接访问父类的 private 成员
-   * 如果父类结构变化，需要调整
    */
   private restoreMessage(message: SwarmMessage): void {
-    // 使用 any 绕过 TypeScript 检查，直接访问 private 成员
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bus = this as any;
-    bus.messages.push(message);
+    this.pushMessage(message);
 
-    // 更新计数器
     const idNum = parseInt(message.id.split('-')[1]);
-    if (!isNaN(idNum) && idNum >= bus.messageCounter) {
-      bus.messageCounter = idNum + 1;
+    if (!isNaN(idNum) && idNum >= this.getMessageCounter()) {
+      this.setMessageCounter(idNum + 1);
     }
   }
 
@@ -120,7 +116,7 @@ export class FileMessageBus extends MessageBus {
       const line = JSON.stringify(message) + '\n';
       appendFileSync(this.messagesPath, line, 'utf-8');
     } catch (error) {
-      console.error('[FileMessageBus] Failed to append message:', error);
+      log.error('Failed to append message:', error);
     }
   }
 

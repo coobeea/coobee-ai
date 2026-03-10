@@ -5,7 +5,7 @@
  * 用于一次性、临时的 Agent 调用（如标题生成、任务分析）。
  *
  * 用法：
- *   const result = await quickChat('title-generator', '请为我的网站设计一个导航栏')
+ *   const result = await quickChat('one-line-summary', '请为我的网站设计一个导航栏')
  */
 
 import configManager from '@/config';
@@ -35,7 +35,7 @@ function parseSSEEvent(text: string): SSEEvent | null {
 /**
  * 调用 Agent 的 quick-chat 接口（非流式）
  *
- * @param agentId - Agent ID（如 'title-generator'）
+ * @param agentId - Agent ID（如 'one-line-summary'）
  * @param message - 用户消息
  * @returns 返回 Agent 的完整输出文本
  */
@@ -175,10 +175,10 @@ export async function quickChatStream(
 /**
  * 便捷函数：生成 Thread 标题
  *
- * 调用 title-generator Agent，返回生成的标题字符串。
+ * 调用 one-line-summary Agent，返回生成的标题字符串。
  * 这是一个"fire-and-forget"调用 — 不阻塞主流程。
  */
 export async function generateThreadTitle(_threadId: string, message: string): Promise<string | null> {
   const prompt = `请为以下消息生成标题：\n\n${message}`;
-  return await quickChat('title-generator', prompt);
+  return await quickChat('one-line-summary', prompt);
 }

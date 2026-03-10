@@ -13,11 +13,14 @@ import { useAgentsStore } from '@/stores/agents';
 import { useThreadsStore } from '@/stores/threads';
 import { useCopilotStore } from '@/stores/copilot';
 import { useOpenFiles } from '@/composables/useOpenFiles';
+import { initProcessWs } from '@/composables/useProcessWs';
 
 import ProjectPanel from '@/components/agent/ProjectPanel.vue';
 import WorkbenchPanel from '@/components/agent/WorkbenchPanel.vue';
 import ChatPanel from '@/components/agent/ChatPanel.vue';
 import AgentsPanel from '@/components/agent/AgentsPanel.vue';
+import ContextPanel from '@/components/agent/ContextPanel.vue';
+import TerminalPanel from '@/components/agent/TerminalPanel.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -30,6 +33,7 @@ const { closeAllFiles } = useOpenFiles();
 const leftCollapsed = ref(false);
 const rightCollapsed = ref(false);
 const agentsPanelCollapsed = ref(true);
+const terminalCollapsed = ref(true);
 const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null);
 
 const projectPath = ref<string | null>(null);
@@ -37,6 +41,10 @@ const projectPath = ref<string | null>(null);
 const workspaceReady = computed(() => projectPath.value !== null);
 
 const threadId = computed(() => route.params.id as string);
+
+// 目录切换：智能体目录 vs 任务工作目录
+type DirectoryMode = 'agent-home' | 'workspace';
+const directoryMode = ref<DirectoryMode>('agent-home');
 
 // 提供 addToChat 方法给 ProjectPanel/FileTreeNode
 function addToChat(node: { path: string; name: string; type: 'file' | 'directory' }): void {
@@ -47,20 +55,52 @@ function addToChat(node: { path: string; name: string; type: 'file' | 'directory
 }
 
 provide('addToChat', addToChat);
-// addFileToTask 功能尚未实现，提供 undefined 避免 inject 警告
 provide('addFileToTask', undefined);
+provide('directoryMode', directoryMode);
+provide('toggleDirectoryMode', toggleDirectoryMode);
+
+const pendingSkillRef = ref<string | null>(null);
+
+function handleUseSkill(skillName: string): void {
+  pendingSkillRef.value = skillName;
+  const prompt = `请按照 [${skillName}] 技能执行`;
+  chatPanelRef.value?.insertSkillPrompt(prompt);
+}
+
+provide('pendingSkillRef', pendingSkillRef);
+
+// 根据当前模式更新显示的目录路径
+function updateProjectPathForMode(thread: { agentHomePath?: string; workspacePath?: string }): void {
+  if (directoryMode.value === 'agent-home') {
+    projectPath.value = thread.agentHomePath || thread.workspacePath || '';
+  } else {
+    projectPath.value = thread.workspacePath || thread.agentHomePath || '';
+  }
+}
+
+// 切换目录模式
+function toggleDirectoryMode(): void {
+  const thread = threadsStore.threads.find((t) => t.id === threadId.value);
+  if (!thread) return;
+
+  directoryMode.value = directoryMode.value === 'agent-home' ? 'workspace' : 'agent-home';
+  updateProjectPathForMode(thread);
+}
+
+// 监听模式切换，重新加载目录
+watch(directoryMode, () => {
+  const thread = threadsStore.threads.find((t) => t.id === threadId.value);
+  if (thread) {
+    updateProjectPathForMode(thread);
+  }
+});
 
 function enterWorkspaceForThread(id: string): void {
   const thread = threadsStore.threads.find((t) => t.id === id);
   if (thread) {
     agentsStore.selectAgent(thread.agentId);
-    if (thread.workspacePath) {
-      projectPath.value = thread.workspacePath;
-    } else {
-      // 如果 thread 没有 workspacePath，使用空字符串标记为已就绪
-      // 用户可以继续使用对话功能，只是项目面板可能为空
-      projectPath.value = '';
-    }
+    // 根据当前模式选择显示的目录
+    updateProjectPathForMode(thread);
   }
   threadsStore.selectThread(id);
   closeAllFiles();
@@ -89,8 +129,19 @@ function goBackToAgents(): void {
   router.push('/agent');
 }
 
+// 有 exec 输出时自动展开终端面板
+watch(
+  () => chatStore.execOutputs.length,
+  (newLen, oldLen) => {
+    if (newLen > (oldLen ?? 0) && terminalCollapsed.value) {
+      terminalCollapsed.value = false;
+    }
+  }
+);
+
 onMounted(() => {
   copilotStore.hideBubble();
+  initProcessWs();
   if (threadId.value) {
     enterWorkspaceForThread(threadId.value);
   }
@@ -132,8 +183,24 @@ onUnmounted(() => {
     <!-- 已选目录：三栏工作区 -->
     <div v-else class="flex min-h-0 flex-1">
       <ProjectPanel v-model:collapsed="leftCollapsed" v-model:project-path="projectPath" :thread-id="threadId" />
-      <WorkbenchPanel />
-      <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" />
+      <div class="middle-area">
+        <WorkbenchPanel />
+        <!-- 终端面板（可折叠） -->
+        <div class="terminal-section" :class="{ collapsed: terminalCollapsed }">
+          <button class="terminal-toggle" @click="terminalCollapsed = !terminalCollapsed">
+            <span
+              class="inline-block h-3 w-3 transition-transform"
+              :class="terminalCollapsed ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'">
+            </span>
+            <span class="text-[11px]">终端</span>
+          </button>
+          <TerminalPanel v-if="!terminalCollapsed" />
+        </div>
+      </div>
+      <div class="right-area">
+        <ContextPanel :thread-id="threadId" @use-skill="handleUseSkill" />
+        <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" />
+      </div>
       <AgentsPanel v-model:collapsed="agentsPanelCollapsed" />
     </div>
   </div>
@@ -146,6 +213,56 @@ onUnmounted(() => {
   height: 100%;
   width: 100%;
   background: hsl(var(--background));
+}
+
+.middle-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.terminal-section {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 200px;
+  min-height: 0;
+  transition: height 0.15s ease;
+}
+
+.terminal-section.collapsed {
+  height: auto;
+}
+
+.terminal-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  border-top: 1px solid hsl(var(--border) / 0.3);
+  background: hsl(var(--muted) / 0.2);
+  color: hsl(var(--muted-foreground) / 0.5);
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.1s ease;
+  width: 100%;
+}
+
+.terminal-toggle:hover {
+  background: hsl(var(--muted) / 0.4);
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.right-area {
+  display: flex;
+  flex-direction: column;
+  width: 400px;
+  flex-shrink: 0;
+  min-height: 0;
 }
 
 .dir-prompt {

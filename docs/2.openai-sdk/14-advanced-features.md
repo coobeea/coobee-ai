@@ -13,13 +13,13 @@
 `withTrace` 将一系列操作组织成一个可追踪的 Trace：
 
 ```typescript
-import { withTrace } from '@openai/agents'
+import { withTrace } from '@openai/agents';
 
 await withTrace('My workflow', async () => {
-  const outline = await run(outlineAgent, input)
-  const check = await run(checkerAgent, outline.finalOutput)
-  const story = await run(storyAgent, outline.finalOutput)
-})
+  const outline = await run(outlineAgent, input);
+  const check = await run(checkerAgent, outline.finalOutput);
+  const story = await run(storyAgent, outline.finalOutput);
+});
 ```
 
 `withTrace` 的参数：
@@ -30,7 +30,7 @@ await withTrace('My workflow', async () => {
 ### Runner 追踪元数据
 
 ```typescript
-import { Runner } from '@openai/agents'
+import { Runner } from '@openai/agents';
 
 const runner = new Runner({
   groupId: 'customer-support',
@@ -39,7 +39,7 @@ const runner = new Runner({
     session_id: 'sess-456',
     environment: 'production'
   }
-})
+});
 ```
 
 ### 禁用追踪
@@ -47,9 +47,9 @@ const runner = new Runner({
 测试或使用本地模型时可以禁用：
 
 ```typescript
-import { setTracingDisabled } from '@openai/agents'
+import { setTracingDisabled } from '@openai/agents';
 
-setTracingDisabled(true)
+setTracingDisabled(true);
 ```
 
 ## Reasoning 配置
@@ -68,7 +68,7 @@ const agent = new Agent({
       summary: 'auto' // 'auto' | 'always' | 'never'
     }
   }
-})
+});
 ```
 
 | effort 值   | 说明     | 适用场景             |
@@ -97,23 +97,23 @@ const agent = new Agent({
     reasoning: { effort: 'high', summary: 'auto' },
     text: { verbosity: 'high' }
   }
-})
+});
 
-const result = await run(agent, 'How many r are in strawberry?')
+const result = await run(agent, 'How many r are in strawberry?');
 
 // 遍历推理项
 for (const item of result.newItems) {
   if (item.type === 'reasoning_item') {
     for (const entry of item.rawItem.content) {
       if (entry.type === 'input_text') {
-        console.log(`Thinking: ${entry.text}`)
+        console.log(`Thinking: ${entry.text}`);
       }
     }
   }
 }
 
 // 最终输出
-console.log('Answer:', result.finalOutput)
+console.log('Answer:', result.finalOutput);
 ```
 
 ## Text 配置
@@ -127,7 +127,7 @@ const agent = new Agent({
       verbosity: 'low' // 'high' | 'medium' | 'low'
     }
   }
-})
+});
 ```
 
 | verbosity 值 | 说明       |
@@ -143,7 +143,7 @@ const agent = new Agent({
 ```typescript
 const result = await run(agent, 'Complex task', {
   maxTurns: 10 // 最多 10 轮（包括工具调用）
-})
+});
 ```
 
 Agent-as-Tool 也可以限制：
@@ -154,7 +154,7 @@ const tool = subAgent.asTool({
   runOptions: {
     maxTurns: 3 // 子 Agent 最多 3 轮
   }
-})
+});
 ```
 
 ## 辅助函数
@@ -162,10 +162,10 @@ const tool = subAgent.asTool({
 ### `user()` — 创建用户消息
 
 ```typescript
-import { user } from '@openai/agents'
+import { user } from '@openai/agents';
 
 // 等价于 { role: 'user', content: 'Hello' }
-const message = user('Hello')
+const message = user('Hello');
 ```
 
 ### `extractAllTextOutput()` — 提取文本输出
@@ -173,11 +173,11 @@ const message = user('Hello')
 从运行结果中提取所有文本内容：
 
 ```typescript
-import { extractAllTextOutput } from '@openai/agents'
+import { extractAllTextOutput } from '@openai/agents';
 
-const result = await run(agent, 'Tell me a story')
-const text = extractAllTextOutput(result.newItems)
-console.log(text) // 完整的文本输出
+const result = await run(agent, 'Tell me a story');
+const text = extractAllTextOutput(result.newItems);
+console.log(text); // 完整的文本输出
 ```
 
 适用场景：
@@ -195,7 +195,7 @@ const agent = new Agent({
     store: true // 默认：存储对话（支持 Conversations API）
     // store: false,  // 不存储（隐私敏感场景）
   }
-})
+});
 ```
 
 当 `store: false` 时：
@@ -209,11 +209,11 @@ const agent = new Agent({
 通过 `OpenAIChatCompletionsModel` 连接本地模型：
 
 ```typescript
-import { Agent, OpenAIChatCompletionsModel, run, setTracingDisabled } from '@openai/agents'
-import OpenAI from 'openai'
+import { Agent, OpenAIChatCompletionsModel, run, setTracingDisabled } from '@openai/agents';
+import OpenAI from 'openai';
 
 // 禁用追踪（本地模型不支持）
-setTracingDisabled(true)
+setTracingDisabled(true);
 
 const agent = new Agent({
   name: 'Local Agent',
@@ -228,12 +228,12 @@ const agent = new Agent({
   modelSettings: {
     reasoning: { effort: 'low' }
   }
-})
+});
 
 // 流式输出
-const stream = await run(agent, 'What is TypeScript?', { stream: true })
+const stream = await run(agent, 'What is TypeScript?', { stream: true });
 for await (const event of stream.toTextStream()) {
-  process.stdout.write(event)
+  process.stdout.write(event);
 }
 ```
 
@@ -255,7 +255,7 @@ const baseAgent = new Agent({
   name: 'Base Agent',
   instructions: 'You are helpful.',
   model: 'gpt-5'
-})
+});
 
 // 克隆并修改（注释中的示例 API）
 // const variantAgent = baseAgent.clone({

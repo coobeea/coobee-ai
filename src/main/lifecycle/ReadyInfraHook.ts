@@ -12,6 +12,7 @@
  * 前置条件：Extension 系统已初始化（钩子依赖 ExtensionManager）
  */
 
+import fs from 'node:fs';
 import { LifecyclePhase, type LifecycleContext, type LifecycleHook } from '@main/common/types';
 import { log } from '@main/common/logger';
 
@@ -93,12 +94,80 @@ export const ReadyInfraHook: LifecycleHook = {
       agentExecutor.initPipeline(pipelineSettings);
       log.info(`[ReadyInfraHook] MessagePipeline initialized — mode: ${pipelineSettings?.mode ?? 'followup'}`);
 
+      // ── Step 4: AGENTS.md 协议文件 ──────────────────
+      ensureGlobalAgentsMd(Env.paths.agentsMdPath, Env.app.name, Env.app.version);
+
+      // ── Step 5: Agent Home 批量初始化 ──────────────
+      await ensureAgentHomes(Env.paths.homesDir);
+
       log.info('[ReadyInfraHook] All infrastructure systems initialized successfully');
     } catch (error) {
       log.error('[ReadyInfraHook] Infrastructure initialization failed:', error);
     }
   }
 };
+
+/**
+ * 确保全局 AGENTS.md 协议文件存在
+ *
+ * 如果文件不存在，生成包含系统身份信息、全局规则和共享上下文占位的默认模板。
+ * 已存在的文件不会被覆盖（用户或智能体可能已经修改过）。
+ */
+function ensureGlobalAgentsMd(filePath: string, appName: string, appVersion: string): void {
+  if (fs.existsSync(filePath)) {
+    log.info(`[ReadyInfraHook] AGENTS.md already exists: ${filePath}`);
+    return;
+  }
+
+  const template = `# System Identity
+
+- **系统名称**: ${appName}
+- **版本**: ${appVersion}
+- **语言偏好**: 中文
+
+# System Rules
+
+- 使用中文与用户交流（除非用户使用其他语言）
+- 尊重用户隐私，不主动泄露敏感信息
+- 优先使用已有工具和技能，避免重复造轮子
+- 遇到不确定的情况，主动向用户确认而非自行假设
+- 输出结果要有可验证性，避免编造信息
+
+# Shared Context
+
+<!-- 智能体运行中可在此区域写入共享上下文 -->
+`;
+
+  try {
+    fs.writeFileSync(filePath, template, 'utf-8');
+    log.info(`[ReadyInfraHook] Created default AGENTS.md: ${filePath}`);
+  } catch (err) {
+    log.warn(`[ReadyInfraHook] Failed to create AGENTS.md:`, err);
+  }
+}
+
+/**
+ * 确保所有已注册 Agent 的 Home 目录存在
+ *
+ * 遍历 AgentStore 中的所有 Agent，为每个创建 Home 目录（如不存在）。
+ */
+async function ensureAgentHomes(homesDir: string): Promise<void> {
+  try {
+    const { AgentHomeManager } = await import('@main/ai/agents/AgentHomeManager');
+    const { AgentStore } = await import('@main/ai/agents/AgentStore');
+
+    const homeManager = new AgentHomeManager(homesDir);
+    const store = await AgentStore.getInstance();
+    const agents = await store.list();
+
+    if (agents.length > 0) {
+      homeManager.initHomes(agents.map((a) => a.id));
+      log.info(`[ReadyInfraHook] Agent Homes initialized for ${agents.length} agents`);
+    }
+  } catch (err) {
+    log.warn('[ReadyInfraHook] Failed to initialize Agent Homes:', err);
+  }
+}
 
 /**
  * 退出时停止 ConfigWatcher

@@ -200,19 +200,19 @@ Electron App (src/main)
 
 ```typescript
 // src/main/common/app/index.ts
-import { AgentGateway } from '@coobee/ai-gateway'
+import { AgentGateway } from '@coobee/ai-gateway';
 
 export class AppManager {
-  private agentGateway!: AgentGateway
+  private agentGateway!: AgentGateway;
 
   async initialize(): Promise<void> {
     // ... 现有初始化逻辑
 
     // 新增：初始化 AI 网关
-    this.agentGateway = new AgentGateway()
-    await this.agentGateway.initialize(9000)
+    this.agentGateway = new AgentGateway();
+    await this.agentGateway.initialize(9000);
 
-    log.info('[AppManager] AI 网关初始化完成')
+    log.info('[AppManager] AI 网关初始化完成');
   }
 }
 ```
@@ -222,15 +222,15 @@ export class AppManager {
 ```typescript
 // src/renderer/src/services/aiClient.ts
 export class AIClient {
-  private ws: WebSocket
+  private ws: WebSocket;
 
   connect() {
-    this.ws = new WebSocket('ws://localhost:9000')
+    this.ws = new WebSocket('ws://localhost:9000');
 
     this.ws.onmessage = (event) => {
-      const response = JSON.parse(event.data)
-      console.log('[AI Client] 收到消息:', response)
-    }
+      const response = JSON.parse(event.data);
+      console.log('[AI Client] 收到消息:', response);
+    };
   }
 
   async createSession(config: any) {
@@ -239,7 +239,7 @@ export class AIClient {
         type: 'create-session',
         payload: config
       })
-    )
+    );
   }
 }
 ```

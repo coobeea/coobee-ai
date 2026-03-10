@@ -368,6 +368,7 @@ export function setupEventSubscription(
             toolName,
             callId: evt.toolCallId,
             output,
+            toolArgs: typeof evt.args === 'object' ? evt.args : undefined,
             // 传递 details（包含 suspended 状态）
             ...(details.status === 'suspended' ? { suspended: true, suspendReason: details.suspendReason } : {})
           }

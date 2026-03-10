@@ -71,32 +71,32 @@ Agent/Team → SSE → 前端
  */
 interface StreamMessage {
   /** 消息唯一 ID（雪花 ID） */
-  id: string
+  id: string;
 
   /** 会话 ID */
-  sessionId: string
+  sessionId: string;
 
   /** 消息序号（单调递增） */
-  sequence: number
+  sequence: number;
 
   /** 消息类型 */
-  type: 'text' | 'tool_call' | 'tool_result' | 'thinking' | 'done' | 'error'
+  type: 'text' | 'tool_call' | 'tool_result' | 'thinking' | 'done' | 'error';
 
   /** 消息内容 */
-  content: string
+  content: string;
 
   /** 额外数据 */
-  data?: Record<string, unknown>
+  data?: Record<string, unknown>;
 
   /** 时间戳 */
-  timestamp: number
+  timestamp: number;
 
   /** 来源（agent/team） */
   source: {
-    type: 'agent' | 'team'
-    id: string
-    name: string
-  }
+    type: 'agent' | 'team';
+    id: string;
+    name: string;
+  };
 }
 ```
 
@@ -137,10 +137,10 @@ export enum StreamEventType {
  * 流式事件数据
  */
 export interface StreamEvent {
-  type: StreamEventType
-  sessionId: string
-  data: StreamMessage | { fromSequence: number } | { error: string }
-  timestamp: number
+  type: StreamEventType;
+  sessionId: string;
+  data: StreamMessage | { fromSequence: number } | { error: string };
+  timestamp: number;
 }
 ```
 
@@ -208,18 +208,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_session_seq_unique
 ```typescript
 // src/main/ai/streaming/StreamStore.ts
 
-import { SQLiteService } from '@main/common/database'
-import { SnowflakeIdGenerator } from '@main/utils'
-import type { StreamMessage } from './types'
+import { SQLiteService } from '@main/common/database';
+import { SnowflakeIdGenerator } from '@main/utils';
+import type { StreamMessage } from './types';
 
 export class StreamStore {
-  private db: SQLiteService
-  private idGenerator: SnowflakeIdGenerator
-  private sequenceCounters = new Map<string, number>() // sessionId -> 当前序号
+  private db: SQLiteService;
+  private idGenerator: SnowflakeIdGenerator;
+  private sequenceCounters = new Map<string, number>(); // sessionId -> 当前序号
 
   constructor() {
-    this.db = SQLiteService.getInstance()
-    this.idGenerator = new SnowflakeIdGenerator(1) // workerId = 1
+    this.db = SQLiteService.getInstance();
+    this.idGenerator = new SnowflakeIdGenerator(1); // workerId = 1
   }
 
   async initialize(): Promise<void> {
@@ -238,12 +238,12 @@ export class StreamStore {
     data?: Record<string, unknown>
   ): Promise<StreamMessage> {
     // 1. 生成消息 ID
-    const id = this.idGenerator.generate().toString()
+    const id = this.idGenerator.generate().toString();
 
     // 2. 获取或初始化序号
-    let sequence = this.sequenceCounters.get(sessionId) || 0
-    sequence++
-    this.sequenceCounters.set(sessionId, sequence)
+    let sequence = this.sequenceCounters.get(sessionId) || 0;
+    sequence++;
+    this.sequenceCounters.set(sessionId, sequence);
 
     // 3. 构建消息
     const message: StreamMessage = {
@@ -255,7 +255,7 @@ export class StreamStore {
       data,
       timestamp: Date.now(),
       source
-    }
+    };
 
     // 4. 持久化
     await this.db.execute(
@@ -276,28 +276,24 @@ export class StreamStore {
         message.source.name,
         Date.now()
       ]
-    )
+    );
 
-    return message
+    return message;
   }
 
   /**
    * 获取消息（按序号范围）
    */
-  async getMessages(
-    sessionId: string,
-    fromSequence: number,
-    limit: number = 100
-  ): Promise<StreamMessage[]> {
+  async getMessages(sessionId: string, fromSequence: number, limit: number = 100): Promise<StreamMessage[]> {
     const rows = await this.db.query<Record<string, unknown>>(
       `SELECT * FROM stream_messages 
        WHERE session_id = ? AND sequence >= ? 
        ORDER BY sequence ASC 
        LIMIT ?`,
       [sessionId, fromSequence, limit]
-    )
+    );
 
-    return rows.map((row) => this.rowToMessage(row))
+    return rows.map((row) => this.rowToMessage(row));
   }
 
   /**
@@ -307,9 +303,9 @@ export class StreamStore {
     const row = await this.db.queryOne<Record<string, unknown>>(
       `SELECT MAX(sequence) as max_seq FROM stream_messages WHERE session_id = ?`,
       [sessionId]
-    )
+    );
 
-    return (row?.max_seq as number) || 0
+    return (row?.max_seq as number) || 0;
   }
 
   /**
@@ -323,7 +319,7 @@ export class StreamStore {
          SELECT MAX(sequence) - ? FROM stream_messages WHERE session_id = ?
        )`,
       [sessionId, keepLast, sessionId]
-    )
+    );
   }
 
   private rowToMessage(row: Record<string, unknown>): StreamMessage {
@@ -340,11 +336,11 @@ export class StreamStore {
         id: row.source_id as string,
         name: row.source_name as string
       }
-    }
+    };
   }
 }
 
-export const streamStore = new StreamStore()
+export const streamStore = new StreamStore();
 ```
 
 ---
@@ -354,10 +350,10 @@ export const streamStore = new StreamStore()
 ```typescript
 // src/main/ai/streaming/StreamManager.ts
 
-import { eventBus } from '@main/common/eventbus'
-import { streamStore } from './StreamStore'
-import { StreamEventType } from './events'
-import type { StreamMessage } from './types'
+import { eventBus } from '@main/common/eventbus';
+import { streamStore } from './StreamStore';
+import { StreamEventType } from './events';
+import type { StreamMessage } from './types';
 
 export class StreamManager {
   /**
@@ -371,7 +367,7 @@ export class StreamManager {
     data?: Record<string, unknown>
   ): Promise<StreamMessage> {
     // 1. 持久化
-    const message = await streamStore.saveMessage(sessionId, type, content, source, data)
+    const message = await streamStore.saveMessage(sessionId, type, content, source, data);
 
     // 2. 发送事件（触发 WebSocket 推送）
     eventBus.emit(StreamEventType.CHUNK, {
@@ -379,44 +375,44 @@ export class StreamManager {
       sessionId,
       data: message,
       timestamp: Date.now()
-    })
+    });
 
-    return message
+    return message;
   }
 
   /**
    * 开始流
    */
   async startStream(sessionId: string, source: StreamMessage['source']): Promise<void> {
-    await this.sendMessage(sessionId, 'text', '[Stream Started]', source)
+    await this.sendMessage(sessionId, 'text', '[Stream Started]', source);
 
     eventBus.emit(StreamEventType.START, {
       type: StreamEventType.START,
       sessionId,
       data: { source },
       timestamp: Date.now()
-    })
+    });
   }
 
   /**
    * 结束流
    */
   async endStream(sessionId: string, source: StreamMessage['source']): Promise<void> {
-    await this.sendMessage(sessionId, 'done', '[Stream Ended]', source)
+    await this.sendMessage(sessionId, 'done', '[Stream Ended]', source);
 
     eventBus.emit(StreamEventType.END, {
       type: StreamEventType.END,
       sessionId,
       data: { source },
       timestamp: Date.now()
-    })
+    });
   }
 
   /**
    * 补发消息（断线重连）
    */
   async resendMessages(sessionId: string, fromSequence: number): Promise<StreamMessage[]> {
-    const messages = await streamStore.getMessages(sessionId, fromSequence)
+    const messages = await streamStore.getMessages(sessionId, fromSequence);
 
     // 逐条发送事件
     for (const message of messages) {
@@ -425,21 +421,21 @@ export class StreamManager {
         sessionId,
         data: message,
         timestamp: Date.now()
-      })
+      });
     }
 
-    return messages
+    return messages;
   }
 
   /**
    * 获取最新序号（用于客户端同步）
    */
   async getLatestSequence(sessionId: string): Promise<number> {
-    return await streamStore.getLatestSequence(sessionId)
+    return await streamStore.getLatestSequence(sessionId);
   }
 }
 
-export const streamManager = new StreamManager()
+export const streamManager = new StreamManager();
 ```
 
 ---
@@ -449,7 +445,7 @@ export const streamManager = new StreamManager()
 ```typescript
 // src/main/ai/runtime/AgentRuntime.ts (修改)
 
-import { streamManager } from '../streaming/StreamManager'
+import { streamManager } from '../streaming/StreamManager';
 
 export class AgentRuntime implements IExecutable {
   // ...
@@ -459,37 +455,37 @@ export class AgentRuntime implements IExecutable {
     config: ExecutionConfig,
     onChunk: (chunk: StreamChunk) => void
   ): Promise<ExecutionResult> {
-    console.log(`[AgentRuntime] Running agent in stream mode: ${this.name}`)
+    console.log(`[AgentRuntime] Running agent in stream mode: ${this.name}`);
 
     const source = {
       type: 'agent' as const,
       id: this.id,
       name: this.name
-    }
+    };
 
     // 开始流
-    await streamManager.startStream(this.sessionId, source)
+    await streamManager.startStream(this.sessionId, source);
 
     try {
       // 执行 Agent
-      const result = await run(this.agent, input)
+      const result = await run(this.agent, input);
 
       // 发送文本块（自动持久化 + 发送事件）
-      await streamManager.sendMessage(this.sessionId, 'text', result.finalOutput || '', source)
+      await streamManager.sendMessage(this.sessionId, 'text', result.finalOutput || '', source);
 
       // 结束流
-      await streamManager.endStream(this.sessionId, source)
+      await streamManager.endStream(this.sessionId, source);
 
       // 同时调用回调（兼容旧接口）
       onChunk({
         type: 'text',
         content: result.finalOutput || ''
-      })
+      });
 
       onChunk({
         type: 'done',
         content: ''
-      })
+      });
 
       return {
         output: result.finalOutput || '',
@@ -500,7 +496,7 @@ export class AgentRuntime implements IExecutable {
           agentId: this.id,
           sessionId: this.sessionId
         }
-      }
+      };
     } catch (error: unknown) {
       // 发送错误消息
       await streamManager.sendMessage(
@@ -508,9 +504,9 @@ export class AgentRuntime implements IExecutable {
         'error',
         error instanceof Error ? error.message : String(error),
         source
-      )
+      );
 
-      throw error
+      throw error;
     }
   }
 }
@@ -529,17 +525,17 @@ export class AgentRuntime implements IExecutable {
  * 客户端 → 服务端
  */
 export interface ClientMessage {
-  type: 'subscribe' | 'unsubscribe' | 'resend' | 'ping'
-  sessionId?: string
-  fromSequence?: number // 用于 resend
+  type: 'subscribe' | 'unsubscribe' | 'resend' | 'ping';
+  sessionId?: string;
+  fromSequence?: number; // 用于 resend
 }
 
 /**
  * 服务端 → 客户端
  */
 export interface ServerMessage {
-  type: 'message' | 'resend_batch' | 'pong' | 'error'
-  data: StreamMessage | StreamMessage[] | { error: string }
+  type: 'message' | 'resend_batch' | 'pong' | 'error';
+  data: StreamMessage | StreamMessage[] | { error: string };
 }
 ```
 
@@ -548,102 +544,102 @@ export interface ServerMessage {
 ```typescript
 // src/main/ai/streaming/WebSocketService.ts
 
-import WebSocket from 'ws'
-import { eventBus } from '@main/common/eventbus'
-import { streamManager } from './StreamManager'
-import { StreamEventType } from './events'
-import type { StreamMessage } from './types'
+import WebSocket from 'ws';
+import { eventBus } from '@main/common/eventbus';
+import { streamManager } from './StreamManager';
+import { StreamEventType } from './events';
+import type { StreamMessage } from './types';
 
 export class WebSocketService {
-  private wss!: WebSocket.Server
-  private clients = new Map<WebSocket, Set<string>>() // client -> sessionIds
+  private wss!: WebSocket.Server;
+  private clients = new Map<WebSocket, Set<string>>(); // client -> sessionIds
 
   initialize(port: number): void {
-    this.wss = new WebSocket.Server({ port })
+    this.wss = new WebSocket.Server({ port });
 
     this.wss.on('connection', (ws) => {
-      console.log('[WebSocket] Client connected')
-      this.clients.set(ws, new Set())
+      console.log('[WebSocket] Client connected');
+      this.clients.set(ws, new Set());
 
       ws.on('message', (data) => {
-        this.handleClientMessage(ws, data.toString())
-      })
+        this.handleClientMessage(ws, data.toString());
+      });
 
       ws.on('close', () => {
-        console.log('[WebSocket] Client disconnected')
-        this.clients.delete(ws)
-      })
-    })
+        console.log('[WebSocket] Client disconnected');
+        this.clients.delete(ws);
+      });
+    });
 
     // 监听 EventBus 事件
-    this.setupEventListeners()
+    this.setupEventListeners();
   }
 
   private setupEventListeners(): void {
     // 监听新消息块
     eventBus.on(StreamEventType.CHUNK, (event) => {
-      const message = event.data as StreamMessage
+      const message = event.data as StreamMessage;
       this.broadcastToSession(message.sessionId, {
         type: 'message',
         data: message
-      })
-    })
+      });
+    });
   }
 
   private async handleClientMessage(ws: WebSocket, data: string): Promise<void> {
     try {
-      const msg = JSON.parse(data)
+      const msg = JSON.parse(data);
 
       switch (msg.type) {
         case 'subscribe':
           // 订阅会话
           if (msg.sessionId) {
-            const sessions = this.clients.get(ws)
-            sessions?.add(msg.sessionId)
-            console.log(`[WebSocket] Client subscribed to session: ${msg.sessionId}`)
+            const sessions = this.clients.get(ws);
+            sessions?.add(msg.sessionId);
+            console.log(`[WebSocket] Client subscribed to session: ${msg.sessionId}`);
           }
-          break
+          break;
 
         case 'unsubscribe':
           // 取消订阅
           if (msg.sessionId) {
-            const sessions = this.clients.get(ws)
-            sessions?.delete(msg.sessionId)
+            const sessions = this.clients.get(ws);
+            sessions?.delete(msg.sessionId);
           }
-          break
+          break;
 
         case 'resend':
           // 补发消息
           if (msg.sessionId && typeof msg.fromSequence === 'number') {
-            const messages = await streamManager.resendMessages(msg.sessionId, msg.fromSequence)
+            const messages = await streamManager.resendMessages(msg.sessionId, msg.fromSequence);
             ws.send(
               JSON.stringify({
                 type: 'resend_batch',
                 data: messages
               })
-            )
+            );
           }
-          break
+          break;
 
         case 'ping':
-          ws.send(JSON.stringify({ type: 'pong', data: {} }))
-          break
+          ws.send(JSON.stringify({ type: 'pong', data: {} }));
+          break;
       }
     } catch (error) {
-      console.error('[WebSocket] Error handling message:', error)
+      console.error('[WebSocket] Error handling message:', error);
     }
   }
 
   private broadcastToSession(sessionId: string, message: ServerMessage): void {
     for (const [ws, sessions] of this.clients) {
       if (sessions.has(sessionId) && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(message))
+        ws.send(JSON.stringify(message));
       }
     }
   }
 }
 
-export const webSocketService = new WebSocketService()
+export const webSocketService = new WebSocketService();
 ```
 
 ---
@@ -654,23 +650,23 @@ export const webSocketService = new WebSocketService()
 // 前端 WebSocket 客户端
 
 class StreamClient {
-  private ws!: WebSocket
-  private sessionId: string
-  private lastSequence = 0
+  private ws!: WebSocket;
+  private sessionId: string;
+  private lastSequence = 0;
 
   constructor(sessionId: string) {
-    this.sessionId = sessionId
+    this.sessionId = sessionId;
   }
 
   connect(): void {
-    this.ws = new WebSocket('ws://localhost:8080')
+    this.ws = new WebSocket('ws://localhost:8080');
 
     this.ws.onopen = () => {
       // 订阅会话
       this.send({
         type: 'subscribe',
         sessionId: this.sessionId
-      })
+      });
 
       // 请求补发（如果是重连）
       if (this.lastSequence > 0) {
@@ -678,44 +674,44 @@ class StreamClient {
           type: 'resend',
           sessionId: this.sessionId,
           fromSequence: this.lastSequence + 1
-        })
+        });
       }
-    }
+    };
 
     this.ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data)
+      const msg = JSON.parse(event.data);
 
       if (msg.type === 'message') {
-        this.handleMessage(msg.data)
+        this.handleMessage(msg.data);
       } else if (msg.type === 'resend_batch') {
-        msg.data.forEach((m: StreamMessage) => this.handleMessage(m))
+        msg.data.forEach((m: StreamMessage) => this.handleMessage(m));
       }
-    }
+    };
 
     this.ws.onclose = () => {
       // 自动重连
-      setTimeout(() => this.connect(), 1000)
-    }
+      setTimeout(() => this.connect(), 1000);
+    };
   }
 
   private handleMessage(message: StreamMessage): void {
     // 更新序号
-    this.lastSequence = Math.max(this.lastSequence, message.sequence)
+    this.lastSequence = Math.max(this.lastSequence, message.sequence);
 
     // 显示消息
-    console.log(`[${message.sequence}] ${message.type}: ${message.content}`)
+    console.log(`[${message.sequence}] ${message.type}: ${message.content}`);
   }
 
   private send(data: ClientMessage): void {
     if (this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data))
+      this.ws.send(JSON.stringify(data));
     }
   }
 }
 
 // 使用
-const client = new StreamClient('session-001')
-client.connect()
+const client = new StreamClient('session-001');
+client.connect();
 ```
 
 ---

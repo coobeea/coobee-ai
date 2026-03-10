@@ -1,4 +1,4 @@
-import type { ProviderConfig } from '../types'
+import type { ProviderConfig } from '../types';
 
 export const aliyunProvider: ProviderConfig = {
   id: 'aliyun',
@@ -36,4 +36,4 @@ export const aliyunProvider: ProviderConfig = {
     }
   ],
   enabled: true
-}
+};

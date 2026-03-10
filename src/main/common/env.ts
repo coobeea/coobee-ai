@@ -4,35 +4,120 @@ import fs from 'fs';
 import { mkdirp } from 'mkdirp';
 import path from 'path';
 
-export const Env = {
-  isDev: is.dev,
-  isProd: !is.dev,
-  isTest: process.env.NODE_ENV === 'test',
-  isWindows: process.platform === 'win32',
-  isMac: process.platform === 'darwin',
-  isLinux: process.platform === 'linux',
-  isPackaged: app.isPackaged,
+/**
+ * Lazy-evaluated environment configuration
+ *
+ * All properties that access 'app' object are wrapped in getters
+ * to avoid premature access during module initialization
+ */
+class EnvClass {
+  get isDev(): boolean {
+    return is.dev;
+  }
+
+  get isProd(): boolean {
+    return !is.dev;
+  }
+
+  get isTest(): boolean {
+    return process.env.NODE_ENV === 'test';
+  }
+
+  get isWindows(): boolean {
+    return process.platform === 'win32';
+  }
+
+  get isMac(): boolean {
+    return process.platform === 'darwin';
+  }
+
+  get isLinux(): boolean {
+    return process.platform === 'linux';
+  }
+
+  get isPackaged(): boolean {
+    return app.isPackaged;
+  }
 
   // 主进程环境变量
-  main: {
-    bundleId: process.env.VITE_MAIN_BUNDLE_ID,
-    logLevel: process.env.VITE_LOG_LEVEL,
-    logMaxSize: process.env.VITE_LOG_MAX_SIZE,
-    debug: process.env.VITE_DEBUG,
-    openDevTools: process.env.VITE_OPEN_DEVTOOLS,
-    /** 统一服务端口（HTTP + WebSocket 共享），默认 8765 */
-    serverPort: process.env.VITE_SERVER_PORT,
-    /** 模型存储目录（环境变量优先，未设置则用默认路径） */
-    modelDir: process.env.VITE_MODEL_DIR
-  },
+  get main(): {
+    bundleId: string | undefined;
+    logLevel: string | undefined;
+    logMaxSize: string | undefined;
+    debug: string | undefined;
+    openDevTools: string | undefined;
+    serverPort: string | undefined;
+    serverHost: string;
+    modelDir: string | undefined;
+  } {
+    return {
+      bundleId: process.env.VITE_MAIN_BUNDLE_ID,
+      logLevel: process.env.VITE_LOG_LEVEL,
+      logMaxSize: process.env.VITE_LOG_MAX_SIZE,
+      debug: process.env.VITE_DEBUG,
+      openDevTools: process.env.VITE_OPEN_DEVTOOLS,
+      /** 统一服务端口（HTTP + WebSocket 共享），默认 8765 */
+      serverPort: process.env.VITE_SERVER_PORT,
+      /** 服务绑定地址，默认 127.0.0.1（设为 0.0.0.0 可开启局域网访问） */
+      serverHost: process.env.VITE_SERVER_HOST || '127.0.0.1',
+      /** 模型存储目录（环境变量优先，未设置则用默认路径） */
+      modelDir: process.env.VITE_MODEL_DIR
+    };
+  }
 
-  app: {
-    name: app.getName(),
-    version: app.getVersion(),
-    locale: app.getLocale()
-  },
+  get app(): {
+    name: string;
+    version: string;
+    locale: string;
+  } {
+    return {
+      name: app.getName(),
+      version: app.getVersion(),
+      locale: app.getLocale()
+    };
+  }
 
-  paths: (() => {
+  private _paths?: ReturnType<typeof this._computePaths>;
+
+  get paths(): ReturnType<typeof this._computePaths> {
+    if (!this._paths) {
+      this._paths = this._computePaths();
+    }
+    return this._paths;
+  }
+
+  private _computePaths(): {
+    root: string;
+    userData: string;
+    appData: string;
+    logPath: string;
+    installDir: string;
+    userHome: string;
+    agentsMdPath: string;
+    configDir: string;
+    secretsDir: string;
+    memoryDir: string;
+    userMemoryDir: string;
+    agentMemoryDir: string;
+    sharedDriveDir: string;
+    builtinAgentsDir: string;
+    userAgentsDir: string;
+    homesDir: string;
+    threadsDir: string;
+    workspacesDir: string;
+    builtinSkillsDir: string;
+    userSkillsDir: string;
+    builtinExtensionsDir: string;
+    userExtensionsDir: string;
+    workersDir: string;
+    workerEnvsDir: string;
+    modelsDir: string;
+    home: string;
+    temp: string;
+    downloads: string;
+    documents: string;
+    desktop: string;
+  } {
     // === 基础路径计算 ===
     const _userHome = is.dev
       ? path.join(app.getAppPath(), '.home')
@@ -52,6 +137,18 @@ export const Env = {
       installDir: !is.dev && app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath(),
       /** 用户主目录 (开发: <项目>/.home | 生产: ~/.coobee-ai) */
       userHome: _userHome,
+
+      // === 全局协议文件（AGENTS.md）===
+      /**
+       * 全局智能体协议文件路径
+       *
+       * 所有智能体启动时硬注入此文件内容到 system prompt。
+       * 包含系统身份信息、全局规则和共享上下文。
+       * 智能体运行时可通过 write 工具修改。
+       *
+       * @example 开发: <项目>/.home/AGENTS.md | 生产: ~/.coobee-ai/AGENTS.md
+       */
+      agentsMdPath: path.join(_userHome, 'AGENTS.md'),
 
       // === 配置目录（Config）===
       /** 用户配置目录 @example 开发: <项目>/.home/config | 生产: ~/.coobee-ai/config */
@@ -88,6 +185,21 @@ export const Env = {
       /** Agent 级记忆（按 Agent 隔离） */
       agentMemoryDir: path.join(_userHome, 'memory', 'agent'),
 
+      // === 共享网盘目录（SharedDrive）===
+      /**
+       * 多智能体共享网盘
+       *
+       * 结构：
+       *   shared-drive/
+       *   ├── index.jsonl        全局索引
+       *   ├── {agentId}/         按智能体分区
+       *   │   └── {date}/{topic}/
+       *   └── _shared/           公共区域
+       *
+       * @example 开发: <项目>/.home/shared-drive | 生产: ~/.coobee-ai/shared-drive
+       */
+      sharedDriveDir: path.join(_userHome, 'shared-drive'),
+
       // === Agent 定义目录（Agents）===
       /**
        * 内置 Agent 目录（只读，随应用分发）
@@ -107,11 +219,31 @@ export const Env = {
        *   2. userAgentsDir     — 用户级（最高）
        *
        * 每个 Agent 一个 JSON 文件：{agentsDir}/{agentId}.json
-       * 由 AgentStore 管理，通过 manage_agent 工具暴露给 LLM。
+       * 由 AgentStore 管理，通过 HTTP API 和 AI Creator 暴露给 LLM。
        *
        * @example 开发: <项目>/.home/agents | 生产: ~/.coobee-ai/agents
        */
       userAgentsDir: path.join(_userHome, 'agents'),
+
+      // === Agent Home 目录（Agent 持久化空间）===
+      /**
+       * Agent Home 总根目录
+       *
+       * 每个 Agent 拥有独立的持久化目录，跨会话保留身份、记忆、规则：
+       *   homes/{agentId}/
+       *   ├── SOUL.md          人格与价值观
+       *   ├── IDENTITY.md      身份名片
+       *   ├── USER.md          主人档案
+       *   ├── NOTES.md         环境工具备注
+       *   ├── AGENTS.md        Agent 级规则
+       *   ├── HEARTBEAT.md     心跳任务清单
+       *   ├── MEMORY.md        长期记忆精华
+       *   ├── BOOTSTRAP.md     首次引导脚本（完成后自删除）
+       *   └── memory/          每日对话日志
+       *
+       * @example 开发: <项目>/.home/homes | 生产: ~/.coobee-ai/homes
+       */
+      homesDir: path.join(_userHome, 'homes'),
 
       // === 会话线程目录（Threads）===
       /**
@@ -131,6 +263,7 @@ export const Env = {
        *
        * 每次会话/Agent 通过 getAgentWorkspaceDir(id) 获取独立子目录：
        *   workspaces/{id}/
+       *   ├── GOAL.md       目标文件（系统初始化，Agent 填写）
        *   ├── sessions/     会话持久化
        *   ├── contexts/     LLM 请求上下文快照
        *   ├── skills/       Agent 自生成的 Skill
@@ -240,23 +373,23 @@ export const Env = {
       /** 系统桌面目录 (如: ~/Desktop) */
       desktop: app.getPath('desktop')
     };
-  })(),
+  }
 
   isRendererProcess(): boolean {
     return typeof process === 'undefined' || !process || process.type === 'renderer';
-  },
+  }
 
   isMainProcess(): boolean {
     return typeof process !== 'undefined' && process.type === 'browser';
-  },
+  }
 
   isForkedChildProcess(): boolean {
     return Number(process.env.ELECTRON_RUN_AS_NODE) === 1;
-  },
+  }
 
   getResourcePath(relativePath: string): string {
     return path.join(this.isDev ? process.cwd() : process.resourcesPath, relativePath);
-  },
+  }
 
   async getInstallDir(): Promise<string> {
     const installDir = this.paths.installDir;
@@ -264,7 +397,7 @@ export const Env = {
       await mkdirp(installDir);
     }
     return installDir;
-  },
+  }
 
   async getUpgradeDir(): Promise<string> {
     const installDir = await this.getInstallDir();
@@ -273,7 +406,28 @@ export const Env = {
       await mkdirp(upgradeDir);
     }
     return upgradeDir;
-  },
+  }
+
+  // ==================== Agent Home ====================
+
+  /**
+   * 获取指定 Agent 的 Home 目录，首次访问时自动初始化
+   *
+   * Agent Home 是 Agent 的持久化空间（跨会话保留），包含：
+   *   SOUL.md / IDENTITY.md / USER.md / NOTES.md / AGENTS.md
+   *   HEARTBEAT.md / MEMORY.md / BOOTSTRAP.md / memory/
+   *
+   * @param agentId Agent 唯一标识
+   * @returns Home 目录绝对路径
+   */
+  getAgentHomeDir(agentId: string): string {
+    const homeDir = path.join(this.paths.homesDir, agentId);
+    if (!fs.existsSync(homeDir)) {
+      fs.mkdirSync(homeDir, { recursive: true });
+      fs.mkdirSync(path.join(homeDir, 'memory'), { recursive: true });
+    }
+    return homeDir;
+  }
 
   // ==================== 工作空间与 Skill ====================
 
@@ -282,25 +436,24 @@ export const Env = {
    *
    * 返回 {workspacesDir}/{id}，id 通常为 sessionId。
    *
-   * 结构：
+   * 工作空间是会话级的临时沙箱，Agent 可以自由创建文件和目录：
    *   {workspacesDir}/{id}/
-   *   ├── sessions/     会话持久化
-   *   ├── contexts/     LLM 请求上下文快照
-   *   ├── events/       流式事件记录（完整时间线）
-   *   ├── skills/       Agent 自生成的 Skill
-   *   ├── output/       Agent 输出文件
-   *   ├── logs/         Agent 运行日志
-   *   └── tasks/        [多 Agent] 委托任务目录（按需创建）
+   *   ├── GOAL.md                  目标文件（Agent 在意图提取阶段填写）
+   *   ├── .runtime/                系统内部文件（LLM 运行时数据）
+   *   │   ├── sessions/               会话持久化
+   *   │   ├── contexts/               LLM 请求上下文快照
+   *   │   ├── events/                 流式事件记录
+   *   │   └── logs/                   Agent 运行日志
+   *   └── tasks/                   [多 Agent] 委托任务目录（按需创建）
    *       └── {taskId}/
-   *           ├── plan.md         任务计划（task_plan 工具写入）
-   *           ├── status.json     任务状态（task_plan 工具更新）
-   *           ├── agents/         子 Agent 工作目录
-   *           │   └── {agentId}/  子 Agent 完整工作空间
-   *           ├── results/        子 Agent 的汇总结果
-   *           └── experiences/    共享执行经验
+   *           ├── plan.md             任务计划
+   *           ├── status.json         任务状态
+   *           ├── agents/             子 Agent 工作空间
+   *           ├── results/            子 Agent 汇总结果
+   *           └── experiences/        共享执行经验
    *
-   * 注：tasks/ 目录由 task_plan 和 delegate_to_agent 工具按需创建，
-   * 不在 workspace 初始化时创建。
+   * 注意：Agent 可以在 workspace 根目录自由创建其他文件和目录（如 output/、data/ 等），
+   * 但这些都是临时文件。持久化数据应保存到 Agent Home（homes/{agentId}/）。
    *
    * @param id 工作空间标识（通常为 sessionId）
    * @returns 工作空间根路径
@@ -309,20 +462,58 @@ export const Env = {
     const workspace = path.join(this.paths.workspacesDir, id);
     const subDirs = [
       workspace,
-      path.join(workspace, 'sessions'),
-      path.join(workspace, 'contexts'),
-      path.join(workspace, 'events'),
-      path.join(workspace, 'skills'),
-      path.join(workspace, 'output'),
-      path.join(workspace, 'logs')
+      // 系统空间（.runtime/）
+      path.join(workspace, '.runtime'),
+      path.join(workspace, '.runtime', 'sessions'),
+      path.join(workspace, '.runtime', 'contexts'),
+      path.join(workspace, '.runtime', 'events'),
+      path.join(workspace, '.runtime', 'logs')
     ];
     for (const dir of subDirs) {
       if (!fs.existsSync(dir)) {
         await mkdirp(dir);
       }
     }
+    // 兼容旧工作空间：如果旧目录结构存在，迁移到新结构
+    await this._migrateWorkspaceIfNeeded(workspace);
+    // 初始化 GOAL.md（工作空间标准文件）
+    const goalPath = path.join(workspace, 'GOAL.md');
+    if (!fs.existsSync(goalPath)) {
+      fs.writeFileSync(goalPath, '', 'utf-8');
+    }
     return workspace;
-  },
+  }
+
+  /**
+   * 惰性迁移旧工作空间到新结构
+   *
+   * 如果根目录下存在旧的 sessions/contexts/events/logs 目录，
+   * 把它们移动到 .runtime/ 下。
+   */
+  async _migrateWorkspaceIfNeeded(workspace: string): Promise<void> {
+    const runtimeDir = path.join(workspace, '.runtime');
+
+    const runtimeMigrations = ['sessions', 'contexts', 'events', 'logs'];
+    for (const name of runtimeMigrations) {
+      const oldDir = path.join(workspace, name);
+      const newDir = path.join(runtimeDir, name);
+      if (fs.existsSync(oldDir) && !fs.existsSync(path.join(oldDir, '.migrated'))) {
+        try {
+          const entries = fs.readdirSync(oldDir);
+          for (const entry of entries) {
+            const src = path.join(oldDir, entry);
+            const dst = path.join(newDir, entry);
+            if (!fs.existsSync(dst)) {
+              fs.renameSync(src, dst);
+            }
+          }
+          fs.writeFileSync(path.join(oldDir, '.migrated'), 'migrated to .runtime/', 'utf-8');
+        } catch {
+          // 迁移失败时静默，不阻塞正常流程
+        }
+      }
+    }
+  }
 
   /**
    * 获取 Skill 搜索路径列表（按优先级从低到高）
@@ -358,7 +549,7 @@ export const Env = {
       }
     }
     return skillPaths;
-  },
+  }
 
   /**
    * 获取 Extension 搜索路径列表（按优先级从低到高）
@@ -381,7 +572,7 @@ export const Env = {
       }
     }
     return extensionPaths;
-  },
+  }
 
   // ==================== 应用运行时 ====================
 
@@ -407,7 +598,7 @@ export const Env = {
 
     // 生产模式：resourcesPath/runtime
     return path.join(process.resourcesPath, 'runtime');
-  },
+  }
 
   /**
    * 获取当前平台的运行时目录
@@ -424,6 +615,7 @@ export const Env = {
 
     return path.join(runtimeDir, platformDir);
   }
-};
+}
 
+export const Env = new EnvClass();
 export default Env;

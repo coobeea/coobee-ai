@@ -184,12 +184,12 @@ pnpm dev
 ```typescript
 // 在 ipcSetup.ts 中
 window.api.onEvent((message) => {
-  console.log('[ipcSetup] Received event:', message.type, message.payload)
-  eventBus.emit(message.type, message.payload)
-})
+  console.log('[ipcSetup] Received event:', message.type, message.payload);
+  eventBus.emit(message.type, message.payload);
+});
 
 // 在 eventBroadcaster.ts 的 broadcast 方法中
-log.info(`[IpcEventBroadcaster] Broadcasting ${type} to ${sentCount} windows`)
+log.info(`[IpcEventBroadcaster] Broadcasting ${type} to ${sentCount} windows`);
 ```
 
 ## 相关文件

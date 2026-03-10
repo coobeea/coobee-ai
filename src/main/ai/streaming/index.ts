@@ -13,10 +13,10 @@
  */
 
 // ========== 类型定义 ==========
-export * from './types'
+export * from './types';
 
 // ========== 生产者（发射器）==========
-export { type IStreamEmitter, StreamEmitter, createStreamEmitter } from './StreamEmitter'
+export { type IStreamEmitter, StreamEmitter, createStreamEmitter } from './StreamEmitter';
 
 // ========== 消费者 ==========
 export {
@@ -27,4 +27,4 @@ export {
   StreamMonitor,
   streamMonitor,
   type SessionStats
-} from './consumers'
+} from './consumers';

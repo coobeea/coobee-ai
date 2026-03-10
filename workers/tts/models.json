@@ -1,0 +1,52 @@
+{
+  "configField": "model_name",
+  "options": [
+    {
+      "id": "qwen3-tts",
+      "label": "Qwen3 TTS",
+      "type": "local",
+      "description": "本地语音合成，9 种音色，支持多语种和情绪指令",
+      "configKey": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+      "provider": "Qwen"
+    },
+    {
+      "id": "edge-tts",
+      "label": "Microsoft Edge TTS",
+      "type": "online",
+      "description": "微软免费在线语音合成，300+ 音色，无需 API Key",
+      "configKey": "edge-tts",
+      "provider": "Microsoft",
+      "free": true
+    },
+    {
+      "id": "aliyun-cosyvoice-v3-flash",
+      "label": "阿里云 CosyVoice v3 Flash",
+      "type": "online",
+      "description": "低成本实时合成，首包延迟 <150ms，支持 SSML 和情感表达",
+      "configKey": "aliyun/cosyvoice-v3-flash",
+      "provider": "阿里云百炼",
+      "pricing": "¥0.1/万字符",
+      "requiresApiKey": true
+    },
+    {
+      "id": "aliyun-cosyvoice-v3-plus",
+      "label": "阿里云 CosyVoice v3 Plus",
+      "type": "online",
+      "description": "最强声音复刻，48kHz 高音质输出，支持 200+ 语言",
+      "configKey": "aliyun/cosyvoice-v3-plus",
+      "provider": "阿里云百炼",
+      "pricing": "¥0.2/万字符",
+      "requiresApiKey": true
+    },
+    {
+      "id": "aliyun-cosyvoice-v2",
+      "label": "阿里云 CosyVoice v2",
+      "type": "online",
+      "description": "支持 SSML 和 LaTeX 公式转语音，稳定可靠",
+      "configKey": "aliyun/cosyvoice-v2",
+      "provider": "阿里云百炼",
+      "pricing": "¥0.1/万字符",
+      "requiresApiKey": true
+    }
+  ]
+}

@@ -35,13 +35,26 @@ const route = useRoute();
 const threadsStore = useThreadsStore();
 
 const activeMenuId = ref('agent');
+const showMoreMenu = ref(false);
 
-const menuItems: MenuItem[] = [
+// 常用菜单（显示在侧边栏）
+const mainMenuItems: MenuItem[] = [
   { id: 'agent', label: '智能体', icon: 'i-carbon-bot', route: '/agent' },
-  { id: 'skills', label: '技能', icon: 'i-carbon-skill-level-advanced', route: '/skills' },
-  { id: 'tavern', label: '酒馆', icon: 'i-carbon-task-star', route: '/tavern' },
-  { id: 'brain', label: '智库', icon: 'i-carbon-catalog', route: '/brain' },
-  { id: 'cron', label: '定时任务', icon: 'i-carbon-time', route: '/cron' }
+  { id: 'employee', label: '数字员工', icon: 'i-carbon-user-avatar', route: '/employee' },
+  { id: 'skills', label: '技能市场', icon: 'i-carbon-skill-level-advanced', route: '/skills' },
+  { id: 'tavern', label: '酒馆任务', icon: 'i-carbon-task-star', route: '/tavern' },
+  { id: 'brain', label: '知识智库', icon: 'i-carbon-catalog', route: '/brain' },
+  { id: 'cron', label: '定时任务', icon: 'i-carbon-time', route: '/cron' },
+  { id: 'shared-drive', label: '共享网盘', icon: 'i-carbon-folder-shared', route: '/shared-drive' }
+];
+
+// 更多功能（显示在弹出菜单中）
+const moreMenuItems: MenuItem[] = [
+  { id: 'discussion', label: '群聊讨论', icon: 'i-carbon-chat', route: '/discussion' },
+  { id: 'consultation', label: '专家会诊', icon: 'i-carbon-user-multiple', route: '/consultation' }, // ✅ 使用独立路由，但复用同一个组件
+  { id: 'designer', label: 'Agent 设计器', icon: 'i-carbon-flow', route: '/designer' },
+  { id: 'logs', label: '系统日志', icon: 'i-carbon-document-tasks', route: '/logs' },
+  { id: 'settings', label: '系统设置', icon: 'i-carbon-settings', route: '/settings' }
 ];
 
 onMounted(() => {
@@ -99,6 +112,8 @@ function getAgentTypeLabel(type?: AgentType): string | null {
       return '编排';
     case 'swarm':
       return '蜂群';
+    case 'quality-loop':
+      return '质量循环';
     default:
       return null;
   }
@@ -120,13 +135,23 @@ onMounted(() => updateActiveState());
     <!-- 导航菜单 -->
     <nav class="nav-main">
       <button
-        v-for="item in menuItems"
+        v-for="item in mainMenuItems"
         :key="item.id"
         class="nav-btn"
         :class="{ active: item.id === activeMenuId && !threadsStore.activeThreadId }"
         @click="handleMenuClick(item)">
         <span :class="item.icon" class="icon-sm" />
         <span>{{ item.label }}</span>
+      </button>
+
+      <!-- 更多功能按钮 -->
+      <button
+        class="nav-btn more-btn"
+        :class="{ active: showMoreMenu }"
+        title="更多功能"
+        @click="showMoreMenu = !showMoreMenu">
+        <span class="i-carbon-overflow-menu-horizontal icon-sm" />
+        <span>更多</span>
       </button>
     </nav>
 
@@ -180,6 +205,28 @@ onMounted(() => updateActiveState());
         </div>
       </div>
     </div>
+
+    <!-- 更多功能弹出菜单 -->
+    <Transition name="more-menu">
+      <div v-if="showMoreMenu" class="more-menu-popup">
+        <div class="more-menu-header">更多功能</div>
+        <button
+          v-for="item in moreMenuItems"
+          :key="item.id"
+          class="more-menu-item"
+          :class="{ active: item.id === activeMenuId }"
+          @click="
+            handleMenuClick(item);
+            showMoreMenu = false;
+          ">
+          <span :class="item.icon" class="icon-sm" />
+          <span>{{ item.label }}</span>
+        </button>
+      </div>
+    </Transition>
+
+    <!-- 点击外部关闭菜单 -->
+    <div v-if="showMoreMenu" class="more-menu-overlay" @click="showMoreMenu = false" />
   </aside>
 </template>
 
@@ -439,5 +486,92 @@ onMounted(() => updateActiveState());
 
 .session-list::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--foreground) / 0.12);
+}
+
+/* ====== 更多功能按钮 ====== */
+
+.more-btn {
+  margin-top: 4px;
+  border-top: 1px solid hsl(var(--border) / 0.2);
+  padding-top: 6px !important;
+}
+
+/* ====== 更多功能弹出菜单 ====== */
+
+.more-menu-popup {
+  position: absolute;
+  top: 320px;
+  left: 8px;
+  width: 204px;
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: 12px;
+  box-shadow:
+    0 4px 16px hsl(var(--foreground) / 0.08),
+    0 2px 6px hsl(var(--foreground) / 0.04);
+  padding: 8px;
+  z-index: 100;
+  backdrop-filter: blur(8px);
+}
+
+.more-menu-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground) / 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 12px 4px;
+  user-select: none;
+}
+
+.more-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.more-menu-item:hover {
+  background: hsl(var(--foreground) / 0.05);
+  color: hsl(var(--foreground) / 0.8);
+}
+
+.more-menu-item.active {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  font-weight: 500;
+}
+
+.more-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99;
+}
+
+/* 更多菜单动画 */
+
+.more-menu-enter-active,
+.more-menu-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.more-menu-enter-from {
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+}
+
+.more-menu-leave-to {
+  opacity: 0;
+  transform: translateY(4px) scale(0.98);
 }
 </style>

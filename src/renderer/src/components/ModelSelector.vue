@@ -75,11 +75,21 @@ interface Emits {
 
 const emit = defineEmits<Emits>();
 
+interface ModelGroup {
+  id: string;
+  name: string;
+  description?: string;
+  models: string[];
+  strategy: string;
+  enabled: boolean;
+}
+
 // 状态
 const providers = ref<Provider[]>([]);
+const modelGroups = ref<ModelGroup[]>([]);
 const loading = ref(true);
 
-// 加载所有 Providers 和模型
+// 加载所有 Providers、模型和模型分组
 async function loadProviders(): Promise<void> {
   loading.value = true;
   try {
@@ -96,6 +106,24 @@ async function loadProviders(): Promise<void> {
           models: (providerCfg.models as Model[]) || []
         };
       });
+    }
+
+    // 加载模型分组
+    const groupsConfig = modelsConfig?.groups as Record<string, unknown> | undefined;
+    if (groupsConfig) {
+      modelGroups.value = Object.entries(groupsConfig)
+        .map(([id, cfg]) => {
+          const g = cfg as Record<string, unknown>;
+          return {
+            id,
+            name: (g.name as string) || id,
+            description: g.description as string | undefined,
+            models: (g.models as string[]) || [],
+            strategy: (g.strategy as string) || 'round-robin',
+            enabled: g.enabled !== false
+          };
+        })
+        .filter((g) => g.enabled);
     }
   } catch (err: unknown) {
     console.error('[ModelSelector] Failed to load providers:', err);
@@ -123,7 +151,23 @@ const filterModel = (model: Model): boolean => {
 
 // 生成分组选项
 const groupedOptions = computed((): SelectOptionGroup[] => {
-  return providers.value
+  const groups: SelectOptionGroup[] = [];
+
+  // 模型分组（@group:xxx 引用）
+  if (modelGroups.value.length > 0) {
+    groups.push({
+      label: '模型分组',
+      options: modelGroups.value.map((g) => ({
+        label: g.name,
+        value: `@group:${g.id}`,
+        description: g.description || `${g.models.length} 个模型 · ${g.strategy}`,
+        icon: 'i-carbon-group-objects'
+      }))
+    });
+  }
+
+  // 单个模型（按 Provider 分组）
+  const providerGroups = providers.value
     .map((provider) => ({
       label: provider.name,
       options: provider.models
@@ -148,11 +192,27 @@ const groupedOptions = computed((): SelectOptionGroup[] => {
         })
     }))
     .filter((group) => group.options.length > 0);
+
+  return [...groups, ...providerGroups];
 });
 
-// 获取当前选中的模型
+// 获取当前选中的模型（或分组伪模型）
 const selectedModel = computed((): Model | undefined => {
   if (!props.modelValue) return undefined;
+
+  // @group:xxx 格式 → 返回分组伪模型
+  if (props.modelValue.startsWith('@group:')) {
+    const groupId = props.modelValue.slice(7);
+    const group = modelGroups.value.find((g) => g.id === groupId);
+    if (group) {
+      return {
+        id: props.modelValue,
+        name: group.name,
+        description: group.description || `${group.models.length} 个模型 · ${group.strategy}`
+      };
+    }
+    return { id: props.modelValue, name: `分组: ${groupId}` };
+  }
 
   // 解析 provider/model 格式
   const parts = props.modelValue.split('/');

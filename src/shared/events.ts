@@ -327,103 +327,103 @@ export type AllEvents =
   | ThemeEvents
   | ConfigEvents
   | LogEvents
-  | ShortcutEvents
+  | ShortcutEvents;
 
 /**
  * 事件负载类型映射
  */
 export interface EventPayloads {
   // 应用事件
-  [AppEvents.ACTIVATE]: void
-  [AppEvents.BROWSER_WINDOW_CREATED]: { windowId: number }
-  [AppEvents.BROWSER_WINDOW_FOCUS]: { windowId: number }
-  [AppEvents.BEFORE_QUIT]: void
-  [AppEvents.WILL_QUIT]: void
-  [AppEvents.WINDOW_ALL_CLOSED]: void
-  [AppEvents.SECOND_INSTANCE]: { argv: string[]; workingDirectory: string }
-  [AppEvents.RENDER_PROCESS_GONE]: { details: unknown }
-  [AppEvents.CHILD_PROCESS_GONE]: { details: unknown }
+  [AppEvents.ACTIVATE]: void;
+  [AppEvents.BROWSER_WINDOW_CREATED]: { windowId: number };
+  [AppEvents.BROWSER_WINDOW_FOCUS]: { windowId: number };
+  [AppEvents.BEFORE_QUIT]: void;
+  [AppEvents.WILL_QUIT]: void;
+  [AppEvents.WINDOW_ALL_CLOSED]: void;
+  [AppEvents.SECOND_INSTANCE]: { argv: string[]; workingDirectory: string };
+  [AppEvents.RENDER_PROCESS_GONE]: { details: unknown };
+  [AppEvents.CHILD_PROCESS_GONE]: { details: unknown };
 
   // 窗口事件
-  [WindowEvents.READY_TO_SHOW]: void
-  [WindowEvents.SHOW]: void
-  [WindowEvents.HIDE]: void
-  [WindowEvents.CLOSE]: void
-  [WindowEvents.CLOSED]: void
-  [WindowEvents.MINIMIZE]: void
-  [WindowEvents.MAXIMIZE]: void
-  [WindowEvents.UNMAXIMIZE]: void
-  [WindowEvents.RESTORE]: void
-  [WindowEvents.RESIZE]: { width: number; height: number }
-  [WindowEvents.RESIZED]: { width: number; height: number }
-  [WindowEvents.MOVE]: { x: number; y: number }
-  [WindowEvents.MOVED]: { x: number; y: number }
-  [WindowEvents.FOCUS]: void
-  [WindowEvents.BLUR]: void
-  [WindowEvents.ENTER_FULL_SCREEN]: void
-  [WindowEvents.LEAVE_FULL_SCREEN]: void
-  [WindowEvents.ENTER_HTML_FULL_SCREEN]: void
-  [WindowEvents.LEAVE_HTML_FULL_SCREEN]: void
-  [WindowEvents.ALWAYS_ON_TOP_CHANGED]: { isAlwaysOnTop: boolean }
-  [WindowEvents.RESPONSIVE]: void
-  [WindowEvents.UNRESPONSIVE]: void
+  [WindowEvents.READY_TO_SHOW]: void;
+  [WindowEvents.SHOW]: void;
+  [WindowEvents.HIDE]: void;
+  [WindowEvents.CLOSE]: void;
+  [WindowEvents.CLOSED]: void;
+  [WindowEvents.MINIMIZE]: void;
+  [WindowEvents.MAXIMIZE]: void;
+  [WindowEvents.UNMAXIMIZE]: void;
+  [WindowEvents.RESTORE]: void;
+  [WindowEvents.RESIZE]: { width: number; height: number };
+  [WindowEvents.RESIZED]: { width: number; height: number };
+  [WindowEvents.MOVE]: { x: number; y: number };
+  [WindowEvents.MOVED]: { x: number; y: number };
+  [WindowEvents.FOCUS]: void;
+  [WindowEvents.BLUR]: void;
+  [WindowEvents.ENTER_FULL_SCREEN]: void;
+  [WindowEvents.LEAVE_FULL_SCREEN]: void;
+  [WindowEvents.ENTER_HTML_FULL_SCREEN]: void;
+  [WindowEvents.LEAVE_HTML_FULL_SCREEN]: void;
+  [WindowEvents.ALWAYS_ON_TOP_CHANGED]: { isAlwaysOnTop: boolean };
+  [WindowEvents.RESPONSIVE]: void;
+  [WindowEvents.UNRESPONSIVE]: void;
 
   // 生命周期事件
-  [LifecycleEvents.INIT_START]: void
-  [LifecycleEvents.INIT_COMPLETE]: void
-  [LifecycleEvents.READY_START]: void
-  [LifecycleEvents.READY_COMPLETE]: void
-  [LifecycleEvents.BEFORE_QUIT_START]: void
-  [LifecycleEvents.BEFORE_QUIT_COMPLETE]: void
+  [LifecycleEvents.INIT_START]: void;
+  [LifecycleEvents.INIT_COMPLETE]: void;
+  [LifecycleEvents.READY_START]: void;
+  [LifecycleEvents.READY_COMPLETE]: void;
+  [LifecycleEvents.BEFORE_QUIT_START]: void;
+  [LifecycleEvents.BEFORE_QUIT_COMPLETE]: void;
 
   // 数据库事件
-  [DatabaseEvents.CONNECTED]: { dbPath: string }
-  [DatabaseEvents.DISCONNECTED]: void
-  [DatabaseEvents.CONNECTION_ERROR]: { error: Error }
-  [DatabaseEvents.MIGRATION_START]: { version: number }
-  [DatabaseEvents.MIGRATION_COMPLETE]: { version: number }
-  [DatabaseEvents.MIGRATION_ERROR]: { error: Error }
+  [DatabaseEvents.CONNECTED]: { dbPath: string };
+  [DatabaseEvents.DISCONNECTED]: void;
+  [DatabaseEvents.CONNECTION_ERROR]: { error: Error };
+  [DatabaseEvents.MIGRATION_START]: { version: number };
+  [DatabaseEvents.MIGRATION_COMPLETE]: { version: number };
+  [DatabaseEvents.MIGRATION_ERROR]: { error: Error };
 
   // 工作区事件
-  [WorkspaceEvents.LOADED]: { path: string }
-  [WorkspaceEvents.CLOSED]: void
-  [WorkspaceEvents.CHANGED]: { path: string }
-  [WorkspaceEvents.SCAN_START]: { path: string }
-  [WorkspaceEvents.SCAN_PROGRESS]: { current: number; total: number }
-  [WorkspaceEvents.SCAN_COMPLETE]: { path: string; totalFiles: number }
-  [WorkspaceEvents.COPY_START]: { source: string; target: string }
-  [WorkspaceEvents.COPY_PROGRESS]: { current: number; total: number }
-  [WorkspaceEvents.COPY_COMPLETE]: { source: string; target: string }
+  [WorkspaceEvents.LOADED]: { path: string };
+  [WorkspaceEvents.CLOSED]: void;
+  [WorkspaceEvents.CHANGED]: { path: string };
+  [WorkspaceEvents.SCAN_START]: { path: string };
+  [WorkspaceEvents.SCAN_PROGRESS]: { current: number; total: number };
+  [WorkspaceEvents.SCAN_COMPLETE]: { path: string; totalFiles: number };
+  [WorkspaceEvents.COPY_START]: { source: string; target: string };
+  [WorkspaceEvents.COPY_PROGRESS]: { current: number; total: number };
+  [WorkspaceEvents.COPY_COMPLETE]: { source: string; target: string };
 
   // 任务事件
-  [JobEvents.REGISTERED]: { jobId: string; jobName: string }
-  [JobEvents.START]: { jobId: string }
-  [JobEvents.COMPLETE]: { jobId: string; result: unknown }
-  [JobEvents.FAILED]: { jobId: string; error: Error }
-  [JobEvents.CANCELLED]: { jobId: string }
-  [JobEvents.PROGRESS]: { jobId: string; progress: number }
+  [JobEvents.REGISTERED]: { jobId: string; jobName: string };
+  [JobEvents.START]: { jobId: string };
+  [JobEvents.COMPLETE]: { jobId: string; result: unknown };
+  [JobEvents.FAILED]: { jobId: string; error: Error };
+  [JobEvents.CANCELLED]: { jobId: string };
+  [JobEvents.PROGRESS]: { jobId: string; progress: number };
 
   // 主题事件
-  [ThemeEvents.CHANGED]: { theme: 'light' | 'dark' | 'auto' }
-  [ThemeEvents.SYSTEM_CHANGED]: { theme: 'light' | 'dark' }
+  [ThemeEvents.CHANGED]: { theme: 'light' | 'dark' | 'auto' };
+  [ThemeEvents.SYSTEM_CHANGED]: { theme: 'light' | 'dark' };
 
   // 配置事件
-  [ConfigEvents.LOADED]: void
-  [ConfigEvents.CHANGED]: { key: string; value: unknown }
-  [ConfigEvents.RESET]: void
-  [ConfigEvents.SAVE_ERROR]: { error: Error }
+  [ConfigEvents.LOADED]: void;
+  [ConfigEvents.CHANGED]: { key: string; value: unknown };
+  [ConfigEvents.RESET]: void;
+  [ConfigEvents.SAVE_ERROR]: { error: Error };
 
   // 日志事件
-  [LogEvents.INFO]: { message: string; data?: unknown }
-  [LogEvents.WARN]: { message: string; data?: unknown }
-  [LogEvents.ERROR]: { message: string; error?: Error }
-  [LogEvents.DEBUG]: { message: string; data?: unknown }
+  [LogEvents.INFO]: { message: string; data?: unknown };
+  [LogEvents.WARN]: { message: string; data?: unknown };
+  [LogEvents.ERROR]: { message: string; error?: Error };
+  [LogEvents.DEBUG]: { message: string; data?: unknown };
 
   // 快捷键事件
-  [ShortcutEvents.QUIT]: void
-  [ShortcutEvents.SHOW_HIDE_WINDOW]: void
-  [ShortcutEvents.NEW_WINDOW]: void
-  [ShortcutEvents.NEW_TAB]: void
-  [ShortcutEvents.REFRESH]: void
-  [ShortcutEvents.REFRESH_TAB]: void
+  [ShortcutEvents.QUIT]: void;
+  [ShortcutEvents.SHOW_HIDE_WINDOW]: void;
+  [ShortcutEvents.NEW_WINDOW]: void;
+  [ShortcutEvents.NEW_TAB]: void;
+  [ShortcutEvents.REFRESH]: void;
+  [ShortcutEvents.REFRESH_TAB]: void;
 }

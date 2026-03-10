@@ -623,6 +623,7 @@ def main():
     
     parser = argparse.ArgumentParser(description='Brain Worker')
     parser.add_argument('--port', type=int, default=42043, help='Port to run on')
+    parser.add_argument('--host', type=str, default='127.0.0.1', help='绑定地址')
     args = parser.parse_args()
     
     # 获取存储目录（从环境变量）
@@ -644,7 +645,7 @@ def main():
     werkzeug_logger.setLevel(logging.ERROR)
     
     # 启动 Flask 服务
-    app.run(host='127.0.0.1', port=args.port, debug=False)
+    app.run(host=args.host, port=args.port, debug=False)
 
 
 if __name__ == '__main__':

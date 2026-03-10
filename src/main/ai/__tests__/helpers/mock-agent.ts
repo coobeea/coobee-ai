@@ -2,7 +2,7 @@
  * Mock helpers for @openai/agents SDK
  * 用于测试中 mock Agent、run、tool、handoff 等 SDK 函数
  */
-import { vi } from 'vitest'
+import { vi } from 'vitest';
 
 /**
  * Mock RunResult 返回值
@@ -15,7 +15,7 @@ export function createMockRunResult(overrides?: Record<string, unknown>): Record
     history: [],
     lastResponseId: 'resp_mock_001',
     ...overrides
-  }
+  };
 }
 
 /**
@@ -29,7 +29,7 @@ export function createMockAgent(config?: Record<string, unknown>): Record<string
     tools: [],
     handoffs: [],
     ...config
-  }
+  };
 }
 
 /**
@@ -60,5 +60,5 @@ export function createAgentsSdkMock(): Record<string, unknown> {
       toolDescriptionOverride: opts?.toolDescriptionOverride,
       onHandoff: opts?.onHandoff
     }))
-  }
+  };
 }

@@ -13,6 +13,7 @@
  *   - 事件写入 → AgentEventWriter.ts
  *   - 执行协议 → AgentEnvInjector.ts (buildExecutionProtocol)
  *   - HITL 审批 → extensions/tool-approval（通过 before_tool_call Hook）
+ *   - 块处理（指标/ Hook/ suspendReason）→ runtime/ChunkProcessor.ts
  *
  * 设计哲学（参考 OpenClaw pi-integration-architecture）：
  *   - 消息驱动：每条用户消息触发完整的 "创建 → 推理 → 销毁" 流程
@@ -24,6 +25,7 @@ import { createLogger } from '@main/common/logger';
 
 const log = createLogger('ai');
 
+import { SessionStatusManager, type SessionStatus } from './runtime/SessionStatusManager';
 import type { AgentRuntime } from './runtime/AgentRuntime';
 import type { AgentMode, ExecutionResult, StreamChunk } from './runtime/types';
 import { PiMonoBuilder } from './runtime/pimono/PiMonoBuilder';
@@ -32,9 +34,8 @@ import { createStreamEmitter, type IStreamEmitter } from './streaming/StreamEmit
 import type { StreamSource } from './streaming/types';
 import { injectEnv } from './AgentEnvInjector';
 import { AgentEventWriter } from './AgentEventWriter';
-import { resolveApiKey } from './provider/ApiKeyResolver';
-import type { ProviderRegistry } from './provider/ProviderRegistry';
-import type { ModelSelector } from './provider/ModelSelector';
+import { ProviderInjector, type ProviderSystem } from './provider/ProviderInjector';
+import { fireHooks, parseSuspendReason, recordMetrics } from './runtime/ChunkProcessor';
 import { MessagePipeline } from './pipeline/MessagePipeline';
 import type { QueueSettings, SubmitResult } from './pipeline/types';
 import { SkillManager } from './skills/SkillManager';
@@ -42,6 +43,9 @@ import { CheckpointManager } from './threads/CheckpointManager';
 import { WorkspaceManager } from './storage/WorkspaceManager';
 
 // ==================== 类型定义 ====================
+
+/** Provider 系统接口（从 ProviderInjector re-export） */
+export type { ProviderSystem } from './provider/ProviderInjector';
 
 /** 支持的 Builder 类型 */
 export type AgentBuilder = PiMonoBuilder | OpenAIBuilder;
@@ -60,27 +64,23 @@ export interface ExecuteRequest {
   onChunk?: (chunk: StreamChunk) => void;
   /** 中止信号（Pipeline 传入，用于提前终止流式消费） */
   signal?: AbortSignal;
+  /**
+   * 模型源引用（用于故障转移重试）
+   * 当 Agent 使用 @group-name 或 auto 时传入，失败后可切换到组内下一个模型
+   */
+  modelSourceRef?: string;
+  /** 执行配置（传递给 Runtime.stream/run，用于指定 executionMode 等） */
+  executionConfig?: import('./runtime/types').ExecutionConfig;
 }
 
-/** 执行状态 */
-export interface SessionStatus {
-  /** 是否正在执行 */
-  busy: boolean;
-  /** 开始时间（busy 时有值） */
-  startedAt?: number;
-}
+/** 执行状态（从 SessionStatusManager re-export） */
+export type { SessionStatus } from './runtime/SessionStatusManager';
 
 // ==================== AgentExecutor ====================
 
-/** Provider 系统接口 */
-export interface ProviderSystem {
-  registry: ProviderRegistry;
-  selector: ModelSelector;
-}
-
 class AgentExecutor {
-  /** 正在执行的 session 集合 */
-  private busySessions = new Map<string, { startedAt: number }>();
+  /** 活跃会话状态管理 */
+  private sessionStatus = new SessionStatusManager();
 
   /** 有待审批的 session（hitl:required 已触发，checkpoint 保持 approval-pending） */
   private pendingApprovalSessions = new Map<string, { addedAt: number }>();
@@ -91,8 +91,8 @@ class AgentExecutor {
   /** 上次清理时间 */
   private lastApprovalCleanupTime = Date.now();
 
-  /** Provider 系统（初始化后注入） */
-  private providerSystem: ProviderSystem | null = null;
+  /** Provider 配置注入器（初始化后通过 setProviderSystem 注入） */
+  private providerInjector = new ProviderInjector();
 
   /** 消息管线（可选，初始化后注入） */
   private pipeline: MessagePipeline | null = null;
@@ -109,59 +109,33 @@ class AgentExecutor {
    * 注入 Provider 系统（应用初始化时调用）
    */
   setProviderSystem(system: ProviderSystem): void {
-    this.providerSystem = system;
+    this.providerInjector.setProviderSystem(system);
   }
 
   /**
    * 获取 Provider 系统（chat.ts 等消费者使用）
    */
   getProviderSystem(): ProviderSystem | null {
-    return this.providerSystem;
+    return this.providerInjector.getProviderSystem();
   }
 
   /**
    * 注入 Provider 配置到 Builder（API Key + 模型 + baseURL）
    *
    * 供 chat.ts、Orchestrator Worker、Swarm Role 等所有创建 Agent 的地方使用。
-   * 如果 Provider 系统未就绪或无可用配置，静默回退。
    */
-  applyProviderConfig(builder: PiMonoBuilder): void {
-    try {
-      if (!this.providerSystem) return;
-      const { selector, registry } = this.providerSystem;
-      const ref = selector.resolve();
-      const provider = registry.get(ref.provider);
-      if (!provider) return;
-
-      const apiKey = resolveApiKey(provider.apiKey, provider.id);
-      if (!apiKey) return;
-
-      builder.fromProviderConfig(provider, ref.model);
-    } catch {
-      // Provider 系统未就绪，静默回退
-    }
+  applyProviderConfig(
+    builder: PiMonoBuilder,
+    opts?: { modelOverride?: string; sessionId?: string; agentId?: string }
+  ): void {
+    this.providerInjector.applyProviderConfig(builder, opts);
   }
 
   /**
    * 注入默认思维链级别到 Builder
-   *
-   * 从 coobee.json5 读取 models.defaults.thinkingLevel，默认 'medium'。
-   * 注意：这是同步方法，使用延迟导入避免循环依赖。
    */
   applyThinkingLevel(builder: PiMonoBuilder): void {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { configStoreInstance } = require('@main/common/config/ConfigStore');
-      const config = configStoreInstance?.getAll?.();
-      const level = config?.models?.defaults?.thinkingLevel;
-      if (level) {
-        builder.thinkingLevel(level);
-        return;
-      }
-    } catch {
-      // 静默回退
-    }
-    builder.thinkingLevel('medium');
+    this.providerInjector.applyThinkingLevel(builder);
   }
 
   // ========== 消息管线 ==========
@@ -216,11 +190,11 @@ class AgentExecutor {
       const builder = this.builderFactory(mode);
       const request: ExecuteRequest = { sessionId, message, builder, signal };
 
-      this.busySessions.set(sessionId, { startedAt: Date.now() });
+      this.sessionStatus.register(sessionId);
       try {
         await this.execute(request);
       } finally {
-        this.busySessions.delete(sessionId);
+        this.sessionStatus.unregister(sessionId);
         this.sessionModes.delete(sessionId);
       }
     }, settings);
@@ -257,9 +231,7 @@ class AgentExecutor {
       return this.pipeline.abort(sessionId);
     }
     // 无管线时，仅标记为非 busy
-    const existed = this.busySessions.has(sessionId);
-    this.busySessions.delete(sessionId);
-    return existed;
+    return this.sessionStatus.abort(sessionId);
   }
 
   // ========== Builder 工厂 ==========
@@ -295,19 +267,19 @@ class AgentExecutor {
   submit(request: ExecuteRequest): { status: 'accepted'; sessionId: string } | { status: 'busy'; sessionId: string } {
     const { sessionId } = request;
 
-    if (this.busySessions.has(sessionId)) {
+    if (this.sessionStatus.isRunning(sessionId)) {
       log.warn(`[AgentExecutor] Session busy: ${sessionId}`);
       return { status: 'busy', sessionId };
     }
 
-    this.busySessions.set(sessionId, { startedAt: Date.now() });
+    this.sessionStatus.register(sessionId);
 
     this.execute(request)
       .catch((error: unknown) => {
         log.error(`[AgentExecutor] Execution failed: sessionId=${sessionId}`, error);
       })
       .finally(() => {
-        this.busySessions.delete(sessionId);
+        this.sessionStatus.unregister(sessionId);
       });
 
     return { status: 'accepted', sessionId };
@@ -354,15 +326,15 @@ class AgentExecutor {
   async submitAndWait(request: ExecuteRequest): Promise<ExecutionResult> {
     const { sessionId } = request;
 
-    if (this.busySessions.has(sessionId)) {
+    if (this.sessionStatus.isRunning(sessionId)) {
       throw new Error(`Session ${sessionId} is busy`);
     }
 
-    this.busySessions.set(sessionId, { startedAt: Date.now() });
+    this.sessionStatus.register(sessionId);
     try {
       return await this.execute(request);
     } finally {
-      this.busySessions.delete(sessionId);
+      this.sessionStatus.unregister(sessionId);
     }
   }
 
@@ -373,26 +345,22 @@ class AgentExecutor {
     if (this.pipeline) {
       const status = this.pipeline.getQueueStatus(sessionId);
       if (status.isRunning) {
-        // pipeline is running, try to get startedAt from busySessions if it's there
-        const info = this.busySessions.get(sessionId);
+        // pipeline is running, try to get startedAt from sessionStatus if it's there
+        const info = this.sessionStatus.getInfo(sessionId);
         return { busy: true, startedAt: info?.startedAt };
       }
     }
 
-    const info = this.busySessions.get(sessionId);
-    return info ? { busy: true, startedAt: info.startedAt } : { busy: false };
+    return this.sessionStatus.getStatus(sessionId);
   }
 
   /** 获取所有活跃 session */
   getActiveSessions(): Array<{ sessionId: string; startedAt: number }> {
-    // If pipeline is used, we should ideally combine pipeline active sessions and busySessions.
+    // If pipeline is used, we should ideally combine pipeline active sessions and sessionStatus.
     // However, pipeline's getQueueStatus doesn't provide a way to list ALL active sessions easily.
-    // Given the architecture, busySessions is populated during execute(), which pipeline also calls.
-    // So busySessions should still be the source of truth for "currently executing" sessions.
-    return Array.from(this.busySessions.entries()).map(([sessionId, info]) => ({
-      sessionId,
-      startedAt: info.startedAt
-    }));
+    // Given the architecture, sessionStatus is populated during execute(), which pipeline also calls.
+    // So sessionStatus should still be the source of truth for "currently executing" sessions.
+    return this.sessionStatus.getActiveList();
   }
 
   // ========== 流式执行（SSE 透传） ==========
@@ -405,17 +373,17 @@ class AgentExecutor {
    * 每个 chunk 同时通过 StreamEmitter.forward() 广播到 EventBus。
    */
   async *stream(request: Omit<ExecuteRequest, 'onChunk'>): AsyncGenerator<StreamChunk, ExecutionResult, unknown> {
-    const { sessionId, message, builder, signal } = request;
+    const { sessionId, message, builder, signal, modelSourceRef } = request;
 
     if (!builder) {
       throw new Error('stream() requires a builder. Use submit() with runtime for pre-built runtimes.');
     }
 
-    if (this.busySessions.has(sessionId)) {
+    if (this.sessionStatus.isRunning(sessionId)) {
       throw new Error(`Session ${sessionId} is busy`);
     }
 
-    this.busySessions.set(sessionId, { startedAt: Date.now() });
+    this.sessionStatus.register(sessionId);
     let runtime: AgentRuntime | null = null;
 
     // 检查是否轻量模式
@@ -456,20 +424,51 @@ class AgentExecutor {
         eventWriter.register(sessionId);
       }
 
-      // 1. 创建 Runtime
-      runtime = await builder.sessionId(sessionId).build();
+      // 模型组故障转移：获取候选模型列表
+      const providerSystem = this.providerInjector.getProviderSystem();
+      const candidates =
+        modelSourceRef && providerSystem ? providerSystem.selector.getGroupCandidates(modelSourceRef) : null;
+      const failedModels: string[] = [];
+      let yieldedCount = 0;
 
-      // 1.5 注册统一分发器（非轻量模式）
-      if (eventWriter && !isLightweight) {
-        eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
+      // 1. 创建 Runtime（带重试循环）
+      let gen: AsyncGenerator<StreamChunk, ExecutionResult, unknown>;
+      let r: IteratorResult<StreamChunk, ExecutionResult>;
+
+      for (;;) {
+        runtime = await builder.sessionId(sessionId).build();
+
+        // 1.5 注册统一分发器（非轻量模式）
+        if (eventWriter && !isLightweight) {
+          eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
+        }
+
+        gen = runtime.stream(message, { signal });
+        r = await gen.next();
+
+        // 模型组重试：仅当 run:error 为第一个 chunk 且未 yield 时重试
+        if (!r.done && r.value.type === 'run:error' && yieldedCount === 0 && candidates && candidates.length > 0) {
+          const piBuilder = builder as PiMonoBuilder;
+          const currentModel = piBuilder.getResolvedModelRef?.();
+          if (currentModel) failedModels.push(currentModel);
+
+          const nextModel = candidates.find((m) => !failedModels.includes(m));
+          if (nextModel) {
+            log.warn(`[AgentExecutor] Model ${currentModel} failed, retrying with next in group: ${nextModel}`);
+            await this.destroyRuntime(runtime);
+            runtime = null;
+            this.providerInjector.applyProviderConfig(piBuilder, { modelOverride: nextModel });
+            continue;
+          }
+        }
+
+        break;
       }
 
       // 2. 透传 stream()（同步触发 Extension Hook），传入 signal
-      const gen = runtime.stream(message, { signal });
       let turnStartTime = 0;
       let turnToolCallCount = 0;
 
-      let r = await gen.next();
       while (!r.done) {
         const chunk = r.value;
 
@@ -484,10 +483,13 @@ class AgentExecutor {
 
         // Extension Hook 触发（轻量模式下跳过）
         if (!isLightweight) {
-          this.fireChunkHooks(chunk, sessionId, {
-            getTurnStartTime: () => turnStartTime,
-            getTurnToolCallCount: () => turnToolCallCount
-          });
+          const builderAgentId = (builder as unknown as { getAgentId?: () => string | undefined }).getAgentId?.();
+          fireHooks(
+            chunk,
+            sessionId,
+            { getTurnStartTime: () => turnStartTime, getTurnToolCallCount: () => turnToolCallCount },
+            builderAgentId
+          );
         }
 
         if (chunk.type === 'turn:start') {
@@ -498,6 +500,7 @@ class AgentExecutor {
         }
 
         yield chunk;
+        yieldedCount++;
         r = await gen.next();
       }
 
@@ -523,7 +526,7 @@ class AgentExecutor {
 
       await this.destroyRuntime(runtime);
       runtime = null;
-      this.busySessions.delete(sessionId);
+      this.sessionStatus.unregister(sessionId);
     }
   }
 
@@ -549,7 +552,8 @@ class AgentExecutor {
     sessionId: string,
     onChunk?: (chunk: StreamChunk) => void,
     signal?: AbortSignal,
-    workspaceDir?: string
+    workspaceDir?: string,
+    agentId?: string
   ): Promise<ExecutionResult> {
     // Turn 状态跟踪（用于 turn_end 事件数据）
     let turnStartTime = 0;
@@ -581,10 +585,12 @@ class AgentExecutor {
       }
 
       // === Extension Hook 触发（fire-and-forget，不阻塞流） ===
-      this.fireChunkHooks(chunk, sessionId, {
-        getTurnStartTime: () => turnStartTime,
-        getTurnToolCallCount: () => turnToolCallCount
-      });
+      fireHooks(
+        chunk,
+        sessionId,
+        { getTurnStartTime: () => turnStartTime, getTurnToolCallCount: () => turnToolCallCount },
+        agentId
+      );
 
       // Turn 状态更新
       if (chunk.type === 'turn:start') {
@@ -593,6 +599,9 @@ class AgentExecutor {
       } else if (chunk.type === 'tool:done') {
         turnToolCallCount++;
       }
+
+      // === 指标采集（fire-and-forget，不阻塞流） ===
+      recordMetrics(chunk, sessionId);
 
       onChunk?.(chunk);
 
@@ -720,7 +729,7 @@ class AgentExecutor {
           this.pendingApprovalSessions.set(sessionId, { addedAt: Date.now() });
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const suspendReason = (chunk.data as any)?.suspendReason;
-          const pendingOp = this.parseSuspendReason(suspendReason, sessionId);
+          const pendingOp = parseSuspendReason(suspendReason, sessionId);
           this.updateSessionStatus(sessionId, 'approval-pending', workspaceDir, pendingOp);
           log.info(`[AgentExecutor] Tool suspended (approval-pending): ${sessionId}, tool=${pendingOp?.toolName}`);
         } else if (!this.pendingApprovalSessions.has(sessionId)) {
@@ -759,42 +768,6 @@ class AgentExecutor {
   }
 
   /**
-   * 从 suspendReason 中解析出 pendingOperation
-   *
-   * suspendReason 格式（来自 ToolExecutionPipeline）: "approval-pending:{approvalId}:{toolName}"
-   * 例如: "approval-pending:282850582706069504:0:write"
-   */
-  private parseSuspendReason(
-    suspendReason: string,
-    sessionId: string
-  ):
-    | { type: 'approval'; approvalId: string; toolName: string; toolCallId: string; agentSessionId: string }
-    | undefined {
-    if (!suspendReason) return undefined;
-
-    // 去除可能的前缀（如果有的话）
-    const reason = suspendReason.replace(/^suspended:\s*/i, '').trim();
-
-    // 匹配格式: approval-pending:{approvalId}:{toolName}
-    const match = reason.match(/^approval-pending:([^:]+:[^:]+):(.+)$/);
-    if (!match) {
-      log.warn(`[AgentExecutor] Failed to parse suspendReason: ${suspendReason}`);
-      return undefined;
-    }
-
-    const approvalId = match[1]; // "sessionId:index"
-    const toolName = match[2]; // "write"
-
-    return {
-      type: 'approval',
-      approvalId,
-      toolName,
-      toolCallId: '',
-      agentSessionId: sessionId
-    };
-  }
-
-  /**
    * 同步 Thread 的 runStatus（fire-and-forget）
    *
    * 仅在 sessionId 对应已有 Thread 时更新（子 Agent sessionId 含 ':' 不会匹配 Thread）。
@@ -805,91 +778,6 @@ class AgentExecutor {
       .then(({ ThreadStore }) => ThreadStore.getInstance())
       .then((store) => store.update(sessionId, { runStatus }))
       .catch(() => {});
-  }
-
-  /**
-   * 根据 StreamChunk 类型触发对应的 Extension Hook
-   *
-   * 全部 fire-and-forget（不阻塞流式输出）。
-   *
-   * before_compaction：
-   *   - 在此仅作为通知（PiMono 的 SDK 内置压缩无法拦截）
-   *   - OpenAI Runtime 在 compressSessionWithChunks 中单独处理 modifying 逻辑
-   *   - 为避免重复触发，OpenAI 会在 chunk.data 中标记 hookHandled: true
-   */
-  private fireChunkHooks(
-    chunk: StreamChunk,
-    sessionId: string,
-    turnState: {
-      getTurnStartTime: () => number;
-      getTurnToolCallCount: () => number;
-    }
-  ): void {
-    // 只关心这 4 种事件类型
-    if (
-      chunk.type !== 'turn:start' &&
-      chunk.type !== 'turn:done' &&
-      chunk.type !== 'compression:start' &&
-      chunk.type !== 'compression:done'
-    ) {
-      return;
-    }
-
-    const fire = async (): Promise<void> => {
-      const { ExtensionManager } = await import('../common/extension');
-      const runner = ExtensionManager.getHookRunner();
-      if (!runner) return;
-
-      const data = chunk.data as Record<string, unknown> | undefined;
-
-      switch (chunk.type) {
-        case 'turn:start':
-          await runner.runVoidHook('turn_start', {
-            sessionId,
-            turnIndex: (data?.turnIndex as number) || 1
-          });
-          break;
-
-        case 'turn:done':
-          await runner.runVoidHook('turn_end', {
-            sessionId,
-            turnIndex: (data?.turnIndex as number) || 1,
-            durationMs: Date.now() - turnState.getTurnStartTime(),
-            toolCallCount: turnState.getTurnToolCallCount()
-          });
-          break;
-
-        case 'compression:start': {
-          // 如果 OpenAI Runtime 已在压缩前调用过 modifying Hook，跳过
-          if (data?.hookHandled) break;
-          // 通知型：扩展可在此做 Memory Flush 等操作
-          // 注意：对 PiMono 来说 skipDefault 无效（SDK 自行管理压缩）
-          await runner.run('before_compaction', {
-            sessionId,
-            messageCount: 0, // PiMono 不提供此信息
-            totalTokens: (data?.totalTokens as number) || 0,
-            threshold: (data?.threshold as number) || 0
-          });
-          break;
-        }
-
-        case 'compression:done': {
-          await runner.runVoidHook('after_compaction', {
-            sessionId,
-            originalTokens: (data?.originalTokens as number) || 0,
-            compressedTokens: (data?.summaryTokens as number) || 0,
-            compressionRatio: (data?.compressionRatio as number) || 0,
-            duration: (data?.duration as number) || 0
-          });
-          break;
-        }
-      }
-    };
-
-    // Fire-and-forget：Hook 执行不阻塞流式输出
-    fire().catch((err) => {
-      log.warn(`[AgentExecutor] Chunk hook failed for ${chunk.type}:`, err);
-    });
   }
 
   /**
@@ -936,17 +824,46 @@ class AgentExecutor {
 
     try {
       if (request.runtime) {
-        // === 预构建 Runtime 路径（Orchestrator / Swarm） ===
+        // === 预构建 Runtime 路径（Orchestrator / Swarm / Discussion） ===
         eventWriter = new AgentEventWriter(workspaceDir);
         eventWriter.register(sessionId);
 
         runtime = request.runtime;
         eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
 
-        const gen = runtime.stream(message, { signal });
-        const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal, workspaceDir);
+        // agent:start 事件
+        await this.emitAgentLifecycleEvent('agent:start', {
+          sessionId,
+          agentId: runtime.id,
+          agentName: runtime.name,
+          task: message.substring(0, 200)
+        });
+
+        const streamConfig = { signal, ...request.executionConfig };
+        const gen = runtime.stream(message, streamConfig);
+        const runtimeAgentId = (builder as unknown as { getAgentId?: () => string | undefined })?.getAgentId?.();
+        const result = await this.consumeAndForward(
+          gen,
+          eventWriter,
+          sessionId,
+          onChunk,
+          signal,
+          workspaceDir,
+          runtimeAgentId
+        );
 
         const duration = Date.now() - startTime;
+
+        // agent:done 事件
+        await this.emitAgentLifecycleEvent('agent:done', {
+          sessionId,
+          agentId: runtime.id,
+          agentName: runtime.name,
+          success: true,
+          durationMs: duration,
+          summary: result.output?.substring(0, 500)
+        });
+
         this.logCompletion(sessionId, result, duration);
         return result;
       }
@@ -972,19 +889,61 @@ class AgentExecutor {
       runtime = await builder.sessionId(sessionId).build();
       eventWriter.setEmitter(this.createEmitter(sessionId, runtime));
 
+      // agent:start 事件
+      await this.emitAgentLifecycleEvent('agent:start', {
+        sessionId,
+        agentId: runtime.id,
+        agentName: runtime.name,
+        task: message.substring(0, 200)
+      });
+
       // 2. 流式执行（HITL 在 before_tool_call Hook 中自动处理），传入 signal
       const gen = runtime.stream(message, { signal });
-      const result = await this.consumeAndForward(gen, eventWriter, sessionId, onChunk, signal, workspaceDir);
+      const builderAgentId2 = (builder as unknown as { getAgentId?: () => string | undefined }).getAgentId?.();
+      const result = await this.consumeAndForward(
+        gen,
+        eventWriter,
+        sessionId,
+        onChunk,
+        signal,
+        workspaceDir,
+        builderAgentId2
+      );
 
       const duration = Date.now() - startTime;
 
       // === Extension Hooks: agent_end + session_end ===
-      await this.runExtensionEndHooks(sessionId, result, duration);
+      // 使用稳定的 Agent ID（如果 builder 提供）而非临时 runtime.id
+      const stableAgentId = builderAgentId2 || runtime.id;
+      await this.runExtensionEndHooks(sessionId, stableAgentId, result, duration);
+
+      // agent:done 事件
+      await this.emitAgentLifecycleEvent('agent:done', {
+        sessionId,
+        agentId: runtime.id,
+        agentName: runtime.name,
+        success: true,
+        durationMs: duration,
+        summary: result.output?.substring(0, 500)
+      });
 
       this.logCompletion(sessionId, result, duration);
       return result;
     } catch (error: unknown) {
       const duration = Date.now() - startTime;
+
+      // agent:done 事件（失败）
+      if (runtime) {
+        await this.emitAgentLifecycleEvent('agent:done', {
+          sessionId,
+          agentId: runtime.id,
+          agentName: runtime.name,
+          success: false,
+          durationMs: duration,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+
       log.error(`[AgentExecutor] Error: sessionId=${sessionId}, duration=${duration}ms`, error);
       throw error;
     } finally {
@@ -1003,6 +962,16 @@ class AgentExecutor {
   }
 
   // ========== 辅助方法 ==========
+
+  /** 发射 Agent 生命周期事件到 EventBus（静默失败，不影响主流程） */
+  private async emitAgentLifecycleEvent(event: string, payload: Record<string, unknown>): Promise<void> {
+    try {
+      const { eventBus } = await import('@main/common/eventbus');
+      eventBus.emit(event, { ...payload, timestamp: Date.now() });
+    } catch {
+      // EventBus 不可用时静默
+    }
+  }
 
   /** 创建 StreamEmitter */
   private createEmitter(sessionId: string, runtime: AgentRuntime): IStreamEmitter {
@@ -1072,7 +1041,12 @@ class AgentExecutor {
    * 执行 Extension 后置 Hook
    * agent_end → session_end
    */
-  private async runExtensionEndHooks(sessionId: string, result: ExecutionResult, durationMs: number): Promise<void> {
+  private async runExtensionEndHooks(
+    sessionId: string,
+    agentId: string,
+    result: ExecutionResult,
+    durationMs: number
+  ): Promise<void> {
     try {
       const { ExtensionManager } = await import('../common/extension');
       const runner = ExtensionManager.getHookRunner();
@@ -1080,6 +1054,7 @@ class AgentExecutor {
 
       await runner.runVoidHook('agent_end', {
         sessionId,
+        agentId,
         success: !result.error,
         output: result.output,
         durationMs
@@ -1098,6 +1073,13 @@ class AgentExecutor {
 // ==================== 单例导出 ====================
 
 export const agentExecutor = new AgentExecutor();
+
+/**
+ * 获取 AgentExecutor 单例（便于延迟依赖注入）
+ */
+export function getAgentExecutor(): AgentExecutor {
+  return agentExecutor;
+}
 
 // Re-export builders for consumers
 export { PiMonoBuilder } from './runtime/pimono/PiMonoBuilder';

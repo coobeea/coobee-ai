@@ -166,24 +166,24 @@ coobee-ai 采用**双窗口类型架构**，专注核心功能：
 
 ```typescript
 interface WindowConfig {
-  type: 'agent' | 'browser' // agent: AI Agent 交互窗口, browser: 浏览器窗口
-  width?: number
-  height?: number
-  minWidth?: number
-  minHeight?: number
-  frame?: boolean
-  transparent?: boolean
-  initialUrl?: string
-  metadata?: Record<string, unknown>
+  type: 'agent' | 'browser'; // agent: AI Agent 交互窗口, browser: 浏览器窗口
+  width?: number;
+  height?: number;
+  minWidth?: number;
+  minHeight?: number;
+  frame?: boolean;
+  transparent?: boolean;
+  initialUrl?: string;
+  metadata?: Record<string, unknown>;
 }
 
 interface WindowInfo {
-  id: number
-  type: WindowConfig['type']
-  window: BrowserWindow
-  isMain: boolean
-  createdAt: Date
-  metadata?: Record<string, unknown>
+  id: number;
+  type: WindowConfig['type'];
+  window: BrowserWindow;
+  isMain: boolean;
+  createdAt: Date;
+  metadata?: Record<string, unknown>;
 }
 ```
 
@@ -191,34 +191,34 @@ interface WindowInfo {
 
 ```typescript
 class WindowManager {
-  private windows: Map<number, BrowserWindow> = new Map()
-  private windowInfo: Map<number, WindowInfo> = new Map()
-  private mainWindowId: number | null = null
-  private focusedWindowId: number | null = null
+  private windows: Map<number, BrowserWindow> = new Map();
+  private windowInfo: Map<number, WindowInfo> = new Map();
+  private mainWindowId: number | null = null;
+  private focusedWindowId: number | null = null;
 
   // 创建窗口
-  createWindow(config: WindowConfig): BrowserWindow | null
+  createWindow(config: WindowConfig): BrowserWindow | null;
 
   // 查询窗口
-  getWindow(windowId: number): BrowserWindow | undefined
-  getMainWindow(): BrowserWindow | undefined
-  getFocusedWindow(): BrowserWindow | undefined
-  getAllWindows(): BrowserWindow[]
+  getWindow(windowId: number): BrowserWindow | undefined;
+  getMainWindow(): BrowserWindow | undefined;
+  getFocusedWindow(): BrowserWindow | undefined;
+  getAllWindows(): BrowserWindow[];
 
   // 窗口操作
-  closeWindow(windowId: number): Promise<boolean>
-  focusWindow(windowId: number): boolean
-  minimizeWindow(windowId: number): boolean
-  maximizeWindow(windowId: number): boolean
+  closeWindow(windowId: number): Promise<boolean>;
+  focusWindow(windowId: number): boolean;
+  minimizeWindow(windowId: number): boolean;
+  maximizeWindow(windowId: number): boolean;
 
   // 窗口通信
-  sendToWindow(windowId: number, channel: string, ...args: unknown[]): void
-  sendToAllWindows(channel: string, ...args: unknown[]): void
+  sendToWindow(windowId: number, channel: string, ...args: unknown[]): void;
+  sendToAllWindows(channel: string, ...args: unknown[]): void;
 
   // 内部方法
-  private setupWindowEvents(windowId: number): void
-  private loadWindowContent(window: BrowserWindow, url: string): Promise<void>
-  private getWindowPreset(type: string): Partial<BrowserWindowConstructorOptions>
+  private setupWindowEvents(windowId: number): void;
+  private loadWindowContent(window: BrowserWindow, url: string): Promise<void>;
+  private getWindowPreset(type: string): Partial<BrowserWindowConstructorOptions>;
 }
 ```
 
@@ -282,35 +282,35 @@ private readonly WINDOW_PRESETS = {
 
 ```typescript
 interface TabInfo {
-  id: number // Tab ID (使用 webContents.id)
-  windowId: number // 所属窗口 ID
-  view: WebContentsView // WebContentsView 实例
-  url: string // 当前 URL
-  title: string // Tab 标题
-  icon?: string // Tab 图标
-  type: 'chat' | 'task' | 'settings' | 'webpage' // Tab 类型
-  isActive: boolean // 是否激活
-  position: number // 位置顺序
-  closable: boolean // 是否可关闭
-  createdAt: Date // 创建时间
-  metadata?: Record<string, unknown> // 其他元数据
+  id: number; // Tab ID (使用 webContents.id)
+  windowId: number; // 所属窗口 ID
+  view: WebContentsView; // WebContentsView 实例
+  url: string; // 当前 URL
+  title: string; // Tab 标题
+  icon?: string; // Tab 图标
+  type: 'chat' | 'task' | 'settings' | 'webpage'; // Tab 类型
+  isActive: boolean; // 是否激活
+  position: number; // 位置顺序
+  closable: boolean; // 是否可关闭
+  createdAt: Date; // 创建时间
+  metadata?: Record<string, unknown>; // 其他元数据
 }
 
 class TabManager {
   // 全局 Tab 存储
-  private tabs: Map<number, WebContentsView> = new Map()
+  private tabs: Map<number, WebContentsView> = new Map();
 
   // Tab 状态存储
-  private tabState: Map<number, TabInfo> = new Map()
+  private tabState: Map<number, TabInfo> = new Map();
 
   // 窗口 → Tab IDs 映射
-  private windowTabs: Map<number, number[]> = new Map()
+  private windowTabs: Map<number, number[]> = new Map();
 
   // Tab ID → 窗口 ID 映射
-  private tabWindowMap: Map<number, number> = new Map()
+  private tabWindowMap: Map<number, number> = new Map();
 
   // WebContents ID → Tab ID 映射（用于 IPC 来源识别）
-  private webContentsToTabId: Map<number, number> = new Map()
+  private webContentsToTabId: Map<number, number> = new Map();
 }
 ```
 
@@ -325,18 +325,18 @@ class TabManager {
 **核心方法**：
 
 ```typescript
-import { WebContentsView, BrowserWindow } from 'electron'
-import { join } from 'path'
-import { log } from '@main/common/logger'
-import { eventBus } from '@main/common/eventbus'
+import { WebContentsView, BrowserWindow } from 'electron';
+import { join } from 'path';
+import { log } from '@main/common/logger';
+import { eventBus } from '@main/common/eventbus';
 
 export interface TabConfig {
-  type: 'chat' | 'task' | 'settings' | 'webpage' // Tab 类型
-  url?: string // 初始 URL，默认 '/'
-  title?: string // Tab 标题
-  icon?: string // Tab 图标
-  closable?: boolean // 是否可关闭，默认 true
-  metadata?: Record<string, unknown>
+  type: 'chat' | 'task' | 'settings' | 'webpage'; // Tab 类型
+  url?: string; // 初始 URL，默认 '/'
+  title?: string; // Tab 标题
+  icon?: string; // Tab 图标
+  closable?: boolean; // 是否可关闭，默认 true
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -348,30 +348,30 @@ export interface TabConfig {
  */
 
 export interface TabInfo {
-  id: number
-  windowId: number
-  view: WebContentsView
-  url: string
-  title: string
-  icon?: string
-  type: TabConfig['type']
-  isActive: boolean
-  position: number
-  closable: boolean
-  createdAt: Date
-  metadata?: Record<string, unknown>
+  id: number;
+  windowId: number;
+  view: WebContentsView;
+  url: string;
+  title: string;
+  icon?: string;
+  type: TabConfig['type'];
+  isActive: boolean;
+  position: number;
+  closable: boolean;
+  createdAt: Date;
+  metadata?: Record<string, unknown>;
 }
 
 export class TabManager {
-  private tabs: Map<number, WebContentsView> = new Map()
-  private tabState: Map<number, TabInfo> = new Map()
-  private windowTabs: Map<number, number[]> = new Map()
-  private tabWindowMap: Map<number, number> = new Map()
-  private webContentsToTabId: Map<number, number> = new Map()
+  private tabs: Map<number, WebContentsView> = new Map();
+  private tabState: Map<number, TabInfo> = new Map();
+  private windowTabs: Map<number, number[]> = new Map();
+  private tabWindowMap: Map<number, number> = new Map();
+  private webContentsToTabId: Map<number, number> = new Map();
 
   constructor() {
-    log.info('[TabManager] 初始化 Tab 管理器')
-    this.setupEventHandlers()
+    log.info('[TabManager] 初始化 Tab 管理器');
+    this.setupEventHandlers();
   }
 
   /**
@@ -382,12 +382,12 @@ export class TabManager {
    */
   async createTab(windowId: number, config: TabConfig): Promise<WebContentsView | null> {
     try {
-      const window = BrowserWindow.fromId(windowId)
+      const window = BrowserWindow.fromId(windowId);
       if (!window || window.isDestroyed()) {
-        throw new Error(`窗口不存在: ${windowId}`)
+        throw new Error(`窗口不存在: ${windowId}`);
       }
 
-      log.info(`[TabManager] 创建 Tab: ${config.type} in window ${windowId}`)
+      log.info(`[TabManager] 创建 Tab: ${config.type} in window ${windowId}`);
 
       // 1. 创建 WebContentsView
       const view = new WebContentsView({
@@ -397,12 +397,12 @@ export class TabManager {
           contextIsolation: true,
           nodeIntegration: false
         }
-      })
+      });
 
-      const tabId = view.webContents.id
+      const tabId = view.webContents.id;
 
       // 2. 注册 Tab 信息
-      const position = (this.windowTabs.get(windowId)?.length || 0) + 1
+      const position = (this.windowTabs.get(windowId)?.length || 0) + 1;
       const tabInfo: TabInfo = {
         id: tabId,
         windowId,
@@ -416,41 +416,41 @@ export class TabManager {
         closable: config.closable ?? true,
         createdAt: new Date(),
         metadata: config.metadata
-      }
+      };
 
-      this.tabs.set(tabId, view)
-      this.tabState.set(tabId, tabInfo)
-      this.webContentsToTabId.set(view.webContents.id, tabId)
+      this.tabs.set(tabId, view);
+      this.tabState.set(tabId, tabInfo);
+      this.webContentsToTabId.set(view.webContents.id, tabId);
 
       // 3. 添加到窗口
-      window.contentView.addChildView(view)
+      window.contentView.addChildView(view);
 
       // 4. 更新窗口 Tab 列表
       if (!this.windowTabs.has(windowId)) {
-        this.windowTabs.set(windowId, [])
+        this.windowTabs.set(windowId, []);
       }
-      this.windowTabs.get(windowId)!.push(tabId)
-      this.tabWindowMap.set(tabId, windowId)
+      this.windowTabs.get(windowId)!.push(tabId);
+      this.tabWindowMap.set(tabId, windowId);
 
       // 5. 设置 View 边界
-      this.updateViewBounds(window, view)
+      this.updateViewBounds(window, view);
 
       // 6. 绑定事件
-      this.setupTabEvents(tabId)
+      this.setupTabEvents(tabId);
 
       // 7. 加载内容
-      await this.loadTabContent(view, config.url || '/')
+      await this.loadTabContent(view, config.url || '/');
 
       // 8. 发送事件
-      eventBus.emit('tab:created', { tabId, windowId, type: config.type })
+      eventBus.emit('tab:created', { tabId, windowId, type: config.type });
 
       // 9. 通知窗口更新
-      this.notifyWindowTabsUpdate(windowId)
+      this.notifyWindowTabsUpdate(windowId);
 
-      return view
+      return view;
     } catch (error) {
-      log.error('[TabManager] 创建 Tab 失败:', error)
-      return null
+      log.error('[TabManager] 创建 Tab 失败:', error);
+      return null;
     }
   }
 
@@ -458,113 +458,113 @@ export class TabManager {
    * 切换激活的 Tab
    */
   async switchTab(tabId: number): Promise<boolean> {
-    const tabInfo = this.tabState.get(tabId)
+    const tabInfo = this.tabState.get(tabId);
     if (!tabInfo) {
-      log.warn(`[TabManager] Tab 不存在: ${tabId}`)
-      return false
+      log.warn(`[TabManager] Tab 不存在: ${tabId}`);
+      return false;
     }
 
-    const { windowId, view } = tabInfo
-    const window = BrowserWindow.fromId(windowId)
+    const { windowId, view } = tabInfo;
+    const window = BrowserWindow.fromId(windowId);
     if (!window || window.isDestroyed()) {
-      return false
+      return false;
     }
 
     // 1. 取消当前窗口所有 Tab 的激活状态
-    const windowTabIds = this.windowTabs.get(windowId) || []
+    const windowTabIds = this.windowTabs.get(windowId) || [];
     for (const id of windowTabIds) {
-      const info = this.tabState.get(id)
+      const info = this.tabState.get(id);
       if (info) {
-        info.isActive = false
+        info.isActive = false;
       }
     }
 
     // 2. 激活目标 Tab
-    tabInfo.isActive = true
+    tabInfo.isActive = true;
 
     // 3. 将 View 移到最上层
-    window.contentView.removeChildView(view)
-    window.contentView.addChildView(view)
+    window.contentView.removeChildView(view);
+    window.contentView.addChildView(view);
 
     // 4. 更新边界
-    this.updateViewBounds(window, view)
+    this.updateViewBounds(window, view);
 
     // 5. 发送事件
-    eventBus.emit('tab:switched', { tabId, windowId })
+    eventBus.emit('tab:switched', { tabId, windowId });
 
     // 6. 通知窗口更新
-    this.notifyWindowTabsUpdate(windowId)
+    this.notifyWindowTabsUpdate(windowId);
 
-    log.info(`[TabManager] 切换 Tab: ${tabId}`)
-    return true
+    log.info(`[TabManager] 切换 Tab: ${tabId}`);
+    return true;
   }
 
   /**
    * 关闭 Tab
    */
   async closeTab(tabId: number): Promise<boolean> {
-    const tabInfo = this.tabState.get(tabId)
+    const tabInfo = this.tabState.get(tabId);
     if (!tabInfo) {
-      return false
+      return false;
     }
 
-    const { windowId, view } = tabInfo
-    const window = BrowserWindow.fromId(windowId)
+    const { windowId, view } = tabInfo;
+    const window = BrowserWindow.fromId(windowId);
 
-    log.info(`[TabManager] 关闭 Tab: ${tabId}`)
+    log.info(`[TabManager] 关闭 Tab: ${tabId}`);
 
     // 1. 从窗口移除 View
     if (window && !window.isDestroyed()) {
-      window.contentView.removeChildView(view)
+      window.contentView.removeChildView(view);
     }
 
     // 2. 销毁 webContents
     if (!view.webContents.isDestroyed()) {
-      view.webContents.close()
+      view.webContents.close();
     }
 
     // 3. 清理映射
-    this.tabs.delete(tabId)
-    this.tabState.delete(tabId)
-    this.tabWindowMap.delete(tabId)
-    this.webContentsToTabId.delete(view.webContents.id)
+    this.tabs.delete(tabId);
+    this.tabState.delete(tabId);
+    this.tabWindowMap.delete(tabId);
+    this.webContentsToTabId.delete(view.webContents.id);
 
     // 4. 从窗口 Tab 列表移除
-    const windowTabIds = this.windowTabs.get(windowId)
+    const windowTabIds = this.windowTabs.get(windowId);
     if (windowTabIds) {
-      const index = windowTabIds.indexOf(tabId)
+      const index = windowTabIds.indexOf(tabId);
       if (index > -1) {
-        windowTabIds.splice(index, 1)
+        windowTabIds.splice(index, 1);
       }
     }
 
     // 5. 如果是激活的 Tab，切换到其他 Tab
     if (tabInfo.isActive && windowTabIds && windowTabIds.length > 0) {
-      await this.switchTab(windowTabIds[0])
+      await this.switchTab(windowTabIds[0]);
     }
 
     // 6. 发送事件
-    eventBus.emit('tab:closed', { tabId, windowId })
+    eventBus.emit('tab:closed', { tabId, windowId });
 
     // 7. 通知窗口更新
-    this.notifyWindowTabsUpdate(windowId)
+    this.notifyWindowTabsUpdate(windowId);
 
-    return true
+    return true;
   }
 
   /**
    * 更新 View 边界（考虑 Chrome 高度）
    */
   private updateViewBounds(window: BrowserWindow, view: WebContentsView): void {
-    const windowBounds = window.getBounds()
-    const chromeHeight = 60 // Tab Bar 高度
+    const windowBounds = window.getBounds();
+    const chromeHeight = 60; // Tab Bar 高度
 
     view.setBounds({
       x: 0,
       y: chromeHeight,
       width: windowBounds.width,
       height: windowBounds.height - chromeHeight
-    })
+    });
   }
 
   /**
@@ -573,18 +573,18 @@ export class TabManager {
   private async loadTabContent(view: WebContentsView, url: string): Promise<void> {
     if (url.startsWith('local://')) {
       // 本地路由
-      const route = url.replace('local://', '')
-      const devUrl = process.env['ELECTRON_RENDERER_URL']
-      const prodPath = join(__dirname, '../renderer/index.html')
+      const route = url.replace('local://', '');
+      const devUrl = process.env['ELECTRON_RENDERER_URL'];
+      const prodPath = join(__dirname, '../renderer/index.html');
 
       if (devUrl) {
-        await view.webContents.loadURL(`${devUrl}/#/${route}`)
+        await view.webContents.loadURL(`${devUrl}/#/${route}`);
       } else {
-        await view.webContents.loadFile(prodPath, { hash: route })
+        await view.webContents.loadFile(prodPath, { hash: route });
       }
     } else {
       // 外部 URL
-      await view.webContents.loadURL(url)
+      await view.webContents.loadURL(url);
     }
   }
 
@@ -592,42 +592,42 @@ export class TabManager {
    * 设置 Tab 事件
    */
   private setupTabEvents(tabId: number): void {
-    const tabInfo = this.tabState.get(tabId)
-    if (!tabInfo) return
+    const tabInfo = this.tabState.get(tabId);
+    if (!tabInfo) return;
 
-    const { view } = tabInfo
+    const { view } = tabInfo;
 
     // 页面标题更新
     view.webContents.on('page-title-updated', (event, title) => {
-      tabInfo.title = title
-      this.notifyWindowTabsUpdate(tabInfo.windowId)
-    })
+      tabInfo.title = title;
+      this.notifyWindowTabsUpdate(tabInfo.windowId);
+    });
 
     // 页面导航
     view.webContents.on('did-navigate', (event, url) => {
-      tabInfo.url = url
-      this.notifyWindowTabsUpdate(tabInfo.windowId)
-    })
+      tabInfo.url = url;
+      this.notifyWindowTabsUpdate(tabInfo.windowId);
+    });
 
     // 页面崩溃
     view.webContents.on('render-process-gone', (event, details) => {
-      log.error(`[TabManager] Tab 进程崩溃: ${tabId}`, details)
+      log.error(`[TabManager] Tab 进程崩溃: ${tabId}`, details);
       // 可以选择关闭或重新加载
-    })
+    });
   }
 
   /**
    * 通知窗口 Tab 列表更新
    */
   private notifyWindowTabsUpdate(windowId: number): void {
-    const window = BrowserWindow.fromId(windowId)
-    if (!window || window.isDestroyed()) return
+    const window = BrowserWindow.fromId(windowId);
+    if (!window || window.isDestroyed()) return;
 
-    const tabIds = this.windowTabs.get(windowId) || []
+    const tabIds = this.windowTabs.get(windowId) || [];
     const tabsData = tabIds
       .map((id) => {
-        const info = this.tabState.get(id)
-        if (!info) return null
+        const info = this.tabState.get(id);
+        if (!info) return null;
 
         return {
           id: info.id,
@@ -638,22 +638,20 @@ export class TabManager {
           isActive: info.isActive,
           position: info.position,
           closable: info.closable
-        }
+        };
       })
-      .filter(Boolean)
+      .filter(Boolean);
 
     // 发送到窗口的所有 webContents
-    window.webContents.send('update-window-tabs', windowId, tabsData)
+    window.webContents.send('update-window-tabs', windowId, tabsData);
   }
 
   /**
    * 获取窗口的所有 Tab
    */
   getWindowTabs(windowId: number): TabInfo[] {
-    const tabIds = this.windowTabs.get(windowId) || []
-    return tabIds
-      .map((id) => this.tabState.get(id))
-      .filter((info): info is TabInfo => info !== undefined)
+    const tabIds = this.windowTabs.get(windowId) || [];
+    return tabIds.map((id) => this.tabState.get(id)).filter((info): info is TabInfo => info !== undefined);
   }
 
   /**
@@ -662,26 +660,26 @@ export class TabManager {
   private setupEventHandlers(): void {
     // 窗口关闭时，关闭所有 Tab
     eventBus.on('window:closed', (data: { windowId: number }) => {
-      const tabIds = this.windowTabs.get(data.windowId) || []
+      const tabIds = this.windowTabs.get(data.windowId) || [];
       tabIds.forEach((tabId) => {
-        this.closeTab(tabId)
-      })
-      this.windowTabs.delete(data.windowId)
-    })
+        this.closeTab(tabId);
+      });
+      this.windowTabs.delete(data.windowId);
+    });
 
     // 窗口大小变化时，更新所有 Tab 的边界
     eventBus.on('window:resized', (data: { windowId: number }) => {
-      const window = BrowserWindow.fromId(data.windowId)
-      if (!window || window.isDestroyed()) return
+      const window = BrowserWindow.fromId(data.windowId);
+      if (!window || window.isDestroyed()) return;
 
-      const tabIds = this.windowTabs.get(data.windowId) || []
+      const tabIds = this.windowTabs.get(data.windowId) || [];
       tabIds.forEach((tabId) => {
-        const view = this.tabs.get(tabId)
+        const view = this.tabs.get(tabId);
         if (view) {
-          this.updateViewBounds(window, view)
+          this.updateViewBounds(window, view);
         }
-      })
-    })
+      });
+    });
   }
 }
 ```
@@ -704,8 +702,7 @@ export class TabManager {
         :tab="tab"
         :active="tab.isActive"
         @click="switchTab(tab.id)"
-        @close="closeTab(tab.id)"
-      />
+        @close="closeTab(tab.id)" />
       <button @click="createNewTab">+</button>
     </div>
 
@@ -718,35 +715,35 @@ export class TabManager {
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useTabStore } from './stores/tab'
+import { ref, onMounted } from 'vue';
+import { useTabStore } from './stores/tab';
 
-const tabStore = useTabStore()
-const tabs = computed(() => tabStore.tabs)
+const tabStore = useTabStore();
+const tabs = computed(() => tabStore.tabs);
 
 onMounted(() => {
   // 监听 Tab 列表更新
   window.electron.ipcRenderer.on('update-window-tabs', (_, windowId, tabsData) => {
-    tabStore.updateWindowTabs(windowId, tabsData)
-  })
+    tabStore.updateWindowTabs(windowId, tabsData);
+  });
 
   // 初始化
-  tabStore.init()
-})
+  tabStore.init();
+});
 
 async function switchTab(tabId: number) {
-  await window.tabApi.switch(tabId)
+  await window.tabApi.switch(tabId);
 }
 
 async function closeTab(tabId: number) {
-  await window.tabApi.close(tabId)
+  await window.tabApi.close(tabId);
 }
 
 async function createNewTab() {
   await window.tabApi.create({
     type: 'chat',
     url: 'local://chat'
-  })
+  });
 }
 </script>
 ```
@@ -759,33 +756,33 @@ async function createNewTab() {
 
 ```typescript
 // src/main/ipc/handlers/TabHandlers.ts
-import { ipcMain } from 'electron'
-import { appManager } from '@main/common/app'
+import { ipcMain } from 'electron';
+import { appManager } from '@main/common/app';
 
 export function registerTabHandlers(): void {
   // 创建 Tab
   ipcMain.handle('tab:create', async (event, windowId: number, config: TabConfig) => {
-    const view = await appManager.getTabManager().createTab(windowId, config)
-    return { success: !!view, tabId: view?.webContents.id }
-  })
+    const view = await appManager.getTabManager().createTab(windowId, config);
+    return { success: !!view, tabId: view?.webContents.id };
+  });
 
   // 切换 Tab
   ipcMain.handle('tab:switch', async (event, tabId: number) => {
-    const success = await appManager.getTabManager().switchTab(tabId)
-    return { success }
-  })
+    const success = await appManager.getTabManager().switchTab(tabId);
+    return { success };
+  });
 
   // 关闭 Tab
   ipcMain.handle('tab:close', async (event, tabId: number) => {
-    const success = await appManager.getTabManager().closeTab(tabId)
-    return { success }
-  })
+    const success = await appManager.getTabManager().closeTab(tabId);
+    return { success };
+  });
 
   // 获取窗口的所有 Tab
   ipcMain.handle('tab:get-window-tabs', async (event, windowId: number) => {
-    const tabs = appManager.getTabManager().getWindowTabs(windowId)
-    return { tabs }
-  })
+    const tabs = appManager.getTabManager().getWindowTabs(windowId);
+    return { tabs };
+  });
 }
 ```
 
@@ -801,9 +798,9 @@ const tabApi = {
   close: (tabId: number) => ipcRenderer.invoke('tab:close', tabId),
 
   getWindowTabs: (windowId: number) => ipcRenderer.invoke('tab:get-window-tabs', windowId)
-}
+};
 
-contextBridge.exposeInMainWorld('tabApi', tabApi)
+contextBridge.exposeInMainWorld('tabApi', tabApi);
 ```
 
 ---
@@ -829,13 +826,13 @@ contextBridge.exposeInMainWorld('tabApi', tabApi)
 
 ```typescript
 class TabManager {
-  private readonly MAX_TABS_PER_WINDOW = 20
+  private readonly MAX_TABS_PER_WINDOW = 20;
 
   async createTab(windowId: number, config: TabConfig) {
-    const currentTabs = this.windowTabs.get(windowId)?.length || 0
+    const currentTabs = this.windowTabs.get(windowId)?.length || 0;
     if (currentTabs >= this.MAX_TABS_PER_WINDOW) {
-      log.warn('[TabManager] 已达到最大 Tab 数限制')
-      return null
+      log.warn('[TabManager] 已达到最大 Tab 数限制');
+      return null;
     }
     // ...
   }
@@ -857,35 +854,35 @@ class TabManager {
 ```typescript
 // src/main/common/app.ts
 export class AppManager {
-  private windowManager!: WindowManager
-  private tabManager!: TabManager // ← 新增
+  private windowManager!: WindowManager;
+  private tabManager!: TabManager; // ← 新增
 
   async initialize() {
     // ...
-    await app.whenReady()
+    await app.whenReady();
 
     // 初始化管理器
-    this.windowManager = new WindowManager()
-    this.tabManager = new TabManager() // ← 新增
+    this.windowManager = new WindowManager();
+    this.tabManager = new TabManager(); // ← 新增
 
     // 创建主窗口（Agent 窗口）
     const mainWindow = this.windowManager.createWindow({
       type: 'agent',
       initialUrl: '/shell' // Shell 入口
-    })
+    });
 
     // 创建第一个 Tab（Chat Tab）
     await this.tabManager.createTab(mainWindow.id, {
       type: 'chat',
       url: 'local://chat',
       title: 'New Chat'
-    })
+    });
 
     // ...
   }
 
   getTabManager(): TabManager {
-    return this.tabManager
+    return this.tabManager;
   }
 }
 ```
@@ -922,7 +919,7 @@ const agentWindow = windowManager.createWindow({
   type: 'agent',
   width: 1200,
   height: 800
-})
+});
 
 // 2. 添加 Chat Tab
 await tabManager.createTab(agentWindow.id, {
@@ -930,7 +927,7 @@ await tabManager.createTab(agentWindow.id, {
   url: 'local://chat',
   title: 'AI Chat',
   icon: 'message-circle'
-})
+});
 
 // 3. 添加 Task Tab
 await tabManager.createTab(agentWindow.id, {
@@ -938,7 +935,7 @@ await tabManager.createTab(agentWindow.id, {
   url: 'local://tasks',
   title: 'Task Manager',
   icon: 'check-square'
-})
+});
 
 // 4. 添加 Settings Tab
 await tabManager.createTab(agentWindow.id, {
@@ -947,7 +944,7 @@ await tabManager.createTab(agentWindow.id, {
   title: 'Settings',
   icon: 'settings',
   closable: false // 设置 Tab 不可关闭
-})
+});
 ```
 
 ### 场景 2：创建 Browser 窗口浏览网页
@@ -958,20 +955,20 @@ const browserWindow = windowManager.createWindow({
   type: 'browser',
   width: 1024,
   height: 768
-})
+});
 
 // 2. 添加多个网页 Tab
 await tabManager.createTab(browserWindow.id, {
   type: 'webpage',
   url: 'https://example.com',
   title: 'Example'
-})
+});
 
 await tabManager.createTab(browserWindow.id, {
   type: 'webpage',
   url: 'https://github.com',
   title: 'GitHub'
-})
+});
 ```
 
 ### 场景 3：典型应用启动流程

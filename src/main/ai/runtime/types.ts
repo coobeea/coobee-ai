@@ -77,10 +77,12 @@ export interface SkillDefinition {
  *
  *   - chat: 纯对话模式 — 不提供工具，不注入执行协议和 Skill，响应快、成本低
  *   - agent: 完整 Agent 模式 — 提供工具、注入执行协议和 Skill，支持 HITL
+ *   - orchestrator / swarm / discussion: 多智能体模式
+ *   - quality-loop: 质量循环模式 — 执行→验证→修复闭环
  *
  * 模式在 Builder 上设置，AgentEnvInjector 根据模式决定注入内容。
  */
-export type AgentMode = 'chat' | 'agent' | 'orchestrator' | 'swarm';
+export type AgentMode = 'chat' | 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop';
 
 // ========== Agent 运行时通用选项 ==========
 
@@ -165,25 +167,37 @@ export interface AgentRuntimeOptions {
 // ========== 系统提示词构建 ==========
 
 /**
- * 格式化技能列表为提示词文本
+ * 格式化技能列表为提示词文本（摘要模式）
  *
- * 使用 XML 结构化格式，便于 LLM 解析：
+ * 仅注入 name、description 和 filePath，不注入完整 content。
+ * Agent 需要完整内容时，通过 read 工具按需加载 SKILL.md。
+ *
+ * 格式：
  *   <skills>
- *     <skill name="xxx">
- *       <description>...</description>
- *       <content>...</content>
+ *     <skill name="xxx" path="/path/to/SKILL.md">
+ *       description text
  *     </skill>
  *   </skills>
+ *
+ * 使用 mode='full' 可切换为完整注入模式（用于 active_skill 等场景）。
  */
-export function formatSkills(skills: SkillDefinition[]): string {
+export function formatSkills(skills: SkillDefinition[], mode: 'summary' | 'full' = 'summary'): string {
   if (!skills.length) return '';
   const items = skills
-    .map(
-      (s) =>
-        `<skill name="${s.name}">\n<description>${s.description}</description>\n<content>\n${s.content}\n</content>\n</skill>`
-    )
+    .map((s) => {
+      if (mode === 'full') {
+        return `<skill name="${s.name}">\n<description>${s.description}</description>\n<content>\n${s.content}\n</content>\n</skill>`;
+      }
+      const pathAttr = s.filePath ? ` path="${s.filePath}"` : '';
+      return `<skill name="${s.name}"${pathAttr}>\n${s.description}\n</skill>`;
+    })
     .join('\n');
-  return `<skills>\n${items}\n</skills>`;
+
+  const hint =
+    mode === 'summary'
+      ? '\n<!-- To use a skill, read its SKILL.md file with the read tool for full instructions. -->'
+      : '';
+  return `<skills>${hint}\n${items}\n</skills>`;
 }
 
 /**
@@ -347,7 +361,13 @@ export type StreamChunkType =
   | 'compression:done' // 压缩完成（含统计信息）
   // ⑩ delegate: 子 Agent 委托
   | 'delegate:start' // 委托开始
-  | 'delegate:done'; // 委托完成
+  | 'delegate:done' // 委托完成
+  // ⑪ quality: 质量循环
+  | 'quality:round_start' // 验证轮开始
+  | 'quality:validating' // 正在验证
+  | 'quality:score' // 验证评分
+  | 'quality:repairing' // 正在修复
+  | 'quality:done'; // 质量循环完成
 
 /**
  * StreamChunk 额外数据（联合类型，根据 StreamChunkType 变化）
@@ -367,6 +387,10 @@ export type StreamChunkData =
   | HandoffData
   | CompressionStartData
   | CompressionDoneData
+  | QualityRoundStartData
+  | QualityScoreData
+  | QualityRepairingData
+  | QualityDoneData
   | Record<string, unknown>;
 
 // ---- ① run: ----
@@ -531,4 +555,32 @@ export interface SessionInfo {
   messageCount: number;
   /** 元数据 */
   metadata?: Record<string, unknown>;
+}
+
+// ---- ⑪ quality: 质量循环 ----
+
+/** quality:round_start 数据 */
+export interface QualityRoundStartData {
+  round: number;
+  maxRounds: number;
+}
+
+/** quality:score 数据 */
+export interface QualityScoreData {
+  score: number;
+  passed: boolean;
+  issues?: Array<{ severity: string; description: string }>;
+}
+
+/** quality:repairing 数据 */
+export interface QualityRepairingData {
+  strategy: string;
+  rootCause: string;
+}
+
+/** quality:done 数据 */
+export interface QualityDoneData {
+  finalScore: number;
+  rounds: number;
+  passed: boolean;
 }

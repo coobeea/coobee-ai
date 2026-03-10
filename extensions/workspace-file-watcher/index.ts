@@ -18,7 +18,7 @@ export const extension: ExtensionModule = {
 
     // 初始化并启动监控
     const watcher = WorkspaceFileWatcher.getInstance();
-    await watcher.start(logger, eventBus);
+    await watcher.start(logger, eventBus, api); // ✅ 传入 api 引用
 
     logger.info('Workspace File Watcher started successfully');
   },

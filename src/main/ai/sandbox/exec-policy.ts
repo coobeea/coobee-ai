@@ -25,7 +25,9 @@
  * @module sandbox/exec-policy
  */
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { log } from '../../common/logger';
 
@@ -214,6 +216,16 @@ function getAllowlistPath(): string | null {
   }
 }
 
+/**
+ * 基于 machineId 的 HMAC 签名，防止 allowlist 被恶意篡改。
+ * 不需要管理额外密钥：使用 hostname + pid 的衍生值即可，
+ * 目的是检测文件是否被外部工具修改，而非抵抗高级攻击。
+ */
+function computeAllowlistHmac(data: string): string {
+  const key = `coobee-exec-policy-${os.hostname()}`;
+  return crypto.createHmac('sha256', key).update(data).digest('hex');
+}
+
 /** 从文件加载 allowlist（启动时调用一次） */
 function loadAllowlist(): void {
   if (loaded) return;
@@ -224,17 +236,33 @@ function loadAllowlist(): void {
 
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
-    const data = JSON.parse(raw);
-    if (Array.isArray(data)) {
-      learnedAllowlist = new Set(data.filter((s: unknown) => typeof s === 'string'));
-      log.info(`[ExecPolicy] Loaded ${learnedAllowlist.size} learned commands from file`);
+    const envelope = JSON.parse(raw);
+
+    // 兼容旧格式（纯数组）和新格式（带签名）
+    let commands: unknown[];
+    if (Array.isArray(envelope)) {
+      commands = envelope;
+      log.info('[ExecPolicy] Legacy allowlist (no signature), will re-sign on next save');
+    } else if (envelope && typeof envelope === 'object' && Array.isArray(envelope.commands)) {
+      const expected = computeAllowlistHmac(JSON.stringify(envelope.commands));
+      if (envelope.hmac !== expected) {
+        log.warn('[ExecPolicy] Allowlist HMAC mismatch — file may have been tampered with, ignoring');
+        return;
+      }
+      commands = envelope.commands;
+    } else {
+      log.warn('[ExecPolicy] Invalid allowlist format, ignoring');
+      return;
     }
+
+    learnedAllowlist = new Set(commands.filter((s: unknown) => typeof s === 'string'));
+    log.info(`[ExecPolicy] Loaded ${learnedAllowlist.size} learned commands from file`);
   } catch (err) {
     log.warn('[ExecPolicy] Failed to load learned-commands.json:', err);
   }
 }
 
-/** 将 allowlist 同步写入文件 */
+/** 将 allowlist 同步写入文件（带 HMAC 签名） */
 function saveAllowlist(): void {
   const filePath = getAllowlistPath();
   if (!filePath) return;
@@ -244,7 +272,10 @@ function saveAllowlist(): void {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(filePath, JSON.stringify(Array.from(learnedAllowlist), null, 2), 'utf-8');
+    const commands = Array.from(learnedAllowlist);
+    const hmac = computeAllowlistHmac(JSON.stringify(commands));
+    const envelope = { commands, hmac, updatedAt: new Date().toISOString() };
+    fs.writeFileSync(filePath, JSON.stringify(envelope, null, 2), 'utf-8');
   } catch (err) {
     log.warn('[ExecPolicy] Failed to save learned-commands.json:', err);
   }

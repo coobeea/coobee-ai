@@ -3,7 +3,7 @@
  *
  * 描述一个可创建的 Agent 实例的所有配置。
  * Agent 定义持久化到 .home/agents/{agentId}.json，
- * 由 AgentStore 管理 CRUD，由 manage_agent 工具暴露给 LLM。
+ * 由 AgentStore 管理 CRUD，通过 HTTP API 和 AI Creator 暴露给 LLM。
  *
  * 设计原则：
  *   - Agent = instructions + tools + skills + model 配置
@@ -34,13 +34,13 @@ export interface AgentDefinition {
   instructions: string;
 
   /**
-   * 启用的工具名称列表
+   * 排除的工具名称列表（黑名单）
    *
-   * 从 builtin + extension 工具中选择。
-   * 空数组 = 不使用任何工具（纯对话）。
-   * 未定义 = 使用所有可用工具（继承主 Agent 的工具集）。
+   * 默认所有工具可用。通过此字段明确排除不需要的工具。
+   * 空数组或未定义 = 使用所有可用工具。
+   * 示例：["exec", "process"] = 排除命令执行相关工具
    */
-  tools?: string[];
+  excludeTools?: string[];
 
   /**
    * 关联的 Skill 名称列表
@@ -49,7 +49,18 @@ export interface AgentDefinition {
    */
   skills?: string[];
 
-  /** 指定模型（可选，默认用全局配置） */
+  /**
+   * 模型配置（支持三种格式）:
+   *
+   * 1. 单个模型（现有格式，兼容）
+   *    "openai/gpt-4o"
+   *
+   * 2. 模型组引用（新增）
+   *    "@high-performance"  → 引用配置中的 models.groups.high-performance
+   *
+   * 3. Auto 模式（新增）
+   *    "auto"  → 系统自动选择最佳模型
+   */
   model?: string;
 
   /** 思维链级别（可选，默认用全局配置） */
@@ -81,8 +92,8 @@ export interface AgentIndexEntry {
   createdBy: 'user' | 'agent' | 'system';
   version: number;
   updatedAt: string;
-  /** 启用的工具名称列表（用于前端展示） */
-  tools?: string[];
+  /** 排除的工具名称列表（黑名单） */
+  excludeTools?: string[];
   /** 关联的 Skill 名称列表（用于前端展示） */
   skills?: string[];
 }
@@ -95,7 +106,7 @@ export interface CreateAgentParams {
   name: string;
   description: string;
   instructions: string;
-  tools?: string[];
+  excludeTools?: string[];
   skills?: string[];
   model?: string;
   thinkingLevel?: ThinkingLevel;
@@ -108,7 +119,7 @@ export interface UpdateAgentParams {
   name?: string;
   description?: string;
   instructions?: string;
-  tools?: string[];
+  excludeTools?: string[];
   skills?: string[];
   model?: string;
   thinkingLevel?: ThinkingLevel;

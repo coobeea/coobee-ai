@@ -19,7 +19,7 @@
  * - path-only — 仅启用路径守卫 + 工具策略（默认，轻量）
  * - docker    — 路径守卫 + 工具策略 + Docker 容器隔离（完整保护）
  */
-export type SandboxMode = 'off' | 'path-only' | 'docker'
+export type SandboxMode = 'off' | 'path-only' | 'docker';
 
 // ========== 工具策略 ==========
 
@@ -43,11 +43,11 @@ export type SandboxMode = 'off' | 'path-only' | 'docker'
  */
 export interface SandboxToolPolicy {
   /** 允许的工具列表（glob / group: 模式，空数组 = 允许全部） */
-  allow?: string[]
+  allow?: string[];
   /** 拒绝的工具列表（glob / group: 模式，优先于 allow） */
-  deny?: string[]
+  deny?: string[];
   /** 需要用户确认的工具列表（glob / group: 模式） */
-  confirm?: string[]
+  confirm?: string[];
 }
 
 // ========== Docker 配置 ==========
@@ -63,27 +63,27 @@ export interface SandboxToolPolicy {
  */
 export interface SandboxDockerConfig {
   /** Docker 镜像名（默认 debian:bookworm-slim） */
-  image: string
+  image: string;
   /** 容器名前缀（默认 coobee-sbx-） */
-  containerPrefix: string
+  containerPrefix: string;
   /** 容器内工作目录（默认 /workspace） */
-  workdir: string
+  workdir: string;
   /** 是否只读根文件系统（默认 true） */
-  readOnlyRoot: boolean
+  readOnlyRoot: boolean;
   /** tmpfs 挂载（默认 ['/tmp', '/var/tmp']） */
-  tmpfs: string[]
+  tmpfs: string[];
   /** 网络模式（默认 none — 完全隔离） */
-  network: 'none' | 'bridge' | 'host'
+  network: 'none' | 'bridge' | 'host';
   /** 丢弃的 Linux capabilities（默认 ['ALL']） */
-  capDrop: string[]
+  capDrop: string[];
   /** 环境变量 */
-  env?: Record<string, string>
+  env?: Record<string, string>;
   /** 容器创建后执行的初始化命令 */
-  setupCommand?: string
+  setupCommand?: string;
   /** 内存限制（如 '256m'） */
-  memory?: string
+  memory?: string;
   /** CPU 限制（如 1.0） */
-  cpus?: number
+  cpus?: number;
 }
 
 // ========== 沙箱配置 ==========
@@ -95,20 +95,20 @@ export interface SandboxDockerConfig {
  */
 export interface SandboxConfig {
   /** 沙箱模式 */
-  mode: SandboxMode
+  mode: SandboxMode;
   /** 工作区根目录（路径守卫的基准） */
-  workspaceRoot: string
+  workspaceRoot: string;
   /**
    * 沙箱根目录（可选，比 workspaceRoot 更严格）
    *
    * 用于限制 Agent 只能操作工作区的某个子目录。
    * 未设置时以 workspaceRoot 为边界。
    */
-  sandboxRoot?: string
+  sandboxRoot?: string;
   /** 工具策略 */
-  toolPolicy?: SandboxToolPolicy
+  toolPolicy?: SandboxToolPolicy;
   /** Docker 配置（mode='docker' 时必须） */
-  docker?: SandboxDockerConfig
+  docker?: SandboxDockerConfig;
 }
 
 // ========== 沙箱上下文（运行时） ==========
@@ -118,11 +118,11 @@ export interface SandboxConfig {
  */
 export interface SandboxDockerInfo {
   /** 容器名 */
-  containerName: string
+  containerName: string;
   /** 容器内工作目录 */
-  workdir: string
+  workdir: string;
   /** 是否正在运行 */
-  running: boolean
+  running: boolean;
 }
 
 /**
@@ -133,24 +133,24 @@ export interface SandboxDockerInfo {
  */
 export interface SandboxContext {
   /** 沙箱模式 */
-  mode: SandboxMode
+  mode: SandboxMode;
   /** 工作区根目录 */
-  workspaceRoot: string
+  workspaceRoot: string;
   /** 沙箱根目录（路径守卫使用） */
-  sandboxRoot?: string
+  sandboxRoot?: string;
   /** 已解析的工具策略 */
-  toolPolicy: ResolvedToolPolicy
+  toolPolicy: ResolvedToolPolicy;
   /** Docker 容器信息（mode='docker' 时存在） */
-  docker?: SandboxDockerInfo
+  docker?: SandboxDockerInfo;
   /** 会话标识 */
-  sessionId?: string
+  sessionId?: string;
   /**
    * 注入到子进程的环境变量
    *
    * Skill 脚本通过这些变量获取运行时上下文（配置目录、工作空间等）。
    * exec 工具在 spawn 子进程时会将这些变量合并到 process.env 中。
    */
-  envVars?: Record<string, string>
+  envVars?: Record<string, string>;
 }
 
 /**
@@ -158,10 +158,10 @@ export interface SandboxContext {
  */
 export interface ResolvedToolPolicy {
   /** 原始配置 */
-  allow: string[]
-  deny: string[]
+  allow: string[];
+  deny: string[];
   /** 需要用户确认的工具列表（已展开 group:，可选，默认空） */
-  confirm?: string[]
+  confirm?: string[];
 }
 
 // ========== 默认配置 ==========
@@ -176,7 +176,7 @@ export const DEFAULT_DOCKER_CONFIG: SandboxDockerConfig = {
   network: 'none',
   capDrop: ['ALL'],
   env: { LANG: 'C.UTF-8' }
-}
+};
 
 /** 默认沙箱配置（path-only 模式） */
 export const DEFAULT_SANDBOX_CONFIG: Omit<SandboxConfig, 'workspaceRoot'> = {
@@ -186,4 +186,4 @@ export const DEFAULT_SANDBOX_CONFIG: Omit<SandboxConfig, 'workspaceRoot'> = {
     deny: [],
     confirm: []
   }
-}
+};

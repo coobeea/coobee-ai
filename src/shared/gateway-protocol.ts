@@ -14,42 +14,42 @@
 
 /** 客户端 → Gateway 请求 */
 export interface GatewayRequest {
-  type: 'req'
+  type: 'req';
   /** 请求唯一 ID（客户端生成，用于匹配响应） */
-  id: string
+  id: string;
   /** 方法名，namespace.action 格式（如 'chat.send'） */
-  method: string
+  method: string;
   /** 方法参数 */
-  params?: Record<string, unknown>
+  params?: Record<string, unknown>;
 }
 
 /** Gateway → 客户端 响应 */
 export interface GatewayResponse {
-  type: 'res'
+  type: 'res';
   /** 对应请求的 ID */
-  id: string
+  id: string;
   /** 是否成功 */
-  ok: boolean
+  ok: boolean;
   /** 成功时的返回数据 */
-  payload?: unknown
+  payload?: unknown;
   /** 失败时的错误信息 */
-  error?: { code: number; message: string }
+  error?: { code: number; message: string };
 }
 
 /** Gateway → 客户端 事件推送 */
 export interface GatewayEvent {
-  type: 'event'
+  type: 'event';
   /** 事件名，namespace.action 格式（如 'stream.message'） */
-  event: string
+  event: string;
   /** 事件数据 */
-  payload: unknown
+  payload: unknown;
 }
 
 /** Gateway 出站消息联合类型 */
-export type GatewayOutMessage = GatewayResponse | GatewayEvent
+export type GatewayOutMessage = GatewayResponse | GatewayEvent;
 
 /** 所有 Gateway 消息联合类型（含入站） */
-export type GatewayMessage = GatewayRequest | GatewayOutMessage
+export type GatewayMessage = GatewayRequest | GatewayOutMessage;
 
 // ==================== 错误码 ====================
 

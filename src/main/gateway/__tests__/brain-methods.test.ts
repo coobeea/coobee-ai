@@ -9,16 +9,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const mockFetch = vi.fn();
 const mockWorkerManager = {
   getInstance: vi.fn(() => ({
-    get: vi.fn((name: string) => {
+    getWorkerInfo: vi.fn((name: string) => {
       if (name === 'brain') {
         return {
           status: 'ready',
-          config: {
-            port: 42043
-          }
+          port: 42043
         };
       }
-      return null;
+      return undefined;
     })
   }))
 };
@@ -255,9 +253,9 @@ describe('Gateway brain methods', () => {
     });
 
     it('Worker 未启动应该抛出错误', async () => {
-      // Mock WorkerManager 返回 null
+      // Mock WorkerManager 返回 undefined
       mockWorkerManager.getInstance = vi.fn(() => ({
-        get: vi.fn(() => null)
+        getWorkerInfo: vi.fn(() => undefined)
       }));
 
       await expect(brainMethods.methods.delete({ packageId: 'pkg_001' }, {} as MethodContext)).rejects.toThrow(

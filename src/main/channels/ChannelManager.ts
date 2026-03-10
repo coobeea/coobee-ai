@@ -1,5 +1,8 @@
+import { createLogger } from '@main/common/logger';
 import type { ChannelConfig, ExtensionLogger } from '../common/extension/types';
-import type { ManagedChannel, ChannelStatus } from './types';
+import type { ManagedChannel, ChannelStatus, ChannelPlugin, ChannelCapabilities } from './types';
+
+const log = createLogger('channels') as ExtensionLogger;
 
 /**
  * 通道管理器
@@ -10,15 +13,11 @@ import type { ManagedChannel, ChannelStatus } from './types';
 export class ChannelManager {
   private static instance: ChannelManager;
   private channels: Map<string, ManagedChannel> = new Map();
-  private logger: ExtensionLogger;
+  private channelPlugins: Map<string, ChannelPlugin> = new Map();
+  private logger: ExtensionLogger = log;
 
   private constructor() {
-    this.logger = {
-      info: (msg, ...args) => console.log(`[ChannelManager] ${msg}`, ...args),
-      warn: (msg, ...args) => console.warn(`[ChannelManager] ${msg}`, ...args),
-      error: (msg, ...args) => console.error(`[ChannelManager] ${msg}`, ...args),
-      debug: (msg, ...args) => console.debug(`[ChannelManager] ${msg}`, ...args)
-    };
+    // Singleton - use getInstance()
   }
 
   public static getInstance(): ChannelManager {
@@ -29,7 +28,7 @@ export class ChannelManager {
   }
 
   /**
-   * 注册通道
+   * 注册通道（旧方法，保留向后兼容）
    */
   public registerChannel(config: ChannelConfig): void {
     if (this.channels.has(config.id)) {
@@ -40,6 +39,78 @@ export class ChannelManager {
       status: 'stopped'
     });
     this.logger.info(`Registered channel: ${config.id} (${config.name})`);
+  }
+
+  /**
+   * 注册 ChannelPlugin（新架构）
+   *
+   * @param plugin - ChannelPlugin 实例
+   */
+  public registerChannelPlugin(plugin: ChannelPlugin): void {
+    if (this.channelPlugins.has(plugin.id)) {
+      this.logger.warn(`ChannelPlugin "${plugin.id}" is already registered. Overwriting.`);
+    }
+
+    // 1. 存储 Plugin
+    this.channelPlugins.set(plugin.id, plugin);
+
+    // 2. 转换为 ManagedChannel
+    this.channels.set(plugin.id, {
+      config: {
+        id: plugin.id,
+        name: plugin.name,
+        gateway: {
+          start: plugin.lifecycle.start,
+          stop: plugin.lifecycle.stop
+        }
+      },
+      status: 'stopped',
+      plugin // 保存 Plugin 引用
+    });
+
+    this.logger.info(`Registered ChannelPlugin: ${plugin.id} (${plugin.name})`);
+  }
+
+  /**
+   * 根据 ID 获取 ChannelPlugin
+   *
+   * @param id - Channel ID
+   * @returns ChannelPlugin 或 undefined
+   */
+  public getChannelPlugin(id: string): ChannelPlugin | undefined {
+    return this.channelPlugins.get(id);
+  }
+
+  /**
+   * 列出所有 ChannelPlugin
+   *
+   * @returns ChannelPlugin 数组
+   */
+  public listChannelPlugins(): ChannelPlugin[] {
+    return Array.from(this.channelPlugins.values());
+  }
+
+  /**
+   * 获取 Channel 能力声明
+   *
+   * @param id - Channel ID
+   * @returns ChannelCapabilities 或 undefined
+   */
+  public getChannelCapabilities(id: string): ChannelCapabilities | undefined {
+    const plugin = this.channelPlugins.get(id);
+    return plugin?.capabilities;
+  }
+
+  /**
+   * 检查 Channel 是否支持指定能力
+   *
+   * @param id - Channel ID
+   * @param capability - 能力名称
+   * @returns boolean
+   */
+  public supportsCapability(id: string, capability: keyof ChannelCapabilities): boolean {
+    const capabilities = this.getChannelCapabilities(id);
+    return capabilities?.[capability] === true;
   }
 
   /**
@@ -82,14 +153,32 @@ export class ChannelManager {
 
     try {
       this.logger.info(`Starting channel: ${id}`);
-      await channel.config.gateway.start({
+
+      // 为 discussion channel 初始化 DiscussionStore（必须在 Extension 启动前）
+      const config: Record<string, unknown> = {};
+      if (id === 'discussion') {
+        const { Env } = await import('../common/env');
+        const storePath = `${Env.paths.userHome}/discussions`;
+        config.storePath = storePath;
+
+        // 在这里直接初始化 DiscussionStore，确保模块路径一致
+        const { DiscussionStore } = await import('../ai/discussion/DiscussionStore');
+        await DiscussionStore.getInstance(storePath);
+        this.logger.debug(`[ChannelManager] DiscussionStore initialized at ${storePath}`);
+      }
+
+      const ctx: import('./types').ChannelLifecycleContext = {
         abortSignal: channel.abortController.signal,
-        log: this.logger
-      });
+        log: this.logger,
+        config
+      };
+      await channel.config.gateway.start(ctx);
     } catch (err) {
       channel.status = 'error';
       channel.error = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to start channel "${id}":`, err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorStack = err instanceof Error ? err.stack : undefined;
+      this.logger.error(`Failed to start channel "${id}": ${errorMsg}`, errorStack ? { stack: errorStack } : err);
       throw err;
     }
   }
@@ -192,6 +281,7 @@ export class ChannelManager {
   public clear(): void {
     this.stopAll().finally(() => {
       this.channels.clear();
+      this.channelPlugins.clear();
     });
   }
 }

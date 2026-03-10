@@ -122,13 +122,13 @@
 const PlanOutputSchema = z.object({
   subTasks: z.array(SubTaskSchema),
   stages: z.array(StageSchema)
-})
+});
 
 this.plannerAgent = new Agent({
   name: 'Planner',
   outputType: PlanOutputSchema
   // ...
-})
+});
 ```
 
 **效果**：
@@ -166,7 +166,7 @@ this.plannerAgent = new Agent({
 const streamResult = await run(this.agent, input, {
   stream: true,
   maxTurns: DEFAULT_MAX_TURNS
-})
+});
 
 for await (const event of streamResult) {
   switch (event.type) {

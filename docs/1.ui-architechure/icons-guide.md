@@ -21,7 +21,7 @@
 
 ```vue
 <script setup lang="ts">
-import { Icon } from '@iconify/vue'
+import { Icon } from '@iconify/vue';
 </script>
 
 <template>
@@ -66,10 +66,10 @@ import { Icon } from '@iconify/vue'
 
 ```vue
 <script setup lang="ts">
-import { Icon } from '@iconify/vue'
-import { ref } from 'vue'
+import { Icon } from '@iconify/vue';
+import { ref } from 'vue';
 
-const isLiked = ref(false)
+const isLiked = ref(false);
 </script>
 
 <template>
@@ -77,8 +77,7 @@ const isLiked = ref(false)
     <Icon
       :icon="isLiked ? 'mdi:heart' : 'mdi:heart-outline'"
       :class="isLiked ? 'text-red-500' : 'text-gray-400'"
-      class="w-6 h-6 transition-colors"
-    />
+      class="w-6 h-6 transition-colors" />
   </button>
 </template>
 ```
@@ -225,25 +224,19 @@ const isLiked = ref(false)
 <template>
   <div class="flex gap-2">
     <!-- 主要按钮 -->
-    <button
-      class="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-    >
+    <button class="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
       <Icon icon="mdi:plus" />
       <span>新建</span>
     </button>
 
     <!-- 次要按钮 -->
-    <button
-      class="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
-    >
+    <button class="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded hover:bg-gray-50">
       <Icon icon="mdi:download" />
       <span>下载</span>
     </button>
 
     <!-- 危险按钮 -->
-    <button
-      class="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-    >
+    <button class="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">
       <Icon icon="mdi:delete" />
       <span>删除</span>
     </button>
@@ -303,16 +296,16 @@ const isLiked = ref(false)
 
 ```vue
 <script setup lang="ts">
-import { Icon } from '@iconify/vue'
-import { ref } from 'vue'
+import { Icon } from '@iconify/vue';
+import { ref } from 'vue';
 
-const isLoading = ref(false)
+const isLoading = ref(false);
 
 async function handleSubmit() {
-  isLoading.value = true
+  isLoading.value = true;
   // 模拟异步操作
-  await new Promise((resolve) => setTimeout(resolve, 2000))
-  isLoading.value = false
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  isLoading.value = false;
 }
 </script>
 
@@ -320,8 +313,7 @@ async function handleSubmit() {
   <button
     @click="handleSubmit"
     :disabled="isLoading"
-    class="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50"
-  >
+    class="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50">
     <Icon :icon="isLoading ? 'svg-spinners:ring-resize' : 'mdi:send'" class="w-5 h-5" />
     <span>{{ isLoading ? '发送中...' : '发送' }}</span>
   </button>
@@ -389,8 +381,7 @@ async function handleSubmit() {
   <Icon
     icon="mdi:heart"
     class="w-8 h-8"
-    style="background: linear-gradient(to right, #ff6b6b, #ee5a6f); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"
-  />
+    style="background: linear-gradient(to right, #ff6b6b, #ee5a6f); -webkit-background-clip: text; -webkit-text-fill-color: transparent;" />
 </template>
 ```
 
@@ -414,7 +405,7 @@ const ICON_SIZES = {
   md: 'w-5 h-5',
   lg: 'w-6 h-6',
   xl: 'w-8 h-8'
-}
+};
 </script>
 
 <template>
@@ -445,16 +436,16 @@ const ICON_SIZES = {
 
 ```typescript
 // 创建一个图标组件的类型
-import type { IconifyIcon } from '@iconify/vue'
+import type { IconifyIcon } from '@iconify/vue';
 
 interface IconButtonProps {
-  icon: string
-  label: string
-  onClick?: () => void
+  icon: string;
+  label: string;
+  onClick?: () => void;
 }
 
 // 使用
-const props = defineProps<IconButtonProps>()
+const props = defineProps<IconButtonProps>();
 ```
 
 ---

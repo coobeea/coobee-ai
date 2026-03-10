@@ -7,34 +7,34 @@
  * 3. 初始化时从主进程拉取 Tab 列表
  */
 
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
 
 export interface Tab {
-  id: string
-  title: string
-  icon?: string
+  id: string;
+  title: string;
+  icon?: string;
 }
 
 export const useTabStore = defineStore('shell-tab', () => {
   // State
-  const tabs = ref<Tab[]>([])
-  const currentTabId = ref<string | null>(null)
-  const isInitialized = ref(false)
+  const tabs = ref<Tab[]>([]);
+  const currentTabId = ref<string | null>(null);
+  const isInitialized = ref(false);
 
   // Getters
-  const currentTab = computed(() => tabs.value.find((tab) => tab.id === currentTabId.value))
+  const currentTab = computed(() => tabs.value.find((tab) => tab.id === currentTabId.value));
 
   /**
    * 从主进程同步 Tab 状态
    */
   const syncFromMain = async (): Promise<void> => {
     try {
-      const windowInfo = await window.api.getWindowInfo()
+      const windowInfo = await window.api.getWindowInfo();
 
       if (!windowInfo) {
-        console.warn('Failed to get window info')
-        return
+        console.warn('Failed to get window info');
+        return;
       }
 
       // 同步 Tab 列表
@@ -42,32 +42,29 @@ export const useTabStore = defineStore('shell-tab', () => {
         id: tab.id.toString(),
         title: tab.title,
         icon: undefined // 可以根据需要添加图标逻辑
-      }))
+      }));
 
       // 同步当前激活的 Tab
-      currentTabId.value = windowInfo.currentTabId?.toString() || null
+      currentTabId.value = windowInfo.currentTabId?.toString() || null;
 
-      isInitialized.value = true
+      isInitialized.value = true;
     } catch (error) {
-      console.error('Error syncing tabs from main:', error)
+      console.error('Error syncing tabs from main:', error);
     }
-  }
+  };
 
   /**
    * 更新 Tab 列表（由事件监听器调用）
    */
-  const updateTabs = (
-    newTabs: Array<{ id: number; title: string }>,
-    activeTabId: number | null
-  ): void => {
+  const updateTabs = (newTabs: Array<{ id: number; title: string }>, activeTabId: number | null): void => {
     tabs.value = newTabs.map((tab) => ({
       id: tab.id.toString(),
       title: tab.title,
       icon: undefined
-    }))
+    }));
 
-    currentTabId.value = activeTabId?.toString() || null
-  }
+    currentTabId.value = activeTabId?.toString() || null;
+  };
 
   return {
     tabs,
@@ -76,5 +73,5 @@ export const useTabStore = defineStore('shell-tab', () => {
     isInitialized,
     syncFromMain,
     updateTabs
-  }
-})
+  };
+});

@@ -31,11 +31,11 @@ Agent（智能体）是 coobee-ai 的核心概念。每个 Agent 定义了一个
 
 ## 管理方式
 
-| 方式                | 说明                                          |
-| ------------------- | --------------------------------------------- |
-| `manage_agent` 工具 | LLM 通过 function call 管理（创建/更新/删除） |
-| HTTP REST API       | 前端通过 `/gateway/agents/*` 管理             |
-| AI 自动创建         | 用户输入需求，系统 AI 自动生成完整定义        |
+| 方式                | 说明                                   |
+| ------------------- | -------------------------------------- |
+| HTTP REST API       | 前端通过 `/gateway/agents/*` 管理      |
+| AI Creator          | 用户输入需求，系统 AI 自动生成完整定义 |
+| `delegate_to_agent` | LLM 通过工具调用委托任务给已注册 Agent |
 
 ---
 
@@ -51,33 +51,54 @@ Agent（智能体）是 coobee-ai 的核心概念。每个 Agent 定义了一个
 
 ---
 
-## 使用场景
+## Agent Home 会话索引
 
-### 创建专业 Agent
+每个 Agent 的 Home 目录下维护一个 `sessions.jsonl` 索引文件，记录该 Agent 的所有会话。
 
-```typescript
-manage_agent({
-  action: 'create',
-  agent: {
-    id: 'sql-expert',
-    name: 'SQL 专家',
-    instructions: '你是一个数据库专家，精通 SQL 查询优化...',
-    tools: ['exec', 'read', 'write'],
-    skills: ['database-design']
-  }
-});
+**文件位置**: `{userHome}/homes/{agentId}/sessions.jsonl`
+
+**格式**（JSONL，每行一条记录）：
+
+```jsonl
+{"id":"283557218403819520","createdAt":"2026-02-21T11:15:09.105Z"}
+{"id":"283557235642408960","createdAt":"2026-02-21T11:15:13.215Z"}
 ```
 
-### 更新 Agent 配置
+**查询方法**：
 
-```typescript
-manage_agent({
-  action: 'update',
-  agentId: 'sql-expert',
-  updates: {
-    tools: ['exec', 'read', 'write', 'search'] // 添加 search 工具
-  }
-});
+```bash
+# 查看某个 agent 的所有 sessions
+cat {userHome}/homes/{agentId}/sessions.jsonl
+
+# 或使用查询脚本
+node scripts/query-agent-sessions.js app-copilot
+```
+
+**自动维护**：创建 Thread 时，系统自动追加到对应 agent 的 sessions.jsonl。
+
+---
+
+## 使用场景
+
+### 创建专业 Agent（通过 HTTP API）
+
+```http
+POST /gateway/agents
+Content-Type: application/json
+
+{
+  "id": "sql-expert",
+  "name": "SQL 专家",
+  "instructions": "你是一个数据库专家，精通 SQL 查询优化...",
+  "tools": ["exec", "read", "write"],
+  "skills": ["database-design"]
+}
+```
+
+### 委托任务给 Agent（通过工具）
+
+```
+delegate_to_agent(agentId: "sql-expert", task: "优化这个查询...")
 ```
 
 ---

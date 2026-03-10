@@ -1,0 +1,7 @@
+{
+  "id": "memory-global",
+  "name": "Memory Global",
+  "version": "1.0.0",
+  "description": "Global long-term memory with LanceDB vector storage and semantic retrieval",
+  "enabled": true
+}

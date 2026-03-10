@@ -39,21 +39,20 @@ export class WorkspaceManager {
     const workspace = join(threadWorkspace, 'agents', agentName);
 
     if (!existsSync(workspace)) {
-      // 创建基础目录
-      // 注意：sessions 目录下的 {sessionId} 子目录由 LLM Runtime (如 FileSession)
-      // 在首次写入时根据运行时逻辑创建，或者如果是扁平化则直接在 sessions/ 下。
-      mkdirSync(join(workspace, 'sessions'), { recursive: true });
-      mkdirSync(join(workspace, 'contexts'), { recursive: true });
-      mkdirSync(join(workspace, 'events'), { recursive: true });
-      mkdirSync(join(workspace, 'output'), { recursive: true });
-      mkdirSync(join(workspace, 'logs'), { recursive: true });
+      // 系统空间
+      mkdirSync(join(workspace, '.runtime', 'sessions'), { recursive: true });
+      mkdirSync(join(workspace, '.runtime', 'contexts'), { recursive: true });
+      mkdirSync(join(workspace, '.runtime', 'events'), { recursive: true });
+      mkdirSync(join(workspace, '.runtime', 'logs'), { recursive: true });
 
-      // 创建可选目录
+      // 可选目录
       if (enableSkills) mkdirSync(join(workspace, 'skills'), { recursive: true });
       if (enableExtensions) mkdirSync(join(workspace, 'extensions'), { recursive: true });
       if (enableMemory) mkdirSync(join(workspace, 'memory'), { recursive: true });
 
-      // 初始化统一的 checkpoint.json
+      // 标准文件
+      writeFileSync(join(workspace, 'GOAL.md'), '', 'utf-8');
+
       const checkpoint: AgentCheckpoint = {
         agentId: config.agentName,
         sessionId: config.sessionId,
@@ -62,7 +61,7 @@ export class WorkspaceManager {
         metadata: { type: config.type }
       };
 
-      writeFileSync(join(workspace, 'checkpoint.json'), JSON.stringify(checkpoint, null, 2));
+      writeFileSync(join(workspace, '.runtime', 'checkpoint.json'), JSON.stringify(checkpoint, null, 2));
     }
 
     return workspace;
@@ -72,7 +71,7 @@ export class WorkspaceManager {
    * 读取 checkpoint
    */
   static readCheckpoint(workspace: string): AgentCheckpoint | null {
-    const checkpointPath = join(workspace, 'checkpoint.json');
+    const checkpointPath = join(workspace, '.runtime', 'checkpoint.json');
     if (!existsSync(checkpointPath)) return null;
     try {
       return JSON.parse(readFileSync(checkpointPath, 'utf-8'));
@@ -85,7 +84,7 @@ export class WorkspaceManager {
    * 更新 checkpoint
    */
   static updateCheckpoint(workspace: string, updates: Partial<AgentCheckpoint>): void {
-    const checkpointPath = join(workspace, 'checkpoint.json');
+    const checkpointPath = join(workspace, '.runtime', 'checkpoint.json');
     if (!existsSync(checkpointPath)) return;
 
     try {

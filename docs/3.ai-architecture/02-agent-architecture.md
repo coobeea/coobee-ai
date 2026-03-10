@@ -303,17 +303,17 @@ export enum AgentType {
 
 // 智能体配置
 export interface AgentConfig {
-  type: AgentType
-  name: string
-  description: string
-  instructions: string
-  tools: string[] // 工具 ID 列表
-  handoffs: string[] // 可交接的智能体 ID
+  type: AgentType;
+  name: string;
+  description: string;
+  instructions: string;
+  tools: string[]; // 工具 ID 列表
+  handoffs: string[]; // 可交接的智能体 ID
   modelSettings?: {
-    model?: string
-    temperature?: number
-    maxTokens?: number
-  }
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+  };
 }
 ```
 
@@ -346,12 +346,12 @@ const triageAgent = new Agent({
     - 需要搜索信息 → Research Agent  
     - 代码相关 → Code Agent`,
   handoffs: [chatAgent, researchAgent, codeAgent]
-})
+});
 
 // 专业智能体可以交接回 Triage
-chatAgent.handoffs = [triageAgent]
-researchAgent.handoffs = [triageAgent]
-codeAgent.handoffs = [triageAgent]
+chatAgent.handoffs = [triageAgent];
+researchAgent.handoffs = [triageAgent];
+codeAgent.handoffs = [triageAgent];
 ```
 
 #### 模式 2：直接调用模式
@@ -369,20 +369,20 @@ codeAgent.handoffs = [triageAgent]
 
 ```typescript
 // 1. 创建阶段
-agent = AgentManager.createAgent(config)
+agent = AgentManager.createAgent(config);
 
 // 2. 运行阶段
-session = SessionManager.createSession()
-result = await agent.run(input, { session })
+session = SessionManager.createSession();
+result = await agent.run(input, { session });
 
 // 3. 交接阶段（可选）
 if (result.handoff) {
-  nextAgent = result.handoff.targetAgent
-  result = await nextAgent.run(result.history, { session })
+  nextAgent = result.handoff.targetAgent;
+  result = await nextAgent.run(result.history, { session });
 }
 
 // 4. 结束阶段
-session.save()
+session.save();
 ```
 
 ---
@@ -427,35 +427,35 @@ ResearchSkill - 包含：
 ```typescript
 // Skill 定义接口
 export interface Skill {
-  id: string // 技能 ID
-  name: string // 技能名称
-  category: SkillCategory // 技能分类
-  description: string // 技能描述
-  version: string // 版本号
+  id: string; // 技能 ID
+  name: string; // 技能名称
+  category: SkillCategory; // 技能分类
+  description: string; // 技能描述
+  version: string; // 版本号
 
   // 技能依赖
   dependencies: {
-    tools: string[] // 依赖的工具
-    skills?: string[] // 依赖的其他技能
-    agents?: AgentType[] // 依赖的智能体类型
-  }
+    tools: string[]; // 依赖的工具
+    skills?: string[]; // 依赖的其他技能
+    agents?: AgentType[]; // 依赖的智能体类型
+  };
 
   // 技能配置
   config: {
-    prompts: SkillPrompts // 专用提示词
-    parameters: ZodSchema // 输入参数定义
-    settings?: SkillSettings // 技能设置
-  }
+    prompts: SkillPrompts; // 专用提示词
+    parameters: ZodSchema; // 输入参数定义
+    settings?: SkillSettings; // 技能设置
+  };
 
   // 执行器
-  executor: SkillExecutor // 技能执行逻辑
+  executor: SkillExecutor; // 技能执行逻辑
 
   // 元数据
   metadata: {
-    author?: string
-    tags?: string[]
-    examples?: SkillExample[]
-  }
+    author?: string;
+    tags?: string[];
+    examples?: SkillExample[];
+  };
 }
 
 // 技能分类
@@ -510,32 +510,30 @@ export const ResearchSkill: Skill = {
   },
 
   executor: async (input, context) => {
-    const { topic, depth, sources } = input
+    const { topic, depth, sources } = input;
 
     // 1. 制定研究计划
-    const plan = await context.agent.run(`制定研究计划：${topic}`)
+    const plan = await context.agent.run(`制定研究计划：${topic}`);
 
     // 2. 执行搜索
     const searchResults = await context.tools.web_search({
       query: topic,
       maxResults: depth === 'deep' ? 20 : 10
-    })
+    });
 
     // 3. 提取内容
-    const contents = await Promise.all(
-      searchResults.map((url) => context.tools.web_scrape({ url }))
-    )
+    const contents = await Promise.all(searchResults.map((url) => context.tools.web_scrape({ url })));
 
     // 4. 分析整合
-    const report = await context.agent.run(`整合以下信息，生成研究报告：\n${contents.join('\n\n')}`)
+    const report = await context.agent.run(`整合以下信息，生成研究报告：\n${contents.join('\n\n')}`);
 
     // 5. 保存报告
     await context.tools.file_write({
       path: `research_${topic}_${Date.now()}.md`,
       content: report
-    })
+    });
 
-    return { report, sources: searchResults }
+    return { report, sources: searchResults };
   },
 
   metadata: {
@@ -551,7 +549,7 @@ export const ResearchSkill: Skill = {
       }
     ]
   }
-}
+};
 ```
 
 #### 5.4.2 编程技能（Coding Skill）
@@ -589,62 +587,62 @@ export const CodingSkill: Skill = {
   executor: async (input, context) => {
     // 实现逻辑...
   }
-}
+};
 ```
 
 ### 5.5 Skill 管理器
 
 ```typescript
 class SkillManager {
-  private skills: Map<string, Skill>
+  private skills: Map<string, Skill>;
 
   // 注册技能
   register(skill: Skill): void {
     // 验证依赖
-    this.validateDependencies(skill)
+    this.validateDependencies(skill);
     // 注册技能
-    this.skills.set(skill.id, skill)
+    this.skills.set(skill.id, skill);
   }
 
   // 执行技能
   async execute(skillId: string, input: any, context: SkillContext): Promise<any> {
-    const skill = this.skills.get(skillId)
-    if (!skill) throw new Error(`Skill not found: ${skillId}`)
+    const skill = this.skills.get(skillId);
+    if (!skill) throw new Error(`Skill not found: ${skillId}`);
 
     // 验证输入参数
-    const validated = skill.config.parameters.parse(input)
+    const validated = skill.config.parameters.parse(input);
 
     // 准备执行上下文
     const execContext = {
       ...context,
       tools: this.prepareTools(skill.dependencies.tools),
       agent: this.prepareAgent(skill.dependencies.agents)
-    }
+    };
 
     // 执行技能
-    return await skill.executor(validated, execContext)
+    return await skill.executor(validated, execContext);
   }
 
   // 获取技能列表
   list(filter?: SkillFilter): Skill[] {
-    let skills = Array.from(this.skills.values())
+    let skills = Array.from(this.skills.values());
 
     if (filter?.category) {
-      skills = skills.filter((s) => s.category === filter.category)
+      skills = skills.filter((s) => s.category === filter.category);
     }
 
-    return skills
+    return skills;
   }
 
   // 技能组合执行
   async executeChain(skillIds: string[], initialInput: any): Promise<any> {
-    let result = initialInput
+    let result = initialInput;
 
     for (const skillId of skillIds) {
-      result = await this.execute(skillId, result, context)
+      result = await this.execute(skillId, result, context);
     }
 
-    return result
+    return result;
   }
 }
 ```
@@ -655,7 +653,7 @@ class SkillManager {
 
 ```typescript
 // custom-skills/my-skill.ts
-import { defineSkill } from '@/ai/skills'
+import { defineSkill } from '@/ai/skills';
 
 export default defineSkill({
   id: 'my_custom_skill',
@@ -679,7 +677,7 @@ export default defineSkill({
   executor: async (input, context) => {
     // 自定义执行逻辑
   }
-})
+});
 ```
 
 ---
@@ -745,11 +743,11 @@ const appDevTeam = createTeam({
       role: '文档编写'
     }
   ]
-})
+});
 
 const result = await appDevTeam.execute({
   task: '开发一个 Todo 应用'
-})
+});
 ```
 
 #### 模式 2：Pipeline 流水线模式
@@ -784,11 +782,11 @@ const articlePipeline = createPipeline([
     agent: editorAgent,
     task: '审阅和优化文章'
   }
-])
+]);
 
 const article = await articlePipeline.run({
   topic: 'AI 技术发展趋势'
-})
+});
 ```
 
 #### 模式 3：Parallel 并行模式
@@ -824,13 +822,13 @@ const translationTeam = createParallel({
   ],
   aggregator: (results) => {
     // 合并翻译结果
-    return results
+    return results;
   }
-})
+});
 
 const translations = await translationTeam.execute({
   text: 'Hello World'
-})
+});
 ```
 
 #### 模式 4：Dynamic 动态模式
@@ -855,7 +853,7 @@ class MultiAgentBuilder {
       manager: config.manager,
       members: config.members,
       strategy: 'hierarchical' // 层级式管理
-    })
+    });
   }
 
   // 创建流水线
@@ -863,7 +861,7 @@ class MultiAgentBuilder {
     return new AgentPipeline({
       stages,
       strategy: 'sequential' // 顺序执行
-    })
+    });
   }
 
   // 创建并行组
@@ -872,7 +870,7 @@ class MultiAgentBuilder {
       agents: config.agents,
       aggregator: config.aggregator,
       strategy: 'concurrent' // 并发执行
-    })
+    });
   }
 
   // 创建动态路由
@@ -881,7 +879,7 @@ class MultiAgentBuilder {
       router: config.routerAgent,
       pool: config.agentPool,
       strategy: 'dynamic' // 动态路由
-    })
+    });
   }
 }
 ```
@@ -923,12 +921,12 @@ export const AgentTemplates = {
     },
     workflow: 'parallel'
   }
-}
+};
 
 // 使用模板
 const team = MultiAgentBuilder.fromTemplate(AgentTemplates.SOFTWARE_DEV_TEAM, {
   /* 自定义配置 */
-})
+});
 ```
 
 ### 6.5 智能体编排引擎
@@ -938,36 +936,36 @@ class AgentOrchestrator {
   // 执行团队任务
   async executeTeam(team: AgentTeam, task: any): Promise<any> {
     // 1. 管理者分解任务
-    const subtasks = await team.manager.run(`分解任务：${task}`)
+    const subtasks = await team.manager.run(`分解任务：${task}`);
 
     // 2. 分配给团队成员
-    const assignments = this.assignTasks(subtasks, team.members)
+    const assignments = this.assignTasks(subtasks, team.members);
 
     // 3. 并行执行
-    const results = await Promise.all(assignments.map(({ agent, task }) => agent.run(task)))
+    const results = await Promise.all(assignments.map(({ agent, task }) => agent.run(task)));
 
     // 4. 管理者汇总结果
-    const final = await team.manager.run(`汇总结果：${JSON.stringify(results)}`)
+    const final = await team.manager.run(`汇总结果：${JSON.stringify(results)}`);
 
-    return final
+    return final;
   }
 
   // 执行流水线
   async executePipeline(pipeline: AgentPipeline, input: any): Promise<any> {
-    let result = input
+    let result = input;
 
     for (const stage of pipeline.stages) {
-      result = await stage.agent.run(result)
+      result = await stage.agent.run(result);
     }
 
-    return result
+    return result;
   }
 
   // 执行并行任务
   async executeParallel(parallel: ParallelAgents, input: any): Promise<any> {
-    const results = await Promise.all(parallel.agents.map((agent) => agent.run(input)))
+    const results = await Promise.all(parallel.agents.map((agent) => agent.run(input)));
 
-    return parallel.aggregator(results)
+    return parallel.aggregator(results);
   }
 }
 ```
@@ -1007,14 +1005,14 @@ const researchTeam = MultiAgentBuilder.createTeam({
       role: '报告撰写'
     }
   ]
-})
+});
 
 // 执行研究任务
 const report = await researchTeam.execute({
   topic: 'AI 在医疗领域的应用',
   depth: 'deep',
   outputFormat: 'pdf'
-})
+});
 ```
 
 ---
@@ -1034,14 +1032,14 @@ export enum ToolCategory {
 }
 
 export interface ToolConfig {
-  id: string
-  name: string
-  category: ToolCategory
-  description: string
-  parameters: ZodSchema // Zod Schema 定义参数
-  execute: ToolExecutor // 执行函数
-  requiresApproval?: boolean // 是否需要人工审批
-  dangerous?: boolean // 是否为危险操作
+  id: string;
+  name: string;
+  category: ToolCategory;
+  description: string;
+  parameters: ZodSchema; // Zod Schema 定义参数
+  execute: ToolExecutor; // 执行函数
+  requiresApproval?: boolean; // 是否需要人工审批
+  dangerous?: boolean; // 是否为危险操作
 }
 ```
 
@@ -1164,8 +1162,8 @@ DuckDBAnalyzeTool {
 
 ```typescript
 // 阻塞主流程，用户体验差
-const approved = await requestUserApproval(tool, args)
-if (!approved) return { error: 'User denied' }
+const approved = await requestUserApproval(tool, args);
+if (!approved) return { error: 'User denied' };
 ```
 
 ✅ **更好的方式**：多层权限控制 + 智能决策
@@ -1177,27 +1175,27 @@ if (!approved) return { error: 'User denied' }
 export interface PermissionMatrix {
   // 用户级别权限
   user: {
-    id: string
-    role: 'admin' | 'user' | 'guest'
-    allowedTools: string[] // 白名单
-    deniedTools: string[] // 黑名单
-  }
+    id: string;
+    role: 'admin' | 'user' | 'guest';
+    allowedTools: string[]; // 白名单
+    deniedTools: string[]; // 黑名单
+  };
 
   // 智能体级别权限
   agent: {
-    type: AgentType
-    trustLevel: 'high' | 'medium' | 'low'
-    maxRiskScore: number // 允许的最大风险分
-  }
+    type: AgentType;
+    trustLevel: 'high' | 'medium' | 'low';
+    maxRiskScore: number; // 允许的最大风险分
+  };
 
   // 工具级别配置
   tool: {
-    name: string
-    riskLevel: 'safe' | 'moderate' | 'dangerous'
-    riskScore: number // 1-10 分
-    autoApprove: boolean // 是否自动批准
-    requiresConfirmation: boolean
-  }
+    name: string;
+    riskLevel: 'safe' | 'moderate' | 'dangerous';
+    riskScore: number; // 1-10 分
+    autoApprove: boolean; // 是否自动批准
+    requiresConfirmation: boolean;
+  };
 }
 ```
 
@@ -1220,7 +1218,7 @@ class ToolPermissionEngine {
         approved: true,
         reason: 'User whitelist',
         requiresConfirmation: false
-      }
+      };
     }
 
     // 2. 检查黑名单
@@ -1228,11 +1226,11 @@ class ToolPermissionEngine {
       return {
         approved: false,
         reason: 'User blacklist'
-      }
+      };
     }
 
     // 3. 计算风险分数
-    const riskScore = this.calculateRiskScore(tool, context)
+    const riskScore = this.calculateRiskScore(tool, context);
 
     // 4. 根据风险等级决策
     if (riskScore <= 3) {
@@ -1241,7 +1239,7 @@ class ToolPermissionEngine {
         approved: true,
         reason: 'Low risk',
         requiresConfirmation: false
-      }
+      };
     } else if (riskScore <= 7) {
       // 中风险：检查智能体信任度
       if (agent.trustLevel === 'high') {
@@ -1249,7 +1247,7 @@ class ToolPermissionEngine {
           approved: true,
           reason: 'Trusted agent',
           requiresConfirmation: false
-        }
+        };
       } else {
         // 需要确认，但不阻塞
         return {
@@ -1257,7 +1255,7 @@ class ToolPermissionEngine {
           reason: 'Moderate risk',
           requiresConfirmation: true,
           canProceedAfterTimeout: false
-        }
+        };
       }
     } else {
       // 高风险：必须人工确认
@@ -1266,7 +1264,7 @@ class ToolPermissionEngine {
         reason: 'High risk',
         requiresConfirmation: true,
         canProceedAfterTimeout: false
-      }
+      };
     }
   }
 
@@ -1274,22 +1272,22 @@ class ToolPermissionEngine {
    * 风险评分算法
    */
   private calculateRiskScore(tool: Tool, context: ExecutionContext): number {
-    let score = tool.riskScore
+    let score = tool.riskScore;
 
     // 根据上下文调整分数
     if (context.isFileSystem && context.path.includes('/System')) {
-      score += 3 // 系统路径风险更高
+      score += 3; // 系统路径风险更高
     }
 
     if (context.isNetwork && !context.url.startsWith('https://')) {
-      score += 2 // HTTP 比 HTTPS 风险高
+      score += 2; // HTTP 比 HTTPS 风险高
     }
 
     if (context.isCodeExecution) {
-      score += 2 // 代码执行风险高
+      score += 2; // 代码执行风险高
     }
 
-    return Math.min(score, 10)
+    return Math.min(score, 10);
   }
 }
 ```
@@ -1298,13 +1296,13 @@ class ToolPermissionEngine {
 
 ```typescript
 class ApprovalQueue {
-  private queue: Map<string, PendingApproval> = new Map()
+  private queue: Map<string, PendingApproval> = new Map();
 
   /**
    * 添加到审批队列（不阻塞）
    */
   async requestApproval(tool: Tool, args: any, context: ExecutionContext): Promise<string> {
-    const requestId = generateId()
+    const requestId = generateId();
 
     const pending: PendingApproval = {
       id: requestId,
@@ -1313,9 +1311,9 @@ class ApprovalQueue {
       context,
       status: 'pending',
       createdAt: Date.now()
-    }
+    };
 
-    this.queue.set(requestId, pending)
+    this.queue.set(requestId, pending);
 
     // 发送通知到前端（不等待）
     this.notifyUI({
@@ -1324,24 +1322,24 @@ class ApprovalQueue {
       tool: tool.name,
       args,
       riskScore: context.riskScore
-    })
+    });
 
-    return requestId
+    return requestId;
   }
 
   /**
    * 用户审批（异步）
    */
   async approve(requestId: string, approved: boolean): Promise<void> {
-    const pending = this.queue.get(requestId)
-    if (!pending) return
+    const pending = this.queue.get(requestId);
+    if (!pending) return;
 
-    pending.status = approved ? 'approved' : 'rejected'
-    pending.resolvedAt = Date.now()
+    pending.status = approved ? 'approved' : 'rejected';
+    pending.resolvedAt = Date.now();
 
     // 继续执行工具
     if (approved) {
-      await this.executeToolAfterApproval(pending)
+      await this.executeToolAfterApproval(pending);
     }
   }
 
@@ -1351,7 +1349,7 @@ class ApprovalQueue {
   async approvePattern(pattern: ApprovalPattern): Promise<void> {
     // 例如：批准所有 web_search 调用
     // 或：批准所有读取 ~/Documents 的 file_read 调用
-    this.patterns.push(pattern)
+    this.patterns.push(pattern);
   }
 }
 ```
@@ -1359,45 +1357,36 @@ class ApprovalQueue {
 #### 7.3.5 工具执行流程（优化后）
 
 ```typescript
-async function executeToolWithPermission(
-  tool: Tool,
-  args: any,
-  context: ExecutionContext
-): Promise<ToolResult> {
+async function executeToolWithPermission(tool: Tool, args: any, context: ExecutionContext): Promise<ToolResult> {
   // 1. 参数验证
-  const validated = tool.parameters.parse(args)
+  const validated = tool.parameters.parse(args);
 
   // 2. 智能权限决策
-  const decision = await PermissionEngine.shouldRequestApproval(
-    tool,
-    context.user,
-    context.agent,
-    context
-  )
+  const decision = await PermissionEngine.shouldRequestApproval(tool, context.user, context.agent, context);
 
   // 3. 根据决策处理
   if (decision.approved) {
     // 直接执行，不阻塞
-    return await tool.execute(validated, context)
+    return await tool.execute(validated, context);
   }
 
   if (decision.requiresConfirmation) {
     // 加入审批队列（异步，不阻塞主流程）
-    const requestId = await ApprovalQueue.requestApproval(tool, validated, context)
+    const requestId = await ApprovalQueue.requestApproval(tool, validated, context);
 
     // 返回等待状态
     return {
       status: 'pending_approval',
       requestId,
       message: `工具 ${tool.name} 需要确认，已加入审批队列`
-    }
+    };
   }
 
   // 4. 拒绝执行
   return {
     status: 'denied',
     reason: decision.reason
-  }
+  };
 }
 ```
 
@@ -1408,29 +1397,29 @@ async function executeToolWithPermission(
 export interface UserPermissionConfig {
   // 全局设置
   global: {
-    autoApproveLevel: 'none' | 'low' | 'medium' | 'all'
-    defaultTimeout: number // 审批超时时间（秒）
-  }
+    autoApproveLevel: 'none' | 'low' | 'medium' | 'all';
+    defaultTimeout: number; // 审批超时时间（秒）
+  };
 
   // 工具白名单
   whitelist: {
-    tools: string[] // 永远允许的工具
-    patterns: string[] // 允许的模式（如 'file_read:/Users/lifeng/**'）
-  }
+    tools: string[]; // 永远允许的工具
+    patterns: string[]; // 允许的模式（如 'file_read:/Users/lifeng/**'）
+  };
 
   // 工具黑名单
   blacklist: {
-    tools: string[] // 永远禁止的工具
-    patterns: string[]
-  }
+    tools: string[]; // 永远禁止的工具
+    patterns: string[];
+  };
 
   // 智能体信任列表
   trustedAgents: {
     [agentId: string]: {
-      trustLevel: 'high' | 'medium' | 'low'
-      allowedTools: string[]
-    }
-  }
+      trustLevel: 'high' | 'medium' | 'low';
+      allowedTools: string[];
+    };
+  };
 }
 
 // 示例配置
@@ -1462,7 +1451,7 @@ const userConfig: UserPermissionConfig = {
       allowedTools: ['web_search', 'file_read', 'file_write']
     }
   }
-}
+};
 ```
 
 #### 7.3.7 工具风险等级定义
@@ -1521,7 +1510,7 @@ export const TOOL_RISK_CONFIG: Record<string, ToolRiskConfig> = {
     autoApprove: false,
     requiresConfirmation: true
   }
-}
+};
 ```
 
 #### 7.3.8 智能学习机制（可选）
@@ -1532,25 +1521,25 @@ class PermissionLearningEngine {
    * 从用户历史决策中学习
    */
   async learnFromHistory(userId: string): Promise<void> {
-    const history = await this.getApprovalHistory(userId)
+    const history = await this.getApprovalHistory(userId);
 
     // 分析用户总是批准的模式
-    const alwaysApproved = this.findPatterns(history.filter((h) => h.approved))
+    const alwaysApproved = this.findPatterns(history.filter((h) => h.approved));
 
     // 自动添加到白名单
     for (const pattern of alwaysApproved) {
       if (pattern.confidence > 0.9) {
-        await this.addToWhitelist(userId, pattern)
+        await this.addToWhitelist(userId, pattern);
       }
     }
 
     // 分析用户总是拒绝的模式
-    const alwaysDenied = this.findPatterns(history.filter((h) => !h.approved))
+    const alwaysDenied = this.findPatterns(history.filter((h) => !h.approved));
 
     // 自动添加到黑名单
     for (const pattern of alwaysDenied) {
       if (pattern.confidence > 0.9) {
-        await this.addToBlacklist(userId, pattern)
+        await this.addToBlacklist(userId, pattern);
       }
     }
   }
@@ -1565,32 +1554,32 @@ class PermissionLearningEngine {
 
 ```typescript
 export interface Session {
-  id: string // 会话 ID
-  userId: string // 用户 ID
-  agentId: string // 当前智能体 ID
-  history: AgentInputItem[] // 对话历史
-  context: SessionContext // 会话上下文
-  metadata: SessionMetadata // 元数据
-  createdAt: Date
-  updatedAt: Date
+  id: string; // 会话 ID
+  userId: string; // 用户 ID
+  agentId: string; // 当前智能体 ID
+  history: AgentInputItem[]; // 对话历史
+  context: SessionContext; // 会话上下文
+  metadata: SessionMetadata; // 元数据
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface SessionContext {
-  variables: Record<string, any> // 上下文变量
+  variables: Record<string, any>; // 上下文变量
   memory: {
-    short: Message[] // 短期记忆（当前会话）
-    long: MemoryItem[] // 长期记忆（相关历史）
-  }
+    short: Message[]; // 短期记忆（当前会话）
+    long: MemoryItem[]; // 长期记忆（相关历史）
+  };
 }
 
 export interface SessionMetadata {
-  title?: string // 会话标题
-  tags?: string[] // 标签
+  title?: string; // 会话标题
+  tags?: string[]; // 标签
   tokenUsage: {
-    input: number
-    output: number
-    total: number
-  }
+    input: number;
+    output: number;
+    total: number;
+  };
 }
 ```
 
@@ -1599,25 +1588,25 @@ export interface SessionMetadata {
 ```typescript
 class SessionManager {
   // 创建会话
-  async createSession(userId: string, agentId: string): Promise<Session>
+  async createSession(userId: string, agentId: string): Promise<Session>;
 
   // 恢复会话
-  async loadSession(sessionId: string): Promise<Session>
+  async loadSession(sessionId: string): Promise<Session>;
 
   // 保存会话
-  async saveSession(session: Session): Promise<void>
+  async saveSession(session: Session): Promise<void>;
 
   // 添加消息到历史
-  async appendMessage(sessionId: string, message: Message): Promise<void>
+  async appendMessage(sessionId: string, message: Message): Promise<void>;
 
   // 获取会话列表
-  async listSessions(userId: string, filter?: SessionFilter): Promise<Session[]>
+  async listSessions(userId: string, filter?: SessionFilter): Promise<Session[]>;
 
   // 删除会话
-  async deleteSession(sessionId: string): Promise<void>
+  async deleteSession(sessionId: string): Promise<void>;
 
   // 压缩历史（超出 Token 限制时）
-  async compressHistory(session: Session, maxTokens: number): Promise<Session>
+  async compressHistory(session: Session, maxTokens: number): Promise<Session>;
 }
 ```
 
@@ -1683,29 +1672,29 @@ CREATE INDEX idx_messages_session_id ON messages(session_id);
 
 ```typescript
 class MCPManager {
-  private servers: Map<string, MCPServer>
+  private servers: Map<string, MCPServer>;
 
   // 注册 MCP Server
   async registerServer(config: MCPServerConfig): Promise<void> {
-    const server = await MCPServer.connect(config)
-    this.servers.set(config.id, server)
+    const server = await MCPServer.connect(config);
+    this.servers.set(config.id, server);
 
     // 发现工具
-    const tools = await server.listTools()
-    tools.forEach((tool) => ToolRegistry.register(tool))
+    const tools = await server.listTools();
+    tools.forEach((tool) => ToolRegistry.register(tool));
   }
 
   // 调用 MCP 工具
   async callTool(serverId: string, toolName: string, args: any): Promise<any> {
-    const server = this.servers.get(serverId)
-    return await server.callTool(toolName, args)
+    const server = this.servers.get(serverId);
+    return await server.callTool(toolName, args);
   }
 
   // 断开连接
   async disconnect(serverId: string): Promise<void> {
-    const server = this.servers.get(serverId)
-    await server.disconnect()
-    this.servers.delete(serverId)
+    const server = this.servers.get(serverId);
+    await server.disconnect();
+    this.servers.delete(serverId);
   }
 }
 ```
@@ -1722,10 +1711,10 @@ function adaptMCPTool(mcpTool: MCPToolDefinition): ToolConfig {
     description: mcpTool.description,
     parameters: convertMCPSchema(mcpTool.inputSchema),
     execute: async (args, context) => {
-      const result = await MCPManager.callTool(mcpTool.serverId, mcpTool.name, args)
-      return result
+      const result = await MCPManager.callTool(mcpTool.serverId, mcpTool.name, args);
+      return result;
     }
-  }
+  };
 }
 ```
 
@@ -1778,60 +1767,52 @@ function adaptMCPTool(mcpTool: MCPToolDefinition): ToolConfig {
 #### 10.4.1 工具调用流程（不阻塞）
 
 ```typescript
-async function handleToolCall(
-  toolCall: ToolCall,
-  context: ExecutionContext
-): Promise<ToolCallResult> {
+async function handleToolCall(toolCall: ToolCall, context: ExecutionContext): Promise<ToolCallResult> {
   // 步骤 1: 智能决策
-  const decision = await PermissionEngine.decide(
-    toolCall.tool,
-    context.user,
-    context.agent,
-    toolCall.args
-  )
+  const decision = await PermissionEngine.decide(toolCall.tool, context.user, context.agent, toolCall.args);
 
   // 步骤 2: 根据决策处理
   switch (decision.action) {
     case 'approve':
       // 直接执行
-      return await executeTool(toolCall)
+      return await executeTool(toolCall);
 
     case 'defer':
       // 加入队列，不阻塞
-      const requestId = await ApprovalQueue.add(toolCall)
+      const requestId = await ApprovalQueue.add(toolCall);
 
       // 通知智能体等待
       return {
         status: 'pending',
         requestId,
         message: `等待用户确认工具 ${toolCall.tool.name}`
-      }
+      };
 
     case 'deny':
       // 直接拒绝
       return {
         status: 'denied',
         reason: decision.reason
-      }
+      };
   }
 }
 
 // 用户确认后，从队列恢复执行
 async function handleUserApproval(requestId: string, approved: boolean): Promise<void> {
-  const pending = ApprovalQueue.get(requestId)
+  const pending = ApprovalQueue.get(requestId);
 
   if (approved) {
     // 执行工具
-    const result = await executeTool(pending.toolCall)
+    const result = await executeTool(pending.toolCall);
 
     // 继续智能体运行
-    await resumeAgentExecution(pending.context, result)
+    await resumeAgentExecution(pending.context, result);
   } else {
     // 拒绝，告知智能体
     await resumeAgentExecution(pending.context, {
       status: 'denied',
       message: '用户拒绝执行该工具'
-    })
+    });
   }
 }
 ```
@@ -1845,7 +1826,7 @@ class Agent {
     // ...
 
     // 工具调用
-    const toolResult = await this.callTool(toolName, args)
+    const toolResult = await this.callTool(toolName, args);
 
     if (toolResult.status === 'pending') {
       // 工具等待审批，智能体先返回提示
@@ -1853,7 +1834,7 @@ class Agent {
         output: `正在等待用户确认工具调用：${toolName}`,
         status: 'paused',
         pendingRequestId: toolResult.requestId
-      }
+      };
     }
 
     // 继续处理...
@@ -1862,16 +1843,16 @@ class Agent {
   // 从暂停状态恢复
   async resume(sessionId: string, toolResult: ToolResult) {
     // 从之前的状态继续执行
-    const session = await SessionManager.load(sessionId)
+    const session = await SessionManager.load(sessionId);
 
     // 将工具结果加入历史
     session.history.push({
       role: 'tool',
       content: JSON.stringify(toolResult)
-    })
+    });
 
     // 继续运行
-    return await this.run(session.history, { session })
+    return await this.run(session.history, { session });
   }
 }
 ```
@@ -1976,7 +1957,7 @@ class Agent {
 const result = await agent.run(input, {
   stream: true,
   session
-})
+});
 
 // 监听流式事件
 for await (const event of result) {
@@ -1984,9 +1965,9 @@ for await (const event of result) {
     case 'raw_model_stream_event':
       // 文本增量
       if (event.data.type === 'output_text_delta') {
-        sendToRenderer({ type: 'text_delta', delta: event.data.delta })
+        sendToRenderer({ type: 'text_delta', delta: event.data.delta });
       }
-      break
+      break;
 
     case 'tool_call_item':
       // 工具调用
@@ -1994,8 +1975,8 @@ for await (const event of result) {
         type: 'tool_call',
         tool: event.tool.name,
         args: event.args
-      })
-      break
+      });
+      break;
 
     case 'handoff_output_item':
       // 智能体交接
@@ -2003,8 +1984,8 @@ for await (const event of result) {
         type: 'handoff',
         from: event.sourceAgent.name,
         to: event.targetAgent.name
-      })
-      break
+      });
+      break;
   }
 }
 ```
@@ -2117,22 +2098,22 @@ class MessageBroadcaster {
    */
   async handleAgentMessage(sessionId: string, message: AgentMessage): Promise<void> {
     // 1. 立即存储到数据库（关键！）
-    await this.saveToDatabase(sessionId, message)
+    await this.saveToDatabase(sessionId, message);
 
     // 2. 尝试推送到前端（如果窗口打开）
-    const window = windowManager.getWindowBySessionId(sessionId)
+    const window = windowManager.getWindowBySessionId(sessionId);
 
     if (window && !window.isDestroyed()) {
       // 窗口存在，实时推送
       window.webContents.send('agent:message', {
         sessionId,
         message
-      })
+      });
 
-      log.debug(`[Broadcaster] 消息已推送: sessionId=${sessionId}`)
+      log.debug(`[Broadcaster] 消息已推送: sessionId=${sessionId}`);
     } else {
       // 窗口不存在，只存储
-      log.debug(`[Broadcaster] 窗口未打开，消息已存储: sessionId=${sessionId}`)
+      log.debug(`[Broadcaster] 窗口未打开，消息已存储: sessionId=${sessionId}`);
     }
   }
 
@@ -2141,17 +2122,17 @@ class MessageBroadcaster {
    */
   async handleStreamChunk(sessionId: string, messageId: string, chunk: string): Promise<void> {
     // 1. 累积到数据库
-    await this.appendChunkToDatabase(sessionId, messageId, chunk)
+    await this.appendChunkToDatabase(sessionId, messageId, chunk);
 
     // 2. 实时推送（如果窗口打开）
-    const window = windowManager.getWindowBySessionId(sessionId)
+    const window = windowManager.getWindowBySessionId(sessionId);
 
     if (window && !window.isDestroyed()) {
       window.webContents.send('agent:stream-chunk', {
         sessionId,
         messageId,
         chunk
-      })
+      });
     }
   }
 
@@ -2159,7 +2140,7 @@ class MessageBroadcaster {
    * 存储到数据库
    */
   private async saveToDatabase(sessionId: string, message: AgentMessage): Promise<void> {
-    const db = await DatabaseService.getConnection()
+    const db = await DatabaseService.getConnection();
 
     await db.execute(
       `
@@ -2177,7 +2158,7 @@ class MessageBroadcaster {
         Date.now(),
         message.sequence
       ]
-    )
+    );
   }
 }
 ```
@@ -2188,26 +2169,26 @@ class MessageBroadcaster {
 // 窗口打开时的初始化逻辑
 async function initializeSession(sessionId: string): Promise<void> {
   // 1. 从数据库加载完整历史消息
-  const history = await window.api.session.loadHistory(sessionId)
+  const history = await window.api.session.loadHistory(sessionId);
 
   // 2. 渲染到 UI
-  messageStore.setMessages(history)
+  messageStore.setMessages(history);
 
   // 3. 订阅实时更新
   window.api.on('agent:message', (event) => {
     if (event.sessionId === sessionId) {
-      messageStore.appendMessage(event.message)
+      messageStore.appendMessage(event.message);
     }
-  })
+  });
 
   // 4. 订阅流式片段
   window.api.on('agent:stream-chunk', (event) => {
     if (event.sessionId === sessionId) {
-      messageStore.appendChunk(event.messageId, event.chunk)
+      messageStore.appendChunk(event.messageId, event.chunk);
     }
-  })
+  });
 
-  console.log(`[Session] 已加载 ${history.length} 条历史消息`)
+  console.log(`[Session] 已加载 ${history.length} 条历史消息`);
 }
 ```
 
@@ -2273,26 +2254,26 @@ async function initializeSession(sessionId: string): Promise<void> {
 ```typescript
 class AgentExecutor {
   async executeWithSession(sessionId: string, input: string): Promise<void> {
-    const session = await SessionManager.load(sessionId)
-    const agent = AgentManager.get(session.agentId)
+    const session = await SessionManager.load(sessionId);
+    const agent = AgentManager.get(session.agentId);
 
     // 流式执行
     const result = await agent.run(input, {
       stream: true,
       session
-    })
+    });
 
-    let currentMessageId = generateId()
-    let currentMessage = ''
+    let currentMessageId = generateId();
+    let currentMessage = '';
 
     // 处理流式事件
     for await (const event of result) {
       if (event.type === 'output_text_delta') {
         // 文本增量
-        currentMessage += event.delta
+        currentMessage += event.delta;
 
         // 存储 + 推送
-        await MessageBroadcaster.handleStreamChunk(sessionId, currentMessageId, event.delta)
+        await MessageBroadcaster.handleStreamChunk(sessionId, currentMessageId, event.delta);
       } else if (event.type === 'tool_call_item') {
         // 工具调用
         const toolMessage = {
@@ -2301,9 +2282,9 @@ class AgentExecutor {
           type: 'tool_call',
           content: JSON.stringify(event),
           sequence: session.messageCount++
-        }
+        };
 
-        await MessageBroadcaster.handleAgentMessage(sessionId, toolMessage)
+        await MessageBroadcaster.handleAgentMessage(sessionId, toolMessage);
       } else if (event.type === 'tool_call_output_item') {
         // 工具返回
         const toolResultMessage = {
@@ -2312,14 +2293,14 @@ class AgentExecutor {
           type: 'tool_result',
           content: event.output,
           sequence: session.messageCount++
-        }
+        };
 
-        await MessageBroadcaster.handleAgentMessage(sessionId, toolResultMessage)
+        await MessageBroadcaster.handleAgentMessage(sessionId, toolResultMessage);
       }
     }
 
     // 保存会话
-    await SessionManager.save(session)
+    await SessionManager.save(session);
   }
 }
 ```
@@ -2345,7 +2326,7 @@ export const api = {
     onStreamChunk: (callback: (chunk: StreamChunk) => void) =>
       ipcRenderer.on('agent:stream-chunk', (_, chunk) => callback(chunk))
   }
-}
+};
 ```
 
 **主进程：IPC 处理器**
@@ -2353,7 +2334,7 @@ export const api = {
 ```typescript
 // ipc handlers
 ipcMain.handle('session:load-history', async (_, sessionId: string) => {
-  const db = await DatabaseService.getConnection()
+  const db = await DatabaseService.getConnection();
 
   const messages = await db.query<Message>(
     `
@@ -2362,10 +2343,10 @@ ipcMain.handle('session:load-history', async (_, sessionId: string) => {
     ORDER BY sequence ASC
   `,
     [sessionId]
-  )
+  );
 
-  return messages
-})
+  return messages;
+});
 
 ipcMain.handle('session:send-message', async (_, { sessionId, content }) => {
   // 保存用户消息
@@ -2374,15 +2355,15 @@ ipcMain.handle('session:send-message', async (_, { sessionId, content }) => {
     role: 'user',
     content,
     sequence: await MessageStore.getNextSequence(sessionId)
-  })
+  });
 
   // 异步执行智能体（不阻塞响应）
   AgentExecutor.executeWithSession(sessionId, content).catch((error) => {
-    log.error('[Agent] 执行失败:', error)
-  })
+    log.error('[Agent] 执行失败:', error);
+  });
 
-  return { success: true }
-})
+  return { success: true };
+});
 ```
 
 ### 12.4 方案优势总结
@@ -2394,9 +2375,9 @@ ipcMain.handle('session:send-message', async (_, { sessionId, content }) => {
 ```typescript
 // 后台持续运行，不受窗口影响
 while (agent.isRunning) {
-  const message = await agent.nextMessage()
-  await saveToDatabase(message) // 持久化
-  await tryPushToWindow(message) // 尝试推送（窗口打开时才推送）
+  const message = await agent.nextMessage();
+  await saveToDatabase(message); // 持久化
+  await tryPushToWindow(message); // 尝试推送（窗口打开时才推送）
 }
 ```
 
@@ -2421,16 +2402,16 @@ onWindowOpen(sessionId) {
 ```typescript
 // 广播到所有打开的窗口
 function broadcastMessage(sessionId: string, message: Message) {
-  const windows = windowManager.getAllWindows()
+  const windows = windowManager.getAllWindows();
 
   windows.forEach((window) => {
     if (!window.isDestroyed()) {
       window.webContents.send('agent:message', {
         sessionId,
         message
-      })
+      });
     }
-  })
+  });
 }
 ```
 
@@ -2440,14 +2421,14 @@ function broadcastMessage(sessionId: string, message: Message) {
 // 智能体可以从任意断点恢复
 async function resumeSession(sessionId: string): Promise<void> {
   // 加载历史
-  const history = await MessageStore.load(sessionId)
+  const history = await MessageStore.load(sessionId);
 
   // 检查是否有未完成的执行
-  const lastMessage = history[history.length - 1]
+  const lastMessage = history[history.length - 1];
 
   if (lastMessage.status === 'executing') {
     // 继续执行
-    await agent.resume(sessionId, history)
+    await agent.resume(sessionId, history);
   }
 }
 ```
@@ -2461,18 +2442,18 @@ async function resumeSession(sessionId: string): Promise<void> {
 ```typescript
 // 实时日志查看（不需要持久化）
 app.get('/logs/stream', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Content-Type', 'text/event-stream');
 
   const listener = (log) => {
-    res.write(`data: ${JSON.stringify(log)}\n\n`)
-  }
+    res.write(`data: ${JSON.stringify(log)}\n\n`);
+  };
 
-  logger.on('log', listener)
+  logger.on('log', listener);
 
   req.on('close', () => {
-    logger.off('log', listener)
-  })
-})
+    logger.off('log', listener);
+  });
+});
 ```
 
 **场景 2：系统状态监控**
@@ -2480,14 +2461,14 @@ app.get('/logs/stream', (req, res) => {
 ```typescript
 // 控制台窗口实时监控（丢失无所谓）
 app.get('/system/monitor', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Content-Type', 'text/event-stream');
 
   const interval = setInterval(() => {
-    res.write(`data: ${JSON.stringify(getSystemStats())}\n\n`)
-  }, 1000)
+    res.write(`data: ${JSON.stringify(getSystemStats())}\n\n`);
+  }, 1000);
 
-  req.on('close', () => clearInterval(interval))
-})
+  req.on('close', () => clearInterval(interval));
+});
 ```
 
 ### 12.6 混合方案（可选）
@@ -2502,16 +2483,16 @@ class HybridCommunication {
   // 关键消息：IPC + DB
   async sendCriticalMessage(sessionId: string, message: Message): Promise<void> {
     // 存储
-    await this.saveToDatabase(message)
+    await this.saveToDatabase(message);
 
     // IPC 推送
-    await this.sendViaIPC(message)
+    await this.sendViaIPC(message);
   }
 
   // 非关键数据：SSE
   streamNonCritical(endpoint: string, dataStream: Observable<any>): void {
     // SSE 流式推送（丢失不影响核心功能）
-    this.sseServer.stream(endpoint, dataStream)
+    this.sseServer.stream(endpoint, dataStream);
   }
 }
 ```
@@ -2625,85 +2606,85 @@ enum TaskStatus {
 
 // 任务定义
 interface LongRunningTask {
-  id: string // 任务 ID
-  sessionId: string // 关联的会话
-  name: string // 任务名称
-  description: string // 任务描述
+  id: string; // 任务 ID
+  sessionId: string; // 关联的会话
+  name: string; // 任务名称
+  description: string; // 任务描述
 
   // 执行计划
-  plan: TaskPlan // 任务计划（拆解的步骤）
-  currentStepIndex: number // 当前执行到第几步
+  plan: TaskPlan; // 任务计划（拆解的步骤）
+  currentStepIndex: number; // 当前执行到第几步
 
   // 状态管理
-  status: TaskStatus
-  progress: number // 进度百分比 0-100
+  status: TaskStatus;
+  progress: number; // 进度百分比 0-100
 
   // 检查点
-  checkpoints: Checkpoint[] // 历史检查点
-  lastCheckpoint?: Checkpoint // 最近的检查点
+  checkpoints: Checkpoint[]; // 历史检查点
+  lastCheckpoint?: Checkpoint; // 最近的检查点
 
   // 验证相关
-  validationStrategy: ValidationStrategy // 验证策略
-  validationResults?: ValidationResult[] // 验证结果历史
+  validationStrategy: ValidationStrategy; // 验证策略
+  validationResults?: ValidationResult[]; // 验证结果历史
 
   // 时间追踪
-  startedAt?: number
-  pausedAt?: number
-  completedAt?: number
-  estimatedDuration?: number // 预估时长（秒）
+  startedAt?: number;
+  pausedAt?: number;
+  completedAt?: number;
+  estimatedDuration?: number; // 预估时长（秒）
 
   // 元数据
-  createdAt: number
-  updatedAt: number
+  createdAt: number;
+  updatedAt: number;
 }
 
 // 任务计划（拆解成多个步骤）
 interface TaskPlan {
-  steps: TaskStep[]
-  totalSteps: number
-  estimatedDuration: number // 预估总时长
+  steps: TaskStep[];
+  totalSteps: number;
+  estimatedDuration: number; // 预估总时长
 }
 
 // 单个任务步骤
 interface TaskStep {
-  id: string
-  order: number // 步骤顺序
-  name: string // 步骤名称
-  description: string
+  id: string;
+  order: number; // 步骤顺序
+  name: string; // 步骤名称
+  description: string;
 
   // 执行相关
-  agentId?: string // 使用哪个 Agent
-  toolCalls?: string[] // 需要调用的工具
-  dependencies?: string[] // 依赖的前置步骤
+  agentId?: string; // 使用哪个 Agent
+  toolCalls?: string[]; // 需要调用的工具
+  dependencies?: string[]; // 依赖的前置步骤
 
   // 状态
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
-  result?: any // 步骤执行结果
-  error?: string // 错误信息
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  result?: any; // 步骤执行结果
+  error?: string; // 错误信息
 
   // 时间
-  startedAt?: number
-  completedAt?: number
-  duration?: number // 实际耗时（秒）
+  startedAt?: number;
+  completedAt?: number;
+  duration?: number; // 实际耗时（秒）
 }
 
 // 检查点（Checkpoint）
 interface Checkpoint {
-  id: string
-  taskId: string
-  stepIndex: number // 执行到第几步
-  timestamp: number
+  id: string;
+  taskId: string;
+  stepIndex: number; // 执行到第几步
+  timestamp: number;
 
   // 快照数据
   snapshot: {
-    taskState: any // 任务状态快照
-    agentMemory: any // Agent 记忆快照
-    intermediateResults: any // 中间结果
-    context: any // 上下文信息
-  }
+    taskState: any; // 任务状态快照
+    agentMemory: any; // Agent 记忆快照
+    intermediateResults: any; // 中间结果
+    context: any; // 上下文信息
+  };
 
   // 元数据
-  reason: 'manual' | 'auto' | 'step_completed' | 'before_critical_operation'
+  reason: 'manual' | 'auto' | 'step_completed' | 'before_critical_operation';
 }
 ```
 
@@ -2712,22 +2693,22 @@ interface Checkpoint {
 ```typescript
 // 长时任务执行器
 class TaskExecutor {
-  private taskStore: TaskStore
-  private checkpointManager: CheckpointManager
-  private sessionManager: SessionManager
-  private agentManager: AgentManager
+  private taskStore: TaskStore;
+  private checkpointManager: CheckpointManager;
+  private sessionManager: SessionManager;
+  private agentManager: AgentManager;
 
   /**
    * 创建并启动长时任务
    */
   async createTask(config: {
-    sessionId: string
-    name: string
-    description: string
-    plan: TaskPlan
-    validationStrategy?: ValidationStrategy
+    sessionId: string;
+    name: string;
+    description: string;
+    plan: TaskPlan;
+    validationStrategy?: ValidationStrategy;
   }): Promise<string> {
-    const taskId = generateId()
+    const taskId = generateId();
 
     const task: LongRunningTask = {
       id: taskId,
@@ -2742,99 +2723,99 @@ class TaskExecutor {
       validationStrategy: config.validationStrategy || { type: 'auto' },
       createdAt: Date.now(),
       updatedAt: Date.now()
-    }
+    };
 
     // 持久化任务
-    await this.taskStore.save(task)
+    await this.taskStore.save(task);
 
     // 立即开始执行
-    await this.executeTask(taskId)
+    await this.executeTask(taskId);
 
-    return taskId
+    return taskId;
   }
 
   /**
    * 执行任务（支持断点续传）
    */
   async executeTask(taskId: string): Promise<void> {
-    const task = await this.taskStore.get(taskId)
-    if (!task) throw new Error(`Task not found: ${taskId}`)
+    const task = await this.taskStore.get(taskId);
+    if (!task) throw new Error(`Task not found: ${taskId}`);
 
     try {
       // 1. 更新状态为运行中
-      task.status = TaskStatus.RUNNING
-      task.startedAt = task.startedAt || Date.now()
-      await this.taskStore.update(task)
+      task.status = TaskStatus.RUNNING;
+      task.startedAt = task.startedAt || Date.now();
+      await this.taskStore.update(task);
 
       // 2. 从当前步骤开始执行（支持断点续传）
-      const startIndex = task.currentStepIndex
+      const startIndex = task.currentStepIndex;
 
       for (let i = startIndex; i < task.plan.steps.length; i++) {
-        const step = task.plan.steps[i]
+        const step = task.plan.steps[i];
 
         // 2.1 检查是否被中断/暂停
-        const latestTask = await this.taskStore.get(taskId)
+        const latestTask = await this.taskStore.get(taskId);
         if (latestTask.status === TaskStatus.PAUSED) {
-          log.info(`[TaskExecutor] 任务已暂停: ${taskId}`)
-          return
+          log.info(`[TaskExecutor] 任务已暂停: ${taskId}`);
+          return;
         }
 
         // 2.2 执行单个步骤
         try {
-          log.info(`[TaskExecutor] 执行步骤 ${i + 1}/${task.plan.steps.length}: ${step.name}`)
+          log.info(`[TaskExecutor] 执行步骤 ${i + 1}/${task.plan.steps.length}: ${step.name}`);
 
-          step.status = 'running'
-          step.startedAt = Date.now()
+          step.status = 'running';
+          step.startedAt = Date.now();
 
           // 执行步骤逻辑
-          const result = await this.executeStep(task.sessionId, step)
+          const result = await this.executeStep(task.sessionId, step);
 
-          step.status = 'completed'
-          step.result = result
-          step.completedAt = Date.now()
-          step.duration = (step.completedAt - step.startedAt) / 1000
+          step.status = 'completed';
+          step.result = result;
+          step.completedAt = Date.now();
+          step.duration = (step.completedAt - step.startedAt) / 1000;
 
           // 2.3 更新进度
-          task.currentStepIndex = i + 1
-          task.progress = Math.round(((i + 1) / task.plan.steps.length) * 100)
-          await this.taskStore.update(task)
+          task.currentStepIndex = i + 1;
+          task.progress = Math.round(((i + 1) / task.plan.steps.length) * 100);
+          await this.taskStore.update(task);
 
           // 2.4 创建检查点（每完成一个步骤）
-          await this.checkpointManager.create(task, 'step_completed')
+          await this.checkpointManager.create(task, 'step_completed');
 
-          log.info(`[TaskExecutor] 步骤完成: ${step.name}, 进度: ${task.progress}%`)
+          log.info(`[TaskExecutor] 步骤完成: ${step.name}, 进度: ${task.progress}%`);
         } catch (stepError) {
-          log.error(`[TaskExecutor] 步骤执行失败:`, stepError)
+          log.error(`[TaskExecutor] 步骤执行失败:`, stepError);
 
-          step.status = 'failed'
-          step.error = stepError.message
+          step.status = 'failed';
+          step.error = stepError.message;
 
           // 整个任务失败
-          task.status = TaskStatus.FAILED
-          await this.taskStore.update(task)
+          task.status = TaskStatus.FAILED;
+          await this.taskStore.update(task);
 
-          throw stepError
+          throw stepError;
         }
       }
 
       // 3. 所有步骤完成，进入验证阶段
-      task.status = TaskStatus.VALIDATING
-      task.progress = 100
-      await this.taskStore.update(task)
+      task.status = TaskStatus.VALIDATING;
+      task.progress = 100;
+      await this.taskStore.update(task);
 
-      log.info(`[TaskExecutor] 任务执行完成，开始验证: ${taskId}`)
+      log.info(`[TaskExecutor] 任务执行完成，开始验证: ${taskId}`);
 
       // 4. 执行验证
-      await this.validateTask(task)
+      await this.validateTask(task);
     } catch (error) {
-      log.error(`[TaskExecutor] 任务执行失败:`, error)
+      log.error(`[TaskExecutor] 任务执行失败:`, error);
 
       // 标记为中断（可恢复）
-      task.status = TaskStatus.INTERRUPTED
-      await this.taskStore.update(task)
+      task.status = TaskStatus.INTERRUPTED;
+      await this.taskStore.update(task);
 
       // 创建中断检查点
-      await this.checkpointManager.create(task, 'auto')
+      await this.checkpointManager.create(task, 'auto');
     }
   }
 
@@ -2842,15 +2823,15 @@ class TaskExecutor {
    * 执行单个步骤
    */
   private async executeStep(sessionId: string, step: TaskStep): Promise<any> {
-    const session = await this.sessionManager.getSession(sessionId)
+    const session = await this.sessionManager.getSession(sessionId);
 
     // 选择 Agent
     const agent = step.agentId
       ? await this.agentManager.getAgent(step.agentId)
-      : await this.agentManager.getDefaultAgent()
+      : await this.agentManager.getDefaultAgent();
 
     // 构建输入
-    const input = `执行任务步骤: ${step.name}\n描述: ${step.description}`
+    const input = `执行任务步骤: ${step.name}\n描述: ${step.description}`;
 
     // 执行 Agent
     const result = await agent.run({
@@ -2860,49 +2841,49 @@ class TaskExecutor {
         stepId: step.id,
         stepOrder: step.order
       }
-    })
+    });
 
-    return result
+    return result;
   }
 
   /**
    * 恢复中断的任务
    */
   async resumeTask(taskId: string): Promise<void> {
-    const task = await this.taskStore.get(taskId)
+    const task = await this.taskStore.get(taskId);
 
-    if (!task) throw new Error(`Task not found: ${taskId}`)
+    if (!task) throw new Error(`Task not found: ${taskId}`);
 
     if (task.status !== TaskStatus.INTERRUPTED && task.status !== TaskStatus.PAUSED) {
-      throw new Error(`Task cannot be resumed, current status: ${task.status}`)
+      throw new Error(`Task cannot be resumed, current status: ${task.status}`);
     }
 
-    log.info(`[TaskExecutor] 恢复任务: ${taskId}, 从步骤 ${task.currentStepIndex} 开始`)
+    log.info(`[TaskExecutor] 恢复任务: ${taskId}, 从步骤 ${task.currentStepIndex} 开始`);
 
     // 恢复最近的检查点（可选）
     if (task.lastCheckpoint) {
-      await this.checkpointManager.restore(task.lastCheckpoint.id)
+      await this.checkpointManager.restore(task.lastCheckpoint.id);
     }
 
     // 继续执行
-    await this.executeTask(taskId)
+    await this.executeTask(taskId);
   }
 
   /**
    * 暂停任务
    */
   async pauseTask(taskId: string): Promise<void> {
-    const task = await this.taskStore.get(taskId)
-    if (!task) throw new Error(`Task not found: ${taskId}`)
+    const task = await this.taskStore.get(taskId);
+    if (!task) throw new Error(`Task not found: ${taskId}`);
 
-    task.status = TaskStatus.PAUSED
-    task.pausedAt = Date.now()
-    await this.taskStore.update(task)
+    task.status = TaskStatus.PAUSED;
+    task.pausedAt = Date.now();
+    await this.taskStore.update(task);
 
     // 创建检查点
-    await this.checkpointManager.create(task, 'manual')
+    await this.checkpointManager.create(task, 'manual');
 
-    log.info(`[TaskExecutor] 任务已暂停: ${taskId}`)
+    log.info(`[TaskExecutor] 任务已暂停: ${taskId}`);
   }
 }
 ```
@@ -2911,7 +2892,7 @@ class TaskExecutor {
 
 ```typescript
 class CheckpointManager {
-  private db: SQLiteService
+  private db: SQLiteService;
 
   /**
    * 创建检查点
@@ -2929,7 +2910,7 @@ class CheckpointManager {
         context: this.captureContext(task)
       },
       reason
-    }
+    };
 
     // 持久化检查点
     await this.db.execute(
@@ -2946,15 +2927,15 @@ class CheckpointManager {
         JSON.stringify(checkpoint.snapshot),
         checkpoint.reason
       ]
-    )
+    );
 
     // 更新任务的最近检查点
-    task.lastCheckpoint = checkpoint
-    task.checkpoints.push(checkpoint)
+    task.lastCheckpoint = checkpoint;
+    task.checkpoints.push(checkpoint);
 
-    log.info(`[Checkpoint] 创建检查点: ${checkpoint.id}, 步骤: ${checkpoint.stepIndex}`)
+    log.info(`[Checkpoint] 创建检查点: ${checkpoint.id}, 步骤: ${checkpoint.stepIndex}`);
 
-    return checkpoint
+    return checkpoint;
   }
 
   /**
@@ -2966,20 +2947,20 @@ class CheckpointManager {
       SELECT * FROM task_checkpoints WHERE id = ?
     `,
       [checkpointId]
-    )
+    );
 
     if (!checkpoint || checkpoint.length === 0) {
-      throw new Error(`Checkpoint not found: ${checkpointId}`)
+      throw new Error(`Checkpoint not found: ${checkpointId}`);
     }
 
-    const snapshot = JSON.parse(checkpoint[0].snapshot)
+    const snapshot = JSON.parse(checkpoint[0].snapshot);
 
     // 恢复任务状态
     // 恢复 Agent 记忆
     // 恢复中间结果
     // ...
 
-    log.info(`[Checkpoint] 检查点已恢复: ${checkpointId}`)
+    log.info(`[Checkpoint] 检查点已恢复: ${checkpointId}`);
   }
 
   /**
@@ -2987,8 +2968,8 @@ class CheckpointManager {
    */
   private async captureAgentMemory(sessionId: string): Promise<any> {
     // 从 MemoryService 获取当前会话的记忆
-    const memoryService = getMemoryService()
-    return await memoryService.exportMemory(sessionId)
+    const memoryService = getMemoryService();
+    return await memoryService.exportMemory(sessionId);
   }
 
   /**
@@ -3001,7 +2982,7 @@ class CheckpointManager {
         stepId: step.id,
         stepName: step.name,
         result: step.result
-      }))
+      }));
   }
 
   /**
@@ -3014,7 +2995,7 @@ class CheckpointManager {
       currentStep: task.currentStepIndex,
       progress: task.progress,
       timestamp: Date.now()
-    }
+    };
   }
 }
 ```
@@ -3028,87 +3009,87 @@ class CheckpointManager {
 ```typescript
 // 验证策略
 interface ValidationStrategy {
-  type: 'auto' | 'agent' | 'human' | 'hybrid'
+  type: 'auto' | 'agent' | 'human' | 'hybrid';
 
   // 自动验证规则（基于规则引擎）
-  autoRules?: ValidationRule[]
+  autoRules?: ValidationRule[];
 
   // 使用 Validator Agent（AI 验证）
   validatorAgent?: {
-    agentId: string
-    instructions: string // 验证指令
-    minScore: number // 最低通过分数（0-100）
-  }
+    agentId: string;
+    instructions: string; // 验证指令
+    minScore: number; // 最低通过分数（0-100）
+  };
 
   // 人工审核
   humanReview?: {
-    required: boolean // 是否必须人工审核
-    reviewers?: string[] // 审核人列表
-    timeout?: number // 审核超时时间（秒）
-  }
+    required: boolean; // 是否必须人工审核
+    reviewers?: string[]; // 审核人列表
+    timeout?: number; // 审核超时时间（秒）
+  };
 
   // 混合模式（先 AI，必要时人工）
   hybrid?: {
-    aiFirst: boolean // 先 AI 验证
-    humanThreshold: number // AI 评分低于此值时触发人工审核
-  }
+    aiFirst: boolean; // 先 AI 验证
+    humanThreshold: number; // AI 评分低于此值时触发人工审核
+  };
 }
 
 // 验证规则（自动验证）
 interface ValidationRule {
-  id: string
-  name: string
-  description: string
+  id: string;
+  name: string;
+  description: string;
 
   // 规则类型
-  type: 'output_length' | 'contains_keywords' | 'format_check' | 'custom'
+  type: 'output_length' | 'contains_keywords' | 'format_check' | 'custom';
 
   // 规则配置
   config: {
-    minLength?: number // 最小长度
-    maxLength?: number // 最大长度
-    requiredKeywords?: string[] // 必须包含的关键词
-    forbiddenKeywords?: string[] // 不能包含的关键词
-    formatPattern?: string // 格式正则表达式
-    customValidator?: (result: any) => boolean // 自定义验证函数
-  }
+    minLength?: number; // 最小长度
+    maxLength?: number; // 最大长度
+    requiredKeywords?: string[]; // 必须包含的关键词
+    forbiddenKeywords?: string[]; // 不能包含的关键词
+    formatPattern?: string; // 格式正则表达式
+    customValidator?: (result: any) => boolean; // 自定义验证函数
+  };
 
   // 权重（用于计算总分）
-  weight: number
+  weight: number;
 }
 
 // 验证结果
 interface ValidationResult {
-  id: string
-  taskId: string
-  timestamp: number
+  id: string;
+  taskId: string;
+  timestamp: number;
 
   // 验证类型
-  validationType: 'auto' | 'agent' | 'human'
+  validationType: 'auto' | 'agent' | 'human';
 
   // 验证结果
-  passed: boolean // 是否通过
-  score: number // 评分（0-100）
+  passed: boolean; // 是否通过
+  score: number; // 评分（0-100）
 
   // 详细信息
   details: {
     ruleResults?: {
       // 规则验证结果
-      ruleId: string
-      passed: boolean
-      message: string
-    }[]
-    agentFeedback?: string // Validator Agent 反馈
-    humanFeedback?: string // 人工审核反馈
-    issues?: string[] // 发现的问题
-    suggestions?: string[] // 改进建议
-  }
+      ruleId: string;
+      passed: boolean;
+      message: string;
+    }[];
+    agentFeedback?: string; // Validator Agent 反馈
+    humanFeedback?: string; // 人工审核反馈
+    issues?: string[]; // 发现的问题
+    suggestions?: string[]; // 改进建议
+  };
 
   // 操作建议
-  action: 'accept' | 'retry' | 'manual_fix' | 'reject'
+  action: 'accept' | 'retry' | 'manual_fix' | 'reject';
 
   // 验证者信息
-  validatedBy: string // Agent ID 或用户 ID
+  validatedBy: string; // Agent ID 或用户 ID
 }
 ```
 
@@ -3147,69 +3128,66 @@ const validatorAgent = new Agent({
     // 可以给 Validator Agent 提供工具
     // 比如：检查文件是否存在、验证数据格式等
   ]
-})
+});
 
 // 验证器实现
 class TaskValidator {
-  private validatorAgent: Agent
+  private validatorAgent: Agent;
 
   /**
    * 验证任务结果
    */
   async validateTask(task: LongRunningTask): Promise<ValidationResult> {
-    const strategy = task.validationStrategy
+    const strategy = task.validationStrategy;
 
     switch (strategy.type) {
       case 'auto':
-        return await this.autoValidate(task, strategy.autoRules || [])
+        return await this.autoValidate(task, strategy.autoRules || []);
 
       case 'agent':
-        return await this.agentValidate(task, strategy.validatorAgent!)
+        return await this.agentValidate(task, strategy.validatorAgent!);
 
       case 'human':
-        return await this.humanValidate(task, strategy.humanReview!)
+        return await this.humanValidate(task, strategy.humanReview!);
 
       case 'hybrid':
-        return await this.hybridValidate(task, strategy)
+        return await this.hybridValidate(task, strategy);
 
       default:
-        throw new Error(`Unknown validation strategy: ${strategy.type}`)
+        throw new Error(`Unknown validation strategy: ${strategy.type}`);
     }
   }
 
   /**
    * 自动验证（基于规则）
    */
-  private async autoValidate(
-    task: LongRunningTask,
-    rules: ValidationRule[]
-  ): Promise<ValidationResult> {
-    const ruleResults: any[] = []
-    let totalScore = 0
-    let totalWeight = 0
+  private async autoValidate(task: LongRunningTask, rules: ValidationRule[]): Promise<ValidationResult> {
+    const ruleResults: any[] = [];
+    let totalScore = 0;
+    let totalWeight = 0;
 
     // 提取任务的最终输出
-    const taskOutput = this.extractTaskOutput(task)
+    const taskOutput = this.extractTaskOutput(task);
 
     // 执行每个规则
     for (const rule of rules) {
-      const passed = this.executeRule(rule, taskOutput)
+      const passed = this.executeRule(rule, taskOutput);
 
       ruleResults.push({
         ruleId: rule.id,
         passed,
         message: passed ? `通过规则: ${rule.name}` : `未通过规则: ${rule.name}`
-      })
+      });
 
       if (passed) {
-        totalScore += rule.weight * 100
+        totalScore += rule.weight * 100;
       }
-      totalWeight += rule.weight
+      totalWeight += rule.weight;
     }
 
     // 计算总分
-    const finalScore = totalWeight > 0 ? totalScore / totalWeight : 0
-    const passed = finalScore >= 70 // 70分及格
+    const finalScore = totalWeight > 0 ? totalScore / totalWeight : 0;
+    const passed = finalScore >= 70; // 70分及格
 
     return {
       id: generateId(),
@@ -3224,7 +3202,7 @@ class TaskValidator {
       },
       action: passed ? 'accept' : 'retry',
       validatedBy: 'AutoValidator'
-    }
+    };
   }
 
   /**
@@ -3235,18 +3213,18 @@ class TaskValidator {
     config: NonNullable<ValidationStrategy['validatorAgent']>
   ): Promise<ValidationResult> {
     // 准备验证输入
-    const input = this.prepareValidationInput(task)
+    const input = this.prepareValidationInput(task);
 
     // 调用 Validator Agent
     const result = await this.validatorAgent.run({
       input,
       sessionId: task.sessionId
-    })
+    });
 
     // 解析 Agent 返回的 JSON
-    let validationData: any
+    let validationData: any;
     try {
-      validationData = JSON.parse(result.finalOutput)
+      validationData = JSON.parse(result.finalOutput);
     } catch {
       // 如果不是 JSON，使用默认解析
       validationData = {
@@ -3255,7 +3233,7 @@ class TaskValidator {
         issues: ['Validator Agent 返回格式错误'],
         suggestions: [],
         feedback: result.finalOutput
-      }
+      };
     }
 
     return {
@@ -3272,7 +3250,7 @@ class TaskValidator {
       },
       action: validationData.passed ? 'accept' : 'retry',
       validatedBy: config.agentId
-    }
+    };
   }
 
   /**
@@ -3283,10 +3261,10 @@ class TaskValidator {
     config: NonNullable<ValidationStrategy['humanReview']>
   ): Promise<ValidationResult> {
     // 发送人工审核请求
-    const reviewRequest = await this.sendReviewRequest(task, config)
+    const reviewRequest = await this.sendReviewRequest(task, config);
 
     // 等待审核结果（通过 IPC 或轮询数据库）
-    const reviewResult = await this.waitForReview(reviewRequest.id, config.timeout)
+    const reviewResult = await this.waitForReview(reviewRequest.id, config.timeout);
 
     return {
       id: generateId(),
@@ -3302,28 +3280,25 @@ class TaskValidator {
       },
       action: reviewResult.approved ? 'accept' : reviewResult.action || 'retry',
       validatedBy: reviewResult.reviewerId
-    }
+    };
   }
 
   /**
    * 混合验证（先 AI，必要时人工）
    */
-  private async hybridValidate(
-    task: LongRunningTask,
-    strategy: ValidationStrategy
-  ): Promise<ValidationResult> {
+  private async hybridValidate(task: LongRunningTask, strategy: ValidationStrategy): Promise<ValidationResult> {
     // 先 AI 验证
-    const aiResult = await this.agentValidate(task, strategy.validatorAgent!)
+    const aiResult = await this.agentValidate(task, strategy.validatorAgent!);
 
     // 如果 AI 评分足够高，直接通过
     if (aiResult.score >= (strategy.hybrid?.humanThreshold || 80)) {
-      return aiResult
+      return aiResult;
     }
 
     // 否则，触发人工审核
-    log.info(`[Validator] AI 评分 ${aiResult.score} 低于阈值，触发人工审核`)
+    log.info(`[Validator] AI 评分 ${aiResult.score} 低于阈值，触发人工审核`);
 
-    const humanResult = await this.humanValidate(task, strategy.humanReview!)
+    const humanResult = await this.humanValidate(task, strategy.humanReview!);
 
     // 合并结果
     return {
@@ -3333,37 +3308,37 @@ class TaskValidator {
         agentFeedback: aiResult.details.agentFeedback,
         issues: [...(aiResult.details.issues || []), ...(humanResult.details.issues || [])]
       }
-    }
+    };
   }
 
   /**
    * 执行单个验证规则
    */
   private executeRule(rule: ValidationRule, output: any): boolean {
-    const { config } = rule
+    const { config } = rule;
 
     switch (rule.type) {
       case 'output_length':
-        const length = output?.toString().length || 0
-        if (config.minLength && length < config.minLength) return false
-        if (config.maxLength && length > config.maxLength) return false
-        return true
+        const length = output?.toString().length || 0;
+        if (config.minLength && length < config.minLength) return false;
+        if (config.maxLength && length > config.maxLength) return false;
+        return true;
 
       case 'contains_keywords':
-        const text = output?.toString().toLowerCase() || ''
-        return config.requiredKeywords?.every((kw) => text.includes(kw.toLowerCase())) || false
+        const text = output?.toString().toLowerCase() || '';
+        return config.requiredKeywords?.every((kw) => text.includes(kw.toLowerCase())) || false;
 
       case 'format_check':
-        if (!config.formatPattern) return true
-        const regex = new RegExp(config.formatPattern)
-        return regex.test(output?.toString() || '')
+        if (!config.formatPattern) return true;
+        const regex = new RegExp(config.formatPattern);
+        return regex.test(output?.toString() || '');
 
       case 'custom':
-        if (!config.customValidator) return true
-        return config.customValidator(output)
+        if (!config.customValidator) return true;
+        return config.customValidator(output);
 
       default:
-        return true
+        return true;
     }
   }
 
@@ -3372,19 +3347,19 @@ class TaskValidator {
    */
   private extractTaskOutput(task: LongRunningTask): any {
     // 提取所有完成步骤的结果
-    const completedSteps = task.plan.steps.filter((s) => s.status === 'completed')
+    const completedSteps = task.plan.steps.filter((s) => s.status === 'completed');
 
     // 返回最后一个步骤的结果，或所有结果的聚合
-    if (completedSteps.length === 0) return null
+    if (completedSteps.length === 0) return null;
 
-    return completedSteps[completedSteps.length - 1].result
+    return completedSteps[completedSteps.length - 1].result;
   }
 
   /**
    * 准备验证输入
    */
   private prepareValidationInput(task: LongRunningTask): string {
-    const output = this.extractTaskOutput(task)
+    const output = this.extractTaskOutput(task);
 
     return `
 请验证以下任务的执行结果：
@@ -3399,7 +3374,7 @@ ${task.plan.steps.map((s, i) => `${i + 1}. ${s.name} - ${s.status}`).join('\n')}
 ${JSON.stringify(output, null, 2)}
 
 请评估此结果是否满足任务需求，并给出验证结果。
-    `
+    `;
   }
 }
 ```
@@ -3414,111 +3389,108 @@ class TaskExecutor {
    * 验证任务结果
    */
   private async validateTask(task: LongRunningTask): Promise<void> {
-    const validator = new TaskValidator()
+    const validator = new TaskValidator();
 
-    let attempt = 0
-    const maxAttempts = 3 // 最多重试 3 次
+    let attempt = 0;
+    const maxAttempts = 3; // 最多重试 3 次
 
     while (attempt < maxAttempts) {
-      attempt++
+      attempt++;
 
-      log.info(`[TaskExecutor] 验证任务 (尝试 ${attempt}/${maxAttempts}): ${task.id}`)
+      log.info(`[TaskExecutor] 验证任务 (尝试 ${attempt}/${maxAttempts}): ${task.id}`);
 
       // 执行验证
-      const validationResult = await validator.validateTask(task)
+      const validationResult = await validator.validateTask(task);
 
       // 保存验证结果
-      task.validationResults = task.validationResults || []
-      task.validationResults.push(validationResult)
+      task.validationResults = task.validationResults || [];
+      task.validationResults.push(validationResult);
 
       if (validationResult.passed) {
         // 验证通过，任务完成
-        task.status = TaskStatus.COMPLETED
-        task.completedAt = Date.now()
-        await this.taskStore.update(task)
+        task.status = TaskStatus.COMPLETED;
+        task.completedAt = Date.now();
+        await this.taskStore.update(task);
 
-        log.info(`[TaskExecutor] 任务验证通过: ${task.id}, 评分: ${validationResult.score}`)
+        log.info(`[TaskExecutor] 任务验证通过: ${task.id}, 评分: ${validationResult.score}`);
 
         // 发送完成通知
         eventBus.emit('task:completed', {
           taskId: task.id,
           score: validationResult.score
-        })
+        });
 
-        return
+        return;
       }
 
       // 验证失败
-      log.warn(`[TaskExecutor] 任务验证失败: ${task.id}, 评分: ${validationResult.score}`)
+      log.warn(`[TaskExecutor] 任务验证失败: ${task.id}, 评分: ${validationResult.score}`);
 
       if (validationResult.action === 'reject') {
         // 拒绝，不重试
-        task.status = TaskStatus.FAILED
-        await this.taskStore.update(task)
+        task.status = TaskStatus.FAILED;
+        await this.taskStore.update(task);
 
-        log.error(`[TaskExecutor] 任务被拒绝，不再重试: ${task.id}`)
-        return
+        log.error(`[TaskExecutor] 任务被拒绝，不再重试: ${task.id}`);
+        return;
       }
 
       if (validationResult.action === 'manual_fix') {
         // 需要人工修复
-        task.status = TaskStatus.VALIDATION_FAILED
-        await this.taskStore.update(task)
+        task.status = TaskStatus.VALIDATION_FAILED;
+        await this.taskStore.update(task);
 
-        log.info(`[TaskExecutor] 任务需要人工修复: ${task.id}`)
+        log.info(`[TaskExecutor] 任务需要人工修复: ${task.id}`);
 
         // 发送通知
         eventBus.emit('task:needs_manual_fix', {
           taskId: task.id,
           issues: validationResult.details.issues
-        })
+        });
 
-        return
+        return;
       }
 
       if (validationResult.action === 'retry' && attempt < maxAttempts) {
         // 重试
-        log.info(`[TaskExecutor] 准备重试任务: ${task.id}`)
+        log.info(`[TaskExecutor] 准备重试任务: ${task.id}`);
 
         // 根据反馈调整执行策略
-        await this.adjustTaskPlan(task, validationResult)
+        await this.adjustTaskPlan(task, validationResult);
 
         // 重置任务状态
-        task.currentStepIndex = 0
-        task.status = TaskStatus.RUNNING
+        task.currentStepIndex = 0;
+        task.status = TaskStatus.RUNNING;
 
         // 重新执行
-        await this.executeTask(task.id)
+        await this.executeTask(task.id);
 
         // 重新验证（递归）
-        return
+        return;
       }
     }
 
     // 达到最大重试次数
-    task.status = TaskStatus.VALIDATION_FAILED
-    await this.taskStore.update(task)
+    task.status = TaskStatus.VALIDATION_FAILED;
+    await this.taskStore.update(task);
 
-    log.error(`[TaskExecutor] 任务验证失败，已达到最大重试次数: ${task.id}`)
+    log.error(`[TaskExecutor] 任务验证失败，已达到最大重试次数: ${task.id}`);
   }
 
   /**
    * 根据验证反馈调整任务计划
    */
-  private async adjustTaskPlan(
-    task: LongRunningTask,
-    validationResult: ValidationResult
-  ): Promise<void> {
+  private async adjustTaskPlan(task: LongRunningTask, validationResult: ValidationResult): Promise<void> {
     // 根据验证反馈，智能调整执行策略
     // 例如：
     // - 如果输出太短，增加详细描述的步骤
     // - 如果缺少关键信息，添加补充搜索步骤
     // - 如果格式错误，添加格式化步骤
 
-    const suggestions = validationResult.details.suggestions || []
+    const suggestions = validationResult.details.suggestions || [];
 
     // 使用 AI 生成改进的任务计划
-    const triageAgent = await this.agentManager.getAgent('triage')
+    const triageAgent = await this.agentManager.getAgent('triage');
 
     const result = await triageAgent.run({
       input: `
@@ -3531,12 +3503,12 @@ class TaskExecutor {
 请生成改进的任务步骤。
       `,
       sessionId: task.sessionId
-    })
+    });
 
     // 解析并更新任务计划
     // task.plan = parseImprovedPlan(result.finalOutput)
 
-    log.info(`[TaskExecutor] 任务计划已调整: ${task.id}`)
+    log.info(`[TaskExecutor] 任务计划已调整: ${task.id}`);
   }
 }
 ```
@@ -3710,9 +3682,9 @@ const taskId = await taskExecutor.createTask({
       humanThreshold: 80 // AI 评分低于 80 时触发人工审核
     }
   }
-})
+});
 
-console.log(`任务已创建: ${taskId}`)
+console.log(`任务已创建: ${taskId}`);
 ```
 
 #### 示例 2: 监听任务进度
@@ -3720,26 +3692,26 @@ console.log(`任务已创建: ${taskId}`)
 ```typescript
 // 监听任务事件
 eventBus.on('task:progress', (data) => {
-  console.log(`任务进度: ${data.taskId}, ${data.progress}%`)
+  console.log(`任务进度: ${data.taskId}, ${data.progress}%`);
 
   // 推送到前端
-  windowManager.sendToSession(data.sessionId, 'task:progress', data)
-})
+  windowManager.sendToSession(data.sessionId, 'task:progress', data);
+});
 
 eventBus.on('task:step_completed', (data) => {
-  console.log(`步骤完成: ${data.stepName}`)
-})
+  console.log(`步骤完成: ${data.stepName}`);
+});
 
 eventBus.on('task:completed', (data) => {
-  console.log(`任务完成: ${data.taskId}, 评分: ${data.score}`)
-})
+  console.log(`任务完成: ${data.taskId}, 评分: ${data.score}`);
+});
 
 eventBus.on('task:needs_manual_fix', (data) => {
-  console.log(`任务需要人工修复: ${data.taskId}`)
-  console.log(`问题: ${data.issues.join(', ')}`)
+  console.log(`任务需要人工修复: ${data.taskId}`);
+  console.log(`问题: ${data.issues.join(', ')}`);
 
   // 弹出通知或打开审核界面
-})
+});
 ```
 
 #### 示例 3: 系统重启后恢复任务
@@ -3751,24 +3723,21 @@ class AppManager {
     // ... 其他初始化
 
     // 恢复中断的任务
-    await this.recoverInterruptedTasks()
+    await this.recoverInterruptedTasks();
   }
 
   private async recoverInterruptedTasks() {
-    const taskStore = new TaskStore()
+    const taskStore = new TaskStore();
 
     // 查找所有中断或暂停的任务
-    const interruptedTasks = await taskStore.findByStatus([
-      TaskStatus.INTERRUPTED,
-      TaskStatus.PAUSED
-    ])
+    const interruptedTasks = await taskStore.findByStatus([TaskStatus.INTERRUPTED, TaskStatus.PAUSED]);
 
-    log.info(`[App] 发现 ${interruptedTasks.length} 个中断任务`)
+    log.info(`[App] 发现 ${interruptedTasks.length} 个中断任务`);
 
     // 恢复执行
     for (const task of interruptedTasks) {
-      log.info(`[App] 恢复任务: ${task.name}`)
-      await taskExecutor.resumeTask(task.id)
+      log.info(`[App] 恢复任务: ${task.name}`);
+      await taskExecutor.resumeTask(task.id);
     }
   }
 }
@@ -3922,23 +3891,23 @@ class AppManager {
 export type AgentInputItem =
   | { role: 'user'; content: string }
   | { role: 'assistant'; content: string }
-  | { role: 'tool'; tool_call_id: string; content: string }
+  | { role: 'tool'; tool_call_id: string; content: string };
 
 // Agent 运行结果
 export interface RunResult {
-  finalOutput: string
-  history: AgentInputItem[]
-  currentAgent: Agent
-  newItems: RunItem[]
-  usage: TokenUsage
+  finalOutput: string;
+  history: AgentInputItem[];
+  currentAgent: Agent;
+  newItems: RunItem[];
+  usage: TokenUsage;
 }
 
 // 工具定义
 export interface Tool {
-  name: string
-  description: string
-  parameters: ZodSchema
-  execute: (args: any, context?: RunContext) => Promise<any>
+  name: string;
+  description: string;
+  parameters: ZodSchema;
+  execute: (args: any, context?: RunContext) => Promise<any>;
 }
 ```
 
@@ -3971,7 +3940,7 @@ export const AGENT_CONFIGS: Record<AgentType, AgentConfig> = {
     }
   }
   // ... 其他智能体配置
-}
+};
 ```
 
 ### C. 参考资源
@@ -4028,8 +3997,8 @@ export const AGENT_CONFIGS: Record<AgentType, AgentConfig> = {
 
 ```typescript
 // 阻塞主流程，用户体验差
-const approved = await requestUserApproval(tool, args)
-if (!approved) return { error: 'User denied' }
+const approved = await requestUserApproval(tool, args);
+if (!approved) return { error: 'User denied' };
 ```
 
 #### ✅ 新方案：智能决策 + 异步队列

@@ -49,34 +49,34 @@
 在应用启动时初始化所有消费者：
 
 ```typescript
-import { streamStore, webSocketBroadcaster, streamMonitor } from '@main/ai'
+import { streamStore, webSocketBroadcaster, streamMonitor } from '@main/ai';
 
 // 1. 初始化持久化消费者
-await streamStore.initialize()
+await streamStore.initialize();
 
 // 2. 初始化 WebSocket 推送消费者（指定端口）
-webSocketBroadcaster.initialize(8765)
+webSocketBroadcaster.initialize(8765);
 
 // 3. 初始化监控消费者
-streamMonitor.initialize()
+streamMonitor.initialize();
 
-console.log('流式输出系统初始化完成')
+console.log('流式输出系统初始化完成');
 ```
 
 ### 2. 创建 Agent/Team Runtime
 
 ```typescript
-import { runtimeFactory } from '@main/ai'
+import { runtimeFactory } from '@main/ai';
 
 // 创建 Agent Runtime
 const agentRuntime = await runtimeFactory.createRuntime({
   type: 'agent',
   id: 'agent-001',
   sessionId: 'session-123' // 可选，默认自动生成
-})
+});
 
 // 初始化（内部会创建 StreamEmitter）
-await agentRuntime.initialize()
+await agentRuntime.initialize();
 ```
 
 ### 3. 使用流式执行
@@ -88,11 +88,11 @@ const result = await agentRuntime.runStream(
   {}, // ExecutionConfig
   (chunk) => {
     // 可选的回调（兼容旧接口）
-    console.log('Chunk:', chunk)
+    console.log('Chunk:', chunk);
   }
-)
+);
 
-console.log('Result:', result.output)
+console.log('Result:', result.output);
 ```
 
 ---
@@ -106,13 +106,13 @@ console.log('Result:', result.output)
 #### 发送文本消息
 
 ```typescript
-await streamEmitter.emitText('Hello, this is a text message')
+await streamEmitter.emitText('Hello, this is a text message');
 ```
 
 #### 发送思考消息
 
 ```typescript
-await streamEmitter.emitThinking('Processing your request...')
+await streamEmitter.emitThinking('Processing your request...');
 ```
 
 #### 发送工具调用消息
@@ -122,7 +122,7 @@ await streamEmitter.emitToolCall({
   name: 'search',
   arguments: { query: 'AI' },
   result: { results: ['...'] }
-})
+});
 ```
 
 #### 发送错误消息
@@ -131,7 +131,7 @@ await streamEmitter.emitToolCall({
 try {
   // ...
 } catch (error) {
-  await streamEmitter.emitError(error as Error)
+  await streamEmitter.emitError(error as Error);
 }
 ```
 
@@ -139,12 +139,12 @@ try {
 
 ```typescript
 // 开始
-await streamEmitter.emitStart()
+await streamEmitter.emitStart();
 
 // 处理...
 
 // 结束
-await streamEmitter.emitDone()
+await streamEmitter.emitDone();
 ```
 
 ---
@@ -158,26 +158,26 @@ await streamEmitter.emitDone()
 #### 查询消息
 
 ```typescript
-import { streamStore } from '@main/ai'
+import { streamStore } from '@main/ai';
 
 // 获取会话的所有消息（按序号）
-const messages = await streamStore.getMessages('session-123')
+const messages = await streamStore.getMessages('session-123');
 
 // 从指定序号开始获取
-const newMessages = await streamStore.getMessages('session-123', 10)
+const newMessages = await streamStore.getMessages('session-123', 10);
 
 // 获取最新序号
-const latestSeq = await streamStore.getLatestSequence('session-123')
+const latestSeq = await streamStore.getLatestSequence('session-123');
 ```
 
 #### 清理消息
 
 ```typescript
 // 清理 7 天前的消息
-await streamStore.cleanOldMessages(7)
+await streamStore.cleanOldMessages(7);
 
 // 清除会话的所有消息
-await streamStore.clearSession('session-123')
+await streamStore.clearSession('session-123');
 ```
 
 ### WebSocketBroadcaster（推送消费者）
@@ -187,10 +187,10 @@ await streamStore.clearSession('session-123')
 #### 服务端
 
 ```typescript
-import { webSocketBroadcaster } from '@main/ai'
+import { webSocketBroadcaster } from '@main/ai';
 
 // 初始化（默认端口 8765）
-webSocketBroadcaster.initialize(8765)
+webSocketBroadcaster.initialize(8765);
 
 // 后续消息会自动推送给已订阅的客户端
 ```
@@ -199,7 +199,7 @@ webSocketBroadcaster.initialize(8765)
 
 ```typescript
 // 连接
-const ws = new WebSocket('ws://localhost:8765')
+const ws = new WebSocket('ws://localhost:8765');
 
 // 订阅会话
 ws.send(
@@ -207,24 +207,24 @@ ws.send(
     type: 'subscribe',
     sessionId: 'session-123'
   })
-)
+);
 
 // 接收消息
 ws.onmessage = (event) => {
-  const msg = JSON.parse(event.data)
+  const msg = JSON.parse(event.data);
 
   switch (msg.type) {
     case 'message':
-      console.log('New message:', msg.data)
-      break
+      console.log('New message:', msg.data);
+      break;
     case 'resend_batch':
-      console.log('Resent messages:', msg.data)
-      break
+      console.log('Resent messages:', msg.data);
+      break;
     case 'error':
-      console.error('Error:', msg.data.error)
-      break
+      console.error('Error:', msg.data.error);
+      break;
   }
-}
+};
 
 // 重发消息（恢复场景）
 ws.send(
@@ -233,7 +233,7 @@ ws.send(
     sessionId: 'session-123',
     fromSequence: 5
   })
-)
+);
 
 // 取消订阅
 ws.send(
@@ -241,7 +241,7 @@ ws.send(
     type: 'unsubscribe',
     sessionId: 'session-123'
   })
-)
+);
 ```
 
 ### StreamMonitor（监控消费者）
@@ -249,21 +249,21 @@ ws.send(
 收集会话级别的统计信息。
 
 ```typescript
-import { streamMonitor } from '@main/ai'
+import { streamMonitor } from '@main/ai';
 
 // 初始化
-streamMonitor.initialize()
+streamMonitor.initialize();
 
 // 获取会话统计
-const stats = streamMonitor.getStats('session-123')
+const stats = streamMonitor.getStats('session-123');
 console.log('Session stats:', {
   messageCount: stats.messageCount,
   errorCount: stats.errorCount,
   duration: stats.endTime ? stats.endTime - stats.startTime : null
-})
+});
 
 // 获取所有会话统计
-const allStats = streamMonitor.getAllStats()
+const allStats = streamMonitor.getAllStats();
 ```
 
 ---
@@ -274,54 +274,54 @@ const allStats = streamMonitor.getAllStats()
 
 ```vue
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import type { StreamMessage } from '@shared/types'
+import { ref, onMounted, onUnmounted } from 'vue';
+import type { StreamMessage } from '@shared/types';
 
-const messages = ref<StreamMessage[]>([])
-const isConnected = ref(false)
-let ws: WebSocket | null = null
+const messages = ref<StreamMessage[]>([]);
+const isConnected = ref(false);
+let ws: WebSocket | null = null;
 
-const sessionId = 'session-123'
+const sessionId = 'session-123';
 
 onMounted(() => {
   // 连接 WebSocket
-  ws = new WebSocket('ws://localhost:8765')
+  ws = new WebSocket('ws://localhost:8765');
 
   ws.onopen = () => {
-    isConnected.value = true
+    isConnected.value = true;
     // 订阅会话
     ws?.send(
       JSON.stringify({
         type: 'subscribe',
         sessionId
       })
-    )
-  }
+    );
+  };
 
   ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data)
+    const msg = JSON.parse(event.data);
     if (msg.type === 'message') {
-      messages.value.push(msg.data)
+      messages.value.push(msg.data);
     } else if (msg.type === 'resend_batch') {
-      messages.value = msg.data.sort((a, b) => a.sequence - b.sequence)
+      messages.value = msg.data.sort((a, b) => a.sequence - b.sequence);
     }
-  }
+  };
 
   ws.onerror = (error) => {
-    console.error('WebSocket error:', error)
-    isConnected.value = false
-  }
+    console.error('WebSocket error:', error);
+    isConnected.value = false;
+  };
 
   ws.onclose = () => {
-    isConnected.value = false
+    isConnected.value = false;
     // 自动重连
     setTimeout(() => {
       if (!isConnected.value) {
-        onMounted()
+        onMounted();
       }
-    }, 3000)
-  }
-})
+    }, 3000);
+  };
+});
 
 onUnmounted(() => {
   if (ws) {
@@ -330,10 +330,10 @@ onUnmounted(() => {
         type: 'unsubscribe',
         sessionId
       })
-    )
-    ws.close()
+    );
+    ws.close();
   }
-})
+});
 </script>
 
 <template>
@@ -357,11 +357,11 @@ onUnmounted(() => {
 ```typescript
 // 断线重连示例
 function reconnectWebSocket(sessionId: string) {
-  const ws = new WebSocket('ws://localhost:8765')
+  const ws = new WebSocket('ws://localhost:8765');
 
   ws.onopen = async () => {
     // 1. 获取本地最新序号
-    const lastSeq = getLastLocalSequence(sessionId)
+    const lastSeq = getLastLocalSequence(sessionId);
 
     // 2. 订阅会话
     ws.send(
@@ -369,7 +369,7 @@ function reconnectWebSocket(sessionId: string) {
         type: 'subscribe',
         sessionId
       })
-    )
+    );
 
     // 3. 请求重发丢失的消息
     if (lastSeq > 0) {
@@ -379,20 +379,20 @@ function reconnectWebSocket(sessionId: string) {
           sessionId,
           fromSequence: lastSeq + 1
         })
-      )
+      );
     }
-  }
+  };
 
   ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data)
+    const msg = JSON.parse(event.data);
     if (msg.type === 'resend_batch') {
       // 收到重发的消息，补充到本地
-      messages.value.push(...msg.data)
-      saveLocalMessages(sessionId, msg.data)
+      messages.value.push(...msg.data);
+      saveLocalMessages(sessionId, msg.data);
     }
-  }
+  };
 
-  return ws
+  return ws;
 }
 ```
 
@@ -405,9 +405,9 @@ function reconnectWebSocket(sessionId: string) {
 ```typescript
 // 每 5 秒输出一次统计
 setInterval(() => {
-  const allStats = streamMonitor.getAllStats()
-  console.table(allStats)
-}, 5000)
+  const allStats = streamMonitor.getAllStats();
+  console.table(allStats);
+}, 5000);
 ```
 
 ### 查看数据库中的消息
@@ -494,7 +494,7 @@ console.log('Initialized:', {
   store: streamStore,
   broadcaster: webSocketBroadcaster,
   monitor: streamMonitor
-})
+});
 ```
 
 ### 问题 2: 消息顺序错乱
@@ -505,7 +505,7 @@ console.log('Initialized:', {
 
 ```typescript
 // 前端按序号排序
-messages.value.sort((a, b) => a.sequence - b.sequence)
+messages.value.sort((a, b) => a.sequence - b.sequence);
 ```
 
 ### 问题 3: WebSocket 频繁断开

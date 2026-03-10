@@ -236,12 +236,12 @@ SDK 将 Layer 1 转换为 **4 种**统一协议事件，屏蔽不同模型提供
 
 ```typescript
 interface UsageData {
-  requests?: number
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  inputTokensDetails?: Record<string, number> | Array<Record<string, number>>
-  outputTokensDetails?: Record<string, number> | Array<Record<string, number>>
+  requests?: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  inputTokensDetails?: Record<string, number> | Array<Record<string, number>>;
+  outputTokensDetails?: Record<string, number> | Array<Record<string, number>>;
 }
 ```
 
@@ -327,10 +327,10 @@ Agent 发生切换（Handoff 后）：
 
 ```typescript
 class RunMessageOutputItem {
-  readonly type = 'message_output_item'
-  rawItem: AssistantMessageItem
-  agent: Agent
-  get content(): string // 便捷属性：纯文本
+  readonly type = 'message_output_item';
+  rawItem: AssistantMessageItem;
+  agent: Agent;
+  get content(): string; // 便捷属性：纯文本
 }
 ```
 
@@ -347,9 +347,9 @@ class RunMessageOutputItem {
 
 ```typescript
 class RunToolCallItem {
-  readonly type = 'tool_call_item'
-  rawItem: ToolCallItem // 5 种工具调用之一
-  agent: Agent
+  readonly type = 'tool_call_item';
+  rawItem: ToolCallItem; // 5 种工具调用之一
+  agent: Agent;
 }
 ```
 
@@ -358,39 +358,39 @@ class RunToolCallItem {
 ```typescript
 // 自定义函数调用（最常用）
 interface FunctionCallItem {
-  type: 'function_call'
-  callId: string
-  name: string
-  arguments: string // JSON 字符串
+  type: 'function_call';
+  callId: string;
+  name: string;
+  arguments: string; // JSON 字符串
 }
 
 // 托管工具（web_search、file_search 等）
 interface HostedToolCallItem {
-  type: 'hosted_tool_call'
-  name: string
-  arguments?: string
-  output?: string
+  type: 'hosted_tool_call';
+  name: string;
+  arguments?: string;
+  output?: string;
 }
 
 // 计算机操作
 interface ComputerUseCallItem {
-  type: 'computer_call'
-  callId: string
-  action: ComputerAction // click, type, screenshot, scroll, ...
+  type: 'computer_call';
+  callId: string;
+  action: ComputerAction; // click, type, screenshot, scroll, ...
 }
 
 // Shell 命令
 interface ShellCallItem {
-  type: 'shell_call'
-  callId: string
-  action: { commands: string[]; timeoutMs?: number }
+  type: 'shell_call';
+  callId: string;
+  action: { commands: string[]; timeoutMs?: number };
 }
 
 // 补丁应用
 interface ApplyPatchCallItem {
-  type: 'apply_patch_call'
-  callId: string
-  operation: { type: 'create_file' | 'update_file' | 'delete_file'; path: string; diff?: string }
+  type: 'apply_patch_call';
+  callId: string;
+  operation: { type: 'create_file' | 'update_file' | 'delete_file'; path: string; diff?: string };
 }
 ```
 
@@ -409,10 +409,10 @@ class RunToolCallOutputItem {
 
 ```typescript
 interface FunctionCallResultItem {
-  type: 'function_call_result'
-  name: string
-  callId: string
-  output: string | ToolCallOutputContent | Array<ToolCallStructuredOutput>
+  type: 'function_call_result';
+  name: string;
+  callId: string;
+  output: string | ToolCallOutputContent | Array<ToolCallStructuredOutput>;
 }
 ```
 
@@ -420,13 +420,13 @@ interface FunctionCallResultItem {
 
 ```typescript
 class RunReasoningItem {
-  readonly type = 'reasoning_item'
+  readonly type = 'reasoning_item';
   rawItem: {
-    type: 'reasoning'
-    content: Array<{ type: 'input_text'; text: string }> // 用户可见摘要
-    rawContent?: Array<{ type: 'reasoning_text'; text: string }> // 原始推理文本
-  }
-  agent: Agent
+    type: 'reasoning';
+    content: Array<{ type: 'input_text'; text: string }>; // 用户可见摘要
+    rawContent?: Array<{ type: 'reasoning_text'; text: string }>; // 原始推理文本
+  };
+  agent: Agent;
 }
 ```
 
@@ -434,16 +434,16 @@ class RunReasoningItem {
 
 ```typescript
 class RunHandoffCallItem {
-  readonly type = 'handoff_call_item'
-  rawItem: FunctionCallItem // Handoff 本质是函数调用
-  agent: Agent // 发起 Handoff 的 Agent
+  readonly type = 'handoff_call_item';
+  rawItem: FunctionCallItem; // Handoff 本质是函数调用
+  agent: Agent; // 发起 Handoff 的 Agent
 }
 
 class RunHandoffOutputItem {
-  readonly type = 'handoff_output_item'
-  rawItem: FunctionCallResultItem
-  sourceAgent: Agent
-  targetAgent: Agent
+  readonly type = 'handoff_output_item';
+  rawItem: FunctionCallResultItem;
+  sourceAgent: Agent;
+  targetAgent: Agent;
 }
 ```
 
@@ -539,13 +539,13 @@ response.completed               →   raw { response_done }
 ```typescript
 // 最简方式
 for await (const delta of result.toTextStream()) {
-  appendToUI(delta)
+  appendToUI(delta);
 }
 
 // 通过事件
 for await (const event of result) {
   if (event.type === 'raw_model_stream_event' && event.data.type === 'output_text_delta') {
-    appendToUI(event.data.delta)
+    appendToUI(event.data.delta);
   }
 }
 ```
@@ -556,19 +556,19 @@ for await (const event of result) {
 for await (const event of result) {
   // 工具参数增量（从 Layer 1 原始事件获取）
   if (event.type === 'raw_model_stream_event' && event.data.type === 'model') {
-    const raw = event.data.event
+    const raw = event.data.event;
     if (raw.type === 'response.function_call_arguments.delta') {
-      showArgumentsDelta(raw.delta)
+      showArgumentsDelta(raw.delta);
     }
   }
 
   // 工具调用完成和结果（Layer 3 高级事件）
   if (event.type === 'run_item_stream_event') {
     if (event.name === 'tool_called') {
-      showToolCallStart((event.item as RunToolCallItem).rawItem)
+      showToolCallStart((event.item as RunToolCallItem).rawItem);
     }
     if (event.name === 'tool_output') {
-      showToolCallResult((event.item as RunToolCallOutputItem).output)
+      showToolCallResult((event.item as RunToolCallOutputItem).output);
     }
   }
 }
@@ -579,14 +579,14 @@ for await (const event of result) {
 ```typescript
 for await (const event of result) {
   if (event.type === 'raw_model_stream_event' && event.data.type === 'model') {
-    const raw = event.data.event
-    if (raw.type === 'response.reasoning_text.delta') appendThinking(raw.delta)
-    if (raw.type === 'response.reasoning_summary_text.delta') appendSummary(raw.delta)
+    const raw = event.data.event;
+    if (raw.type === 'response.reasoning_text.delta') appendThinking(raw.delta);
+    if (raw.type === 'response.reasoning_summary_text.delta') appendSummary(raw.delta);
   }
 
   // 推理完成后的完整数据
   if (event.type === 'run_item_stream_event' && event.name === 'reasoning_item_created') {
-    const item = event.item as RunReasoningItem
+    const item = event.item as RunReasoningItem;
     // item.rawItem.content     → 用户可见摘要
     // item.rawItem.rawContent  → 原始推理文本
   }
@@ -598,7 +598,7 @@ for await (const event of result) {
 ```typescript
 for await (const event of result) {
   if (event.type === 'agent_updated_stream_event') {
-    updateCurrentAgent(event.agent.name)
+    updateCurrentAgent(event.agent.name);
   }
 }
 ```
@@ -608,8 +608,8 @@ for await (const event of result) {
 ```typescript
 for await (const event of result) {
   if (event.type === 'raw_model_stream_event' && event.data.type === 'response_done') {
-    const { inputTokens, outputTokens, totalTokens } = event.data.response.usage
-    updateTokenCount({ input: inputTokens, output: outputTokens, total: totalTokens })
+    const { inputTokens, outputTokens, totalTokens } = event.data.response.usage;
+    updateTokenCount({ input: inputTokens, output: outputTokens, total: totalTokens });
   }
 }
 ```
@@ -619,12 +619,12 @@ for await (const event of result) {
 ```typescript
 for await (const event of result) {
   if (event.type === 'run_item_stream_event' && event.name === 'tool_approval_requested') {
-    const approval = event.item as RunToolApprovalItem
+    const approval = event.item as RunToolApprovalItem;
     showApprovalDialog({
       agent: approval.agent.name,
       tool: approval.name,
       args: approval.arguments
-    })
+    });
   }
 }
 ```
@@ -637,49 +637,49 @@ for await (const event of result) {
     case 'raw_model_stream_event':
       switch (event.data.type) {
         case 'response_started':
-          onResponseStarted()
-          break
+          onResponseStarted();
+          break;
         case 'output_text_delta':
-          onTextDelta(event.data.delta)
-          break
+          onTextDelta(event.data.delta);
+          break;
         case 'response_done':
-          onResponseDone(event.data.response)
-          break
+          onResponseDone(event.data.response);
+          break;
         case 'model':
-          handleRawEvent(event.data.event)
-          break
+          handleRawEvent(event.data.event);
+          break;
       }
-      break
+      break;
 
     case 'run_item_stream_event':
       switch (event.name) {
         case 'message_output_created':
-          onMessage(event.item as RunMessageOutputItem)
-          break
+          onMessage(event.item as RunMessageOutputItem);
+          break;
         case 'tool_called':
-          onToolCalled(event.item as RunToolCallItem)
-          break
+          onToolCalled(event.item as RunToolCallItem);
+          break;
         case 'tool_output':
-          onToolOutput(event.item as RunToolCallOutputItem)
-          break
+          onToolOutput(event.item as RunToolCallOutputItem);
+          break;
         case 'reasoning_item_created':
-          onReasoning(event.item as RunReasoningItem)
-          break
+          onReasoning(event.item as RunReasoningItem);
+          break;
         case 'handoff_requested':
-          onHandoffReq(event.item as RunHandoffCallItem)
-          break
+          onHandoffReq(event.item as RunHandoffCallItem);
+          break;
         case 'handoff_occurred':
-          onHandoffDone(event.item as RunHandoffOutputItem)
-          break
+          onHandoffDone(event.item as RunHandoffOutputItem);
+          break;
         case 'tool_approval_requested':
-          onApproval(event.item as RunToolApprovalItem)
-          break
+          onApproval(event.item as RunToolApprovalItem);
+          break;
       }
-      break
+      break;
 
     case 'agent_updated_stream_event':
-      onAgentUpdated(event.agent)
-      break
+      onAgentUpdated(event.agent);
+      break;
   }
 }
 ```
@@ -691,43 +691,43 @@ function handleRawEvent(raw: any) {
   switch (raw.type) {
     // 推理
     case 'response.reasoning_text.delta':
-      onReasoningDelta(raw.delta)
-      break
+      onReasoningDelta(raw.delta);
+      break;
     case 'response.reasoning_summary_text.delta':
-      onSummaryDelta(raw.delta)
-      break
+      onSummaryDelta(raw.delta);
+      break;
 
     // 函数参数
     case 'response.function_call_arguments.delta':
-      onArgsDelta(raw.delta, raw.call_id)
-      break
+      onArgsDelta(raw.delta, raw.call_id);
+      break;
     case 'response.function_call_arguments.done':
-      onArgsDone(raw.arguments, raw.call_id)
-      break
+      onArgsDone(raw.arguments, raw.call_id);
+      break;
 
     // 拒绝
     case 'response.refusal.delta':
-      onRefusalDelta(raw.delta)
-      break
+      onRefusalDelta(raw.delta);
+      break;
 
     // 输出项
     case 'response.output_item.added':
-      onItemAdded(raw.item)
-      break
+      onItemAdded(raw.item);
+      break;
     case 'response.output_item.done':
-      onItemDone(raw.item)
-      break
+      onItemDone(raw.item);
+      break;
 
     // 托管工具（按需）
     case 'response.web_search_call.searching':
-      onWebSearch(raw)
-      break
+      onWebSearch(raw);
+      break;
     case 'response.code_interpreter_call_code.delta':
-      onCodeDelta(raw.delta)
-      break
+      onCodeDelta(raw.delta);
+      break;
     case 'response.image_generation_call.partial_image':
-      onPartialImage(raw.partial_image)
-      break
+      onPartialImage(raw.partial_image);
+      break;
   }
 }
 ```

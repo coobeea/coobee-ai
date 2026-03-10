@@ -94,26 +94,26 @@ build: {
 ### main.ts（入口文件）
 
 ```typescript
-import '@/assets/tailwind.css'
-import '@/assets/main.css'
+import '@/assets/tailwind.css';
+import '@/assets/main.css';
 
-import { createApp } from 'vue'
-import { createPinia } from 'pinia'
-import NewWindowApp from './NewWindowApp.vue'
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
+import NewWindowApp from './NewWindowApp.vue';
 
-const app = createApp(NewWindowApp)
-const pinia = createPinia()
+const app = createApp(NewWindowApp);
+const pinia = createPinia();
 
-app.use(pinia)
-app.mount('#app')
+app.use(pinia);
+app.mount('#app');
 ```
 
 ### NewWindowApp.vue（根组件）
 
 ```vue
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { SomeType } from './types'
+import { ref } from 'vue';
+import type { SomeType } from './types';
 
 // 窗口逻辑
 </script>
@@ -133,8 +133,8 @@ import type { SomeType } from './types'
  */
 
 export interface SomeType {
-  id: string
-  name: string
+  id: string;
+  name: string;
 }
 ```
 

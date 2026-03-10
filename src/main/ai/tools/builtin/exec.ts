@@ -30,9 +30,10 @@ import { resolveWorkingDirectory } from '../../sandbox';
 import { ProcessRegistry } from '../../process/ProcessRegistry';
 import { checkExecPolicy } from '../../sandbox/exec-policy';
 import { scanCommand } from '../security/command-scanner';
+import { getPtyManager } from '@main/terminal/PtyManager';
 
-/** 默认超时（ms） */
-const DEFAULT_TIMEOUT_MS = 30_000;
+/** 默认超时（ms）— 2 分钟，覆盖大部分构建/测试场景 */
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 /** 最大输出字节数（约 100KB，防止 token 爆炸） */
 const MAX_OUTPUT_BYTES = 100_000;
@@ -53,11 +54,19 @@ export const execTool: ToolDefinition = {
       .boolean()
       .optional()
       .describe('Run in background mode. Returns processId immediately. Use `process` tool to manage.'),
+    terminal: z
+      .boolean()
+      .optional()
+      .describe(
+        'Run command in the interactive PTY terminal. ' +
+          'Output is streamed to the user-visible terminal panel in real-time. ' +
+          'Use for commands that benefit from real-time visual output (builds, tests, dev servers).'
+      ),
     timeout: z
       .number()
       .optional()
       .describe(
-        `Timeout in milliseconds (foreground only). Defaults to ${DEFAULT_TIMEOUT_MS}ms (${DEFAULT_TIMEOUT_MS / 1000}s)`
+        `Timeout in milliseconds (foreground only). Defaults to ${DEFAULT_TIMEOUT_MS / 1000}s. Set higher for builds/tests.`
       )
   }),
 
@@ -68,6 +77,7 @@ export const execTool: ToolDefinition = {
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
     const command = params.command as string;
     const background = params.background as boolean | undefined;
+    const terminal = params.terminal as boolean | undefined;
     const timeout = (params.timeout as number) || DEFAULT_TIMEOUT_MS;
     const startTime = Date.now();
 
@@ -109,6 +119,43 @@ export const execTool: ToolDefinition = {
     // 即使 policyResult.action === 'ask'，也应该继续执行
     // （审批在 Pipeline 层完成，工具层只负责执行）
 
+    // ==================== 终端模式 ====================
+    if (terminal) {
+      const ptyMgr = getPtyManager();
+      const terminalList = ptyMgr.list();
+      let termId: string;
+
+      if (terminalList.length > 0) {
+        termId = terminalList[0].id;
+      } else {
+        const info = ptyMgr.create({ cwd });
+        termId = info.id;
+      }
+
+      yield { type: 'progress', content: `[terminal:${termId}] $ ${command}`, percentage: 0 };
+
+      ptyMgr.write(termId, command + '\n');
+
+      const duration = Date.now() - startTime;
+      return {
+        success: true,
+        llmContent:
+          `Command sent to terminal ${termId}.\n` +
+          `command: ${command}\n` +
+          `cwd: ${cwd}\n\n` +
+          `The output is streaming to the user's terminal panel in real-time.\n` +
+          `Note: This mode does not capture exit codes. Use foreground mode if you need to check the result.`,
+        userContent: `Terminal: ${command} → ${termId}`,
+        metadata: {
+          startTime,
+          endTime: Date.now(),
+          duration,
+          terminalId: termId,
+          cwd
+        }
+      };
+    }
+
     // ==================== 后台模式 ====================
     if (background) {
       yield { type: 'progress', content: `[background] $ ${command}`, percentage: 0 };
@@ -124,9 +171,8 @@ export const execTool: ToolDefinition = {
         detached: false // 不脱离父进程，确保可管理
       });
 
-      // 注册到 ProcessRegistry
       const registry = ProcessRegistry.getInstance();
-      const processId = registry.register(command, cwd, child);
+      const processId = registry.register(command, cwd, child, context?.threadId);
 
       const llmContent =
         `Process started in background.\n` +

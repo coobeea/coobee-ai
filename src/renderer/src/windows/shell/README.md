@@ -51,18 +51,18 @@ shell/
 ### Tab Store - 状态管理
 
 ```typescript
-import { useTabStore } from './stores/tab'
+import { useTabStore } from './stores/tab';
 
-const tabStore = useTabStore()
+const tabStore = useTabStore();
 
 // 添加 Tab
-tabStore.addTab('New Chat')
+tabStore.addTab('New Chat');
 
 // 删除 Tab
-tabStore.removeTab(tabId)
+tabStore.removeTab(tabId);
 
 // 切换 Tab
-tabStore.setCurrentTab(tabId)
+tabStore.setCurrentTab(tabId);
 ```
 
 ## 🎨 设计规范
@@ -106,9 +106,9 @@ tabStore.setCurrentTab(tabId)
 ```typescript
 // stores/tab.ts
 export interface Tab {
-  id: string
-  title: string
-  icon?: string
+  id: string;
+  title: string;
+  icon?: string;
 }
 ```
 
@@ -124,13 +124,13 @@ export interface Tab {
 
 ```typescript
 // 最小化
-window.electron.ipcRenderer.send('window:minimize')
+window.electron.ipcRenderer.send('window:minimize');
 
 // 最大化/还原
-window.electron.ipcRenderer.send('window:maximize')
+window.electron.ipcRenderer.send('window:maximize');
 
 // 关闭
-window.electron.ipcRenderer.send('window:close')
+window.electron.ipcRenderer.send('window:close');
 ```
 
 ## ⚠️ 注意事项

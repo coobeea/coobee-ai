@@ -132,13 +132,13 @@ Gateway 启动时，会在以下目录中按优先级搜索插件：
 ```typescript
 // src/plugins/discovery.ts — 搜索结果
 type PluginCandidate = {
-  idHint: string // 从 package.json 推断的 ID
-  source: string // 入口文件的绝对路径
-  rootDir: string // 插件根目录
-  origin: 'bundled' | 'global' | 'workspace' | 'config'
-  packageName?: string
-  packageVersion?: string
-}
+  idHint: string; // 从 package.json 推断的 ID
+  source: string; // 入口文件的绝对路径
+  rootDir: string; // 插件根目录
+  origin: 'bundled' | 'global' | 'workspace' | 'config';
+  packageName?: string;
+  packageVersion?: string;
+};
 ```
 
 ---
@@ -330,19 +330,19 @@ agent_end ← 【旁听】插件收到通知
 ```typescript
 // 旁听型 — 只需看到事件
 api.on('agent_end', async (event, ctx) => {
-  console.log(`Agent 耗时 ${event.durationMs}ms`)
-})
+  console.log(`Agent 耗时 ${event.durationMs}ms`);
+});
 
 // 拦截型 — 通过返回值修改行为
 api.on(
   'before_tool_call',
   async (event, ctx) => {
     if (event.toolName === 'exec' && event.params.command.includes('rm -rf')) {
-      return { block: true, blockReason: '危险操作被阻止' }
+      return { block: true, blockReason: '危险操作被阻止' };
     }
   },
   { priority: 100 }
-) // 高优先级先执行
+); // 高优先级先执行
 ```
 
 **执行**（在 `src/plugins/hooks.ts` 中）：
@@ -352,19 +352,19 @@ api.on(
 ```typescript
 // 所有 handler 同时开始，互不影响
 const promises = hooks.map(async (hook) => {
-  await hook.handler(event, ctx)
-})
-await Promise.all(promises)
+  await hook.handler(event, ctx);
+});
+await Promise.all(promises);
 ```
 
 拦截型用 `for...of` 顺序执行，结果逐步合并：
 
 ```typescript
-let result
+let result;
 for (const hook of hooks) {
   // 按优先级排序后依次执行
-  const handlerResult = await hook.handler(event, ctx)
-  result = mergeResults(result, handlerResult) // 合并结果
+  const handlerResult = await hook.handler(event, ctx);
+  result = mergeResults(result, handlerResult); // 合并结果
 }
 ```
 
@@ -426,13 +426,13 @@ api.registerTool({
   execute: async (toolCallId, params, signal) => {
     const results = await jiraClient.search(params.query, {
       project: params.project
-    })
+    });
     return {
       content: [{ type: 'text', text: JSON.stringify(results, null, 2) }],
       details: { ok: true }
-    }
+    };
   }
-})
+});
 ```
 
 **插件工具和内置工具走同一条路径**：都经过策略过滤、钩子包装、AbortSignal 处理。Agent（大模型）看到的工具列表中，插件工具和内置工具没有区别。
@@ -442,15 +442,15 @@ api.registerTool({
 ```typescript
 api.registerTool((ctx) => {
   // ctx 包含 agentId, sessionKey, config 等
-  if (ctx.sandboxed) return null // 沙箱模式下不提供此工具
+  if (ctx.sandboxed) return null; // 沙箱模式下不提供此工具
   return {
     name: 'deploy',
     description: '部署到生产环境',
     execute: async (toolCallId, params) => {
       /* ... */
     }
-  }
-})
+  };
+});
 ```
 
 ---
@@ -473,22 +473,22 @@ const plugin = {
         gateway: {
           startAccount: async ({ cfg, runtime, log }) => {
             // 连接 Matrix homeserver
-            const client = sdk.createClient({ baseUrl: cfg.matrix.homeserver })
-            await client.login('m.login.password', { user, password })
+            const client = sdk.createClient({ baseUrl: cfg.matrix.homeserver });
+            await client.login('m.login.password', { user, password });
             client.on('Room.timeline', (event) => {
               // 收到消息 → 归一化 → 交给 Gateway 处理
-              const ctx = normalizeMatrixMessage(event)
-              await runtime.channel.dispatch(ctx)
-            })
+              const ctx = normalizeMatrixMessage(event);
+              await runtime.channel.dispatch(ctx);
+            });
           },
           stopAccount: async () => {
-            await client.stopClient()
+            await client.stopClient();
           }
         }
       }
-    })
+    });
   }
-}
+};
 ```
 
 注册后，Gateway 会在启动时像对待 Telegram、Discord 一样对待这个新渠道——自动启动、监控状态、处理消息。
@@ -501,14 +501,14 @@ const plugin = {
 
 ```typescript
 api.registerGatewayMethod('voicecall.initiate', async ({ params, respond, context }) => {
-  const { phoneNumber, agentId } = params
+  const { phoneNumber, agentId } = params;
   try {
-    const callId = await initiateCall(phoneNumber, agentId)
-    respond(true, { callId })
+    const callId = await initiateCall(phoneNumber, agentId);
+    respond(true, { callId });
   } catch (err) {
-    respond(false, undefined, { code: 500, message: String(err) })
+    respond(false, undefined, { code: 500, message: String(err) });
   }
-})
+});
 ```
 
 Web UI 调用：
@@ -537,14 +537,14 @@ api.registerCommand({
   acceptsArgs: true, // 接受参数
   requireAuth: true, // 需要授权
   handler: async (ctx) => {
-    const text = ctx.args
-    const audio = await textToSpeech(text)
+    const text = ctx.args;
+    const audio = await textToSpeech(text);
     return {
       text: '语音已生成',
       media: [{ url: audio.url, mime: 'audio/mp3' }]
-    }
+    };
   }
-})
+});
 ```
 
 **命令处理优先级**：
@@ -575,32 +575,32 @@ api.registerService({
     // ctx.config: 全局配置
     // ctx.stateDir: 状态目录 (~/.openclaw)
     // ctx.logger: 日志记录器
-    sipServer = await startSIPServer(ctx.config.voiceCall)
-    ctx.logger.info('SIP server started')
+    sipServer = await startSIPServer(ctx.config.voiceCall);
+    ctx.logger.info('SIP server started');
   },
   stop: async (ctx) => {
-    await sipServer.close()
-    ctx.logger.info('SIP server stopped')
+    await sipServer.close();
+    ctx.logger.info('SIP server stopped');
   }
-})
+});
 ```
 
 ```typescript
 // src/plugins/services.ts — Gateway 如何管理插件服务
 export async function startPluginServices(params) {
   for (const entry of params.registry.services) {
-    await entry.service.start({ config, workspaceDir, stateDir, logger })
-    running.push({ id: entry.service.id, stop: entry.service.stop })
+    await entry.service.start({ config, workspaceDir, stateDir, logger });
+    running.push({ id: entry.service.id, stop: entry.service.stop });
   }
 
   return {
     stop: async () => {
       // 按注册的逆序停止（先启动的后停止）
       for (const entry of running.toReversed()) {
-        await entry.stop?.()
+        await entry.stop?.();
       }
     }
-  }
+  };
 }
 ```
 
@@ -670,8 +670,8 @@ register(api) {
 OpenClaw 提供 `openclaw/plugin-sdk` 让插件开发者 import 所需的类型和工具函数：
 
 ```typescript
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk'
-import { emptyPluginConfigSchema, formatDocsLink } from 'openclaw/plugin-sdk'
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import { emptyPluginConfigSchema, formatDocsLink } from 'openclaw/plugin-sdk';
 ```
 
 SDK 导出内容包括：

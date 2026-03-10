@@ -1,3 +1,3 @@
-export { Gateway } from './Gateway'
-export { GatewayServer } from './GatewayServer'
-export * from './protocol'
+export { Gateway } from './Gateway';
+export { GatewayServer } from './GatewayServer';
+export * from './protocol';

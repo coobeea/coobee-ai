@@ -15,6 +15,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createLogger } from '@main/common/logger';
+import { ensureCoreSkills } from '../skills/CoreSkills';
+import { AgentHomeManager } from './AgentHomeManager';
 import type { AgentDefinition, AgentIndexEntry, CreateAgentParams, UpdateAgentParams } from './types';
 
 const log = createLogger('agent-store');
@@ -72,6 +74,45 @@ export class AgentStore {
     log.info(
       `[AgentStore] Initialized: ${this.index.size} agents loaded (builtin: ${this.builtinDir}, user: ${this.userDir})`
     );
+
+    // 迁移：为所有已有智能体同步 skills 到 AGENTS.md
+    await this.migrateAgentSkills();
+  }
+
+  /**
+   * 迁移方法：为所有现有智能体同步 skills 到 AGENTS.md
+   * 只在第一次启动或升级后执行一次
+   */
+  private async migrateAgentSkills(): Promise<void> {
+    try {
+      const { Env } = await import('@main/common/env');
+      const migrationFlagPath = path.join(Env.paths.userHome, '.migration_skills_to_agentsmd');
+
+      // 如果已经迁移过，跳过
+      if (fs.existsSync(migrationFlagPath)) {
+        return;
+      }
+
+      log.info('[AgentStore] Starting skills migration to AGENTS.md...');
+      let migratedCount = 0;
+
+      for (const [agentId, entry] of this.index.entries()) {
+        if (entry.skills && entry.skills.length > 0) {
+          try {
+            await this.syncSkillsToAgentsMd(agentId, entry.skills);
+            migratedCount++;
+          } catch (err) {
+            log.warn(`[AgentStore] Failed to migrate skills for ${agentId}:`, err);
+          }
+        }
+      }
+
+      // 标记迁移完成
+      fs.writeFileSync(migrationFlagPath, new Date().toISOString(), 'utf-8');
+      log.info(`[AgentStore] Skills migration completed: ${migratedCount}/${this.index.size} agents`);
+    } catch (err) {
+      log.error('[AgentStore] Skills migration failed:', err);
+    }
   }
 
   /** 扫描目录重建索引（多级合并：builtin < user） */
@@ -133,18 +174,14 @@ export class AgentStore {
 
     const now = new Date().toISOString();
 
-    // 自动添加 brain skill（让所有 Agent 能够主动维护智库）
-    const skills = params.skills ? [...params.skills] : [];
-    if (!skills.includes('brain')) {
-      skills.unshift('brain'); // 添加到开头（高优先级）
-    }
+    const skills = ensureCoreSkills(params.skills ? [...params.skills] : []);
 
     const definition: AgentDefinition = {
       id: params.id,
       name: params.name,
       description: params.description,
       instructions: params.instructions,
-      tools: params.tools,
+      excludeTools: params.excludeTools,
       skills, // 使用处理后的 skills
       model: params.model,
       thinkingLevel: params.thinkingLevel,
@@ -160,6 +197,20 @@ export class AgentStore {
 
     // 更新索引
     this.index.set(definition.id, toIndexEntry(definition));
+
+    // 同步创建 Agent Home 目录
+    try {
+      const { Env } = await import('@main/common/env');
+      const homeManager = new AgentHomeManager(Env.paths.homesDir);
+      homeManager.initHome(definition.id);
+
+      // 同步 skills 到 AGENTS.md（自动激活）
+      if (skills.length > 0) {
+        await this.syncSkillsToAgentsMd(definition.id, skills);
+      }
+    } catch (err) {
+      log.warn(`[AgentStore] Failed to init agent home for ${definition.id}:`, err);
+    }
 
     log.info(`[AgentStore] Created agent: ${definition.id} (v${definition.version})`);
     return definition;
@@ -212,13 +263,15 @@ export class AgentStore {
       );
     }
 
+    const updatedSkills = params.skills !== undefined ? ensureCoreSkills([...params.skills]) : undefined;
+
     const updated: AgentDefinition = {
       ...existing,
       ...(params.name !== undefined && { name: params.name }),
       ...(params.description !== undefined && { description: params.description }),
       ...(params.instructions !== undefined && { instructions: params.instructions }),
-      ...(params.tools !== undefined && { tools: params.tools }),
-      ...(params.skills !== undefined && { skills: params.skills }),
+      ...(params.excludeTools !== undefined && { excludeTools: params.excludeTools }),
+      ...(updatedSkills !== undefined && { skills: updatedSkills }),
       ...(params.model !== undefined && { model: params.model }),
       ...(params.thinkingLevel !== undefined && { thinkingLevel: params.thinkingLevel }),
       ...(params.metadata !== undefined && { metadata: params.metadata }),
@@ -231,6 +284,15 @@ export class AgentStore {
 
     // 更新索引
     this.index.set(updated.id, toIndexEntry(updated));
+
+    // 同步 skills 到 AGENTS.md（如果 skills 有变化）
+    if (updatedSkills !== undefined) {
+      try {
+        await this.syncSkillsToAgentsMd(agentId, updatedSkills);
+      } catch (err) {
+        log.warn(`[AgentStore] Failed to sync skills to AGENTS.md for ${agentId}:`, err);
+      }
+    }
 
     log.info(`[AgentStore] Updated agent: ${agentId} (v${updated.version})`);
     return updated;
@@ -253,7 +315,8 @@ export class AgentStore {
         fs.unlinkSync(filePath);
       }
       this.index.delete(agentId);
-      log.info(`[AgentStore] Deleted agent: ${agentId}`);
+      // Agent Home 目录保留（记忆不应随定义删除而丢失）
+      log.info(`[AgentStore] Deleted agent: ${agentId} (Home preserved)`);
       return true;
     } catch (err) {
       log.warn(`[AgentStore] Failed to delete agent ${agentId}:`, err);
@@ -304,6 +367,87 @@ export class AgentStore {
     const filePath = path.join(this.userDir, `${def.id}.json`);
     fs.writeFileSync(filePath, JSON.stringify(def, null, 2), 'utf-8');
   }
+
+  /**
+   * 同步 skills 到 Agent Home 的 AGENTS.md
+   *
+   * 将 Agent 定义中的 skills 写入 homes/{agentId}/AGENTS.md，
+   * 这样技能会自动激活，无需用户每次手动指定。
+   *
+   * @param agentId - Agent ID
+   * @param skills - 技能名称列表
+   */
+  private async syncSkillsToAgentsMd(agentId: string, skills: string[]): Promise<void> {
+    try {
+      const { Env } = await import('@main/common/env');
+      const agentHome = Env.getAgentHomeDir(agentId);
+      const agentsMdPath = path.join(agentHome, 'AGENTS.md');
+
+      // 构建 skills 内容块
+      const skillsBlock = this.buildSkillsBlock(skills);
+
+      // 读取现有 AGENTS.md（如果存在）
+      let existingContent = '';
+      if (fs.existsSync(agentsMdPath)) {
+        existingContent = fs.readFileSync(agentsMdPath, 'utf-8');
+      }
+
+      // 替换或追加 skills 块
+      const updatedContent = this.replaceOrAppendSkillsBlock(existingContent, skillsBlock);
+
+      // 写回文件
+      fs.writeFileSync(agentsMdPath, updatedContent, 'utf-8');
+
+      log.info(`[AgentStore] Synced ${skills.length} skills to ${agentsMdPath}`);
+    } catch (err) {
+      log.error(`[AgentStore] Failed to sync skills to AGENTS.md for ${agentId}:`, err);
+      throw err;
+    }
+  }
+
+  /**
+   * 构建 skills 内容块
+   */
+  private buildSkillsBlock(skills: string[]): string {
+    if (skills.length === 0) {
+      return `<skills_system priority="1">
+## Available Skills
+
+无技能配置。使用 \`skill_list\` 工具查看可用技能。
+
+</skills_system>`;
+    }
+
+    const skillItems = skills.map((s) => `- ${s}`).join('\n');
+    return `<skills_system priority="1">
+## Available Skills
+
+以下技能已为你配置并自动激活：
+
+${skillItems}
+
+使用 \`skill_list\` 工具查看完整技能列表及详细信息。
+
+</skills_system>`;
+  }
+
+  /**
+   * 替换或追加 skills 块
+   *
+   * 如果存在 <skills_system> 块，替换它；否则追加到文件末尾。
+   */
+  private replaceOrAppendSkillsBlock(existingContent: string, skillsBlock: string): string {
+    const skillsRegex = /<skills_system[^>]*>[\s\S]*?<\/skills_system>/;
+
+    if (skillsRegex.test(existingContent)) {
+      // 替换现有 skills 块
+      return existingContent.replace(skillsRegex, skillsBlock);
+    } else {
+      // 追加到文件末尾（如果文件不为空，先加空行）
+      const separator = existingContent.trim() ? '\n\n' : '';
+      return existingContent + separator + skillsBlock + '\n';
+    }
+  }
 }
 
 // ==================== 辅助函数 ====================
@@ -317,7 +461,7 @@ function toIndexEntry(def: AgentDefinition): AgentIndexEntry {
     createdBy: def.createdBy,
     version: def.version,
     updatedAt: def.updatedAt,
-    tools: def.tools,
+    excludeTools: def.excludeTools,
     skills: def.skills
   };
 }

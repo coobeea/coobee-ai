@@ -30,7 +30,7 @@ coobee-ai/
 ### 1. 导入 Env 模块
 
 ```typescript
-import { Env } from '@main/common'
+import { Env } from '@main/common';
 
 // 可用的路径方法：
 // - Env.paths.userData         - 用户数据目录
@@ -43,16 +43,13 @@ import { Env } from '@main/common'
 ### 2. 基本使用
 
 ```typescript
-import { Env } from '@main/common'
-import path from 'path'
+import { Env } from '@main/common';
+import path from 'path';
 
 // 获取当前平台的二进制文件路径
-const binaryPath = path.join(
-  Env.getPlatformRuntimeDir(),
-  process.platform === 'win32' ? 'tool.exe' : 'tool'
-)
+const binaryPath = path.join(Env.getPlatformRuntimeDir(), process.platform === 'win32' ? 'tool.exe' : 'tool');
 
-console.log(binaryPath)
+console.log(binaryPath);
 // 开发模式: /path/to/coobee-ai/runtime/macos/tool
 // 生产模式: /Applications/coobee-ai.app/Contents/Resources/runtime/macos/tool
 ```
@@ -60,26 +57,23 @@ console.log(binaryPath)
 ### 3. 实际示例
 
 ```typescript
-import { Env } from '@main/common'
-import { exec } from 'child_process'
-import path from 'path'
+import { Env } from '@main/common';
+import { exec } from 'child_process';
+import path from 'path';
 
 // 执行运行时二进制
 async function runTool() {
-  const toolPath = path.join(
-    Env.getPlatformRuntimeDir(),
-    process.platform === 'win32' ? 'uv.exe' : 'uv'
-  )
+  const toolPath = path.join(Env.getPlatformRuntimeDir(), process.platform === 'win32' ? 'uv.exe' : 'uv');
 
   return new Promise((resolve, reject) => {
     exec(`"${toolPath}" --version`, (error, stdout, stderr) => {
       if (error) {
-        reject(error)
-        return
+        reject(error);
+        return;
       }
-      resolve(stdout)
-    })
-  })
+      resolve(stdout);
+    });
+  });
 }
 ```
 
@@ -109,7 +103,7 @@ async function runTool() {
 **使用示例**:
 
 ```typescript
-Env.getResourcePath('icon.png') // 获取资源文件路径
+Env.getResourcePath('icon.png'); // 获取资源文件路径
 ```
 
 ### Env.getAppRuntimeDir()
@@ -177,13 +171,10 @@ cp runtime/linux-x64/* runtime/linux/
 ### 步骤 3：在代码中使用
 
 ```typescript
-import { Env } from '@main/common'
-import path from 'path'
+import { Env } from '@main/common';
+import path from 'path';
 
-const toolPath = path.join(
-  Env.getPlatformRuntimeDir(),
-  process.platform === 'win32' ? 'tool.exe' : 'tool'
-)
+const toolPath = path.join(Env.getPlatformRuntimeDir(), process.platform === 'win32' ? 'tool.exe' : 'tool');
 ```
 
 ---

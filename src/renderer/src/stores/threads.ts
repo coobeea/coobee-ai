@@ -17,7 +17,7 @@ import { generateThreadTitle } from '@/composables/useQuickChat';
 export type ThreadRunStatus = 'idle' | 'running' | 'tool-pending' | 'approval-pending' | 'completed' | 'error';
 
 /** Agent 分类类型 */
-export type AgentType = 'agent' | 'orchestrator' | 'swarm';
+export type AgentType = 'agent' | 'orchestrator' | 'swarm' | 'quality-loop' | 'discussion';
 
 /** Thread 索引条目 */
 export interface ThreadEntry {
@@ -32,6 +32,8 @@ export interface ThreadEntry {
   updatedAt: string;
   /** 该 Thread 的工作空间绝对路径 */
   workspacePath: string;
+  /** Agent Home 目录路径（用于展示 Agent 持久化数据） */
+  agentHomePath: string;
 }
 
 /** HTTP 基础路径 */

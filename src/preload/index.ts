@@ -41,6 +41,14 @@ const api = {
   openDirectory: (): Promise<string | null> => ipcRenderer.invoke(ShellChannels.OPEN_DIRECTORY),
 
   /**
+   * 打开文件选择对话框（支持多选），返回选中文件路径列表
+   */
+  openFile: (options?: {
+    properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>;
+    filters?: Array<{ name: string; extensions: string[] }>;
+  }): Promise<{ canceled: boolean; filePaths: string[] }> => ipcRenderer.invoke(ShellChannels.OPEN_FILE, options),
+
+  /**
    * 读取剪贴板中的文件路径列表
    */
   getClipboardFiles: (): Promise<string[]> => ipcRenderer.invoke(ShellChannels.GET_CLIPBOARD_FILES),

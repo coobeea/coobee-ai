@@ -7,6 +7,7 @@
 
 import type { ToolDefinition } from '../../ai/tools/types';
 import type { MethodHandler } from '../../gateway/protocol/types';
+import type { ChannelPlugin } from '../../channels/types';
 import type {
   ExtensionHookName,
   RegisteredExtensionHook,
@@ -15,7 +16,9 @@ import type {
   RegisteredExtensionSkillDir,
   RegisteredChannel,
   RegisteredHttpRoute,
-  RegisteredBackgroundService
+  RegisteredBackgroundService,
+  RegisteredCronJob,
+  CronJobConfig
 } from './types';
 
 /** 受保护的 Gateway 核心命名空间，Extension 不可覆盖 */
@@ -29,8 +32,15 @@ export class ExtensionRegistry {
   private channels: RegisteredChannel[] = [];
   private httpRoutes: RegisteredHttpRoute[] = [];
   private backgroundServices: RegisteredBackgroundService[] = [];
+  private cronJobs: RegisteredCronJob[] = [];
   /** 失败的 Extension（extensionId → 错误信息） */
   private failedExtensions = new Map<string, string>();
+  /** 注册的 ChannelPlugin（pluginId → { extensionId, plugin }） */
+  private channelPlugins = new Map<string, { extensionId: string; plugin: ChannelPlugin }>();
+  /** 自动注入的 Skill 名称（extensionId → skillName[]） */
+  private autoInjectSkills = new Map<string, string[]>();
+  /** 自动注入的指令（extensionId → instructions） */
+  private injectInstructions = new Map<string, string>();
 
   // --- 工具 ---
 
@@ -127,6 +137,45 @@ export class ExtensionRegistry {
     return [...this.skillDirs];
   }
 
+  // --- 自动注入 Skill ---
+
+  registerAutoInjectSkills(extensionId: string, skillNames: string[]): void {
+    if (skillNames.length === 0) return;
+    this.autoInjectSkills.set(extensionId, skillNames);
+  }
+
+  unregisterAutoInjectSkillsByExtension(extensionId: string): string[] {
+    const skills = this.autoInjectSkills.get(extensionId) || [];
+    this.autoInjectSkills.delete(extensionId);
+    return skills;
+  }
+
+  getAutoInjectSkills(): string[] {
+    const allSkills: string[] = [];
+    for (const skills of this.autoInjectSkills.values()) {
+      allSkills.push(...skills);
+    }
+    // 去重
+    return Array.from(new Set(allSkills));
+  }
+
+  // --- 指令注入 ---
+
+  registerInjectInstructions(extensionId: string, instructions: string): void {
+    if (!instructions.trim()) return;
+    this.injectInstructions.set(extensionId, instructions);
+  }
+
+  unregisterInjectInstructionsByExtension(extensionId: string): string | undefined {
+    const instructions = this.injectInstructions.get(extensionId);
+    this.injectInstructions.delete(extensionId);
+    return instructions;
+  }
+
+  getInjectInstructions(): string[] {
+    return Array.from(this.injectInstructions.values());
+  }
+
   // --- Channel ---
 
   registerChannel(extensionId: string, channel: RegisteredChannel['channel']): void {
@@ -150,6 +199,36 @@ export class ExtensionRegistry {
 
   getChannels(): RegisteredChannel[] {
     return [...this.channels];
+  }
+
+  // --- ChannelPlugin ---
+
+  registerChannelPlugin(extensionId: string, plugin: ChannelPlugin): void {
+    if (this.channelPlugins.has(plugin.id)) {
+      throw new Error(
+        `[ExtensionRegistry] ChannelPlugin "${plugin.id}" already registered by "${this.channelPlugins.get(plugin.id)?.extensionId}"`
+      );
+    }
+    this.channelPlugins.set(plugin.id, { extensionId, plugin });
+  }
+
+  unregisterChannelPluginsByExtension(extensionId: string): string[] {
+    const removed: string[] = [];
+    for (const [pluginId, entry] of this.channelPlugins.entries()) {
+      if (entry.extensionId === extensionId) {
+        this.channelPlugins.delete(pluginId);
+        removed.push(pluginId);
+      }
+    }
+    return removed;
+  }
+
+  getChannelPlugins(): Array<{ extensionId: string; plugin: ChannelPlugin }> {
+    return Array.from(this.channelPlugins.values());
+  }
+
+  getChannelPlugin(pluginId: string): ChannelPlugin | undefined {
+    return this.channelPlugins.get(pluginId)?.plugin;
   }
 
   // --- HTTP Route ---
@@ -202,6 +281,32 @@ export class ExtensionRegistry {
     return [...this.backgroundServices];
   }
 
+  // --- CronJob ---
+
+  registerCronJob(extensionId: string, config: CronJobConfig): void {
+    const jobKey = `${extensionId}:${config.name}`;
+    if (this.cronJobs.some((j) => `${j.extensionId}:${j.config.name}` === jobKey)) {
+      throw new Error(`[ExtensionRegistry] CronJob "${config.name}" already registered by "${extensionId}"`);
+    }
+    this.cronJobs.push({ extensionId, config });
+  }
+
+  unregisterCronJobsByExtension(extensionId: string): string[] {
+    const removed: string[] = [];
+    this.cronJobs = this.cronJobs.filter((j) => {
+      if (j.extensionId === extensionId) {
+        removed.push(j.config.name);
+        return false;
+      }
+      return true;
+    });
+    return removed;
+  }
+
+  getCronJobs(): RegisteredCronJob[] {
+    return [...this.cronJobs];
+  }
+
   // --- 整体 ---
 
   unregisterAll(extensionId: string): void {
@@ -209,9 +314,13 @@ export class ExtensionRegistry {
     this.unregisterHooksByExtension(extensionId);
     this.unregisterGatewayMethodsByExtension(extensionId);
     this.unregisterSkillDirsByExtension(extensionId);
+    this.unregisterAutoInjectSkillsByExtension(extensionId);
+    this.unregisterInjectInstructionsByExtension(extensionId);
     this.unregisterChannelsByExtension(extensionId);
+    this.unregisterChannelPluginsByExtension(extensionId);
     this.unregisterHttpRoutesByExtension(extensionId);
     this.unregisterServicesByExtension(extensionId);
+    this.unregisterCronJobsByExtension(extensionId);
   }
 
   getExtensionIds(): string[] {
@@ -221,8 +330,10 @@ export class ExtensionRegistry {
     for (const m of this.gatewayMethods) ids.add(m.extensionId);
     for (const s of this.skillDirs) ids.add(s.extensionId);
     for (const c of this.channels) ids.add(c.extensionId);
+    for (const [, entry] of this.channelPlugins.entries()) ids.add(entry.extensionId);
     for (const r of this.httpRoutes) ids.add(r.extensionId);
     for (const s of this.backgroundServices) ids.add(s.extensionId);
+    for (const j of this.cronJobs) ids.add(j.extensionId);
     return [...ids];
   }
 
@@ -231,9 +342,13 @@ export class ExtensionRegistry {
     this.tools = [];
     this.gatewayMethods = [];
     this.skillDirs = [];
+    this.autoInjectSkills.clear();
+    this.injectInstructions.clear();
     this.channels = [];
+    this.channelPlugins.clear();
     this.httpRoutes = [];
     this.backgroundServices = [];
+    this.cronJobs = [];
     this.failedExtensions.clear();
   }
 

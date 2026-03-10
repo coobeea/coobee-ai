@@ -28,12 +28,12 @@
 
 ```typescript
 export interface Shortcut {
-  key: string // 快捷键标识
-  shortcut: string // 快捷键组合
-  editable: boolean // 是否可编辑
-  enabled: boolean // 是否启用
-  global: boolean // 是否为全局快捷键
-  registered: boolean // 是否已注册
+  key: string; // 快捷键标识
+  shortcut: string; // 快捷键组合
+  editable: boolean; // 是否可编辑
+  enabled: boolean; // 是否启用
+  global: boolean; // 是否为全局快捷键
+  registered: boolean; // 是否已注册
 }
 ```
 
@@ -177,33 +177,33 @@ pnpm format
 ### 注册快捷键
 
 ```typescript
-import { shortcutManager } from '@main/common/shortcut'
+import { shortcutManager } from '@main/common/shortcut';
 
 // 在应用启动时自动注册（通过 Hook）
 // 手动刷新
-await shortcutManager.refreshShortcuts()
+await shortcutManager.refreshShortcuts();
 ```
 
 ### 获取快捷键配置
 
 ```typescript
-const shortcuts = shortcutManager.getShortcuts()
-console.log(shortcuts) // [{ key: 'Quit', shortcut: 'CommandOrControl+Q', ... }]
+const shortcuts = shortcutManager.getShortcuts();
+console.log(shortcuts); // [{ key: 'Quit', shortcut: 'CommandOrControl+Q', ... }]
 ```
 
 ### 修改快捷键配置
 
 ```typescript
-import { config } from '@main/common/config'
+import { config } from '@main/common/config';
 
 const newShortcuts = config.getShortcuts().map((s) => {
   if (s.key === 'Quit') {
-    return { ...s, enabled: false }
+    return { ...s, enabled: false };
   }
-  return s
-})
+  return s;
+});
 
-config.setShortcuts(newShortcuts)
+config.setShortcuts(newShortcuts);
 // 自动触发 shortcutsChanged 事件 → 刷新快捷键
 ```
 

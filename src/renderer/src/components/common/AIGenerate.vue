@@ -42,7 +42,7 @@ export type PromptBuilder = string | ((context?: unknown) => string | Promise<st
 export interface AIGenerateProps {
   /**
    * Agent ID
-   * @example 'task-analyzer' | 'title-generator'
+   * @example 'app-copilot' | 'one-line-summary'
    */
   agent: string;
 

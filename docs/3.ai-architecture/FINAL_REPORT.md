@@ -55,14 +55,14 @@
 
 ```typescript
 class TrimmingSession {
-  private messages: Message[] = []
-  private systemMessages: Message[] = []
+  private messages: Message[] = [];
+  private systemMessages: Message[] = [];
 
   private async trimHistory(): Promise<void> {
-    const maxMessages = this.systemMessages.length + this.maxTurns * 2
+    const maxMessages = this.systemMessages.length + this.maxTurns * 2;
     if (this.messages.length > maxMessages) {
-      const trimmed = this.messages.slice(-this.maxTurns * 2)
-      this.messages = [...this.systemMessages, ...trimmed]
+      const trimmed = this.messages.slice(-this.maxTurns * 2);
+      this.messages = [...this.systemMessages, ...trimmed];
     }
   }
 }
@@ -164,9 +164,9 @@ private evictLRU(): void {
 
 ```typescript
 interface ClientInfo {
-  sessionIds: Set<string>
-  isAlive: boolean
-  heartbeatTimer: NodeJS.Timeout | null
+  sessionIds: Set<string>;
+  isAlive: boolean;
+  heartbeatTimer: NodeJS.Timeout | null;
 }
 ```
 
@@ -205,8 +205,8 @@ interface ClientInfo {
 
 ```typescript
 for (let attempt = 0; attempt <= maxRetries; attempt++) {
-  const backoffTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
-  await this.delay(backoffTime)
+  const backoffTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+  await this.delay(backoffTime);
   // 执行任务
 }
 ```
@@ -253,10 +253,10 @@ pnpm run lint:architecture
 // 包装异步操作
 await performanceMonitor.measure('orchestrator', 'executeTask', async () => {
   /* ... */
-})
+});
 
 // 获取统计
-const stats = performanceMonitor.getStats('orchestrator')
+const stats = performanceMonitor.getStats('orchestrator');
 ```
 
 **默认阈值**:
@@ -449,28 +449,28 @@ pnpm run review
 ### 性能监控
 
 ```typescript
-import { performanceMonitor } from '@main/ai/monitoring'
+import { performanceMonitor } from '@main/ai/monitoring';
 
 // 追踪操作
 await performanceMonitor.measure('module', 'operation', async () => {
   // 你的代码
-})
+});
 
 // 查看统计
-const stats = performanceMonitor.getStats()
-const slowest = performanceMonitor.getSlowestOperations(10)
+const stats = performanceMonitor.getStats();
+const slowest = performanceMonitor.getSlowestOperations(10);
 ```
 
 ### 缓存管理
 
 ```typescript
-import { agentFactory } from '@main/ai/agents'
+import { agentFactory } from '@main/ai/agents';
 
 // 获取统计
-const stats = agentFactory.getCacheStats()
+const stats = agentFactory.getCacheStats();
 
 // 清理资源
-agentFactory.destroy()
+agentFactory.destroy();
 ```
 
 ---

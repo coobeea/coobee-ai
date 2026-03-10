@@ -21,40 +21,40 @@
 **代码模板**:
 
 ```typescript
-import { BrowserWindow, BrowserWindowConstructorOptions } from 'electron'
-import { log } from '@main/common/logger'
-import { eventBus } from '@main/common/eventbus'
-import { WindowEvents } from '@shared/events'
+import { BrowserWindow, BrowserWindowConstructorOptions } from 'electron';
+import { log } from '@main/common/logger';
+import { eventBus } from '@main/common/eventbus';
+import { WindowEvents } from '@shared/events';
 
 export interface WindowConfig {
-  type: 'main' | 'chat' | 'browser' | 'settings' | 'floating'
-  width?: number
-  height?: number
-  minWidth?: number
-  minHeight?: number
-  frame?: boolean
-  transparent?: boolean
-  alwaysOnTop?: boolean
-  initialUrl?: string
-  metadata?: Record<string, unknown>
+  type: 'main' | 'chat' | 'browser' | 'settings' | 'floating';
+  width?: number;
+  height?: number;
+  minWidth?: number;
+  minHeight?: number;
+  frame?: boolean;
+  transparent?: boolean;
+  alwaysOnTop?: boolean;
+  initialUrl?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface WindowInfo {
-  id: number
-  type: WindowConfig['type']
-  window: BrowserWindow
-  isMain: boolean
-  createdAt: Date
-  metadata?: Record<string, unknown>
+  id: number;
+  type: WindowConfig['type'];
+  window: BrowserWindow;
+  isMain: boolean;
+  createdAt: Date;
+  metadata?: Record<string, unknown>;
 }
 
 export class WindowManager {
-  private windows: Map<number, WindowInfo> = new Map()
-  private mainWindowId: number | null = null
-  private focusedWindowId: number | null = null
+  private windows: Map<number, WindowInfo> = new Map();
+  private mainWindowId: number | null = null;
+  private focusedWindowId: number | null = null;
 
   constructor() {
-    log.info('[WindowManager] 初始化窗口管理器')
+    log.info('[WindowManager] 初始化窗口管理器');
   }
 
   // TODO: 实现方法
@@ -369,53 +369,53 @@ restoreWindow(windowId: number): void {
 **代码模板**:
 
 ```typescript
-import { WindowManager } from '@main/managers/WindowManager'
+import { WindowManager } from '@main/managers/WindowManager';
 
 export class AppManager {
-  private lifecycleManager: LifecycleManager
-  private windowManager!: WindowManager
+  private lifecycleManager: LifecycleManager;
+  private windowManager!: WindowManager;
 
   async initialize(): Promise<void> {
     try {
-      log.info('[App] 开始初始化应用...')
+      log.info('[App] 开始初始化应用...');
 
       // 1. 应用基础配置
-      electronApp.setAppUserModelId('com.electron')
+      electronApp.setAppUserModelId('com.electron');
 
       // 2. 单实例锁定
-      this.setupSingleInstance()
+      this.setupSingleInstance();
 
-      await app.whenReady()
+      await app.whenReady();
 
       // 3. 初始化窗口管理器
-      this.windowManager = new WindowManager()
-      log.info('[App] 窗口管理器初始化完成')
+      this.windowManager = new WindowManager();
+      log.info('[App] 窗口管理器初始化完成');
 
       // 4. 触发 INIT 阶段
-      await this.lifecycleManager.executePhase(LifecyclePhase.INIT)
+      await this.lifecycleManager.executePhase(LifecyclePhase.INIT);
 
       // 5. 创建主窗口
       const mainWindow = this.windowManager.createWindow({
         type: 'main',
         initialUrl: '/'
-      })
+      });
 
       if (!mainWindow) {
-        throw new Error('创建主窗口失败')
+        throw new Error('创建主窗口失败');
       }
 
       // 6. 触发 READY 阶段
-      await this.lifecycleManager.executePhase(LifecyclePhase.READY)
+      await this.lifecycleManager.executePhase(LifecyclePhase.READY);
 
-      log.info('[App] 应用初始化完成')
+      log.info('[App] 应用初始化完成');
     } catch (error) {
-      log.error('[App] 应用初始化失败:', error)
-      throw error
+      log.error('[App] 应用初始化失败:', error);
+      throw error;
     }
   }
 
   getWindowManager(): WindowManager {
-    return this.windowManager
+    return this.windowManager;
   }
 }
 ```
@@ -484,67 +484,67 @@ private setupSingleInstance(): void {
 **代码模板**:
 
 ```typescript
-import { ipcMain, IpcMainInvokeEvent } from 'electron'
-import { appManager } from '@main/common/app'
-import { log } from '@main/common/logger'
-import type { WindowConfig } from '@main/managers/WindowManager'
+import { ipcMain, IpcMainInvokeEvent } from 'electron';
+import { appManager } from '@main/common/app';
+import { log } from '@main/common/logger';
+import type { WindowConfig } from '@main/managers/WindowManager';
 
 export function registerWindowHandlers(): void {
   // 创建窗口
   ipcMain.handle('window:create', async (event: IpcMainInvokeEvent, config: WindowConfig) => {
     try {
-      log.info('[IPC] 创建窗口请求:', config)
-      const window = appManager.getWindowManager().createWindow(config)
+      log.info('[IPC] 创建窗口请求:', config);
+      const window = appManager.getWindowManager().createWindow(config);
 
       if (!window) {
-        throw new Error('创建窗口失败')
+        throw new Error('创建窗口失败');
       }
 
       return {
         success: true,
         windowId: window.id
-      }
+      };
     } catch (error) {
-      log.error('[IPC] 创建窗口失败:', error)
+      log.error('[IPC] 创建窗口失败:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '未知错误'
-      }
+      };
     }
-  })
+  });
 
   // 关闭窗口
   ipcMain.handle('window:close', async (event: IpcMainInvokeEvent, windowId: number) => {
     try {
-      log.info('[IPC] 关闭窗口请求:', windowId)
-      appManager.getWindowManager().closeWindow(windowId)
-      return { success: true }
+      log.info('[IPC] 关闭窗口请求:', windowId);
+      appManager.getWindowManager().closeWindow(windowId);
+      return { success: true };
     } catch (error) {
-      log.error('[IPC] 关闭窗口失败:', error)
+      log.error('[IPC] 关闭窗口失败:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '未知错误'
-      }
+      };
     }
-  })
+  });
 
   // 聚焦窗口
   ipcMain.handle('window:focus', async (event: IpcMainInvokeEvent, windowId: number) => {
     try {
-      appManager.getWindowManager().focusWindow(windowId)
-      return { success: true }
+      appManager.getWindowManager().focusWindow(windowId);
+      return { success: true };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : '未知错误'
-      }
+      };
     }
-  })
+  });
 
   // 获取所有窗口
   ipcMain.handle('window:get-all', async () => {
     try {
-      const windows = appManager.getWindowManager().getAllWindows()
+      const windows = appManager.getWindowManager().getAllWindows();
       return {
         success: true,
         windows: windows.map((info) => ({
@@ -554,16 +554,16 @@ export function registerWindowHandlers(): void {
           createdAt: info.createdAt,
           metadata: info.metadata
         }))
-      }
+      };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : '未知错误'
-      }
+      };
     }
-  })
+  });
 
-  log.info('[IPC] 窗口处理器注册完成')
+  log.info('[IPC] 窗口处理器注册完成');
 }
 ```
 
@@ -581,12 +581,12 @@ export function registerWindowHandlers(): void {
 **代码模板**:
 
 ```typescript
-import { registerWindowHandlers } from './handlers/WindowHandlers'
+import { registerWindowHandlers } from './handlers/WindowHandlers';
 // import { registerDatabaseHandlers } from './handlers/DatabaseHandlers'
 // import { registerConfigHandlers } from './handlers/ConfigHandlers'
 
 export function registerIpcHandlers(): void {
-  registerWindowHandlers()
+  registerWindowHandlers();
   // registerDatabaseHandlers()
   // registerConfigHandlers()
 }
@@ -622,7 +622,7 @@ async initialize() {
 **代码模板**:
 
 ```typescript
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron';
 
 // 窗口 API
 const windowApi = {
@@ -640,34 +640,34 @@ const windowApi = {
 
   // 监听窗口事件
   on: (channel: string, callback: (...args: unknown[]) => void) => {
-    ipcRenderer.on(channel, (event, ...args) => callback(...args))
+    ipcRenderer.on(channel, (event, ...args) => callback(...args));
   },
 
   // 移除监听
   off: (channel: string, callback: (...args: unknown[]) => void) => {
-    ipcRenderer.removeListener(channel, callback)
+    ipcRenderer.removeListener(channel, callback);
   }
-}
+};
 
 // 暴露到渲染进程
-contextBridge.exposeInMainWorld('windowApi', windowApi)
+contextBridge.exposeInMainWorld('windowApi', windowApi);
 ```
 
 **类型定义**: `src/preload/index.d.ts`
 
 ```typescript
 export interface WindowApi {
-  create: (config: unknown) => Promise<{ success: boolean; windowId?: number; error?: string }>
-  close: (windowId: number) => Promise<{ success: boolean; error?: string }>
-  focus: (windowId: number) => Promise<{ success: boolean; error?: string }>
-  getAll: () => Promise<{ success: boolean; windows?: unknown[]; error?: string }>
-  on: (channel: string, callback: (...args: unknown[]) => void) => void
-  off: (channel: string, callback: (...args: unknown[]) => void) => void
+  create: (config: unknown) => Promise<{ success: boolean; windowId?: number; error?: string }>;
+  close: (windowId: number) => Promise<{ success: boolean; error?: string }>;
+  focus: (windowId: number) => Promise<{ success: boolean; error?: string }>;
+  getAll: () => Promise<{ success: boolean; windows?: unknown[]; error?: string }>;
+  on: (channel: string, callback: (...args: unknown[]) => void) => void;
+  off: (channel: string, callback: (...args: unknown[]) => void) => void;
 }
 
 declare global {
   interface Window {
-    windowApi: WindowApi
+    windowApi: WindowApi;
   }
 }
 ```
@@ -706,10 +706,10 @@ export enum WindowEvents {
 
 // 扩展事件负载
 export interface EventPayloads {
-  [WindowEvents.CREATED]: { windowId: number; type: string }
-  [WindowEvents.CLOSED]: { windowId: number }
-  [WindowEvents.FOCUS]: { windowId: number }
-  [WindowEvents.BLUR]: { windowId: number }
+  [WindowEvents.CREATED]: { windowId: number; type: string };
+  [WindowEvents.CLOSED]: { windowId: number };
+  [WindowEvents.FOCUS]: { windowId: number };
+  [WindowEvents.BLUR]: { windowId: number };
   // ...
 }
 ```

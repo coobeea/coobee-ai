@@ -54,6 +54,34 @@ export const AppChannels = {
   IS_BACKEND_READY: 'app:is-backend-ready'
 } as const;
 
+/** 讨论室通道（invoke） */
+export const DiscussionChannels = {
+  /** 创建讨论室 */
+  CREATE: 'discussion:create',
+  /** 获取讨论列表 */
+  LIST: 'discussion:list',
+  /** 获取讨论详情 */
+  GET: 'discussion:get',
+  /** 添加消息 */
+  ADD_MESSAGE: 'discussion:add-message',
+  /** 暂停讨论 */
+  PAUSE: 'discussion:pause',
+  /** 继续讨论 */
+  RESUME: 'discussion:resume',
+  /** 结束讨论 */
+  END: 'discussion:end'
+} as const;
+
+/** 专家会诊通道（invoke） */
+export const ConsultationChannels = {
+  /** 创建会诊 */
+  CREATE: 'consultation:create',
+  /** 获取会诊列表 */
+  LIST: 'consultation:list',
+  /** 获取会诊详情 */
+  GET: 'consultation:get'
+} as const;
+
 /** 事件监听通道（on 监听） */
 export const EventChannels = {
   /** Tab 列表更新 */

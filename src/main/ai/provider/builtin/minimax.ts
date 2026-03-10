@@ -1,4 +1,4 @@
-import type { ProviderConfig } from '../types'
+import type { ProviderConfig } from '../types';
 
 export const minimaxProvider: ProviderConfig = {
   id: 'minimax',
@@ -18,4 +18,4 @@ export const minimaxProvider: ProviderConfig = {
     }
   ],
   enabled: true
-}
+};

@@ -17,16 +17,20 @@ import { KnowledgeBase } from './KnowledgeBase';
 import env from '@main/common/env';
 import { join } from 'path';
 import type { AgentRuntimeOptions, ExecutionConfig, ExecutionResult, StreamChunk, SessionInfo } from '../runtime/types';
+import { Aggregator } from '../quality-loop/Aggregator';
+import { createLLMChat, type AgentExecutorLike } from '../quality-loop/llm-chat';
 
 const log = createLogger('swarm:runtime');
 
 export interface SwarmRuntimeOptions {
   config?: Partial<SwarmConfig>;
   customRoles?: AgentRole[];
-  /** 🆕 Workspace 目录（用于持久化） */
+  /** Workspace 目录（用于持久化） */
   workspaceDir?: string;
-  /** 🆕 是否启用持久化（默认 true） */
+  /** 是否启用持久化（默认 true） */
   enablePersistence?: boolean;
+  /** AgentExecutor 实例（用于汇总多 Agent 输出的 LLM 调用） */
+  agentExecutor?: unknown;
 }
 
 export class SwarmRuntime extends AbstractAgentRuntime {
@@ -62,10 +66,10 @@ export class SwarmRuntime extends AbstractAgentRuntime {
       name: options?.config?.name || `Swarm-${swarmId}`,
       parentSessionId: this.sessionId,
       ...options?.config,
-      // 🆕 注入持久化实例
       context,
       messageBus,
-      knowledgeBase
+      knowledgeBase,
+      agentExecutor: options?.agentExecutor
     } as SwarmConfig;
 
     this._name = this.swarmConfig.name;
@@ -133,7 +137,12 @@ export class SwarmRuntime extends AbstractAgentRuntime {
       };
 
       let result;
-      if (executionMode === 'parallel' && config?.subTasks) {
+      if (executionMode === 'discussion') {
+        const discussionConfig = config?.discussionConfig as
+          | Partial<import('./DiscussionCoordinator').DiscussionConfig>
+          | undefined;
+        result = await this.coordinator.coordinateDiscussion(task, discussionConfig);
+      } else if (executionMode === 'parallel' && config?.subTasks) {
         result = await this.coordinator.coordinateParallel(task, config.subTasks as SwarmSubTask[]);
       } else if (executionMode === 'hybrid' || executionMode === 'auto') {
         result = await this.coordinator.coordinateHybrid(task);
@@ -141,8 +150,17 @@ export class SwarmRuntime extends AbstractAgentRuntime {
         result = await this.coordinator.coordinate(task);
       }
 
+      // 🆕 如果有 artifacts，附加到输出文本中
+      let finalOutput = result.output;
+      if (result.artifacts && result.artifacts.length > 0) {
+        const artifactsSummary = result.artifacts
+          .map((a) => `- **${a.name}** (${a.type}) - 产出者: ${a.createdBy}`)
+          .join('\n');
+        finalOutput += `\n\n---\n## 📦 产出文件\n\n${artifactsSummary}\n\n所有文件已保存到工作空间的 \`output/\` 目录。`;
+      }
+
       return {
-        output: result.output,
+        output: finalOutput,
         toolCalls: [],
         duration: Date.now() - startTime,
         metadata: {
@@ -152,7 +170,8 @@ export class SwarmRuntime extends AbstractAgentRuntime {
           executionMode,
           handoffCount: result.handoffCount,
           rolesUsed: result.rolesUsed,
-          swarmState: result.state.status
+          swarmState: result.state.status,
+          artifacts: result.artifacts || []
         }
       };
     } catch (error: unknown) {
@@ -203,8 +222,20 @@ export class SwarmRuntime extends AbstractAgentRuntime {
         error: Error | null;
       } = { result: null, error: null };
 
-      const taskPromise = this.coordinator
-        .coordinate(task)
+      const executionMode = (config?.executionMode as string) || 'auto';
+      const coordinatePromise =
+        executionMode === 'discussion'
+          ? this.coordinator.coordinateDiscussion(
+              task,
+              config?.discussionConfig as Partial<import('./DiscussionCoordinator').DiscussionConfig> | undefined
+            )
+          : executionMode === 'parallel' && config?.subTasks
+            ? this.coordinator.coordinateParallel(task, config.subTasks as SwarmSubTask[])
+            : executionMode === 'hybrid' || executionMode === 'auto'
+              ? this.coordinator.coordinateHybrid(task)
+              : this.coordinator.coordinate(task);
+
+      const taskPromise = coordinatePromise
         .then((r) => {
           outcome.result = r;
           log.info(`[SwarmRuntime] Coordination completed: status=${r.state.status}, output length=${r.output.length}`);
@@ -266,11 +297,51 @@ export class SwarmRuntime extends AbstractAgentRuntime {
         throw new Error(errorMsg);
       }
 
-      const finalOutput = result.output;
+      let finalOutput = result.output;
+
+      const agentExec = this.swarmConfig.agentExecutor as AgentExecutorLike | undefined;
+      const aggregator = agentExec ? new Aggregator(createLLMChat(agentExec)) : null;
+
+      // 汇总多个 Agent 输出（如果有多个角色参与）
+      if (aggregator && result.rolesUsed.length > 1) {
+        yield {
+          type: 'text:delta',
+          content: '\n\n[Swarm] 正在汇总多 Agent 输出...\n',
+          data: { delta: '\n\n[Swarm] 正在汇总多 Agent 输出...\n' }
+        };
+
+        const aggregationResult = await aggregator.aggregate({
+          userRequest: input,
+          subTaskResults: (result.roleOutputs || []).map((ro, idx) => ({
+            taskId: `${taskId}-${idx}`,
+            agentName: ro.roleId,
+            output: ro.output,
+            status: 'success'
+          })),
+          collaborationContext: `Handoff 链路: ${result.rolesUsed.join(' → ')}`
+        });
+
+        finalOutput = aggregationResult.finalOutput;
+        yield {
+          type: 'text:delta',
+          content: `[Swarm] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n`,
+          data: { delta: `[Swarm] 汇总完成 (耗时: ${aggregationResult.duration}ms)\n` }
+        };
+      }
 
       if (result.rolesUsed.length > 0) {
         const metaInfo = `\n\n---\n[Swarm] 使用专家: ${result.rolesUsed.join(' → ')} | Handoff: ${result.handoffCount}次 | 耗时: ${result.duration}ms`;
         yield { type: 'text:delta', content: metaInfo, data: { delta: metaInfo } };
+      }
+
+      // 🆕 如果有 artifacts，附加到输出中
+      if (result.artifacts && result.artifacts.length > 0) {
+        const artifactsSummary = result.artifacts
+          .map((a) => `- **${a.name}** (${a.type}) - 产出者: ${a.createdBy}`)
+          .join('\n');
+        const artifactsInfo = `\n\n---\n## 📦 产出文件\n\n${artifactsSummary}\n\n所有文件已保存到工作空间的 \`output/\` 目录。`;
+        finalOutput += artifactsInfo;
+        yield { type: 'text:delta', content: artifactsInfo, data: { delta: artifactsInfo } };
       }
 
       yield { type: 'text:done', content: finalOutput, data: { text: finalOutput } };
@@ -288,7 +359,8 @@ export class SwarmRuntime extends AbstractAgentRuntime {
           taskId,
           handoffCount: result.handoffCount,
           rolesUsed: result.rolesUsed,
-          swarmState: result.state.status
+          swarmState: result.state.status,
+          artifacts: result.artifacts || []
         }
       };
     } catch (error: unknown) {
@@ -356,6 +428,30 @@ export class SwarmRuntime extends AbstractAgentRuntime {
             type: 'text:delta',
             content: event.data.output + '\n',
             data: { delta: event.data.output + '\n' }
+          }
+        ];
+      case 'discussion:turn':
+        return [
+          {
+            type: 'text:delta',
+            content: `\n**[${event.data.roleName}]** (第${event.data.round}轮):\n${event.data.content}\n`,
+            data: {
+              delta: `\n**[${event.data.roleName}]** (第${event.data.round}轮):\n${event.data.content}\n`
+            }
+          }
+        ];
+      case 'discussion:consensus':
+        return [
+          {
+            type: 'text:delta',
+            content: event.data.reached
+              ? `\n---\n**[主持人]** 第${event.data.round}轮共识评估: ✅ 达成共识 (${event.data.score}分)\n`
+              : `\n---\n**[主持人]** 第${event.data.round}轮共识评估: ⏳ 继续讨论 (${event.data.score}分)\n`,
+            data: {
+              delta: event.data.reached
+                ? `[主持人] 达成共识 (${event.data.score}分)\n`
+                : `[主持人] 继续讨论 (${event.data.score}分)\n`
+            }
           }
         ];
       case 'error':

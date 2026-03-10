@@ -21,7 +21,7 @@ import type { AgentMode } from '../runtime/types';
 export type ThreadRunStatus = 'idle' | 'running' | 'tool-pending' | 'approval-pending' | 'completed' | 'error';
 
 /** Agent 分类类型（用于前端展示和模式区分） */
-export type AgentType = 'agent' | 'orchestrator' | 'swarm';
+export type AgentType = 'agent' | 'orchestrator' | 'swarm' | 'quality-loop' | 'discussion';
 
 // ==================== Thread 定义 ====================
 
@@ -57,6 +57,9 @@ export interface ThreadDefinition {
   /** 消息数量（轻量统计，避免前端需要加载全部消息） */
   messageCount: number;
 
+  /** Agent Home 目录路径（用于前端展示 Agent 持久化数据） */
+  agentHomePath: string;
+
   /** 创建时间（ISO 8601） */
   createdAt: string;
 
@@ -82,6 +85,8 @@ export interface ThreadIndexEntry {
   updatedAt: string;
   /** 该 Thread 的工作空间绝对路径（= workspacesDir/{id}） */
   workspacePath: string;
+  /** Agent Home 目录路径（用于前端展示 Agent 持久化数据） */
+  agentHomePath: string;
 }
 
 // ==================== 创建 / 更新参数 ====================
@@ -145,4 +150,7 @@ export interface ThreadCheckpoint {
     /** 工具参数（JSON 字符串，用于重启后恢复显示） */
     arguments?: string;
   };
+
+  /** 扩展元数据（用于存储特定场景的状态，如 DiscussionCoordinator） */
+  metadata?: Record<string, unknown>;
 }

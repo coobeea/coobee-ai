@@ -85,10 +85,10 @@ body {
 ### 2. Vite 配置 (`electron.vite.config.ts`)
 
 ```typescript
-import { resolve } from 'path'
-import { defineConfig } from 'electron-vite'
-import vue from '@vitejs/plugin-vue'
-import tailwindcss from '@tailwindcss/vite'
+import { resolve } from 'path';
+import { defineConfig } from 'electron-vite';
+import vue from '@vitejs/plugin-vue';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   main: {},
@@ -101,14 +101,14 @@ export default defineConfig({
     },
     plugins: [vue(), tailwindcss()]
   }
-})
+});
 ```
 
 ### 3. 主入口文件 (`src/renderer/src/main.ts`)
 
 ```typescript
-import './assets/tailwind.css' // ✅ 已添加
-import './assets/main.css'
+import './assets/tailwind.css'; // ✅ 已添加
+import './assets/main.css';
 // ... 其他导入
 ```
 
@@ -179,10 +179,10 @@ Tailwind CSS 4 内置暗色模式支持，使用 `dark:` 前缀：
 
 ```vue
 <script setup lang="ts">
-import { useDark, useToggle } from '@vueuse/core'
+import { useDark, useToggle } from '@vueuse/core';
 
-const isDark = useDark()
-const toggleDark = useToggle(isDark)
+const isDark = useDark();
+const toggleDark = useToggle(isDark);
 </script>
 
 <template>

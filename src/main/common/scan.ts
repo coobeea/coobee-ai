@@ -2,66 +2,17 @@ import { log } from './logger';
 import { DiscoveredModule } from './types';
 
 /**
- * 扫描所有处理器文件
- */
-export function scanProcessors(): DiscoveredModule[] {
-  log.info('[Scan] 开始扫描处理器文件...');
-
-  const modules = import.meta.glob('@main/jobs/**/*Processor.ts', { eager: true });
-  const totalFound = Object.keys(modules).length;
-
-  log.info(`[Scan] 发现 ${totalFound} 个潜在的处理器文件:`);
-  Object.keys(modules).forEach((path, index) => {
-    log.info(`[Scan]   ${index + 1}. ${path}`);
-  });
-
-  const filteredModules = filterModules(modules, ['ProcessorRegistry', 'BaseProcessor']);
-  const filteredCount = filteredModules.length;
-
-  log.info(`[Scan] 过滤后剩余 ${filteredCount} 个处理器文件:`);
-  filteredModules.forEach((discoveredModule, index) => {
-    log.info(`[Scan]   ${index + 1}. ${discoveredModule.path}`);
-  });
-
-  log.info('[Scan] 处理器文件扫描完成');
-
-  return filteredModules;
-}
-
-/**
- * 扫描作业文件
- */
-export function scanJobs(): DiscoveredModule[] {
-  log.info('[Scan] 开始扫描作业文件...');
-
-  const modules = import.meta.glob('@main/jobs/**/*Job.ts', { eager: true });
-  const totalFound = Object.keys(modules).length;
-
-  log.info(`[Scan] 发现 ${totalFound} 个潜在的作业文件:`);
-  Object.keys(modules).forEach((path, index) => {
-    log.info(`[Scan]   ${index + 1}. ${path}`);
-  });
-
-  const filteredModules = filterModules(modules, ['JobRegistry', 'BaseJob']);
-  const filteredCount = filteredModules.length;
-
-  log.info(`[Scan] 过滤后剩余 ${filteredCount} 个作业文件:`);
-  filteredModules.forEach((discoveredModule, index) => {
-    log.info(`[Scan]   ${index + 1}. ${discoveredModule.path}`);
-  });
-
-  log.info('[Scan] 作业文件扫描完成');
-
-  return filteredModules;
-}
-
-/**
  * 扫描 API 文件
  */
 export function scanApis(): DiscoveredModule[] {
   log.info('[Scan] 开始扫描API文件...');
 
-  const modules = import.meta.glob('@main/api/**/*.ts', { eager: true });
+  const modules = import.meta.glob([
+    '../api/**/*.ts',
+    '!../api/**/__tests__/**',
+    '!../api/**/*.test.ts',
+    '!../api/**/*.spec.ts'
+  ], { eager: true });
   const totalFound = Object.keys(modules).length;
 
   log.info(`[Scan] 发现 ${totalFound} 个API文件:`);
@@ -69,7 +20,7 @@ export function scanApis(): DiscoveredModule[] {
     log.info(`[Scan]   ${index + 1}. ${path}`);
   });
 
-  const filteredModules = filterModules(modules);
+  const filteredModules = filterModules(modules, ['/__tests__/', '.test.ts', '.spec.ts']);
   const filteredCount = filteredModules.length;
 
   log.info(`[Scan] API文件扫描完成，共 ${filteredCount} 个文件`);
@@ -87,7 +38,7 @@ export function scanLifeCycleHooks(): DiscoveredModule[] {
   const modules = import.meta.glob('@main/lifecycle/**/*Hook.ts', { eager: true });
   const totalFound = Object.keys(modules).length;
 
-  const filteredModules = filterModules(modules, ['BaseHook']);
+  const filteredModules = filterModules(modules, ['BaseHook', '__tests__']);
   const filteredCount = filteredModules.length;
 
   log.info(`[Scan] 生命周期Hook扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`);
@@ -111,7 +62,7 @@ export function scanEventHandlers(): DiscoveredModule[] {
   const totalFound = Object.keys(modules).length;
 
   // 过滤掉 README.md 等非事件文件
-  const filteredModules = filterModules(modules, ['README']);
+  const filteredModules = filterModules(modules, ['README', '__tests__']);
   const filteredCount = filteredModules.length;
 
   log.info(`[Scan] 事件处理器文件扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`);
@@ -134,7 +85,7 @@ export function scanWsChannels(): DiscoveredModule[] {
   const modules = import.meta.glob('@main/channels/**/*Channel.ts', { eager: true });
   const totalFound = Object.keys(modules).length;
 
-  const filteredModules = filterModules(modules, ['BaseChannel']);
+  const filteredModules = filterModules(modules, ['BaseChannel', '__tests__']);
   const filteredCount = filteredModules.length;
 
   log.info(`[Scan] WebSocket Channel 扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`);
@@ -157,7 +108,7 @@ export function scanGatewayMethods(): DiscoveredModule[] {
   const modules = import.meta.glob('@main/gateway/methods/**/*.ts', { eager: true });
   const totalFound = Object.keys(modules).length;
 
-  const filteredModules = filterModules(modules);
+  const filteredModules = filterModules(modules, ['__tests__']);
   const filteredCount = filteredModules.length;
 
   log.info(`[Scan] Gateway 方法组扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`);
@@ -184,6 +135,28 @@ export function scanGatewayEventBridges(): DiscoveredModule[] {
   const filteredCount = filteredModules.length;
 
   log.info(`[Scan] Gateway 事件桥接扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`);
+
+  return filteredModules;
+}
+
+/**
+ * 扫描声明式 CronJob 文件
+ * 扫描 @main/jobs 目录下所有 *Job.ts 文件
+ *
+ * Job 命名规范：
+ * - 文件名以 Job.ts 结尾（如 HealthCheckJob.ts、DataSyncJob.ts）
+ * - 必须默认导出一个继承 BaseCronJob 的类
+ */
+export function scanCronJobs(): DiscoveredModule[] {
+  log.info('[Scan] 开始扫描声明式 CronJob 文件...');
+
+  const modules = import.meta.glob('@main/jobs/**/*Job.ts', { eager: true });
+  const totalFound = Object.keys(modules).length;
+
+  const filteredModules = filterModules(modules, ['BaseCronJob', '__tests__', '.test.ts', '.spec.ts']);
+  const filteredCount = filteredModules.length;
+
+  log.info(`[Scan] 声明式 CronJob 扫描完成: 发现 ${totalFound} 个文件，过滤后剩余 ${filteredCount} 个`);
 
   return filteredModules;
 }

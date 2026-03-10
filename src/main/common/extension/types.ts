@@ -17,12 +17,33 @@ export interface ExtensionManifest {
   version: string;
   description?: string;
   /**
+   * 设为 false 可禁用此 Extension，加载器会跳过它。
+   * 省略或 true 表示启用（默认行为）。
+   */
+  enabled?: boolean;
+  /**
    * 扩展贡献的 Skill 目录（相对于扩展根目录）
    *
    * 声明后，该目录下的 Skill 会被 Skill 加载器自动发现。
    * @example "skills" → <extensionDir>/skills/
    */
   skills?: string;
+  /**
+   * 自动注入的 Skill 名称列表
+   *
+   * 列表中的 Skill 会自动注入到所有 Agent，无需手动激活。
+   * 适用于核心功能型 Skill（如记忆系统、日志等）。
+   * @example ["memory-smart", "logger"]
+   */
+  autoInjectSkills?: string[];
+  /**
+   * 运行时自动注入的指令（追加到 Agent appendInstructions）
+   *
+   * 每次 Agent 运行时自动追加此指令，适用于需要动态注入能力的场景。
+   * 相比 autoInjectSkills（仅对新 Agent 有效），指令注入对所有 Agent（包括已有）立即生效。
+   * @example "You have access to memory-smart: use Read tool to query ~/.coobee-ai/memory/agent/{agentId}/"
+   */
+  injectInstructions?: string;
 }
 
 /** Extension 来源 */
@@ -98,6 +119,11 @@ export interface BackgroundService {
  *
  * Extension 通过 api.services 访问系统服务，避免直接 import 核心模块。
  * 服务实例由 ExtensionManager 在注册时注入。
+ *
+ * **设计原则**：
+ * 1. Extension 禁止直接 import src/main/ 模块（避免 jiti 嵌套导入问题）
+ * 2. 所有能力统一通过 api.services.xxx() 提供
+ * 3. ExtensionApi 成为 Extension 与主进程交互的唯一边界
  */
 export interface ExtensionServices {
   /** HITL 审批服务 */
@@ -116,6 +142,65 @@ export interface ExtensionServices {
   events: {
     /** 向指定 session 广播流式事件（前端 + EventBus） */
     emit(sessionId: string, chunk: { type: string; content: string; data?: Record<string, unknown> }): void;
+  };
+  /** 路径解析服务 */
+  paths: {
+    /** 获取 Agent 工作空间目录 */
+    getWorkspace(sessionId: string): Promise<string>;
+    /** 获取 Agent Home 目录 */
+    getAgentHome(agentId: string): Promise<string>;
+    /** 获取用户主目录 */
+    getUserHome(): Promise<string>;
+    /** 获取全局数据目录（用于扩展存储） */
+    getDataDir(extensionId: string): Promise<string>;
+    /** 获取配置目录 */
+    getConfigDir(): Promise<string>;
+    /** 获取 secrets 目录 */
+    getSecretsDir(): Promise<string>;
+    /** 获取工作空间根目录 */
+    getWorkspacesDir(): Promise<string>;
+  };
+  /** LLM 调用服务 */
+  llm: {
+    /** 调用 LLM 进行对话（使用默认模型） */
+    chat(messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>): Promise<string>;
+    /** 生成文本的 embedding 向量 */
+    embed(texts: string[], options?: { model?: string }): Promise<number[][]>;
+  };
+  /** Agent 相关服务 */
+  agent: {
+    /** 获取 AgentExecutor 实例 */
+    getExecutor(): Promise<ReturnType<typeof import('../../ai/AgentExecutor').getAgentExecutor>>;
+    /** 获取 AgentStore 实例 */
+    getStore(): Promise<import('../../ai/agents/AgentStore').AgentStore>;
+    /** 获取内置工具列表 */
+    getBuiltinTools(): Promise<Array<import('../../ai/tools/types').ToolDefinition>>;
+    /** 获取 ToolRegistry 实例 */
+    getToolRegistry(): Promise<import('../../ai/tools/registry').ToolRegistry>;
+    /** 获取 SkillManager 实例 */
+    getSkillManager(): Promise<import('../../ai/skills').SkillManager>;
+  };
+  /** Thread 相关服务 */
+  thread: {
+    /** 获取 ThreadStore 实例 */
+    getStore(): Promise<import('../../ai/threads/ThreadStore').ThreadStore>;
+  };
+  /** Channel 相关服务 */
+  channel: {
+    /** 获取 ChannelRuntime 实例 */
+    getRuntime(): Promise<import('../../channels/ChannelRuntime').ChannelRuntime>;
+  };
+  /** Discussion 相关服务 */
+  discussion: {
+    /** 获取 DiscussionStore 实例 */
+    getStore(): Promise<import('../../ai/discussion/DiscussionStore').DiscussionStore>;
+    /** 创建 ConsensusDetector 实例 */
+    createConsensusDetector(): Promise<import('../../ai/discussion/ConsensusDetector').ConsensusDetector>;
+  };
+  /** 类型定义服务 */
+  types: {
+    /** 获取流式事件类型枚举 */
+    getStreamEventType(): Promise<typeof import('../../ai/streaming/types').StreamEventType>;
   };
 }
 
@@ -154,10 +239,27 @@ export interface ExtensionApi {
 
   /** 注册外部服务通道 */
   registerChannel(config: ChannelConfig): void;
+  /**
+   * 注册 ChannelPlugin（新架构）
+   *
+   * @param plugin - ChannelPlugin 实例
+   *
+   * @example
+   * api.registerChannelPlugin({
+   *   id: 'discussion',
+   *   name: 'Discussion Room',
+   *   lifecycle: { start, stop },
+   *   inbound: { handleMessage },
+   *   outbound: { sendMessage }
+   * });
+   */
+  registerChannelPlugin(plugin: import('../../channels/types').ChannelPlugin): Promise<void>;
   /** 注册 HTTP 路由 */
   registerHttpRoute(config: HttpRouteConfig): void;
   /** 注册后台服务 */
   registerService(service: BackgroundService): void;
+  /** 注册定时任务（通过 CronScheduler 调度） */
+  registerCronJob(config: CronJobConfig): void;
 }
 
 // ==================== Extension Hook ====================
@@ -250,6 +352,7 @@ export interface ToolResultPersistResult {
 
 export interface AgentEndEvent {
   sessionId: string;
+  agentId: string;
   success: boolean;
   output: string;
   durationMs: number;
@@ -297,6 +400,8 @@ export interface TurnEndEvent {
 
 export interface BeforeCompactionEvent {
   sessionId: string;
+  /** Agent 定义 ID（用于定位 Agent Home） */
+  agentId?: string;
   /** 待压缩消息数 */
   messageCount: number;
   /** 当前 token 总数 */
@@ -466,4 +571,27 @@ export interface RegisteredHttpRoute {
 export interface RegisteredBackgroundService {
   extensionId: string;
   service: BackgroundService;
+}
+
+// ==================== CronJob ====================
+
+/** Extension 注册定时任务的配置 */
+export interface CronJobConfig {
+  /** 任务名称（英文标识符，同一 Extension 内不能重复） */
+  name: string;
+  /** 任务描述 */
+  description: string;
+  /** Cron 表达式（5 段标准格式：分 时 日 月 周） */
+  cronExpression: string;
+  /** 要执行的任务（自然语言描述，交给 Agent 执行） */
+  task: string;
+  /** 关联的 Agent ID（可选，默认使用 app-copilot） */
+  agentId?: string;
+  /** 是否启用（默认 true） */
+  enabled?: boolean;
+}
+
+export interface RegisteredCronJob {
+  extensionId: string;
+  config: CronJobConfig;
 }

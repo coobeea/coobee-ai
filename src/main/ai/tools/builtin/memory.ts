@@ -26,32 +26,32 @@
  * @module tools/builtin/memory
  */
 
-import fs from 'node:fs'
-import path from 'node:path'
-import { z } from 'zod'
-import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types'
-import { ToolCategory } from '../types'
-import { log } from '@main/common/logger'
-import { updateIndexEntry, getOrBuildIndex, searchIndex } from './memory-index'
-import { resolveSandboxPath } from '../../sandbox'
+import fs from 'node:fs';
+import path from 'node:path';
+import { z } from 'zod';
+import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types';
+import { ToolCategory } from '../types';
+import { log } from '@main/common/logger';
+import { updateIndexEntry, getOrBuildIndex, searchIndex } from './memory-index';
+import { resolveSandboxPath } from '../../sandbox';
 
 /** 支持的记忆文件扩展名 */
-const MEMORY_EXTENSIONS = ['.md', '.json', '.txt', '.yaml', '.yml']
+const MEMORY_EXTENSIONS = ['.md', '.json', '.txt', '.yaml', '.yml'];
 
 /** 最大文件大小（读取限制，100KB） */
-const MAX_FILE_SIZE = 100_000
+const MAX_FILE_SIZE = 100_000;
 
 /** 搜索时每个文件最大片段数 */
-const MAX_SNIPPETS_PER_FILE = 5
+const MAX_SNIPPETS_PER_FILE = 5;
 
 /** 搜索时片段上下文行数（匹配行前后各 N 行） */
-const SNIPPET_CONTEXT_LINES = 2
+const SNIPPET_CONTEXT_LINES = 2;
 
 /** 搜索默认最大结果数 */
-const DEFAULT_MAX_RESULTS = 10
+const DEFAULT_MAX_RESULTS = 10;
 
 /** 搜索默认最低分数 */
-const DEFAULT_MIN_SCORE = 0.1
+const DEFAULT_MIN_SCORE = 0.1;
 
 // ==================== 工具定义 ====================
 
@@ -85,20 +85,12 @@ export const memoryTool: ToolDefinition = {
         'File name or path. Use "MEMORY.md" for the primary memory file, ' +
           'or "memory/xxx.md" for categorized files. For get/write actions.'
       ),
-    content: z
-      .string()
-      .optional()
-      .describe('Content to write (for write action, Markdown recommended)'),
-    append: z
-      .boolean()
-      .optional()
-      .describe('If true, append content instead of overwriting (for write action)'),
+    content: z.string().optional().describe('Content to write (for write action, Markdown recommended)'),
+    append: z.boolean().optional().describe('If true, append content instead of overwriting (for write action)'),
     query: z
       .string()
       .optional()
-      .describe(
-        'Search query — supports multiple keywords separated by spaces (for search action)'
-      ),
+      .describe('Search query — supports multiple keywords separated by spaces (for search action)'),
     maxResults: z.number().optional().describe('Maximum search results to return (default 10)')
   }),
 
@@ -107,29 +99,29 @@ export const memoryTool: ToolDefinition = {
     _signal?: AbortSignal,
     context?: ToolExecutionContext
   ): AsyncGenerator<ToolStreamUpdate, ToolResult, unknown> {
-    const action = params.action as string
-    const scope = (params.scope as string) || 'agent'
-    const file = params.file as string | undefined
-    const content = params.content as string | undefined
-    const append = params.append as boolean | undefined
-    const query = params.query as string | undefined
-    const maxResults = (params.maxResults as number) || DEFAULT_MAX_RESULTS
+    const action = params.action as string;
+    const scope = (params.scope as string) || 'agent';
+    const file = params.file as string | undefined;
+    const content = params.content as string | undefined;
+    const append = params.append as boolean | undefined;
+    const query = params.query as string | undefined;
+    const maxResults = (params.maxResults as number) || DEFAULT_MAX_RESULTS;
 
     // 解析记忆根目录
-    const roots = await resolveMemoryRoots(scope, context?.workspaceRoot)
+    const roots = await resolveMemoryRoots(scope, context?.workspaceRoot);
     if (!roots) {
       return {
         success: false,
         llmContent: 'Error: Memory system not initialized (workspace or Env not available)',
         error: { code: 'NOT_INITIALIZED', message: 'Cannot resolve memory paths' }
-      }
+      };
     }
 
     // ==================== list ====================
     if (action === 'list') {
-      yield { type: 'progress', content: `Listing ${scope} memory files...`, percentage: 0 }
+      yield { type: 'progress', content: `Listing ${scope} memory files...`, percentage: 0 };
 
-      const files = collectMemoryFiles(roots)
+      const files = collectMemoryFiles(roots);
 
       if (files.length === 0) {
         return {
@@ -137,15 +129,15 @@ export const memoryTool: ToolDefinition = {
           llmContent:
             `No memory files found in ${scope} scope.\n\n` +
             `Tip: Create ${scope === 'agent' ? 'MEMORY.md in your workspace' : 'memory/MEMORY.md in user home'} to start building memory.`
-        }
+        };
       }
 
       const lines = files.map((f) => {
-        const sizeKB = (f.size / 1024).toFixed(1)
-        const modified = new Date(f.modifiedAt).toISOString().slice(0, 19)
-        const primary = f.isPrimary ? ' ★' : ''
-        return `${f.displayPath}  (${sizeKB}KB, ${modified})${primary}`
-      })
+        const sizeKB = (f.size / 1024).toFixed(1);
+        const modified = new Date(f.modifiedAt).toISOString().slice(0, 19);
+        const primary = f.isPrimary ? ' ★' : '';
+        return `${f.displayPath}  (${sizeKB}KB, ${modified})${primary}`;
+      });
 
       return {
         success: true,
@@ -153,7 +145,7 @@ export const memoryTool: ToolDefinition = {
           `Memory files (${scope}, ${files.length} files):\n` +
           `★ = primary memory file (MEMORY.md)\n\n` +
           lines.join('\n')
-      }
+      };
     }
 
     // ==================== get ====================
@@ -165,16 +157,16 @@ export const memoryTool: ToolDefinition = {
             'Error: file is required for get action.\n' +
             'Use "MEMORY.md" for the primary memory file, or "memory/xxx.md" for categorized files.',
           error: { code: 'MISSING_PARAM', message: 'file is required' }
-        }
+        };
       }
 
-      const filePath = resolveFileInRoots(roots, file)
+      const filePath = resolveFileInRoots(roots, file);
       if (!filePath) {
         return {
           success: false,
           llmContent: `Error: invalid file path "${file}" — path escapes memory directory`,
           error: { code: 'INVALID_PATH', message: 'Path escapes memory directory' }
-        }
+        };
       }
 
       if (!fs.existsSync(filePath)) {
@@ -182,23 +174,23 @@ export const memoryTool: ToolDefinition = {
           success: false,
           llmContent: `Memory file not found: ${file} (in ${scope} scope)`,
           error: { code: 'NOT_FOUND', message: `File not found: ${file}` }
-        }
+        };
       }
 
-      const stat = fs.statSync(filePath)
+      const stat = fs.statSync(filePath);
       if (stat.size > MAX_FILE_SIZE) {
         return {
           success: false,
           llmContent: `Memory file too large: ${file} (${(stat.size / 1024).toFixed(1)}KB, max ${MAX_FILE_SIZE / 1024}KB)`,
           error: { code: 'TOO_LARGE', message: `File exceeds ${MAX_FILE_SIZE} bytes` }
-        }
+        };
       }
 
-      const fileContent = fs.readFileSync(filePath, 'utf-8')
+      const fileContent = fs.readFileSync(filePath, 'utf-8');
       return {
         success: true,
         llmContent: `[${scope}/${file}]\n\n${fileContent}`
-      }
+      };
     }
 
     // ==================== write ====================
@@ -210,61 +202,61 @@ export const memoryTool: ToolDefinition = {
             'Error: file is required for write action.\n' +
             'Use "MEMORY.md" for primary memory, or "memory/xxx.md" for categorized files.',
           error: { code: 'MISSING_PARAM', message: 'file is required' }
-        }
+        };
       }
       if (content === undefined || content === null) {
         return {
           success: false,
           llmContent: 'Error: content is required for write action',
           error: { code: 'MISSING_PARAM', message: 'content is required' }
-        }
+        };
       }
 
-      const filePath = resolveFileInRoots(roots, file, true)
+      const filePath = resolveFileInRoots(roots, file, true);
       if (!filePath) {
         return {
           success: false,
           llmContent: `Error: invalid file path "${file}" — path escapes memory directory`,
           error: { code: 'INVALID_PATH', message: 'Path escapes memory directory' }
-        }
+        };
       }
 
-      yield { type: 'progress', content: `Writing to ${scope}/${file}...`, percentage: 50 }
+      yield { type: 'progress', content: `Writing to ${scope}/${file}...`, percentage: 50 };
 
-      const exists = fs.existsSync(filePath)
+      const exists = fs.existsSync(filePath);
 
       if (append && exists) {
         // 追加模式
-        const existing = fs.readFileSync(filePath, 'utf-8')
-        const separator = existing.endsWith('\n') ? '\n' : '\n\n'
-        fs.writeFileSync(filePath, existing + separator + content, 'utf-8')
-        log.info(`[memory] Appended: ${scope}/${file}`)
+        const existing = fs.readFileSync(filePath, 'utf-8');
+        const separator = existing.endsWith('\n') ? '\n' : '\n\n';
+        fs.writeFileSync(filePath, existing + separator + content, 'utf-8');
+        log.info(`[memory] Appended: ${scope}/${file}`);
         // 更新记忆索引
-        tryUpdateIndex(roots.memorySubDir, file, filePath)
+        tryUpdateIndex(roots.memorySubDir, file, filePath);
         return {
           success: true,
           llmContent: `Memory file appended: ${scope}/${file}`
-        }
+        };
       }
 
       // 覆盖/创建模式
-      let finalContent = content
+      let finalContent = content;
       if (file.endsWith('.md') && !content.startsWith('---') && file !== 'MEMORY.md') {
-        const now = new Date().toISOString()
-        finalContent = `---\nupdated: ${now}\n---\n\n${content}`
+        const now = new Date().toISOString();
+        finalContent = `---\nupdated: ${now}\n---\n\n${content}`;
       }
 
-      fs.mkdirSync(path.dirname(filePath), { recursive: true })
-      fs.writeFileSync(filePath, finalContent, 'utf-8')
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, finalContent, 'utf-8');
 
-      log.info(`[memory] ${exists ? 'Updated' : 'Created'}: ${scope}/${file}`)
+      log.info(`[memory] ${exists ? 'Updated' : 'Created'}: ${scope}/${file}`);
       // 更新记忆索引
-      tryUpdateIndex(roots.memorySubDir, file, filePath)
+      tryUpdateIndex(roots.memorySubDir, file, filePath);
 
       return {
         success: true,
         llmContent: `Memory file ${exists ? 'updated' : 'created'}: ${scope}/${file} (${finalContent.length} bytes)`
-      }
+      };
     }
 
     // ==================== search ====================
@@ -274,29 +266,29 @@ export const memoryTool: ToolDefinition = {
           success: false,
           llmContent: 'Error: query is required for search action',
           error: { code: 'MISSING_PARAM', message: 'query is required' }
-        }
+        };
       }
 
       yield {
         type: 'progress',
         content: `Searching ${scope} memory for "${query}"...`,
         percentage: 0
-      }
+      };
 
       // 两阶段搜索：先索引预过滤，再全文搜索
       const keywords = query
         .toLowerCase()
         .split(/\s+/)
-        .filter((k) => k.length > 0)
+        .filter((k) => k.length > 0);
 
       // Phase 1: 索引层快速匹配（标题/标签/摘要）
-      let indexHints: Set<string> | undefined
+      let indexHints: Set<string> | undefined;
       try {
-        const indexEntries = getOrBuildIndex(roots.memorySubDir)
+        const indexEntries = getOrBuildIndex(roots.memorySubDir);
         if (indexEntries.length > 0) {
-          const indexResults = searchIndex(indexEntries, keywords)
+          const indexResults = searchIndex(indexEntries, keywords);
           if (indexResults.length > 0) {
-            indexHints = new Set(indexResults.map((e) => e.file))
+            indexHints = new Set(indexResults.map((e) => e.file));
           }
         }
       } catch {
@@ -308,27 +300,27 @@ export const memoryTool: ToolDefinition = {
         maxResults,
         minScore: DEFAULT_MIN_SCORE,
         indexHints
-      })
+      });
 
       if (results.length === 0) {
         return {
           success: true,
           llmContent: `No matches found for "${query}" in ${scope} memory.`
-        }
+        };
       }
 
       const output = results
         .map((r) => {
-          const scoreStr = (r.score * 100).toFixed(0)
-          const sectionStr = r.section ? ` (§ ${r.section})` : ''
-          return `📄 ${r.file}${sectionStr} [relevance: ${scoreStr}%]\n${r.snippet}`
+          const scoreStr = (r.score * 100).toFixed(0);
+          const sectionStr = r.section ? ` (§ ${r.section})` : '';
+          return `📄 ${r.file}${sectionStr} [relevance: ${scoreStr}%]\n${r.snippet}`;
         })
-        .join('\n\n')
+        .join('\n\n');
 
       return {
         success: true,
         llmContent: `Search results for "${query}" in ${scope} memory (${results.length} matches):\n\n${output}`
-      }
+      };
     }
 
     // ---- 未知 action ----
@@ -336,18 +328,18 @@ export const memoryTool: ToolDefinition = {
       success: false,
       llmContent: `Unknown action: "${action}". Valid actions: list, get, write, search`,
       error: { code: 'UNKNOWN_ACTION', message: `Unknown action: ${action}` }
-    }
+    };
   }
-}
+};
 
 // ==================== 路径解析 ====================
 
 /** 记忆根目录信息 */
 interface MemoryRoots {
   /** 主目录（MEMORY.md 所在目录） */
-  primaryDir: string
+  primaryDir: string;
   /** memory/ 子目录 */
-  memorySubDir: string
+  memorySubDir: string;
 }
 
 /**
@@ -358,45 +350,42 @@ interface MemoryRoots {
  *   - 无 workspaceRoot → fallback 到 Env.paths.agentMemoryDir
  * user scope:  {userHome}/memory/（MEMORY.md + 子文件）
  */
-async function resolveMemoryRoots(
-  scope: string,
-  workspaceRoot?: string
-): Promise<MemoryRoots | null> {
+async function resolveMemoryRoots(scope: string, workspaceRoot?: string): Promise<MemoryRoots | null> {
   if (scope === 'agent') {
     if (workspaceRoot) {
       // 优先：workspace 根目录（MEMORY.md + memory/）
-      const memorySubDir = path.join(workspaceRoot, 'memory')
-      fs.mkdirSync(memorySubDir, { recursive: true })
+      const memorySubDir = path.join(workspaceRoot, 'memory');
+      fs.mkdirSync(memorySubDir, { recursive: true });
       return {
         primaryDir: workspaceRoot,
         memorySubDir
-      }
+      };
     }
     // Fallback：Env.paths.agentMemoryDir（无 workspace 上下文时）
     try {
-      const { Env } = await import('@main/common/env')
-      const agentMemDir = Env.paths.agentMemoryDir
-      fs.mkdirSync(agentMemDir, { recursive: true })
+      const { Env } = await import('@main/common/env');
+      const agentMemDir = Env.paths.agentMemoryDir;
+      fs.mkdirSync(agentMemDir, { recursive: true });
       return {
         primaryDir: agentMemDir,
         memorySubDir: agentMemDir
-      }
+      };
     } catch {
-      return null
+      return null;
     }
   }
 
   // user scope
   try {
-    const { Env } = await import('@main/common/env')
-    const userMemDir = Env.paths.userMemoryDir
-    fs.mkdirSync(userMemDir, { recursive: true })
+    const { Env } = await import('@main/common/env');
+    const userMemDir = Env.paths.userMemoryDir;
+    fs.mkdirSync(userMemDir, { recursive: true });
     return {
       primaryDir: userMemDir,
       memorySubDir: userMemDir
-    }
+    };
   } catch {
-    return null
+    return null;
   }
 }
 
@@ -410,140 +399,140 @@ async function resolveMemoryRoots(
  *                 当 primaryDir != memorySubDir 时放 memorySubDir/xxx.md
  */
 function resolveFileInRoots(roots: MemoryRoots, file: string, forWrite = false): string | null {
-  const isSameDir = roots.primaryDir === roots.memorySubDir
+  const isSameDir = roots.primaryDir === roots.memorySubDir;
 
   // MEMORY.md 特殊处理 → 放在 primaryDir
   if (file === 'MEMORY.md' || file === 'memory.md') {
-    const target = path.join(roots.primaryDir, 'MEMORY.md')
-    return resolveMemoryPath(roots.primaryDir, 'MEMORY.md') ? target : null
+    const target = path.join(roots.primaryDir, 'MEMORY.md');
+    return resolveMemoryPath(roots.primaryDir, 'MEMORY.md') ? target : null;
   }
 
   // 确定目标目录和相对路径
-  let baseDir: string
-  let relativeName: string
+  let baseDir: string;
+  let relativeName: string;
 
   if (file.startsWith('memory/')) {
     // memory/xxx.md → memorySubDir/xxx.md
-    baseDir = roots.memorySubDir
-    relativeName = file.slice(7)
+    baseDir = roots.memorySubDir;
+    relativeName = file.slice(7);
   } else if (isSameDir) {
     // primaryDir == memorySubDir（user scope / fallback）→ 直接用 primaryDir
-    baseDir = roots.primaryDir
-    relativeName = file
+    baseDir = roots.primaryDir;
+    relativeName = file;
   } else {
     // primaryDir != memorySubDir（workspace agent scope）→ 放入 memory/ 子目录
-    baseDir = roots.memorySubDir
-    relativeName = file
+    baseDir = roots.memorySubDir;
+    relativeName = file;
   }
 
   // 安全检查
-  const resolved = resolveMemoryPath(baseDir, relativeName)
-  if (!resolved) return null
+  const resolved = resolveMemoryPath(baseDir, relativeName);
+  if (!resolved) return null;
 
-  const target = path.join(baseDir, relativeName)
+  const target = path.join(baseDir, relativeName);
 
   // 写入时确保父目录存在
   if (forWrite) {
-    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.mkdirSync(path.dirname(target), { recursive: true });
   }
 
-  return target
+  return target;
 }
 
 // ==================== 文件列举 ====================
 
 interface MemoryFileInfo {
   /** 显示路径（相对于 scope 根） */
-  displayPath: string
+  displayPath: string;
   /** 绝对路径 */
-  absolutePath: string
+  absolutePath: string;
   /** 文件大小 */
-  size: number
+  size: number;
   /** 修改时间 */
-  modifiedAt: number
+  modifiedAt: number;
   /** 是否为主记忆文件 */
-  isPrimary: boolean
+  isPrimary: boolean;
 }
 
 /**
  * 收集所有记忆文件（MEMORY.md + memory/ 下的文件）
  */
 function collectMemoryFiles(roots: MemoryRoots): MemoryFileInfo[] {
-  const results: MemoryFileInfo[] = []
-  const isSameDir = roots.primaryDir === roots.memorySubDir
+  const results: MemoryFileInfo[] = [];
+  const isSameDir = roots.primaryDir === roots.memorySubDir;
 
   // 1. 检查主记忆文件 MEMORY.md
-  const primaryPath = path.join(roots.primaryDir, 'MEMORY.md')
+  const primaryPath = path.join(roots.primaryDir, 'MEMORY.md');
   if (fs.existsSync(primaryPath)) {
-    const stat = fs.statSync(primaryPath)
+    const stat = fs.statSync(primaryPath);
     results.push({
       displayPath: 'MEMORY.md',
       absolutePath: primaryPath,
       size: stat.size,
       modifiedAt: stat.mtimeMs,
       isPrimary: true
-    })
+    });
   }
 
   // 2. 扫描 memory/ 目录
-  const subFiles = listMemoryFilesRecursive(roots.memorySubDir)
+  const subFiles = listMemoryFilesRecursive(roots.memorySubDir);
   for (const f of subFiles) {
     // 避免重复（如果 memorySubDir == primaryDir，跳过已添加的 MEMORY.md）
-    if (f.absolutePath === primaryPath) continue
+    if (f.absolutePath === primaryPath) continue;
     results.push({
       ...f,
       // primaryDir == memorySubDir 时（user scope / fallback agent scope）直接用相对路径
       // primaryDir != memorySubDir 时（workspace agent scope）加 memory/ 前缀
       displayPath: isSameDir ? f.relativePath : `memory/${f.relativePath}`,
       isPrimary: false
-    })
+    });
   }
 
   // 按修改时间倒序，主记忆文件置顶
   return results.sort((a, b) => {
-    if (a.isPrimary && !b.isPrimary) return -1
-    if (!a.isPrimary && b.isPrimary) return 1
-    return b.modifiedAt - a.modifiedAt
-  })
+    if (a.isPrimary && !b.isPrimary) return -1;
+    if (!a.isPrimary && b.isPrimary) return 1;
+    return b.modifiedAt - a.modifiedAt;
+  });
 }
 
 interface InternalFileInfo {
-  relativePath: string
-  absolutePath: string
-  size: number
-  modifiedAt: number
+  relativePath: string;
+  absolutePath: string;
+  size: number;
+  modifiedAt: number;
 }
 
 /** 递归列出目录下的记忆文件 */
 function listMemoryFilesRecursive(dir: string, prefix = ''): InternalFileInfo[] {
-  const results: InternalFileInfo[] = []
+  const results: InternalFileInfo[] = [];
 
-  if (!fs.existsSync(dir)) return results
+  if (!fs.existsSync(dir)) return results;
 
-  const entries = fs.readdirSync(dir, { withFileTypes: true })
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
-    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
-    const fullPath = path.join(dir, entry.name)
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const fullPath = path.join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      if (entry.name.startsWith('.')) continue
-      results.push(...listMemoryFilesRecursive(fullPath, relativePath))
+      if (entry.name.startsWith('.')) continue;
+      results.push(...listMemoryFilesRecursive(fullPath, relativePath));
     } else if (entry.isFile()) {
-      const ext = path.extname(entry.name).toLowerCase()
+      const ext = path.extname(entry.name).toLowerCase();
       if (MEMORY_EXTENSIONS.includes(ext)) {
-        const stat = fs.statSync(fullPath)
+        const stat = fs.statSync(fullPath);
         results.push({
           relativePath,
           absolutePath: fullPath,
           size: stat.size,
           modifiedAt: stat.mtimeMs
-        })
+        });
       }
     }
   }
 
-  return results.sort((a, b) => b.modifiedAt - a.modifiedAt)
+  return results.sort((a, b) => b.modifiedAt - a.modifiedAt);
 }
 
 // ==================== 增强型搜索 ====================
@@ -551,20 +540,20 @@ function listMemoryFilesRecursive(dir: string, prefix = ''): InternalFileInfo[] 
 /** 搜索结果 */
 export interface MemorySearchResult {
   /** 显示路径 */
-  file: string
+  file: string;
   /** 相关度评分 (0-1) */
-  score: number
+  score: number;
   /** 匹配片段（带上下文） */
-  snippet: string
+  snippet: string;
   /** 所在 Markdown 章节标题 */
-  section?: string
+  section?: string;
 }
 
 interface SearchOptions {
-  maxResults?: number
-  minScore?: number
+  maxResults?: number;
+  minScore?: number;
   /** 索引层预过滤的文件名集合，命中的文件评分加权 */
-  indexHints?: Set<string>
+  indexHints?: Set<string>;
 }
 
 /**
@@ -576,125 +565,117 @@ interface SearchOptions {
  *   - 片段提取：返回匹配行 ± N 行上下文
  *   - Section 感知：返回匹配所在的 Markdown ## 标题
  */
-export function searchMemoryFiles(
-  roots: MemoryRoots,
-  query: string,
-  options?: SearchOptions
-): MemorySearchResult[] {
-  const maxResults = options?.maxResults ?? DEFAULT_MAX_RESULTS
-  const minScore = options?.minScore ?? DEFAULT_MIN_SCORE
+export function searchMemoryFiles(roots: MemoryRoots, query: string, options?: SearchOptions): MemorySearchResult[] {
+  const maxResults = options?.maxResults ?? DEFAULT_MAX_RESULTS;
+  const minScore = options?.minScore ?? DEFAULT_MIN_SCORE;
 
   // 1. 拆词（按空格，去空）
   const keywords = query
     .toLowerCase()
     .split(/\s+/)
-    .filter((k) => k.length > 0)
-  if (keywords.length === 0) return []
+    .filter((k) => k.length > 0);
+  if (keywords.length === 0) return [];
 
   // 2. 收集所有记忆文件
-  const files = collectMemoryFiles(roots)
-  const results: MemorySearchResult[] = []
+  const files = collectMemoryFiles(roots);
+  const results: MemorySearchResult[] = [];
 
   for (const fileInfo of files) {
-    if (fileInfo.size > MAX_FILE_SIZE) continue
+    if (fileInfo.size > MAX_FILE_SIZE) continue;
 
-    let content: string
+    let content: string;
     try {
-      content = fs.readFileSync(fileInfo.absolutePath, 'utf-8')
+      content = fs.readFileSync(fileInfo.absolutePath, 'utf-8');
     } catch {
-      continue
+      continue;
     }
 
-    const lines = content.split('\n')
-    const totalWords = content.toLowerCase().split(/\s+/).length || 1
+    const lines = content.split('\n');
+    const totalWords = content.toLowerCase().split(/\s+/).length || 1;
 
     // 3. 逐行评分
-    let weightedScore = 0
-    let matchCount = 0
-    const matchedLineIndices: number[] = []
+    let weightedScore = 0;
+    let matchCount = 0;
+    const matchedLineIndices: number[] = [];
 
     for (let i = 0; i < lines.length; i++) {
-      const lineLower = lines[i].toLowerCase()
-      let lineMatchCount = 0
+      const lineLower = lines[i].toLowerCase();
+      let lineMatchCount = 0;
 
       for (const kw of keywords) {
         if (lineLower.includes(kw)) {
-          lineMatchCount++
+          lineMatchCount++;
         }
       }
 
       if (lineMatchCount > 0) {
-        matchCount += lineMatchCount
-        matchedLineIndices.push(i)
+        matchCount += lineMatchCount;
+        matchedLineIndices.push(i);
 
         // 标题行加权
         if (lines[i].startsWith('#')) {
-          weightedScore += lineMatchCount * 2
+          weightedScore += lineMatchCount * 2;
         } else {
-          weightedScore += lineMatchCount
+          weightedScore += lineMatchCount;
         }
       }
     }
 
-    if (matchCount === 0) continue
+    if (matchCount === 0) continue;
 
     // 4. 计算归一化分数
     //    weightedScore 包含标题加权（标题匹配 ×2）
     //    归一化到 0-1 范围
-    let score = Math.min(1, (weightedScore / keywords.length) * (1 / Math.log2(totalWords + 2)))
+    let score = Math.min(1, (weightedScore / keywords.length) * (1 / Math.log2(totalWords + 2)));
 
     // 索引命中加权（索引层标题/标签匹配的文件提升权重）
     if (options?.indexHints?.has(path.basename(fileInfo.absolutePath))) {
-      score *= 1.3
+      score *= 1.3;
     }
 
     // 主记忆文件加权
     if (fileInfo.isPrimary) {
-      score *= 1.5
+      score *= 1.5;
     }
 
     // 钳制到 0-1
-    score = Math.min(1, score)
+    score = Math.min(1, score);
 
-    if (score < minScore) continue
+    if (score < minScore) continue;
 
     // 5. 提取片段（取前 N 个匹配位置，带上下文）
-    const snippets: string[] = []
-    const usedLines = new Set<number>()
+    const snippets: string[] = [];
+    const usedLines = new Set<number>();
 
-    for (
-      let idx = 0;
-      idx < matchedLineIndices.length && snippets.length < MAX_SNIPPETS_PER_FILE;
-      idx++
-    ) {
-      const lineIdx = matchedLineIndices[idx]
-      if (usedLines.has(lineIdx)) continue
+    for (let idx = 0; idx < matchedLineIndices.length && snippets.length < MAX_SNIPPETS_PER_FILE; idx++) {
+      const lineIdx = matchedLineIndices[idx];
+      if (usedLines.has(lineIdx)) continue;
 
-      const start = Math.max(0, lineIdx - SNIPPET_CONTEXT_LINES)
-      const end = Math.min(lines.length - 1, lineIdx + SNIPPET_CONTEXT_LINES)
+      const start = Math.max(0, lineIdx - SNIPPET_CONTEXT_LINES);
+      const end = Math.min(lines.length - 1, lineIdx + SNIPPET_CONTEXT_LINES);
 
-      const snippetLines: string[] = []
+      const snippetLines: string[] = [];
       for (let j = start; j <= end; j++) {
-        usedLines.add(j)
-        const prefix = j === lineIdx ? '> ' : '  '
-        snippetLines.push(`${prefix}L${j + 1}: ${lines[j]}`)
+        usedLines.add(j);
+        const prefix = j === lineIdx ? '> ' : '  ';
+        snippetLines.push(`${prefix}L${j + 1}: ${lines[j]}`);
       }
-      snippets.push(snippetLines.join('\n'))
+      snippets.push(snippetLines.join('\n'));
     }
 
     // 6. 查找所在 Section
-    const section = findSection(lines, matchedLineIndices[0])
+    const section = findSection(lines, matchedLineIndices[0]);
 
     results.push({
       file: fileInfo.displayPath,
       score,
       snippet: snippets.join('\n  ---\n'),
       section
-    })
+    });
   }
 
   // 7. 按分数排序，截断
-  return results.sort((a, b) => b.score - a.score).slice(0, maxResults)
+  return results.sort((a, b) => b.score - a.score).slice(0, maxResults);
 }
 
 /**
@@ -702,10 +683,10 @@ export function searchMemoryFiles(
  */
 function findSection(lines: string[], lineIndex: number): string | undefined {
   for (let i = lineIndex; i >= 0; i--) {
-    const match = lines[i].match(/^#{1,3}\s+(.+)/)
-    if (match) return match[1].trim()
+    const match = lines[i].match(/^#{1,3}\s+(.+)/);
+    if (match) return match[1].trim();
   }
-  return undefined
+  return undefined;
 }
 
 // ==================== 路径安全 ====================
@@ -717,12 +698,12 @@ function findSection(lines: string[], lineIndex: number): string | undefined {
  * 统一享受路径穿越 + 符号链接穿越的双重保护。
  */
 function resolveMemoryPath(memoryRoot: string, file: string): string | null {
-  const result = resolveSandboxPath(file, { workspaceRoot: memoryRoot })
+  const result = resolveSandboxPath(file, { workspaceRoot: memoryRoot });
   if (result.error) {
-    log.warn(`[memory] Path guard blocked: "${file}" — ${result.error.message}`)
-    return null
+    log.warn(`[memory] Path guard blocked: "${file}" — ${result.error.message}`);
+    return null;
   }
-  return result.path
+  return result.path;
 }
 
 // ==================== 索引更新辅助 ====================
@@ -735,12 +716,12 @@ function resolveMemoryPath(memoryRoot: string, file: string): string | null {
  */
 function tryUpdateIndex(memorySubDir: string, file: string, filePath: string): void {
   try {
-    const dir = path.dirname(filePath)
+    const dir = path.dirname(filePath);
     // 只索引 memorySubDir 下的文件
     if (dir === memorySubDir) {
-      updateIndexEntry(memorySubDir, path.basename(filePath))
+      updateIndexEntry(memorySubDir, path.basename(filePath));
     }
   } catch (err) {
-    log.warn(`[memory] Index update failed for ${file}:`, err)
+    log.warn(`[memory] Index update failed for ${file}:`, err);
   }
 }

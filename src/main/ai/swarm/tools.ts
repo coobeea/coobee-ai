@@ -12,7 +12,7 @@
 import { z } from 'zod';
 import { ToolCategory } from '../tools/types';
 import type { ToolDefinition, ToolStreamUpdate } from '../tools/types';
-import type { SwarmContext } from './SwarmContext';
+import type { ISwarmContext } from './types';
 import type { MessageBus } from './MessageBus';
 import type { AgentRole } from './types';
 import { HANDOFF_SIGNAL_PREFIX } from './types';
@@ -23,7 +23,7 @@ function progress(content: string): ToolStreamUpdate {
 
 // ========== 通信工具 ==========
 
-export function createReadContextTool(context: SwarmContext, _roleId: string): ToolDefinition {
+export function createReadContextTool(context: ISwarmContext, _roleId: string): ToolDefinition {
   return {
     name: 'read_shared_context',
     description: '读取 Swarm 共享上下文中的状态值。可以获取其他 Agent 存储的信息、中间产物和进度说明。',
@@ -53,7 +53,7 @@ export function createReadContextTool(context: SwarmContext, _roleId: string): T
   };
 }
 
-export function createWriteContextTool(context: SwarmContext, roleId: string): ToolDefinition {
+export function createWriteContextTool(context: ISwarmContext, roleId: string): ToolDefinition {
   return {
     name: 'write_shared_context',
     description: '向 Swarm 共享上下文写入状态值。其他 Agent 可以读取你写入的信息。用于传递中间结果、标记进度等。',
@@ -70,7 +70,7 @@ export function createWriteContextTool(context: SwarmContext, roleId: string): T
   };
 }
 
-export function createAddArtifactTool(context: SwarmContext, roleId: string): ToolDefinition {
+export function createAddArtifactTool(context: ISwarmContext, roleId: string): ToolDefinition {
   return {
     name: 'add_artifact',
     description: '向共享上下文添加中间产物（如代码、文档、分析报告等）。其他 Agent 可以查看和引用你产出的产物。',
@@ -88,7 +88,7 @@ export function createAddArtifactTool(context: SwarmContext, roleId: string): To
   };
 }
 
-export function createGetArtifactTool(context: SwarmContext, _roleId: string): ToolDefinition {
+export function createGetArtifactTool(context: ISwarmContext, _roleId: string): ToolDefinition {
   return {
     name: 'get_artifact',
     description: '获取共享上下文中的中间产物。可以查看其他 Agent 产出的代码、文档等。',
@@ -212,7 +212,7 @@ export function createGetMessagesTool(messageBus: MessageBus, roleId: string): T
   };
 }
 
-export function createReportProgressTool(context: SwarmContext, roleId: string): ToolDefinition {
+export function createReportProgressTool(context: ISwarmContext, roleId: string): ToolDefinition {
   return {
     name: 'report_progress',
     description: '上报当前任务进度。其他 Agent 和监控系统可以看到你的进度信息。',
@@ -263,7 +263,7 @@ export function createHandoffTools(availableRoles: AgentRole[], currentRoleId: s
 /**
  * 为指定角色创建完整的通信工具集（不含 Handoff 工具）
  */
-export function createSwarmCommTools(context: SwarmContext, messageBus: MessageBus, roleId: string): ToolDefinition[] {
+export function createSwarmCommTools(context: ISwarmContext, messageBus: MessageBus, roleId: string): ToolDefinition[] {
   return [
     createReadContextTool(context, roleId),
     createWriteContextTool(context, roleId),
@@ -279,7 +279,7 @@ export function createSwarmCommTools(context: SwarmContext, messageBus: MessageB
  * 为指定角色创建完整工具集（通信 + Handoff）
  */
 export function createSwarmTools(
-  context: SwarmContext,
+  context: ISwarmContext,
   messageBus: MessageBus,
   roleId: string,
   availableRoles: AgentRole[] = []

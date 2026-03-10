@@ -24,7 +24,7 @@ export type StreamMessageType = string;
 /** 流式消息来源 */
 export interface StreamSource {
   /** 来源类型 */
-  type: 'agent' | 'orchestrator' | 'swarm';
+  type: 'agent' | 'orchestrator' | 'swarm' | 'quality-loop';
   /** 来源 ID */
   id: string;
   /** 来源名称 */

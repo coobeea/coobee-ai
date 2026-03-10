@@ -19,16 +19,14 @@
  *   - 使用 tokenx 进行准确的 token 估算（94% 准确度）
  */
 
-import { Agent, run } from '@openai/agents'
-import type { AgentInputItem } from '@openai/agents'
-import type { FileSession } from './FileSession'
-import type {
-  SessionCompressionOptions,
-  CompressionResult,
-  SessionItem,
-  SummaryMeta
-} from './types'
-import { countTokens, countItemsTokens } from './tokenCounter'
+import { Agent, run } from '@openai/agents';
+import type { AgentInputItem } from '@openai/agents';
+import { createLogger } from '@main/common/logger';
+import type { FileSession } from './FileSession';
+import type { SessionCompressionOptions, CompressionResult, SessionItem, SummaryMeta } from './types';
+import { countTokens, countItemsTokens } from './tokenCounter';
+
+const log = createLogger('SessionCompressor');
 
 /** 默认配置 */
 const DEFAULTS: Required<SessionCompressionOptions> = {
@@ -39,7 +37,7 @@ const DEFAULTS: Required<SessionCompressionOptions> = {
   minMessageCount: 10,
   summaryModel: '',
   debug: false
-}
+};
 
 /** 总结 Agent 的 system prompt */
 const SUMMARY_INSTRUCTIONS = `你是一个专业的对话总结工具。你的唯一任务是：从对话记录中提取并列出所有关键信息。
@@ -80,13 +78,13 @@ const SUMMARY_INSTRUCTIONS = `你是一个专业的对话总结工具。你的�
 1. 用户提到的姓名、年龄、职业、工作单位 → 必须逐项列出，不可省略
 2. 项目名称、技术栈（每一项）→ 必须逐项列出
 3. 如果某个部分无信息，写"无"
-4. 如果有上一次的总结内容，在此基础上更新和合并，不丢失旧信息`
+4. 如果有上一次的总结内容，在此基础上更新和合并，不丢失旧信息`;
 
 export class SessionCompressor {
-  private readonly options: Required<SessionCompressionOptions>
+  private readonly options: Required<SessionCompressionOptions>;
 
   constructor(options?: SessionCompressionOptions) {
-    this.options = { ...DEFAULTS, ...options }
+    this.options = { ...DEFAULTS, ...options };
   }
 
   /**
@@ -98,67 +96,59 @@ export class SessionCompressor {
    */
   async compressIfNeeded(session: FileSession, model: string): Promise<CompressionResult> {
     if (!this.options.enabled) {
-      return { compressed: false }
+      return { compressed: false };
     }
 
     // 读取全部 SessionItem
-    const allItems = await session.getAllSessionItems()
+    const allItems = await session.getAllSessionItems();
 
     // 找到最后一个 summary，获取未压缩消息
-    const lastSummary = this.findLastSummary(allItems)
-    const lastEndSeq = lastSummary?.meta?.endSeq || 0
-    const unsummarized = allItems.filter((si) => si.seq > lastEndSeq && si.type === 'message')
+    const lastSummary = this.findLastSummary(allItems);
+    const lastEndSeq = lastSummary?.meta?.endSeq || 0;
+    const unsummarized = allItems.filter((si) => si.seq > lastEndSeq && si.type === 'message');
 
     // 检查最小消息数
     if (unsummarized.length < this.options.minMessageCount) {
       if (this.options.debug) {
-        console.log(
-          `[SessionCompressor] 未压缩消息不足 ${this.options.minMessageCount} 条` +
-            `（当前 ${unsummarized.length}），跳过`
-        )
+        log.info(`未压缩消息不足 ${this.options.minMessageCount} 条` + `（当前 ${unsummarized.length}），跳过`);
       }
-      return { compressed: false }
+      return { compressed: false };
     }
 
     // 估算 token 数
-    const unsummarizedItems = unsummarized.map((si) => si.item)
-    const totalTokens = countItemsTokens(unsummarizedItems)
-    const threshold = this.options.contextWindowSize * this.options.thresholdRatio
+    const unsummarizedItems = unsummarized.map((si) => si.item);
+    const totalTokens = countItemsTokens(unsummarizedItems);
+    const threshold = this.options.contextWindowSize * this.options.thresholdRatio;
 
     if (this.options.debug) {
-      console.log(
-        `[SessionCompressor] Token 检查: ${totalTokens} / ${threshold} ` +
-          `(${((totalTokens / threshold) * 100).toFixed(1)}%)`
-      )
+      log.info(`Token 检查: ${totalTokens} / ${threshold} ` + `(${((totalTokens / threshold) * 100).toFixed(1)}%)`);
     }
 
     // 未达到阈值
     if (totalTokens < threshold) {
-      return { compressed: false }
+      return { compressed: false };
     }
 
     // 执行压缩
-    return this.compress(session, unsummarized, lastSummary, model, totalTokens, threshold)
+    return this.compress(session, unsummarized, lastSummary, model, totalTokens, threshold);
   }
 
   /**
    * 获取当前压缩状态信息（用于 compression:start 事件）
    */
-  async getCompressionStatus(
-    session: FileSession
-  ): Promise<{ totalTokens: number; threshold: number } | null> {
-    if (!this.options.enabled) return null
+  async getCompressionStatus(session: FileSession): Promise<{ totalTokens: number; threshold: number } | null> {
+    if (!this.options.enabled) return null;
 
-    const allItems = await session.getAllSessionItems()
-    const lastSummary = this.findLastSummary(allItems)
-    const lastEndSeq = lastSummary?.meta?.endSeq || 0
-    const unsummarized = allItems.filter((si) => si.seq > lastEndSeq && si.type === 'message')
+    const allItems = await session.getAllSessionItems();
+    const lastSummary = this.findLastSummary(allItems);
+    const lastEndSeq = lastSummary?.meta?.endSeq || 0;
+    const unsummarized = allItems.filter((si) => si.seq > lastEndSeq && si.type === 'message');
 
-    const unsummarizedItems = unsummarized.map((si) => si.item)
-    const totalTokens = countItemsTokens(unsummarizedItems)
-    const threshold = this.options.contextWindowSize * this.options.thresholdRatio
+    const unsummarizedItems = unsummarized.map((si) => si.item);
+    const totalTokens = countItemsTokens(unsummarizedItems);
+    const threshold = this.options.contextWindowSize * this.options.thresholdRatio;
 
-    return { totalTokens, threshold }
+    return { totalTokens, threshold };
   }
 
   /**
@@ -172,55 +162,54 @@ export class SessionCompressor {
     totalTokens: number,
     _threshold: number
   ): Promise<CompressionResult> {
-    const startTime = Date.now()
-    const summaryModel = this.options.summaryModel || model
+    const startTime = Date.now();
+    const summaryModel = this.options.summaryModel || model;
 
     try {
       // 1. 分段：前 (1-keepRatio) 待总结，后 keepRatio 保留
-      const splitIndex = Math.floor(unsummarized.length * (1 - this.options.keepRatio))
-      const toSummarize = unsummarized.slice(0, splitIndex)
-      const toKeep = unsummarized.slice(splitIndex)
+      const splitIndex = Math.floor(unsummarized.length * (1 - this.options.keepRatio));
+      const toSummarize = unsummarized.slice(0, splitIndex);
+      const toKeep = unsummarized.slice(splitIndex);
 
       if (this.options.debug) {
-        console.log(
-          `[SessionCompressor] 分段: 未压缩 ${unsummarized.length} 条，` +
-            `总结 ${toSummarize.length} 条，保留 ${toKeep.length} 条`
-        )
+        log.info(
+          `分段: 未压缩 ${unsummarized.length} 条，` + `总结 ${toSummarize.length} 条，保留 ${toKeep.length} 条`
+        );
       }
 
       if (toSummarize.length === 0) {
-        console.warn('[SessionCompressor] 没有可总结的消息')
-        return { compressed: false }
+        log.warn('没有可总结的消息');
+        return { compressed: false };
       }
 
       // 2. 构建待总结内容（包含上次总结的文本作为上下文）
-      let contentToSummarize = ''
+      let contentToSummarize = '';
 
       // 增量总结：包含上次 summary 的文本
       if (lastSummary?.meta?.summaryText) {
-        contentToSummarize += `[之前的对话总结]\n${lastSummary.meta.summaryText}\n\n[新的对话内容]\n`
+        contentToSummarize += `[之前的对话总结]\n${lastSummary.meta.summaryText}\n\n[新的对话内容]\n`;
       }
 
-      contentToSummarize += this.buildContentForSummary(toSummarize.map((si) => si.item))
+      contentToSummarize += this.buildContentForSummary(toSummarize.map((si) => si.item));
 
       if (!contentToSummarize.trim()) {
-        console.warn('[SessionCompressor] 没有需要总结的内容')
-        return { compressed: false }
+        log.warn('没有需要总结的内容');
+        return { compressed: false };
       }
 
       // 3. 调用 LLM 生成总结
-      const summaryText = await this.generateSummary(contentToSummarize, summaryModel)
+      const summaryText = await this.generateSummary(contentToSummarize, summaryModel);
       if (!summaryText?.trim()) {
-        console.warn('[SessionCompressor] 生成的总结为空')
-        return { compressed: false }
+        log.warn('生成的总结为空');
+        return { compressed: false };
       }
 
       // 4. 计算统计信息
-      const summarizedSeqs = toSummarize.map((si) => si.seq)
-      const endSeq = Math.max(...summarizedSeqs)
-      const summaryTokens = countTokens(summaryText)
-      const duration = Date.now() - startTime
-      const compressionRatio = totalTokens > 0 ? summaryTokens / totalTokens : 0
+      const summarizedSeqs = toSummarize.map((si) => si.seq);
+      const endSeq = Math.max(...summarizedSeqs);
+      const summaryTokens = countTokens(summaryText);
+      const duration = Date.now() - startTime;
+      const compressionRatio = totalTokens > 0 ? summaryTokens / totalTokens : 0;
 
       // 5. 构造 SummaryMeta
       const meta: SummaryMeta = {
@@ -231,10 +220,10 @@ export class SessionCompressor {
         summaryTokens,
         compressionRatio,
         duration
-      }
+      };
 
       // 6. 追加 summary 到文件
-      await session.appendSummaryItem(meta)
+      await session.appendSummaryItem(meta);
 
       const result: CompressionResult = {
         compressed: true,
@@ -247,24 +236,24 @@ export class SessionCompressor {
         summaryTokens,
         compressionRatio,
         duration
-      }
+      };
 
       if (this.options.debug) {
-        console.log(
-          `[SessionCompressor] 压缩完成: ` +
+        log.info(
+          `压缩完成: ` +
             `${result.summarizedCount} 条已总结 (seq ${summarizedSeqs[0]}-${endSeq})，` +
             `${result.keptCount} 条保留, ` +
             `tokens: ${result.originalTokens} → ${result.summaryTokens}, ` +
             `压缩比: ${((result.compressionRatio || 0) * 100).toFixed(1)}%, ` +
             `耗时: ${duration}ms`
-        )
+        );
       }
 
-      return result
+      return result;
     } catch (error) {
-      console.error('[SessionCompressor] 压缩失败:', error)
+      log.error('压缩失败:', error);
       // 压缩失败不影响主流程
-      return { compressed: false }
+      return { compressed: false };
     }
   }
 
@@ -276,55 +265,55 @@ export class SessionCompressor {
       name: 'SessionSummarizer',
       instructions: SUMMARY_INSTRUCTIONS,
       model
-    })
+    });
 
     const result = await run(summaryAgent, content, {
       maxTurns: 1
-    })
+    });
 
-    let output = (result.finalOutput as string) || ''
+    let output = (result.finalOutput as string) || '';
 
     // 清洗模型可能输出的 <think> 标签
-    output = this.stripThinkTags(output)
+    output = this.stripThinkTags(output);
 
-    return output
+    return output;
   }
 
   /**
    * 将 AgentInputItem[] 格式化为可读的对话内容（供 LLM 总结）
    */
   private buildContentForSummary(items: AgentInputItem[]): string {
-    const lines: string[] = []
+    const lines: string[] = [];
 
     for (const item of items) {
       try {
-        const raw = item as Record<string, unknown>
-        const role = raw.role as string | undefined
-        const type = raw.type as string | undefined
+        const raw = item as Record<string, unknown>;
+        const role = raw.role as string | undefined;
+        const type = raw.type as string | undefined;
 
         if (role === 'user') {
-          const content = this.extractTextContent(raw)
-          if (content) lines.push(`用户: ${content}`)
+          const content = this.extractTextContent(raw);
+          if (content) lines.push(`用户: ${content}`);
         } else if (role === 'assistant') {
-          let content = this.extractTextContent(raw)
+          let content = this.extractTextContent(raw);
           // 清洗 assistant 回复中的 <think> 标签（模型思考过程不应纳入总结）
-          content = this.stripThinkTags(content)
-          if (content.trim()) lines.push(`助手: ${content.trim()}`)
+          content = this.stripThinkTags(content);
+          if (content.trim()) lines.push(`助手: ${content.trim()}`);
         } else if (type === 'function_call') {
-          const name = (raw.name as string) || '未知工具'
-          const args = (raw.arguments as string) || '{}'
-          lines.push(`[工具调用: ${name}] 参数: ${args.slice(0, 200)}`)
+          const name = (raw.name as string) || '未知工具';
+          const args = (raw.arguments as string) || '{}';
+          lines.push(`[工具调用: ${name}] 参数: ${args.slice(0, 200)}`);
         } else if (type === 'function_call_output' || role === 'tool') {
-          const output = (raw.output as string) || (raw.content as string) || ''
-          const display = output.length > 200 ? output.slice(0, 200) + '...' : output
-          lines.push(`[工具结果] ${display}`)
+          const output = (raw.output as string) || (raw.content as string) || '';
+          const display = output.length > 200 ? output.slice(0, 200) + '...' : output;
+          lines.push(`[工具结果] ${display}`);
         }
       } catch {
         // 跳过解析失败的 item
       }
     }
 
-    return lines.join('\n\n')
+    return lines.join('\n\n');
   }
 
   /**
@@ -333,23 +322,23 @@ export class SessionCompressor {
    * SDK 的消息 content 可能是 string 或 Array<{type, text}>
    */
   private extractTextContent(item: Record<string, unknown>): string {
-    const content = item.content
+    const content = item.content;
     if (typeof content === 'string') {
-      return content
+      return content;
     }
     if (Array.isArray(content)) {
       return content
         .map((part: unknown) => {
           if (typeof part === 'object' && part !== null) {
-            const p = part as Record<string, unknown>
-            return (p.text as string) || (p.content as string) || ''
+            const p = part as Record<string, unknown>;
+            return (p.text as string) || (p.content as string) || '';
           }
-          return ''
+          return '';
         })
         .filter(Boolean)
-        .join('')
+        .join('');
     }
-    return ''
+    return '';
   }
 
   /**
@@ -359,9 +348,9 @@ export class SessionCompressor {
    * 这些内容不应该被纳入对话总结。
    */
   private stripThinkTags(text: string): string {
-    if (!text) return ''
+    if (!text) return '';
     // 移除 <think>...</think> 块（支持多行）
-    return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+    return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   }
 
   /**
@@ -370,9 +359,9 @@ export class SessionCompressor {
   private findLastSummary(items: SessionItem[]): SessionItem | undefined {
     for (let i = items.length - 1; i >= 0; i--) {
       if (items[i].type === 'summary' && items[i].meta) {
-        return items[i]
+        return items[i];
       }
     }
-    return undefined
+    return undefined;
   }
 }

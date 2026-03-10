@@ -10,12 +10,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createJiti } from 'jiti';
+import type { Jiti } from 'jiti';
+import { app } from 'electron';
 import { createLogger } from '@main/common/logger';
 import { ExtensionRegistry } from './ExtensionRegistry';
 import { createExtensionApi, createEventBusWrapper } from './ExtensionApi';
 import type { ExtensionManifest, ExtensionModule, ExtensionOrigin } from './types';
 
-const jiti = createJiti(import.meta.url);
 const log = createLogger('extension');
 
 /** 防抖延迟（ms） */
@@ -37,6 +38,8 @@ export class ExtensionLoader {
   /** 共享的 EventBus 引用（传递给 Extension，避免它们自己导入） */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private eventBusRef?: any;
+  /** jiti 实例（延迟初始化） */
+  private jitiInstance?: Jiti;
 
   constructor(
     private registry: ExtensionRegistry,
@@ -44,6 +47,22 @@ export class ExtensionLoader {
     eventBusRef?: any
   ) {
     this.eventBusRef = eventBusRef;
+  }
+
+  /**
+   * 获取 jiti 实例（延迟初始化，避免在模块加载时访问 app）
+   */
+  private getJiti(): Jiti {
+    if (!this.jitiInstance) {
+      const appPath = app.getAppPath();
+      this.jitiInstance = createJiti(import.meta.url, {
+        alias: {
+          '@main': path.join(appPath, 'src/main'),
+          '@shared': path.join(appPath, 'src/shared')
+        }
+      });
+    }
+    return this.jitiInstance;
   }
 
   /**
@@ -103,6 +122,12 @@ export class ExtensionLoader {
       return;
     }
 
+    // enabled 字段检查：明确设为 false 时跳过
+    if (manifest.enabled === false) {
+      log.info(`[ExtensionLoader] Skipping disabled extension: ${manifest.id}`);
+      return;
+    }
+
     // 信任模型校验：非 builtin Extension 需要通过安全检查
     if (origin !== 'builtin') {
       const trustResult = verifyExtensionTrust(manifest, dir, origin);
@@ -142,16 +167,34 @@ export class ExtensionLoader {
       }
     }
 
+    // 注册自动注入的 Skill（这些 Skill 会自动加入所有 Agent）
+    if (manifest.autoInjectSkills && manifest.autoInjectSkills.length > 0) {
+      this.registry.registerAutoInjectSkills(manifest.id, manifest.autoInjectSkills);
+      log.info(
+        `[ExtensionLoader] Registered auto-inject skills for "${manifest.id}": ${manifest.autoInjectSkills.join(', ')}`
+      );
+    }
+
+    // 注册运行时指令注入（每次 Agent 运行时追加）
+    if (manifest.injectInstructions) {
+      this.registry.registerInjectInstructions(manifest.id, manifest.injectInstructions);
+      log.info(`[ExtensionLoader] Registered inject instructions for "${manifest.id}"`);
+    }
+
     // 查找入口文件（纯 Skill 扩展可以没有代码入口）
     const entryPath = resolveEntryPath(dir);
     if (entryPath) {
       // jiti 加载模块
       let mod: ExtensionModule;
       try {
+        const jiti = this.getJiti();
         const imported = await jiti.import(entryPath);
         mod = ((imported as Record<string, unknown>).default || imported) as ExtensionModule;
       } catch (err) {
-        log.error(`[ExtensionLoader] Failed to load "${manifest.id}" from "${entryPath}":`, err);
+        log.error(
+          `[ExtensionLoader] Failed to load "${manifest.id}" from "${entryPath}": ${err instanceof Error ? err.message : String(err)}`,
+          err
+        );
         return;
       }
 
@@ -159,7 +202,9 @@ export class ExtensionLoader {
       const eventBusApi = this.eventBusRef ? createEventBusWrapper(this.eventBusRef) : undefined;
       const api = createExtensionApi(manifest.id, manifest.name, origin, this.registry, eventBusApi);
       try {
+        log.info(`[ExtensionLoader] Calling register() for "${manifest.id}"...`);
         await mod.register(api);
+        log.info(`[ExtensionLoader] register() completed for "${manifest.id}"`);
         // 保存模块实例，用于后续调用 unregister
         this.loadedModules.set(manifest.id, mod);
       } catch (err) {
@@ -190,6 +235,52 @@ export class ExtensionLoader {
         }
       } catch {
         // ToolRegistry 不可用时静默
+      }
+    }
+
+    // 将该 Extension 注册的 CronJob 同步到 CronScheduler
+    const extCronJobs = this.registry.getCronJobs().filter((j) => j.extensionId === manifest.id);
+    if (extCronJobs.length > 0) {
+      try {
+        const { getCronScheduler, getCronJobStore } = await import('../../ai/cron');
+        const cronScheduler = getCronScheduler();
+        const cronStore = getCronJobStore();
+
+        for (const { config } of extCronJobs) {
+          const jobId = `ext:${manifest.id}:${config.name}`;
+          const now = new Date().toISOString();
+          const definition = {
+            id: jobId,
+            name: config.name,
+            description: config.description,
+            cronExpression: config.cronExpression,
+            status: (config.enabled !== false ? 'active' : 'paused') as 'active' | 'paused',
+            agentId: config.agentId,
+            task: config.task,
+            createdAt: now,
+            updatedAt: now,
+            runCount: 0,
+            failCount: 0,
+            source: 'external' as const,
+            metadata: { extensionId: manifest.id }
+          };
+
+          const existing = await cronStore.get(jobId);
+          if (existing) {
+            definition.runCount = existing.runCount;
+            definition.failCount = existing.failCount;
+            if (existing.lastRunAt) (definition as Record<string, unknown>).lastRunAt = existing.lastRunAt;
+          } else {
+            await cronStore.save(definition);
+          }
+
+          if (definition.status === 'active') {
+            await cronScheduler.scheduleJob(definition);
+          }
+        }
+        log.info(`[ExtensionLoader] Synced ${extCronJobs.length} CronJob(s) for "${manifest.id}"`);
+      } catch {
+        // CronScheduler 未初始化时静默（应用启动早期阶段）
       }
     }
 
@@ -241,15 +332,37 @@ export class ExtensionLoader {
       }
     }
 
-    // 4. 清理 ExtensionRegistry 所有关联的注册信息
+    // 4. 从 CronScheduler 取消该 Extension 注册的定时任务
+    const extCronJobs = this.registry.getCronJobs().filter((j) => j.extensionId === extensionId);
+    if (extCronJobs.length > 0) {
+      try {
+        const { getCronScheduler, getCronJobStore } = await import('../../ai/cron');
+        const cronScheduler = getCronScheduler();
+        const cronStore = getCronJobStore();
+
+        for (const { config } of extCronJobs) {
+          const jobId = `ext:${extensionId}:${config.name}`;
+          await cronScheduler.unscheduleJob(jobId);
+          await cronStore.delete(jobId);
+        }
+        log.info(`[ExtensionLoader] Removed ${extCronJobs.length} CronJob(s) for "${extensionId}"`);
+      } catch {
+        // CronScheduler 未初始化时静默
+      }
+    }
+
+    // 5. 清理 ExtensionRegistry 所有关联的注册信息
     this.registry.unregisterHooksByExtension(extensionId);
     this.registry.unregisterGatewayMethodsByExtension(extensionId);
     this.registry.unregisterSkillDirsByExtension(extensionId);
+    this.registry.unregisterAutoInjectSkillsByExtension(extensionId);
+    this.registry.unregisterInjectInstructionsByExtension(extensionId);
     this.registry.unregisterChannelsByExtension(extensionId);
     this.registry.unregisterHttpRoutesByExtension(extensionId);
     this.registry.unregisterServicesByExtension(extensionId);
+    this.registry.unregisterCronJobsByExtension(extensionId);
 
-    // 4. 同步清理 ToolRegistry（动态 import 避免 common→ai 编译时依赖）
+    // 6. 同步清理 ToolRegistry（动态 import 避免 common→ai 编译时依赖）
     if (removedTools.length > 0) {
       try {
         const { ToolRegistry } = await import('../../ai/tools/registry');
@@ -264,7 +377,7 @@ export class ExtensionLoader {
       }
     }
 
-    // 5. 清理本地记录
+    // 7. 清理本地记录
     this.loadedExtensions.delete(extensionId);
     this.loadedModules.delete(extensionId);
 
@@ -450,7 +563,7 @@ function resolveEntryPath(dir: string): string | undefined {
 /**
  * Extension 信任校验 — P0 级安全检查
  *
- * 在 jiti.import() 执行前检查 Extension 的可信度：
+ * 在 getJiti().import() 执行前检查 Extension 的可信度：
  *   - builtin: 免检（由 load() 调用方保证）
  *   - user: 检查已知信任 ID 列表，否则警告但允许（用户主动安装）
  *   - workspace: Agent 创建的 Extension，需要额外谨慎

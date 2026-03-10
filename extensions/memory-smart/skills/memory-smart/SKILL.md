@@ -1,0 +1,162 @@
+# Memory Smart Recall (智能记忆召回)
+
+## 触发时机
+
+**系统已自动为你提供记忆召回能力**。每次对话时，如果用户的问题可能涉及以下内容，应主动检索记忆：
+
+- 用户偏好、习惯、风格
+- 历史决策、选择记录
+- 已知实体（人物、项目、工具）
+- 知识点、方法论
+- 经验教训、踩坑记录
+- 重要事实、数据
+
+## 记忆存储结构
+
+记忆系统使用两层文件结构，**按 Agent 隔离**存储。
+
+**基础路径**：`~/.coobee-ai/memory/agent/{currentAgentId}/`
+
+> 注意：`{currentAgentId}` 是占位符，在实际使用时会自动解析为当前 Agent 的 ID（如 `business-analyst`）
+
+### 第 1 层：索引（Index Layer）
+
+位置：`~/.coobee-ai/memory/agent/{currentAgentId}/index/{category}.md`
+
+分类文件（6 个明确维度）：
+
+- `preference.md` - 用户偏好
+- `decision.md` - 决策记录
+- `lesson.md` - 经验教训
+- `entity.md` - 实体信息
+- `knowledge.md` - 知识点
+- `fact.md` - 事实数据
+
+**索引格式**（每 4 行一条记忆，空行分隔）：
+
+```
+标题（摘要）
+ID 日期 重要度 关键词1 关键词2...
+详细描述（1-2句话）
+文件路径
+
+```
+
+示例：
+
+```
+用户偏好使用文件系统而非数据库
+mem-1709876543210-abc123 2026-03-05 9 文件系统 数据库 存储
+用户明确表示倾向使用文件系统存储而非数据库，认为文件系统更简单可控。
+entries/preference/2026-03.md
+
+用户喜欢 Tailwind CSS 不喜欢 CSS-in-JS
+mem-1709876789456-def456 2026-03-04 7 Tailwind CSS-in-JS 样式
+用户在讨论样式方案时明确表达对 Tailwind 的偏好，反对使用 CSS-in-JS 方案。
+entries/preference/2026-03.md
+```
+
+### 第 2 层：详细内容（Content Layer）
+
+位置：`~/.coobee-ai/memory/agent/{currentAgentId}/entries/{category}/{YYYY-MM}.md`
+
+**内容格式**（纯文本，无多余符号）：
+
+```
+=== mem-{id} ===
+时间: {timestamp}
+摘要: {summary}
+重要度: {importance}
+分类: {category}
+关键词: {keywords}
+
+Agent 输出:
+{content}
+
+记忆提取:
+{memory}
+
+```
+
+## 召回流程
+
+当需要检索记忆时，请按以下步骤操作：
+
+### 步骤 1：确定相关分类
+
+根据用户查询，判断可能涉及哪些分类：
+
+| 用户查询特征                 | 相关分类   |
+| ---------------------------- | ---------- |
+| "我喜欢/不喜欢"、"我的习惯"  | preference |
+| "我们之前决定"、"为什么选择" | decision   |
+| "上次踩坑"、"教训"           | lesson     |
+| "XX 是谁/什么"、"XX 项目"    | entity     |
+| "怎么做"、"原理"             | knowledge  |
+| "当前状态"、"数据"           | fact       |
+
+### 步骤 2：读取索引文件
+
+使用 `Read` 工具读取对应分类的索引文件。
+
+**重要**：路径中的 `{currentAgentId}` 会自动解析为当前 Agent 的 ID。
+
+```typescript
+// 示例：用户问"我之前说过喜欢什么样的代码风格？"
+Read ~/.coobee-ai/memory/agent/{currentAgentId}/index/preference.md
+```
+
+### 步骤 3：扫描索引找到相关记忆
+
+**方法 A：直接扫描**（索引文件较小时）
+
+- 在内存中遍历索引内容
+- 匹配关键词或摘要
+- 提取记忆 ID 和内容路径
+
+**方法 B：使用 Grep**（索引文件较大时）
+
+- 使用 `Grep` 工具搜索关键词
+- 示例：`Grep pattern="文件系统" path="~/.coobee-ai/memory/agent/{currentAgentId}/index/preference.md"`
+
+### 步骤 4：读取详细内容
+
+从索引中提取的路径（如 `entries/preference/2026-03.md`），使用 `Read` 工具读取：
+
+```typescript
+Read ~/.coobee-ai/memory/agent/{currentAgentId}/entries/preference/2026-03.md
+```
+
+在内容中找到对应的 `=== mem-{id} ===` 区块。
+
+### 步骤 5：整合记忆并回答用户
+
+将检索到的记忆整合到回复中，确保回答时：
+
+- 引用具体的记忆内容
+- 说明记忆来源（时间、上下文）
+- 如果记忆过时或矛盾，告知用户
+
+## 注意事项
+
+1. **无需向量化**：本系统不依赖向量数据库，纯关键词匹配即可快速召回
+2. **LLM 自主**：你拥有完全的文件系统访问权限，无需应用层介入
+3. **多分类检索**：一个查询可能涉及多个分类，按需读取多个索引文件
+4. **性能优先**：索引文件应保持较小（每个分类独立），确保快速读取
+5. **Agent 隔离**：记忆仅限当前 Agent，不会看到其他 Agent 的记忆
+
+## 使用示例
+
+**用户问**："我之前说过喜欢用什么数据库吗？"
+
+**你的操作**：
+
+1. 判断分类：`preference`（偏好）
+2. 读取 `~/.coobee-ai/memory/agent/{currentAgentId}/index/preference.md`
+3. 扫描找到匹配关键词"数据库"的记忆
+4. 读取对应的内容文件
+5. 回答："根据之前的记忆（2026-03-05），你明确表示倾向使用文件系统而非数据库存储..."
+
+---
+
+记忆系统已激活。请主动使用它来提供更个性化、更连贯的对话体验。
