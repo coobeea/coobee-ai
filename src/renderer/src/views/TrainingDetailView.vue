@@ -183,6 +183,19 @@
           </div>
         </div>
       </div>
+
+      <!-- 训练可视化图表 (Echarts) -->
+      <div v-if="session && session.results.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 px-6 pb-6">
+        <!-- 训练进度曲线 -->
+        <div class="rounded-lg border border-gray-200 bg-white p-6">
+          <TrainingProgressChart :results="session.results" />
+        </div>
+
+        <!-- 维度雷达图 -->
+        <div class="rounded-lg border border-gray-200 bg-white p-6">
+          <DimensionRadarChart :results="session.results" />
+        </div>
+      </div>
     </template>
 
     <!-- 弱点分析对话框 -->
@@ -289,6 +302,8 @@ import { gateway } from '@/plugins/gatewaySetup';
 import * as trainingApi from '@/api/training';
 import type { TrainingSession, TrainingStatus, TrainingRoundResult } from '@shared/types/training';
 import type { WeaknessAnalysis } from '@/api/training';
+import TrainingProgressChart from '@/components/training/TrainingProgressChart.vue';
+import DimensionRadarChart from '@/components/training/DimensionRadarChart.vue';
 
 const route = useRoute();
 const router = useRouter();
