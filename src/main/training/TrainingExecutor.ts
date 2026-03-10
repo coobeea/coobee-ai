@@ -10,6 +10,7 @@
 
 import { AgentDelegator } from './AgentDelegator';
 import { TrainingSessionStore } from './TrainingSessionStore';
+import { TestSetValidator } from './TestSetValidator';
 import type {
   TrainingSession,
   TrainingTask,
@@ -27,23 +28,25 @@ import * as path from 'node:path';
 import { Env } from '@main/common/env';
 
 export class TrainingExecutor {
-  private readonly delegator: AgentDelegator;
-  private readonly sessionStore: TrainingSessionStore;
-  private readonly config: TrainingExecutorConfig;
+  protected readonly delegator: AgentDelegator;
+  protected readonly sessionStore: TrainingSessionStore;
+  protected readonly config: TrainingExecutorConfig;
+  protected readonly testSetValidator: TestSetValidator;
 
   /** 运行中的训练会话 Map */
-  private readonly runningSessions = new Map<string, TrainingSession>();
+  protected readonly runningSessions = new Map<string, TrainingSession>();
 
   /** 暂停标记 Map */
-  private readonly pauseFlags = new Map<string, boolean>();
+  protected readonly pauseFlags = new Map<string, boolean>();
 
   /** 停止标记 Map */
-  private readonly stopFlags = new Map<string, boolean>();
+  protected readonly stopFlags = new Map<string, boolean>();
 
   constructor(sessionStore: TrainingSessionStore, config: TrainingExecutorConfig = DEFAULT_TRAINING_CONFIG) {
     this.sessionStore = sessionStore;
     this.config = config;
     this.delegator = new AgentDelegator(config);
+    this.testSetValidator = new TestSetValidator(this.delegator);
   }
 
   // ==================== 训练执行 ====================
@@ -117,6 +120,13 @@ export class TrainingExecutor {
       session.status = 'completed';
       session.endTime = Date.now();
       await this.sessionStore.save(session);
+
+      // 测试集验证（如果启用）
+      if (this.config.enableTestSet) {
+        logger.info('[Training] 开始测试集验证');
+        const validation = await this.testSetValidator.validate(session);
+        logger.info(`[Training] 测试集验证完成: ${validation.isOverfitting ? '⚠️ 检测到过拟合' : '✓ 泛化能力正常'}`);
+      }
 
       // 生成报告
       await this.generateReport(session);
@@ -202,7 +212,7 @@ export class TrainingExecutor {
   /**
    * 获取训练任务（从数据集或生成）
    */
-  private async getTask(session: TrainingSession, round: number): Promise<TrainingTask> {
+  protected async getTask(session: TrainingSession, round: number): Promise<TrainingTask> {
     const trainSet = session.dataset.trainSet;
 
     // 如果还在训练集范围内，直接选择
@@ -227,7 +237,7 @@ export class TrainingExecutor {
   /**
    * 检查是否应该提前终止
    */
-  private shouldEarlyStop(session: TrainingSession): boolean {
+  protected shouldEarlyStop(session: TrainingSession): boolean {
     const threshold = this.config.earlyStopThreshold;
     const recentResults = session.results.slice(-threshold);
 
@@ -284,16 +294,26 @@ export class TrainingExecutor {
   /**
    * 生成训练报告
    */
-  private async generateReport(session: TrainingSession): Promise<void> {
+  protected async generateReport(session: TrainingSession): Promise<void> {
     logger.info(`[Training] 生成训练报告: ${session.id}`);
 
     // 1. 计算统计数据
-    const report = this.buildReport(session);
+    let report = this.buildReport(session);
 
-    // 2. 生成 Markdown
+    // 2. 添加测试集验证数据（如果启用）
+    if (this.config.enableTestSet && session.dataset.testSet && session.dataset.testSet.length > 0) {
+      try {
+        const validation = await this.testSetValidator.validate(session);
+        report = this.testSetValidator.updateReportWithValidation(report, validation);
+      } catch (err) {
+        logger.error('[Training] 测试集验证失败:', err);
+      }
+    }
+
+    // 3. 生成 Markdown
     const markdown = this.formatReportAsMarkdown(report);
 
-    // 3. 保存到 Agent Home
+    // 4. 保存到 Agent Home
     const agentHome = Env.getAgentHomeDir(session.agentId);
     const reportDir = path.join(agentHome, 'training-history');
     if (!fs.existsSync(reportDir)) {
@@ -305,7 +325,7 @@ export class TrainingExecutor {
 
     logger.info(`[Training] 报告已保存: ${reportPath}`);
 
-    // 4. 触发事件
+    // 5. 触发事件
     eventBus.emit('training:completed', {
       sessionId: session.id,
       agentId: session.agentId,
@@ -316,7 +336,7 @@ export class TrainingExecutor {
   /**
    * 构建报告数据
    */
-  private buildReport(session: TrainingSession): TrainingReport {
+  protected buildReport(session: TrainingSession): TrainingReport {
     const results = session.results;
     const totalRounds = results.length;
     const passedRounds = results.filter((r) => r.evaluation.passed).length;
@@ -372,7 +392,7 @@ export class TrainingExecutor {
   /**
    * 维度分析
    */
-  private analyzeDimensions(session: TrainingSession): TrainingReport['dimensionAnalysis'] {
+  protected analyzeDimensions(session: TrainingSession): TrainingReport['dimensionAnalysis'] {
     const dimensionScores: Record<string, number[]> = {};
 
     // 收集各维度得分
@@ -404,7 +424,7 @@ export class TrainingExecutor {
   /**
    * 难度分析
    */
-  private analyzeDifficulty(session: TrainingSession): TrainingReport['difficultyAnalysis'] {
+  protected analyzeDifficulty(session: TrainingSession): TrainingReport['difficultyAnalysis'] {
     const difficultyGroups: Record<number, TrainingRoundResult[]> = {};
 
     // 按难度分组
@@ -433,7 +453,7 @@ export class TrainingExecutor {
   /**
    * 弱点分析
    */
-  private analyzeWeakness(session: TrainingSession): TrainingReport['weaknessAnalysis'] {
+  protected analyzeWeakness(session: TrainingSession): TrainingReport['weaknessAnalysis'] {
     const dimensionScores: Record<string, number[]> = {};
 
     for (const result of session.results) {
@@ -468,7 +488,7 @@ export class TrainingExecutor {
   /**
    * 格式化报告为 Markdown
    */
-  private formatReportAsMarkdown(report: TrainingReport): string {
+  protected formatReportAsMarkdown(report: TrainingReport): string {
     const summary = report.summary;
 
     const md = `# 训练报告
@@ -561,7 +581,7 @@ ${report.trainingCurve.map((c) => `- 第 ${c.round} 轮: ${c.score}分 ${c.passe
   /**
    * 获取表现等级评价
    */
-  private getPerformanceLevel(finalScore: number, improvement: number): string {
+  protected getPerformanceLevel(finalScore: number, improvement: number): string {
     if (finalScore >= 90) {
       return '🎉 **优秀**：训练效果显著，智能体表现优异！';
     } else if (finalScore >= 80) {
@@ -580,7 +600,7 @@ ${report.trainingCurve.map((c) => `- 第 ${c.round} 轮: ${c.score}分 ${c.passe
   /**
    * 触发进度更新事件
    */
-  private emitProgress(session: TrainingSession): void {
+  protected emitProgress(session: TrainingSession): void {
     eventBus.emit('training:progress', {
       sessionId: session.id,
       agentId: session.agentId,

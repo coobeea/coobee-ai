@@ -6,12 +6,14 @@ import type { Context } from 'koa';
 import type Router from '@koa/router';
 import { TrainingSessionStore } from '@main/training/TrainingSessionStore';
 import { TrainingExecutor } from '@main/training/TrainingExecutor';
+import { ParallelTrainingExecutor } from '@main/training/ParallelTrainingExecutor';
 import { Env } from '@main/common/env';
 import { log as logger } from '@main/common/logger';
 
 // 全局实例（单例）
 let trainingStore: TrainingSessionStore;
 let trainingExecutor: TrainingExecutor;
+let parallelTrainingExecutor: ParallelTrainingExecutor;
 
 function ensureInstances(): void {
   if (!trainingStore) {
@@ -19,6 +21,9 @@ function ensureInstances(): void {
   }
   if (!trainingExecutor) {
     trainingExecutor = new TrainingExecutor(trainingStore);
+  }
+  if (!parallelTrainingExecutor) {
+    parallelTrainingExecutor = new ParallelTrainingExecutor(trainingStore);
   }
 }
 
@@ -81,8 +86,9 @@ export function registerTrainingRoutes(router: Router): void {
         parallelCount: parallelCount || 1
       });
 
-      // 异步启动训练
-      trainingExecutor.executeTraining(session).catch((err) => {
+      // 异步启动训练（根据策略选择执行器）
+      const executor = session.strategy === 'parallel' ? parallelTrainingExecutor : trainingExecutor;
+      executor.executeTraining(session).catch((err) => {
         logger.error('[Training API] 训练执行失败:', err);
       });
 
