@@ -9,5 +9,6 @@
     "# 输出规范\n\n## 共享网盘文档格式\n\n```markdown\n# {问题标题}\n\n**日期**：{YYYY-MM-DD}\n**Agent**：{agentId}\n**Session**：{sessionId}\n\n## 问题描述\n\n{用户的原始需求或遇到的问题}\n\n## 遇到的困难\n\n{具体的错误或挑战}\n\n## 解决方案\n\n{步骤化的解决过程}\n\n## 关键洞察\n\n{为什么这个方案有效}\n\n## 相关工具\n\n- {tool1}\n- {tool2}\n```\n\n## 智库记录格式\n\n使用 `tavern_record` 工具时，确保：\n- `question` 简洁明确（一句话）\n- `context` 包含必要的环境信息\n- `solution` 具体可执行\n- `reasoning` 解释背后的逻辑\n- `tags` 包含工具名、技能名、主题关键词",
     "# 注意事项\n\n1. **去重**：归档前检查是否已存在类似问题（使用 `shared_drive_search` 和 `tavern_query`）\n2. **隐私**：不归档包含敏感信息的内容（API key、密码、个人隐私）\n3. **质量**：只归档有价值的经验，忽略琐碎的常规操作\n4. **时效**：优先处理最近的记录（越新越有价值）\n5. **关联**：建立问题和解决方案之间的引用关系"
   ],
+  "skills": ["shared-drive", "brain"],
   "type": "agent"
 }
