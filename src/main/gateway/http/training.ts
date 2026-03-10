@@ -7,6 +7,8 @@ import type Router from '@koa/router';
 import { TrainingSessionStore } from '@main/training/TrainingSessionStore';
 import { TrainingExecutor } from '@main/training/TrainingExecutor';
 import { ParallelTrainingExecutor } from '@main/training/ParallelTrainingExecutor';
+import { AdaptiveTrainingExecutor } from '@main/training/AdaptiveTrainingExecutor';
+import { DEFAULT_TRAINING_CONFIG } from '@main/training/types';
 import { Env } from '@main/common/env';
 import { log as logger } from '@main/common/logger';
 
@@ -14,6 +16,7 @@ import { log as logger } from '@main/common/logger';
 let trainingStore: TrainingSessionStore;
 let trainingExecutor: TrainingExecutor;
 let parallelTrainingExecutor: ParallelTrainingExecutor;
+let adaptiveTrainingExecutor: AdaptiveTrainingExecutor;
 
 function ensureInstances(): void {
   if (!trainingStore) {
@@ -24,6 +27,13 @@ function ensureInstances(): void {
   }
   if (!parallelTrainingExecutor) {
     parallelTrainingExecutor = new ParallelTrainingExecutor(trainingStore);
+  }
+  if (!adaptiveTrainingExecutor) {
+    adaptiveTrainingExecutor = new AdaptiveTrainingExecutor(trainingStore, {
+      ...DEFAULT_TRAINING_CONFIG,
+      enableCoach: true,
+      enableTestSet: false
+    });
   }
 }
 
@@ -89,7 +99,15 @@ export function registerTrainingRoutes(router: Router): void {
       });
 
       // 异步启动训练（根据策略选择执行器）
-      const executor = session.strategy === 'parallel' ? parallelTrainingExecutor : trainingExecutor;
+      let executor: TrainingExecutor;
+      if (session.strategy === 'parallel') {
+        executor = parallelTrainingExecutor;
+      } else if (session.strategy === 'adaptive' || session.strategy === 'weakness-targeted') {
+        executor = adaptiveTrainingExecutor;
+      } else {
+        executor = trainingExecutor;
+      }
+
       executor.executeTraining(session).catch((err) => {
         logger.error('[Training API] 训练执行失败:', err);
       });
