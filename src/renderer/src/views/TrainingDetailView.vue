@@ -56,6 +56,20 @@
             <i class="i-carbon-stop-outline"></i>
             <span>停止</span>
           </button>
+          <button
+            v-if="session.status === 'completed'"
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors"
+            @click="handleContinueTraining">
+            <i class="i-carbon-renew"></i>
+            <span>继续训练</span>
+          </button>
+          <button
+            v-if="session.results.length > 0"
+            class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-2 transition-colors"
+            @click="handleShowWeakness">
+            <i class="i-carbon-analytics"></i>
+            <span>弱点分析</span>
+          </button>
         </div>
       </div>
 
@@ -170,6 +184,101 @@
         </div>
       </div>
     </template>
+
+    <!-- 弱点分析对话框 -->
+    <div
+      v-if="showWeaknessDialog"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      @click.self="showWeaknessDialog = false">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] overflow-y-auto">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white">弱点分析</h2>
+          <button
+            class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+            @click="showWeaknessDialog = false">
+            <i class="i-carbon-close text-gray-600 dark:text-gray-400"></i>
+          </button>
+        </div>
+
+        <div v-if="loadingWeakness" class="p-12 text-center">
+          <i class="i-carbon-circle-dash text-4xl animate-spin text-gray-400"></i>
+          <div class="mt-4 text-gray-600 dark:text-gray-400">分析中...</div>
+        </div>
+
+        <div v-else-if="weakness" class="p-6 space-y-6">
+          <!-- 总体统计 -->
+          <div class="grid grid-cols-3 gap-4">
+            <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+              <div class="text-sm text-gray-600 dark:text-gray-400">分析轮次</div>
+              <div class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ weakness.analyzedRounds }}</div>
+            </div>
+            <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+              <div class="text-sm text-gray-600 dark:text-gray-400">整体通过率</div>
+              <div class="text-2xl font-bold text-gray-900 dark:text-white mt-1"
+                >{{ (weakness.overallPassRate * 100).toFixed(1) }}%</div
+              >
+            </div>
+            <div class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
+              <div class="text-sm text-gray-600 dark:text-gray-400">弱点维度</div>
+              <div class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{
+                weakness.weakDimensions.length
+              }}</div>
+            </div>
+          </div>
+
+          <!-- 弱点维度详情 -->
+          <div v-if="weakness.weakDimensions.length > 0">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">弱点维度（按失败率降序）</h3>
+            <div class="space-y-3">
+              <div
+                v-for="dim in weakness.weakDimensions"
+                :key="dim.dimension"
+                class="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="font-medium text-gray-900 dark:text-white">{{ dim.dimension }}</span>
+                  <span class="text-sm text-red-600 dark:text-red-400 font-medium">
+                    失败率: {{ (dim.failureRate * 100).toFixed(1) }}%
+                  </span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm text-gray-600 dark:text-gray-400">
+                  <div>
+                    平均分: <span class="font-medium text-gray-900 dark:text-white">{{ dim.avgScore.toFixed(1) }}</span>
+                  </div>
+                  <div>
+                    失败次数: <span class="font-medium text-gray-900 dark:text-white">{{ dim.failureCount }}</span>
+                  </div>
+                  <div>
+                    总次数: <span class="font-medium text-gray-900 dark:text-white">{{ dim.totalCount }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="text-center text-gray-500 py-8">
+            <i class="i-carbon-checkmark-filled text-4xl text-green-500"></i>
+            <div class="mt-4">没有发现明显弱点维度，表现良好！</div>
+          </div>
+
+          <!-- 建议 -->
+          <div
+            v-if="weakness.weakDimensions.length > 0"
+            class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 border border-yellow-200 dark:border-yellow-800">
+            <div class="flex items-start gap-3">
+              <i class="i-carbon-idea text-yellow-600 text-xl flex-shrink-0"></i>
+              <div class="flex-1">
+                <h4 class="font-medium text-gray-900 dark:text-white mb-2">改进建议</h4>
+                <ul class="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                  <li>• 使用"继续训练"功能针对弱点维度进行额外训练</li>
+                  <li>• 系统会自动生成针对 {{ weakness.weakestDimension?.dimension }} 等弱点的训练任务</li>
+                  <li>• 建议额外训练 100-500 轮以显著提升弱点维度表现</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -179,6 +288,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { gateway } from '@/plugins/gatewaySetup';
 import * as trainingApi from '@/api/training';
 import type { TrainingSession, TrainingStatus, TrainingRoundResult } from '@shared/types/training';
+import type { WeaknessAnalysis } from '@/api/training';
 
 const route = useRoute();
 const router = useRouter();
@@ -186,6 +296,9 @@ const router = useRouter();
 const sessionId = computed(() => route.params.id as string);
 const loading = ref(false);
 const session = ref<TrainingSession | null>(null);
+const showWeaknessDialog = ref(false);
+const weakness = ref<WeaknessAnalysis | null>(null);
+const loadingWeakness = ref(false);
 
 // 计算属性
 const progressPercentage = computed(() => {
@@ -265,6 +378,28 @@ async function handleStop(): Promise<void> {
   } catch (err) {
     console.error('停止训练失败:', err);
     alert(`停止失败: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+// 继续训练
+async function handleContinueTraining(): Promise<void> {
+  router.push({
+    path: '/training',
+    query: { continueFrom: sessionId.value }
+  });
+}
+
+// 显示弱点分析
+async function handleShowWeakness(): Promise<void> {
+  showWeaknessDialog.value = true;
+  loadingWeakness.value = true;
+
+  try {
+    weakness.value = await trainingApi.getWeaknessAnalysis(sessionId.value);
+  } catch (err) {
+    console.error('加载弱点分析失败:', err);
+  } finally {
+    loadingWeakness.value = false;
   }
 }
 

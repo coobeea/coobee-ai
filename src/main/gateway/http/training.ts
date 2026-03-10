@@ -42,6 +42,7 @@ export function registerTrainingRoutes(router: Router): void {
       const maxRounds = Number(body.maxRounds || 0);
       const strategy = String(body.strategy || 'sequential');
       const parallelCount = Number(body.parallelCount || 1);
+      const continueFromSessionId = body.continueFromSessionId ? String(body.continueFromSessionId) : undefined;
 
       // 验证参数
       if (!agentId || !goalName || !maxRounds) {
@@ -83,7 +84,8 @@ export function registerTrainingRoutes(router: Router): void {
         dataset: 'code-generation-basic.json', // TODO: 动态选择数据集
         maxRounds,
         strategy: (strategy || 'sequential') as 'sequential' | 'parallel' | 'adaptive' | 'weakness-targeted',
-        parallelCount: parallelCount || 1
+        parallelCount: parallelCount || 1,
+        parentSessionId: continueFromSessionId
       });
 
       // 异步启动训练（根据策略选择执行器）
@@ -196,6 +198,30 @@ export function registerTrainingRoutes(router: Router): void {
       ctx.body = { success: true };
     } catch (err) {
       logger.error('[Training API] 删除训练失败:', err);
+      ctx.status = 500;
+      ctx.body = { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // 获取弱点分析
+  router.get('/training/sessions/:id/weakness', async (ctx: Context) => {
+    ensureInstances();
+
+    try {
+      const session = await trainingStore.load(ctx.params.id);
+      if (!session) {
+        ctx.status = 404;
+        ctx.body = { error: '训练会话不存在' };
+        return;
+      }
+
+      const { WeaknessAnalyzer } = await import('@main/training/WeaknessAnalyzer');
+      const analyzer = new WeaknessAnalyzer();
+      const analysis = analyzer.analyze(session);
+
+      ctx.body = { success: true, data: analysis };
+    } catch (err) {
+      logger.error('[Training API] 弱点分析失败:', err);
       ctx.status = 500;
       ctx.body = { error: err instanceof Error ? err.message : String(err) };
     }

@@ -42,6 +42,18 @@ export class TrainingSessionStore {
     // 加载数据集
     const dataset = typeof params.dataset === 'string' ? await this.loadDataset(params.dataset) : params.dataset;
 
+    // 如果是增量训练，加载父会话
+    let parentSession: TrainingSession | null = null;
+    if (params.parentSessionId) {
+      parentSession = await this.load(params.parentSessionId);
+      if (!parentSession) {
+        throw new Error(`父会话不存在: ${params.parentSessionId}`);
+      }
+      logger.info(
+        `[TrainingStore] 增量训练: 从会话 ${params.parentSessionId} 继承 ${parentSession.results.length} 轮结果`
+      );
+    }
+
     // 创建会话对象
     const session: TrainingSession = {
       id: `training-${Date.now()}`,
@@ -52,16 +64,26 @@ export class TrainingSessionStore {
       strategy: params.strategy || 'sequential',
       parallelCount: params.parallelCount || 1,
       status: 'pending',
-      progress: {
-        currentRound: 0,
-        totalRounds: params.maxRounds,
-        completedRounds: 0,
-        passedRounds: 0
-      },
-      results: [],
+      progress: parentSession
+        ? {
+            currentRound: parentSession.progress.completedRounds,
+            totalRounds: params.maxRounds,
+            completedRounds: parentSession.progress.completedRounds,
+            passedRounds: parentSession.progress.passedRounds
+          }
+        : {
+            currentRound: 0,
+            totalRounds: params.maxRounds,
+            completedRounds: 0,
+            passedRounds: 0
+          },
+      results: parentSession ? [...parentSession.results] : [],
       startTime: Date.now(),
       parentSessionId: params.parentSessionId,
-      metadata: params.metadata
+      metadata: {
+        ...params.metadata,
+        isIncremental: !!params.parentSessionId
+      }
     };
 
     // 持久化

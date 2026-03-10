@@ -8,6 +8,38 @@ import type { TrainingSession, TrainingStatus } from '@shared/types/training';
 const BASE_URL = 'http://localhost:3000';
 
 /**
+ * 弱点分析结果
+ */
+export interface WeaknessAnalysis {
+  dimensionStats: Array<{
+    dimension: string;
+    avgScore: number;
+    failureCount: number;
+    totalCount: number;
+    failureRate: number;
+    isWeak: boolean;
+  }>;
+  weakDimensions: Array<{
+    dimension: string;
+    avgScore: number;
+    failureCount: number;
+    totalCount: number;
+    failureRate: number;
+    isWeak: boolean;
+  }>;
+  weakestDimension?: {
+    dimension: string;
+    avgScore: number;
+    failureCount: number;
+    totalCount: number;
+    failureRate: number;
+    isWeak: boolean;
+  };
+  overallPassRate: number;
+  analyzedRounds: number;
+}
+
+/**
  * 创建训练会话
  */
 export async function createTraining(params: {
@@ -67,4 +99,14 @@ export async function stopTraining(sessionId: string): Promise<void> {
  */
 export async function deleteTraining(sessionId: string): Promise<void> {
   await axios.delete(`${BASE_URL}/training/sessions/${sessionId}`);
+}
+
+/**
+ * 获取弱点分析
+ */
+export async function getWeaknessAnalysis(sessionId: string): Promise<WeaknessAnalysis> {
+  const response = await axios.get<{ success: boolean; data: WeaknessAnalysis }>(
+    `${BASE_URL}/training/sessions/${sessionId}/weakness`
+  );
+  return response.data.data;
 }
