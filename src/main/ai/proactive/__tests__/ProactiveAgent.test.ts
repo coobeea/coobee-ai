@@ -87,20 +87,22 @@ describe('OpportunityScanner', () => {
 
   describe('Scanning', () => {
     it('should execute enabled rules', async () => {
-      const checkFn = vi.fn(async (): Promise<Opportunity[]> => [
-        {
-          id: 'opp-1',
-          type: 'bug',
-          title: 'Test opportunity',
-          description: 'Test',
-          priority: 8,
-          estimatedImpact: 'high',
-          confidence: 0.9,
-          source: 'test-rule',
-          status: 'new',
-          discoveredAt: Date.now()
-        }
-      ]);
+      const checkFn = vi.fn(
+        async (): Promise<Opportunity[]> => [
+          {
+            id: 'opp-1',
+            type: 'bug',
+            title: 'Test opportunity',
+            description: 'Test',
+            priority: 8,
+            estimatedImpact: 'high',
+            confidence: 0.9,
+            source: 'test-rule',
+            status: 'new',
+            discoveredAt: Date.now()
+          }
+        ]
+      );
 
       const rule: ScanRule = {
         id: 'test-rule',

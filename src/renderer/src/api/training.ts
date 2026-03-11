@@ -44,7 +44,12 @@ export interface WeaknessAnalysis {
  */
 export async function createTraining(params: {
   agentId: string;
-  goalName: string;
+  skillName: string;
+  goalDescription: string;
+  dataSource: {
+    type: 'knowledge-base' | 'history' | 'auto';
+    path?: string;
+  };
   maxRounds: number;
   strategy?: string;
   parallelCount?: number;

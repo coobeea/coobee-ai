@@ -76,7 +76,9 @@ export class ComplianceChecker {
       generatedAt: Date.now()
     };
 
-    log.info(`[ComplianceChecker] Report generated: ${violationDetails.length} violations, ${(report.complianceRate * 100).toFixed(1)}% compliance`);
+    log.info(
+      `[ComplianceChecker] Report generated: ${violationDetails.length} violations, ${(report.complianceRate * 100).toFixed(1)}% compliance`
+    );
 
     return report;
   }

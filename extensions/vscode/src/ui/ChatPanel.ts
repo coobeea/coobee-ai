@@ -10,7 +10,11 @@ export class ChatPanel {
   private readonly panel: vscode.WebviewPanel;
   private disposables: vscode.Disposable[] = [];
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, private client: CoobeeClient) {
+  private constructor(
+    panel: vscode.WebviewPanel,
+    extensionUri: vscode.Uri,
+    private client: CoobeeClient
+  ) {
     this.panel = panel;
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
@@ -33,7 +37,7 @@ export class ChatPanel {
   /**
    * 创建或显示面板
    */
-  public static createOrShow(extensionUri: vscode.Uri, client: CoobeeClient) {
+  public static createOrShow(extensionUri: vscode.Uri, client: CoobeeClient): void {
     const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
 
     if (ChatPanel.currentPanel) {
@@ -52,7 +56,7 @@ export class ChatPanel {
   /**
    * 处理发送消息
    */
-  private async handleSendMessage(text: string) {
+  private async handleSendMessage(text: string): Promise<void> {
     try {
       this.panel.webview.postMessage({
         type: 'userMessage',
@@ -191,7 +195,7 @@ export class ChatPanel {
   /**
    * 释放资源
    */
-  public dispose() {
+  public dispose(): void {
     ChatPanel.currentPanel = undefined;
 
     this.panel.dispose();

@@ -15,7 +15,11 @@ export class DebateArena {
   /**
    * 创建辩论会话
    */
-  createSession(topic: string, participants: Array<{ agentId: string; stance: DebateStance }>, rules: DebateRules): DebateSession {
+  createSession(
+    topic: string,
+    participants: Array<{ agentId: string; stance: DebateStance }>,
+    rules: DebateRules
+  ): DebateSession {
     const sessionId = `debate-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const session: DebateSession = {
@@ -60,7 +64,13 @@ export class DebateArena {
   /**
    * 提交论点
    */
-  submitArgument(sessionId: string, agentId: string, content: string, rebuttalTo?: string, evidence?: string[]): DebateArgument {
+  submitArgument(
+    sessionId: string,
+    agentId: string,
+    content: string,
+    rebuttalTo?: string,
+    evidence?: string[]
+  ): DebateArgument {
     const session = this.sessions.get(sessionId);
 
     if (!session) {

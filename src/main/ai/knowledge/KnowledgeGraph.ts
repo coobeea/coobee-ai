@@ -79,9 +79,7 @@ export class KnowledgeGraph {
    * 查找最短路径（BFS）
    */
   findPath(fromId: string, toId: string, maxDepth = 5): PathResult | null {
-    const queue: { nodeId: string; path: string[]; weight: number }[] = [
-      { nodeId: fromId, path: [fromId], weight: 0 }
-    ];
+    const queue: { nodeId: string; path: string[]; weight: number }[] = [{ nodeId: fromId, path: [fromId], weight: 0 }];
     const visited = new Set<string>([fromId]);
 
     while (queue.length > 0) {

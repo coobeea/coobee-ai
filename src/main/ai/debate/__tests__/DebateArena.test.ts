@@ -117,7 +117,11 @@ describe('DebateArena', () => {
 
       await arena.start(session.id);
 
-      arena.submitArgument(session.id, 'agent-pro', '强有力的论点支持正方观点，并且有充分的证据支持。', undefined, ['证据1', '证据2', '证据3']);
+      arena.submitArgument(session.id, 'agent-pro', '强有力的论点支持正方观点，并且有充分的证据支持。', undefined, [
+        '证据1',
+        '证据2',
+        '证据3'
+      ]);
 
       arena.submitArgument(session.id, 'agent-con', '反方论点', undefined, ['证据A']);
 
@@ -133,17 +137,20 @@ describe('DebateArena', () => {
 
   describe('Argument strength calculation', () => {
     it('should calculate strength based on content and evidence', async () => {
-      const session = arena.createSession(
-        'Test',
-        [{ agentId: 'agent-1', stance: 'pro' }],
-        rules
-      );
+      const session = arena.createSession('Test', [{ agentId: 'agent-1', stance: 'pro' }], rules);
 
       await arena.start(session.id);
 
       const shortArg = arena.submitArgument(session.id, 'agent-1', '短论点');
-      const longArg = arena.submitArgument(session.id, 'agent-1', '这是一个非常详细和充分的论点，包含了大量的分析和推理过程。');
-      const evidencedArg = arena.submitArgument(session.id, 'agent-1', '有证据支持的论点', undefined, ['证据1', '证据2']);
+      const longArg = arena.submitArgument(
+        session.id,
+        'agent-1',
+        '这是一个非常详细和充分的论点，包含了大量的分析和推理过程。'
+      );
+      const evidencedArg = arena.submitArgument(session.id, 'agent-1', '有证据支持的论点', undefined, [
+        '证据1',
+        '证据2'
+      ]);
 
       expect(longArg.strength).toBeGreaterThan(shortArg.strength);
       expect(evidencedArg.strength).toBeGreaterThan(shortArg.strength);

@@ -61,10 +61,10 @@ workers/{name}/
 
 ```json
 {
-  "name": "worker-name",    // Worker 唯一标识（kebab-case）
-  "label": "显示名称",       // 中文显示名称
-  "entry": "server.py",     // 入口文件
-  "port": 18200             // 服务端口
+  "name": "worker-name", // Worker 唯一标识（kebab-case）
+  "label": "显示名称", // 中文显示名称
+  "entry": "server.py", // 入口文件
+  "port": 18200 // 服务端口
 }
 ```
 
@@ -72,14 +72,14 @@ workers/{name}/
 
 ```json
 {
-  "enable": true,            // 是否启用（默认 false）
-  "autoStart": false,        // 应用启动时自动启动（默认 false）
-  "autoRestart": true,       // 崩溃后自动重启（默认 true）
-  "maxRestarts": 3,          // 最大重启次数
+  "enable": true, // 是否启用（默认 false）
+  "autoStart": false, // 应用启动时自动启动（默认 false）
+  "autoRestart": true, // 崩溃后自动重启（默认 true）
+  "maxRestarts": 3, // 最大重启次数
   "healthCheckTimeout": 120000, // 健康检查超时（毫秒）
-  "type": "python",          // Worker 类型
+  "type": "python", // Worker 类型
   "requirementsFile": "requirements.txt",
-  "env": {}                  // 额外环境变量
+  "env": {} // 额外环境变量
 }
 ```
 
@@ -538,7 +538,7 @@ write({
       name: '{name}',
       label: '{显示名称}',
       entry: 'server.py',
-      port: {port},
+      port: { port },
       enable: true,
       autoStart: false,
       autoRestart: true,

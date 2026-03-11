@@ -62,6 +62,9 @@ export interface TrainingGoal {
 
   /** 优秀分数线（可选） */
   excellentThreshold?: number;
+
+  /** 兼容字段：passingScore（与 threshold 相同） */
+  passingScore?: number;
 }
 
 /**
@@ -191,6 +194,16 @@ export interface TrainingRoundResult {
   /** 改进后的评估（如果有 refinement） */
   refinedEvaluation?: TrainingEvaluation;
 
+  /** 所有尝试记录 */
+  attempts?: Array<{
+    attemptNo: number;
+    score: number;
+    passed: boolean;
+  }>;
+
+  /** 总尝试次数 */
+  totalAttempts?: number;
+
   /** 开始时间 */
   startTime: number;
 
@@ -266,6 +279,14 @@ export interface TrainingSession {
     notes?: string;
     /** 自动创建训练版本 */
     autoCreateVersion?: boolean;
+    /** 技能包名称 */
+    skillName?: string;
+    /** 训练目标描述 */
+    goalDescription?: string;
+    /** 数据源类型 */
+    dataSourceType?: string;
+    /** 数据源路径 */
+    dataSourcePath?: string;
   };
 
   /** 训练报告 */

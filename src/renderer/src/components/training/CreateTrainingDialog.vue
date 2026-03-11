@@ -23,16 +23,54 @@
           </select>
         </div>
 
-        <!-- 选择训练目标 -->
+        <!-- 使用技能包 -->
         <div class="form-group">
-          <label class="form-label">训练目标</label>
-          <select v-model="form.goalName" class="form-select">
+          <label class="form-label">使用技能包</label>
+          <select v-model="form.skillName" class="form-select">
             <option value="">请选择...</option>
-            <option value="代码生成能力">代码生成能力</option>
-            <option value="文本总结能力">文本总结能力（开发中）</option>
-            <option value="问题分析能力">问题分析能力（开发中）</option>
+            <option value="experience-manager">experience-manager（经验管理）</option>
+            <option value="dimension-architect">dimension-architect（维度架构）</option>
+            <option value="config-manager">config-manager（配置管理）</option>
+            <option value="observability">observability（可观测性）</option>
           </select>
-          <p class="form-hint">选择智能体需要提升的能力维度</p>
+          <p class="form-hint">只有配备技能包才能产生训练数据</p>
+        </div>
+
+        <!-- 训练目标（口述） -->
+        <div class="form-group">
+          <label class="form-label">训练目标（口述）</label>
+          <input
+            v-model="form.goalDescription"
+            type="text"
+            class="form-input"
+            placeholder="例如：提升经验管理的准确性和完整性" />
+          <p class="form-hint">用自然语言描述训练目标，系统将自动生成评估维度</p>
+        </div>
+
+        <!-- 数据源配置 -->
+        <div class="form-group">
+          <label class="form-label">数据源类型</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input v-model="form.dataSourceType" type="radio" value="knowledge-base" />
+              <span>知识库</span>
+            </label>
+            <label class="radio-label">
+              <input v-model="form.dataSourceType" type="radio" value="history" />
+              <span>历史会话（开发中）</span>
+            </label>
+            <label class="radio-label">
+              <input v-model="form.dataSourceType" type="radio" value="auto" />
+              <span>自动生成（开发中）</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 知识库路径（仅当选择知识库时） -->
+        <div v-if="form.dataSourceType === 'knowledge-base'" class="form-group">
+          <label class="form-label">知识库路径</label>
+          <input v-model="form.knowledgeBasePath" type="text" class="form-input" placeholder="brain/problem-solving" />
+          <p class="form-hint">相对于 ~/coobee-data/ 的路径</p>
         </div>
 
         <!-- 配置参数 -->
@@ -58,19 +96,6 @@
           <label class="form-label">并行度</label>
           <input v-model.number="form.parallelCount" type="number" min="2" max="5" class="form-input" />
           <p class="form-hint">同时执行的任务数（2-5，推荐 3）</p>
-        </div>
-
-        <!-- 预估信息 -->
-        <div class="estimate-card">
-          <span class="i-carbon-information inline-block h-4 w-4 estimate-icon" />
-          <div class="estimate-content">
-            <div class="estimate-title">预估信息</div>
-            <div class="estimate-list">
-              <div>· 预计耗时: {{ estimatedTime }}</div>
-              <div>· 预计成本: {{ estimatedCost }}</div>
-              <div>· API 调用次数: {{ estimatedCalls }}</div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -99,8 +124,11 @@ const emit = defineEmits<{
 // 表单数据
 const form = ref({
   agentId: '',
-  goalName: '',
-  maxRounds: 500,
+  skillName: '',
+  goalDescription: '',
+  dataSourceType: 'knowledge-base' as 'knowledge-base' | 'history' | 'auto',
+  knowledgeBasePath: 'brain/problem-solving',
+  maxRounds: 100,
   strategy: 'sequential' as 'sequential' | 'parallel' | 'adaptive',
   parallelCount: 3
 });
@@ -109,35 +137,15 @@ const submitting = ref(false);
 
 // 表单验证
 const isFormValid = computed(() => {
-  return form.value.agentId && form.value.goalName && form.value.maxRounds >= 10;
-});
+  const baseValid =
+    form.value.agentId && form.value.skillName && form.value.goalDescription && form.value.maxRounds >= 10;
 
-// 预估信息
-const estimatedTime = computed(() => {
-  const rounds = form.value.maxRounds;
-  const parallel = form.value.strategy === 'parallel' ? form.value.parallelCount : 1;
-  const secondsPerRound = 12; // 平均每轮 12 秒
-  const totalSeconds = (rounds / parallel) * secondsPerRound;
+  // 如果选择知识库，必须提供路径
+  if (form.value.dataSourceType === 'knowledge-base') {
+    return baseValid && form.value.knowledgeBasePath;
+  }
 
-  if (totalSeconds < 60) return `约 ${Math.ceil(totalSeconds)} 秒`;
-  if (totalSeconds < 3600) return `约 ${Math.ceil(totalSeconds / 60)} 分钟`;
-  return `约 ${(totalSeconds / 3600).toFixed(1)} 小时`;
-});
-
-const estimatedCost = computed(() => {
-  const rounds = form.value.maxRounds;
-  const callsPerRound = 3; // 平均每轮 3 次 Agent 调用
-  const costPerCall = 0.0001; // deepseek-chat 约 $0.0001/次
-  const total = rounds * callsPerRound * costPerCall;
-
-  if (total < 0.1) return `< $0.1`;
-  return `约 $${total.toFixed(2)}`;
-});
-
-const estimatedCalls = computed(() => {
-  const rounds = form.value.maxRounds;
-  const callsPerRound = 3;
-  return `约 ${rounds * callsPerRound} 次`;
+  return baseValid;
 });
 
 // 提交创建
@@ -148,7 +156,12 @@ async function handleSubmit(): Promise<void> {
   try {
     const session = await trainingApi.createTraining({
       agentId: form.value.agentId,
-      goalName: form.value.goalName,
+      skillName: form.value.skillName,
+      goalDescription: form.value.goalDescription,
+      dataSource: {
+        type: form.value.dataSourceType,
+        path: form.value.dataSourceType === 'knowledge-base' ? form.value.knowledgeBasePath : undefined
+      },
       maxRounds: form.value.maxRounds,
       strategy: form.value.strategy,
       parallelCount: form.value.strategy === 'parallel' ? form.value.parallelCount : undefined
@@ -281,39 +294,26 @@ async function handleSubmit(): Promise<void> {
   color: hsl(var(--text-muted));
 }
 
-/* ====== 预估信息卡片 ====== */
+/* ====== 单选按钮组 ====== */
 
-.estimate-card {
+.radio-group {
   display: flex;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 10px;
-  background: hsl(var(--info) / 0.08);
-  border: 1px solid hsl(var(--info) / 0.2);
+  gap: 16px;
 }
 
-.estimate-icon {
-  flex-shrink: 0;
-  color: hsl(var(--info));
-}
-
-.estimate-content {
-  flex: 1;
-}
-
-.estimate-title {
+.radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
-  font-weight: 600;
   color: hsl(var(--foreground));
-  margin-bottom: 8px;
+  cursor: pointer;
 }
 
-.estimate-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: hsl(var(--text-secondary));
+.radio-label input[type='radio'] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 /* ====== 对话框底部 ====== */

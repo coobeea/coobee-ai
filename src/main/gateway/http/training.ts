@@ -8,9 +8,13 @@ import { TrainingSessionStore } from '@main/training/TrainingSessionStore';
 import { TrainingExecutor } from '@main/training/TrainingExecutor';
 import { ParallelTrainingExecutor } from '@main/training/ParallelTrainingExecutor';
 import { AdaptiveTrainingExecutor } from '@main/training/AdaptiveTrainingExecutor';
+import { GoalGenerator } from '@main/training/GoalGenerator';
+import { KnowledgeBaseDataSource } from '@main/training/data-sources/KnowledgeBaseDataSource';
 import { DEFAULT_TRAINING_CONFIG } from '@main/training/types';
 import { Env } from '@main/common/env';
 import { log as logger } from '@main/common/logger';
+import * as path from 'node:path';
+import * as fs from 'node:fs';
 
 // 全局实例（单例）
 let trainingStore: TrainingSessionStore;
@@ -48,62 +52,106 @@ export function registerTrainingRoutes(router: Router): void {
     try {
       const body = ctx.request.body as Record<string, unknown>;
       const agentId = String(body.agentId || '');
-      const goalName = String(body.goalName || '');
+      const skillName = String(body.skillName || '');
+      const goalDescription = String(body.goalDescription || '');
+      const dataSource = body.dataSource as { type: string; path?: string } | undefined;
       const maxRounds = Number(body.maxRounds || 0);
       const strategy = String(body.strategy || 'sequential');
       const parallelCount = Number(body.parallelCount || 1);
       const continueFromSessionId = body.continueFromSessionId ? String(body.continueFromSessionId) : undefined;
 
       // 验证参数
-      if (!agentId || !goalName || !maxRounds) {
+      if (!agentId || !skillName || !goalDescription || !maxRounds) {
         ctx.status = 400;
-        ctx.body = { error: '缺少必需参数: agentId, goalName, maxRounds' };
+        ctx.body = { error: '缺少必需参数: agentId, skillName, goalDescription, maxRounds' };
         return;
       }
 
-      // TODO: 根据 goalName 加载对应的训练目标和数据集
-      // 目前暂时硬编码"代码生成能力"
-      const goal = {
-        name: goalName,
-        description: '训练智能体的代码生成能力',
-        dimensions: [
-          {
-            name: 'correctness',
-            label: '正确性',
-            description: '代码可运行且通过测试',
-            weight: 40,
-            criteria: '基于测试用例'
-          },
-          { name: 'quality', label: '代码质量', description: '命名规范、结构清晰', weight: 30, criteria: '代码审查' },
-          {
-            name: 'edge_cases',
-            label: '边界处理',
-            description: '处理异常和边界情况',
-            weight: 20,
-            criteria: '边界测试'
-          },
-          { name: 'performance', label: '性能', description: '时间和空间复杂度合理', weight: 10, criteria: '算法分析' }
-        ],
-        threshold: 80
-      };
+      if (!dataSource || !dataSource.type) {
+        ctx.status = 400;
+        ctx.body = { error: '缺少数据源配置' };
+        return;
+      }
 
-      // 创建训练会话
+      logger.info(`[Training API] 创建训练: ${agentId} + ${skillName}, 目标: ${goalDescription}`);
+
+      // 1. 生成训练目标（使用 GoalGenerator）
+      const goalGenerator = new GoalGenerator();
+      const goal = await goalGenerator.generate({
+        agentId,
+        skillName,
+        goalDescription
+      });
+
+      logger.info(`[Training API] 训练目标已生成: ${goal.name} (${goal.dimensions.length} 个维度)`);
+
+      // 2. 生成训练数据集
+      let dataset;
+
+      if (dataSource.type === 'knowledge-base') {
+        if (!dataSource.path) {
+          ctx.status = 400;
+          ctx.body = { error: '知识库类型需要提供 path' };
+          return;
+        }
+
+        // 使用知识库数据源
+        const kbDataSource = new KnowledgeBaseDataSource({
+          path: dataSource.path,
+          trainingGoal: goal,
+          agentId,
+          skillName
+        });
+
+        dataset = await kbDataSource.generate({
+          totalCount: Math.min(maxRounds, 100), // 数据集大小不超过 100
+          trainTestRatio: 0.8,
+          batchSize: 30
+        });
+
+        logger.info(
+          `[Training API] 数据集已生成: ${dataset.trainSet.length} 个训练任务, ${dataset.testSet.length} 个测试任务`
+        );
+
+        // 保存数据集到临时文件
+        const datasetDir = path.join(Env.paths.userHome, 'training', 'datasets');
+        if (!fs.existsSync(datasetDir)) {
+          fs.mkdirSync(datasetDir, { recursive: true });
+        }
+
+        const datasetFilename = `${skillName}-${Date.now()}.json`;
+        const datasetPath = path.join(datasetDir, datasetFilename);
+        fs.writeFileSync(datasetPath, JSON.stringify(dataset, null, 2), 'utf-8');
+
+        logger.info(`[Training API] 数据集已保存: ${datasetPath}`);
+      } else {
+        // 其他数据源类型（历史会话、自动生成等）
+        ctx.status = 400;
+        ctx.body = { error: `不支持的数据源类型: ${dataSource.type}` };
+        return;
+      }
+
+      // 3. 创建训练会话
       const autoCreateVersion = body.autoCreateVersion === true;
 
       const session = await trainingStore.create({
         agentId,
         goal,
-        dataset: 'code-generation-basic.json', // TODO: 动态选择数据集
+        dataset: dataset, // 直接传递 TrainingDataset 对象
         maxRounds,
         strategy: (strategy || 'sequential') as 'sequential' | 'parallel' | 'adaptive' | 'weakness-targeted',
         parallelCount: parallelCount || 1,
         parentSessionId: continueFromSessionId,
         metadata: {
-          autoCreateVersion
+          autoCreateVersion,
+          skillName,
+          goalDescription,
+          dataSourceType: dataSource.type,
+          dataSourcePath: dataSource.path
         }
       });
 
-      // 异步启动训练（根据策略选择执行器）
+      // 4. 异步启动训练（根据策略选择执行器）
       let executor: TrainingExecutor;
       if (session.strategy === 'parallel') {
         executor = parallelTrainingExecutor;

@@ -7,12 +7,10 @@ import { DiscoveredModule } from './types';
 export function scanApis(): DiscoveredModule[] {
   log.info('[Scan] 开始扫描API文件...');
 
-  const modules = import.meta.glob([
-    '../api/**/*.ts',
-    '!../api/**/__tests__/**',
-    '!../api/**/*.test.ts',
-    '!../api/**/*.spec.ts'
-  ], { eager: true });
+  const modules = import.meta.glob(
+    ['../api/**/*.ts', '!../api/**/__tests__/**', '!../api/**/*.test.ts', '!../api/**/*.spec.ts'],
+    { eager: true }
+  );
   const totalFound = Object.keys(modules).length;
 
   log.info(`[Scan] 发现 ${totalFound} 个API文件:`);

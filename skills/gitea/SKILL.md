@@ -20,12 +20,12 @@ config:
 
 ## 服务信息
 
-| 项目         | 值                              |
-| ------------ | ------------------------------- |
-| 服务地址     | 由 `skills.json5` 配置决定      |
-| API 基址     | `{url}/api/v1`                  |
-| 脚本目录     | `skills/gitea/scripts/`         |
-| 认证方式     | Access Token                    |
+| 项目     | 值                         |
+| -------- | -------------------------- |
+| 服务地址 | 由 `skills.json5` 配置决定 |
+| API 基址 | `{url}/api/v1`             |
+| 脚本目录 | `skills/gitea/scripts/`    |
+| 认证方式 | Access Token               |
 
 ---
 
@@ -39,11 +39,11 @@ config:
 
 ```json5
 {
-  "gitea": {
-    url: "http://localhost:13000",
-    token: "你的 Access Token",
-    owner: "lifeng",
-  },
+  gitea: {
+    url: 'http://localhost:13000',
+    token: '你的 Access Token',
+    owner: 'lifeng'
+  }
 }
 ```
 
@@ -71,17 +71,17 @@ exec({ command: "python3 skills/gitea/scripts/check.py" })
 
 所有脚本位于 `skills/gitea/scripts/` 目录，通过 `python3 skills/gitea/scripts/<脚本>.py <子命令> [参数]` 调用。
 
-| 脚本          | 子命令                              | 说明             |
-| ------------- | ----------------------------------- | ---------------- |
-| `check.py`    | （无）                              | 环境检查         |
-| `repo.py`     | `list` `info` `create` `delete`     | 仓库管理         |
-| `issue.py`    | `list` `create` `update` `comment` `close` `view` | Issue 工单管理 |
-| `pr.py`       | `list` `create` `view` `merge`      | Pull Request     |
-| `label.py`    | `list` `create` `init`              | 标签管理         |
-| `milestone.py`| `list` `create`                     | 里程碑管理       |
-| `release.py`  | `list` `create` `upload`            | Release 发布     |
-| `branch.py`   | `list` `create` `delete`            | 分支管理         |
-| `file_ops.py` | `get` `put`                         | 文件读写         |
+| 脚本           | 子命令                                            | 说明           |
+| -------------- | ------------------------------------------------- | -------------- |
+| `check.py`     | （无）                                            | 环境检查       |
+| `repo.py`      | `list` `info` `create` `delete`                   | 仓库管理       |
+| `issue.py`     | `list` `create` `update` `comment` `close` `view` | Issue 工单管理 |
+| `pr.py`        | `list` `create` `view` `merge`                    | Pull Request   |
+| `label.py`     | `list` `create` `init`                            | 标签管理       |
+| `milestone.py` | `list` `create`                                   | 里程碑管理     |
+| `release.py`   | `list` `create` `upload`                          | Release 发布   |
+| `branch.py`    | `list` `create` `delete`                          | 分支管理       |
+| `file_ops.py`  | `get` `put`                                       | 文件读写       |
 
 每个脚本都支持 `--help` 查看完整参数说明。
 
@@ -118,6 +118,7 @@ exec({ command: "python3 skills/gitea/scripts/repo.py create {name} --desc '仓�
 ```
 
 参数说明：
+
 - `{name}`（必填）：仓库名称
 - `--desc`：仓库描述
 - `--private`：加此标志创建私有仓库
@@ -149,6 +150,7 @@ exec({ command: "python3 skills/gitea/scripts/issue.py create {owner} {repo} --t
 ```
 
 可选参数：
+
 - `--labels 1,2`：标签 ID（逗号分隔）
 - `--assignees user1,user2`：指派人
 - `--milestone 1`：里程碑 ID
@@ -212,6 +214,7 @@ exec({ command: "python3 skills/gitea/scripts/pr.py merge {owner} {repo} {index}
 ```
 
 `--method` 可选值：
+
 - `merge`：普通合并（创建合并提交）
 - `rebase`：变基合并
 - `squash`：压缩合并

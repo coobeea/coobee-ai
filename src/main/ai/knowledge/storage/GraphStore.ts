@@ -93,14 +93,7 @@ export class GraphStore {
         updated_at = excluded.updated_at
     `);
 
-    stmt.run(
-      node.id,
-      node.type,
-      node.label,
-      JSON.stringify(node.properties),
-      node.createdAt,
-      node.updatedAt
-    );
+    stmt.run(node.id, node.type, node.label, JSON.stringify(node.properties), node.createdAt, node.updatedAt);
   }
 
   /**

@@ -164,45 +164,93 @@ export class TrainingExecutor {
   }
 
   /**
-   * 执行单轮训练
+   * 执行单轮训练（支持最多 3 次尝试）
    */
   private async executeRound(session: TrainingSession, round: number): Promise<TrainingRoundResult> {
     const startTime = Date.now();
+    const maxAttempts = 3;
 
     // 1. 获取任务（从数据集选择或生成）
     const task = await this.getTask(session, round);
 
-    // 2. 执行任务
-    logger.debug(`[Training] 执行任务: ${task.id}`);
-    let output = await this.delegator.executeTask(session.agentId, task);
+    // 记录所有尝试
+    const attempts: Array<{
+      attemptNo: number;
+      output: string;
+      evaluation: TrainingEvaluation;
+      coachAdvice?: CoachAdvice;
+    }> = [];
 
-    // 3. 评估结果
-    logger.debug(`[Training] 评估任务: ${task.id}`);
-    let evaluation = await this.delegator.evaluateOutput(task, output);
-
-    // 4. 如果未达标且启用教练，获取建议并重试
+    let finalOutput = '';
+    let finalEvaluation: TrainingEvaluation | null = null;
     let usedCoachAdvice = false;
     let coachAdvice: CoachAdvice | undefined = undefined;
     let refinedOutput: string | undefined = undefined;
     let refinedEvaluation: TrainingEvaluation | undefined = undefined;
 
-    if (!evaluation.passed && this.config.enableCoach) {
-      logger.debug(`[Training] 任务未达标 (${evaluation.score}分)，获取教练建议`);
+    // 2. 最多尝试 3 次
+    for (let attemptNo = 1; attemptNo <= maxAttempts; attemptNo++) {
+      logger.debug(`[Training] 执行任务 ${task.id}，尝试 ${attemptNo}/${maxAttempts}`);
 
-      coachAdvice = await this.delegator.getCoachAdvice(task, output, evaluation);
-      usedCoachAdvice = true;
+      // 执行任务
+      let output: string;
+      if (attemptNo === 1) {
+        // 第 1 次尝试：直接执行
+        output = await this.delegator.executeTask(session.agentId, task);
+      } else {
+        // 第 2-3 次尝试：基于教练建议重新执行
+        if (!coachAdvice) {
+          logger.warn(`[Training] 尝试 ${attemptNo} 但没有教练建议，跳过`);
+          break;
+        }
+        output = await this.delegator.refineTask(session.agentId, task, coachAdvice);
+        usedCoachAdvice = true;
+      }
 
-      logger.debug(`[Training] 基于教练建议重新执行`);
-      refinedOutput = await this.delegator.refineTask(session.agentId, task, coachAdvice);
-      refinedEvaluation = await this.delegator.evaluateOutput(task, refinedOutput);
+      // 评估结果
+      logger.debug(`[Training] 评估任务 ${task.id}，尝试 ${attemptNo}`);
+      const evaluation = await this.delegator.evaluateOutput(task, output);
+
+      // 记录本次尝试
+      attempts.push({
+        attemptNo,
+        output,
+        evaluation,
+        coachAdvice: attemptNo > 1 ? coachAdvice : undefined
+      });
+
+      // 更新最终结果和改进后的结果
+      finalOutput = output;
+      finalEvaluation = evaluation;
+      if (attemptNo > 1) {
+        refinedOutput = output;
+        refinedEvaluation = evaluation;
+      }
 
       logger.info(
-        `[Training] 改进效果: ${evaluation.score} → ${refinedEvaluation.score} (${refinedEvaluation.passed ? '✓ 达标' : '✗ 仍未达标'})`
+        `[Training] 尝试 ${attemptNo}/${maxAttempts}: ${evaluation.score}分 ${evaluation.passed ? '✓ 达标' : '✗ 未达标'}`
       );
 
-      // 使用改进后的结果
-      output = refinedOutput;
-      evaluation = refinedEvaluation;
+      // 如果达标，结束尝试
+      if (evaluation.passed) {
+        logger.info(`[Training] 任务 ${task.id} 在第 ${attemptNo} 次尝试中达标`);
+        break;
+      }
+
+      // 如果未达标且还有尝试机会，获取教练建议
+      if (attemptNo < maxAttempts && this.config.enableCoach) {
+        logger.debug(
+          `[Training] 任务未达标 (${evaluation.score}分)，获取教练建议 (尝试 ${attemptNo + 1}/${maxAttempts})`
+        );
+        coachAdvice = await this.delegator.getCoachAdvice(task, output, evaluation);
+      } else if (attemptNo === maxAttempts) {
+        logger.warn(`[Training] 任务 ${task.id} 已达最大尝试次数 (${maxAttempts})，仍未达标`);
+      }
+    }
+
+    // 确保有最终评估结果
+    if (!finalEvaluation) {
+      throw new Error(`[Training] 任务 ${task.id} 没有评估结果`);
     }
 
     const endTime = Date.now();
@@ -212,15 +260,22 @@ export class TrainingExecutor {
       taskId: task.id,
       taskDescription: task.description,
       taskDifficulty: task.difficulty,
-      output,
-      evaluation,
+      output: finalOutput,
+      evaluation: finalEvaluation,
       usedCoachAdvice,
       coachAdvice,
       refinedOutput,
       refinedEvaluation,
       startTime,
       endTime,
-      duration: endTime - startTime
+      duration: endTime - startTime,
+      // 新增：记录所有尝试
+      attempts: attempts.map((a) => ({
+        attemptNo: a.attemptNo,
+        score: a.evaluation.score,
+        passed: a.evaluation.passed
+      })),
+      totalAttempts: attempts.length
     };
   }
 

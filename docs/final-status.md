@@ -23,60 +23,60 @@
 
 ### Phase 1: 核心基础设施
 
-| 功能 | 状态 | 文件 | 提交 |
-|------|------|------|------|
-| 目标驱动循环执行系统 | ✅ | `src/main/ai/goal/` | feat(goal) |
-| GitHub Webhook 集成 | ✅ | `src/main/integrations/github/` | feat(github) |
-| 知识图谱基础框架 | ✅ | `src/main/ai/knowledge/` | feat(knowledge) |
+| 功能                 | 状态 | 文件                            | 提交            |
+| -------------------- | ---- | ------------------------------- | --------------- |
+| 目标驱动循环执行系统 | ✅   | `src/main/ai/goal/`             | feat(goal)      |
+| GitHub Webhook 集成  | ✅   | `src/main/integrations/github/` | feat(github)    |
+| 知识图谱基础框架     | ✅   | `src/main/ai/knowledge/`        | feat(knowledge) |
 
 ### Phase 2: 多智能体协作
 
-| 功能 | 状态 | 文件 | 提交 |
-|------|------|------|------|
-| 智能体群聊讨论室 | ✅ | `src/main/ai/discussion/` | feat(discussion) |
-| 专家小组会诊模式 | ✅ | `src/main/ai/consultation/` | feat(consultation) |
-| 智能体投票与共识机制 | ✅ | `src/main/ai/consensus/` | feat(consensus) |
-| 智能体接力协作模式 | ✅ | `src/main/ai/relay/` | feat(relay) |
+| 功能                 | 状态 | 文件                        | 提交               |
+| -------------------- | ---- | --------------------------- | ------------------ |
+| 智能体群聊讨论室     | ✅   | `src/main/ai/discussion/`   | feat(discussion)   |
+| 专家小组会诊模式     | ✅   | `src/main/ai/consultation/` | feat(consultation) |
+| 智能体投票与共识机制 | ✅   | `src/main/ai/consensus/`    | feat(consensus)    |
+| 智能体接力协作模式   | ✅   | `src/main/ai/relay/`        | feat(relay)        |
 
 ### Phase 3: 智能体自主性
 
-| 功能 | 状态 | 文件 | 提交 |
-|------|------|------|------|
-| 智能体自主学习与优化 | ✅ | `src/main/ai/learning/` | feat(learning) |
-| 主动式任务发现与建议 | ✅ | `src/main/ai/proactive/` | feat(proactive) |
-| 多阶段审批与人工介入点 | ✅ | `src/main/ai/approval/` | feat(approval) |
+| 功能                   | 状态 | 文件                     | 提交            |
+| ---------------------- | ---- | ------------------------ | --------------- |
+| 智能体自主学习与优化   | ✅   | `src/main/ai/learning/`  | feat(learning)  |
+| 主动式任务发现与建议   | ✅   | `src/main/ai/proactive/` | feat(proactive) |
+| 多阶段审批与人工介入点 | ✅   | `src/main/ai/approval/`  | feat(approval)  |
 
 ### Phase 4: 跨平台集成与 API 化
 
-| 功能 | 状态 | 文件 | 提交 |
-|------|------|------|------|
-| Slack/Discord 集成 | ✅ | `src/main/integrations/slack/`, `discord/` | feat(integrations) |
-| Agent 即服务（REST API + SDK） | ✅ | `src/main/api/` | feat(api) |
-| 审计日志与合规性 | ✅ | `src/main/audit/` | feat(audit) |
-| 多租户与权限控制 | ✅ | `src/main/rbac/` | feat(rbac) |
+| 功能                           | 状态 | 文件                                       | 提交               |
+| ------------------------------ | ---- | ------------------------------------------ | ------------------ |
+| Slack/Discord 集成             | ✅   | `src/main/integrations/slack/`, `discord/` | feat(integrations) |
+| Agent 即服务（REST API + SDK） | ✅   | `src/main/api/`                            | feat(api)          |
+| 审计日志与合规性               | ✅   | `src/main/audit/`                          | feat(audit)        |
+| 多租户与权限控制               | ✅   | `src/main/rbac/`                           | feat(rbac)         |
 
 ### Phase 5: 智能记忆与知识
 
-| 功能 | 状态 | 文件 | 提交 |
-|------|------|------|------|
-| 长期记忆与上下文压缩 | ✅ | `src/main/ai/memory/` | feat(memory) |
-| 跨项目知识迁移 | ✅ | `src/main/ai/transfer/` | feat(transfer) |
+| 功能                 | 状态 | 文件                    | 提交           |
+| -------------------- | ---- | ----------------------- | -------------- |
+| 长期记忆与上下文压缩 | ✅   | `src/main/ai/memory/`   | feat(memory)   |
+| 跨项目知识迁移       | ✅   | `src/main/ai/transfer/` | feat(transfer) |
 
 ### Phase 6: 开发者体验与可视化
 
-| 功能 | 状态 | 文件 | 提交 |
-|------|------|------|------|
-| 智能体辩论对抗模式 | ✅ | `src/main/ai/debate/` | feat(debate) |
-| 智能体导师-学徒模式 | ✅ | `src/main/ai/mentorship/` | feat(mentorship) |
-| VS Code 插件 | ✅ | `extensions/vscode/` | feat(vscode) |
-| 可视化 Agent 设计器 | ✅ | `src/main/ai/designer/` | feat(designer) |
+| 功能                | 状态 | 文件                      | 提交             |
+| ------------------- | ---- | ------------------------- | ---------------- |
+| 智能体辩论对抗模式  | ✅   | `src/main/ai/debate/`     | feat(debate)     |
+| 智能体导师-学徒模式 | ✅   | `src/main/ai/mentorship/` | feat(mentorship) |
+| VS Code 插件        | ✅   | `extensions/vscode/`      | feat(vscode)     |
+| 可视化 Agent 设计器 | ✅   | `src/main/ai/designer/`   | feat(designer)   |
 
 ---
 
 ## 🐛 Bug 修复
 
-| 问题 | 修复 | 提交 |
-|------|------|------|
+| 问题                     | 修复                                          | 提交      |
+| ------------------------ | --------------------------------------------- | --------- |
 | 测试文件被打包到生产构建 | 在 `import.meta.glob` 中添加 `__tests__` 过滤 | fix(scan) |
 
 ---
@@ -138,14 +138,14 @@ dev server running at: http://localhost:5173/
 
 ### 新增代码
 
-| 类别 | 数量 | 总代码行数 |
-|------|------|-----------|
-| 核心模块 | 14 | ~6,000 行 |
-| 测试文件 | 14 | ~3,000 行 |
-| 类型定义 | 20+ | ~1,500 行 |
-| Vue 组件 | 3 | ~800 行 |
-| VS Code 扩展 | 1 | ~400 行 |
-| **总计** | **50+** | **~11,700 行** |
+| 类别         | 数量    | 总代码行数     |
+| ------------ | ------- | -------------- |
+| 核心模块     | 14      | ~6,000 行      |
+| 测试文件     | 14      | ~3,000 行      |
+| 类型定义     | 20+     | ~1,500 行      |
+| Vue 组件     | 3       | ~800 行        |
+| VS Code 扩展 | 1       | ~400 行        |
+| **总计**     | **50+** | **~11,700 行** |
 
 ### 架构改进
 
@@ -255,6 +255,7 @@ a5c3e2d feat(debate): add agent debate adversarial mode
 在这次实施中，我们成功地将 **coobee-ai** 从一个基础的智能体系统升级为具备以下能力的完整平台：
 
 ### 🤖 多智能体协作
+
 - 群聊讨论室（轮流发言、共识检测）
 - 专家会诊（并行咨询、观点综合）
 - 投票与共识（多种算法、动态权重）
@@ -263,6 +264,7 @@ a5c3e2d feat(debate): add agent debate adversarial mode
 - 导师学徒（技能传授、进度跟踪）
 
 ### 🧠 智能化
+
 - 自主学习（模式识别、策略推荐）
 - 主动发现（项目扫描、机会识别）
 - 知识迁移（跨项目复用）
@@ -270,6 +272,7 @@ a5c3e2d feat(debate): add agent debate adversarial mode
 - 上下文压缩（多种策略）
 
 ### 🔌 集成能力
+
 - GitHub（Webhook 自动响应）
 - Slack（消息、命令、事件）
 - Discord（消息、交互）
@@ -277,12 +280,14 @@ a5c3e2d feat(debate): add agent debate adversarial mode
 - REST API + SDK（外部应用集成）
 
 ### 🛡️ 企业级特性
+
 - 多阶段审批（风险级别、多人策略）
 - 审计日志（事件记录、合规检查）
 - RBAC（用户、角色、权限）
 - 多租户（隔离、配额、追踪）
 
 ### 📊 可视化与工具
+
 - 可视化 Agent 设计器（节点、连接、验证）
 - 讨论室界面（Vue 组件）
 - 会诊界面（Vue 组件）

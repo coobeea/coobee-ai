@@ -59,7 +59,9 @@ export class ApprovalManager {
 
     this.requests.set(requestId, request);
 
-    log.info(`[ApprovalManager] Created approval request: ${requestId} (${finalRiskLevel} risk, ${approvers.length} approvers)`);
+    log.info(
+      `[ApprovalManager] Created approval request: ${requestId} (${finalRiskLevel} risk, ${approvers.length} approvers)`
+    );
 
     return request;
   }

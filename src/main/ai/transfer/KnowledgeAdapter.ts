@@ -19,7 +19,11 @@ export class KnowledgeAdapter {
   /**
    * 适配知识包到目标项目
    */
-  async adaptToProject(pkg: KnowledgePackage, targetProject: string, config: AdaptationConfig): Promise<AdaptationResult> {
+  async adaptToProject(
+    pkg: KnowledgePackage,
+    targetProject: string,
+    config: AdaptationConfig
+  ): Promise<AdaptationResult> {
     log.info(`[KnowledgeAdapter] Adapting package "${pkg.name}" to ${targetProject}`);
 
     const result: AdaptationResult = {
@@ -44,7 +48,9 @@ export class KnowledgeAdapter {
       }
     }
 
-    log.info(`[KnowledgeAdapter] Adapted: ${result.applicable.length} direct, ${result.modified.length} modified, ${result.skipped.length} skipped`);
+    log.info(
+      `[KnowledgeAdapter] Adapted: ${result.applicable.length} direct, ${result.modified.length} modified, ${result.skipped.length} skipped`
+    );
 
     return result;
   }
@@ -52,7 +58,11 @@ export class KnowledgeAdapter {
   /**
    * 计算相似度
    */
-  private async calculateSimilarity(item: KnowledgeItem, _targetProject: string, method: AdaptationConfig['similarityMethod']): Promise<number> {
+  private async calculateSimilarity(
+    item: KnowledgeItem,
+    _targetProject: string,
+    method: AdaptationConfig['similarityMethod']
+  ): Promise<number> {
     if (method === 'keyword') {
       return this.keywordSimilarity(item);
     } else if (method === 'semantic') {

@@ -40,7 +40,9 @@ export class ContextCompressor {
     const compressedTokens = this.estimateTokens(compressedContent);
     const compressionRatio = compressedTokens / originalTokens;
 
-    log.info(`[ContextCompressor] Compressed ${originalTokens} -> ${compressedTokens} tokens (${(compressionRatio * 100).toFixed(1)}%)`);
+    log.info(
+      `[ContextCompressor] Compressed ${originalTokens} -> ${compressedTokens} tokens (${(compressionRatio * 100).toFixed(1)}%)`
+    );
 
     return {
       originalTokens,

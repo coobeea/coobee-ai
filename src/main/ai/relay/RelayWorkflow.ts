@@ -64,7 +64,9 @@ export class RelayWorkflow {
     stage.startedAt = Date.now();
     this.task.status = 'running';
 
-    log.info(`[RelayWorkflow] Executing stage ${currentIndex + 1}/${this.stages.length}: ${stage.name} (${stage.agentId})`);
+    log.info(
+      `[RelayWorkflow] Executing stage ${currentIndex + 1}/${this.stages.length}: ${stage.name} (${stage.agentId})`
+    );
 
     try {
       const output = await this.executeStage(stage);

@@ -68,7 +68,9 @@ export class LearningEngine {
    * 获取策略推荐
    */
   getRecommendation(taskType: string, currentStrategy?: string): StrategyRecommendation | null {
-    const relevantPatterns = this.patterns.filter((p) => p.taskType === taskType).sort((a, b) => b.confidence - a.confidence);
+    const relevantPatterns = this.patterns
+      .filter((p) => p.taskType === taskType)
+      .sort((a, b) => b.confidence - a.confidence);
 
     if (relevantPatterns.length === 0) {
       log.debug(`[LearningEngine] No patterns found for task type: ${taskType}`);
@@ -114,7 +116,7 @@ export class LearningEngine {
   /**
    * 获取统计信息
    */
-  getStatistics() {
+  getStatistics(): ReturnType<typeof this.store.getStatistics> {
     return this.store.getStatistics();
   }
 }

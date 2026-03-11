@@ -42,7 +42,14 @@ describe('ApprovalManager', () => {
 
       expect(lowRisk.approvers.length).toBe(1);
 
-      const highRisk = manager.createRequest('task-2', 'deploy', 'deployment', 'Production deploy', 'agent-1', 'critical');
+      const highRisk = manager.createRequest(
+        'task-2',
+        'deploy',
+        'deployment',
+        'Production deploy',
+        'agent-1',
+        'critical'
+      );
 
       expect(highRisk.approvers.length).toBe(2);
     });
