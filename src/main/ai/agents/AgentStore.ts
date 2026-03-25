@@ -255,12 +255,10 @@ export class AgentStore {
     const existing = await this.get(agentId);
     if (!existing) return null;
 
-    // 检查是否是 builtin agent（通过检查文件位置）
-    const isBuiltin = this.isBuiltinAgent(agentId);
-    if (isBuiltin) {
-      throw new Error(
-        `Built-in agent "${agentId}" cannot be modified. Create a new agent or copy it to user directory first.`
-      );
+    // 内置 Agent 自动 Copy-on-Write：复制到 userDir 再修改
+    if (this.isBuiltinAgent(agentId)) {
+      log.info(`[AgentStore] Builtin agent "${agentId}" → copy-on-write to userDir`);
+      this.writeDefinition(existing);
     }
 
     const updatedSkills = params.skills !== undefined ? ensureCoreSkills([...params.skills]) : undefined;
@@ -372,7 +370,7 @@ export class AgentStore {
    * 同步 skills 到 Agent Home 的 AGENTS.md
    *
    * 将 Agent 定义中的 skills 写入 homes/{agentId}/AGENTS.md，
-   * 这样技能会自动激活，无需用户每次手动指定。
+   * 包含技能描述和文件路径，让 Agent 运行时可以直接定位和使用技能。
    *
    * @param agentId - Agent ID
    * @param skills - 技能名称列表
@@ -380,11 +378,17 @@ export class AgentStore {
   private async syncSkillsToAgentsMd(agentId: string, skills: string[]): Promise<void> {
     try {
       const { Env } = await import('@main/common/env');
+      const { SkillManager } = await import('../skills/SkillManager');
       const agentHome = Env.getAgentHomeDir(agentId);
       const agentsMdPath = path.join(agentHome, 'AGENTS.md');
 
-      // 构建 skills 内容块
-      const skillsBlock = this.buildSkillsBlock(skills);
+      // 扫描 Skill 定义获取描述和路径
+      const skillManager = new SkillManager();
+      const skillPaths = await Env.getSkillSearchPaths();
+      skillManager.scanSkills(skillPaths);
+
+      // 构建 skills 内容块（含描述和路径）
+      const skillsBlock = this.buildSkillsBlock(skills, skillManager, agentHome);
 
       // 读取现有 AGENTS.md（如果存在）
       let existingContent = '';
@@ -406,9 +410,13 @@ export class AgentStore {
   }
 
   /**
-   * 构建 skills 内容块
+   * 构建 skills 内容块（含描述和路径）
    */
-  private buildSkillsBlock(skills: string[]): string {
+  private buildSkillsBlock(
+    skills: string[],
+    skillManager?: InstanceType<typeof import('../skills/SkillManager').SkillManager>,
+    agentHome?: string
+  ): string {
     if (skills.length === 0) {
       return `<skills_system priority="1">
 ## Available Skills
@@ -418,15 +426,37 @@ export class AgentStore {
 </skills_system>`;
     }
 
-    const skillItems = skills.map((s) => `- ${s}`).join('\n');
+    const skillEntries = skills.map((name) => {
+      const def = skillManager?.getByName(name);
+      if (!def) {
+        return `<skill>\n<name>${name}</name>\n<description>（未找到描述）</description>\n</skill>`;
+      }
+      const desc = def.description || '无描述';
+      let pathLine = '';
+      if (def.filePath && agentHome) {
+        const relativePath = path.relative(agentHome, def.filePath);
+        pathLine = `\n<path>${relativePath}</path>`;
+      } else if (def.filePath) {
+        pathLine = `\n<path>${def.filePath}</path>`;
+      }
+      return `<skill>\n<name>${name}</name>\n<description>${desc}</description>${pathLine}\n</skill>`;
+    });
+
     return `<skills_system priority="1">
 ## Available Skills
 
-以下技能已为你配置并自动激活：
+<usage>
+以下技能已为你配置并自动激活。使用技能时：
+1. 根据 path 读取对应的 SKILL.md 获取完整指令
+2. 按照 SKILL.md 中的说明执行操作
+3. 如需查看更多详情，使用 \`skill_list\` 工具
+</usage>
 
-${skillItems}
+<available_skills>
 
-使用 \`skill_list\` 工具查看完整技能列表及详细信息。
+${skillEntries.join('\n\n')}
+
+</available_skills>
 
 </skills_system>`;
   }

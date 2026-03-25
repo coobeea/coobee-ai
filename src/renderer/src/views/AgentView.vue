@@ -359,11 +359,15 @@ function toggleSkill(skillName: string): void {
 
 async function saveAgentConfig(): Promise<void> {
   if (!editAgentId.value) return;
-  await agentsStore.updateAgent(editAgentId.value, {
+  const ok = await agentsStore.updateAgent(editAgentId.value, {
     skills: editSkillsList.value,
     model: editModel.value || undefined
   });
-  editAgentId.value = null;
+  if (ok) {
+    editAgentId.value = null;
+  } else {
+    alert(`保存失败：内置智能体不可直接修改，请先复制到用户目录`);
+  }
 }
 
 function cancelAgentEdit(): void {
