@@ -48,7 +48,6 @@ describe('AgentHomeManager', () => {
         'NOTES.md',
         'AGENTS.md',
         'HEARTBEAT.md',
-        'MEMORY.md',
         'BOOTSTRAP.md'
       ];
 
@@ -141,19 +140,6 @@ describe('AgentHomeManager', () => {
       expect(result).toContain('helpful and curious');
       expect(result).toContain('USER.md');
       expect(result).toContain('Alice');
-    });
-
-    it('should include MEMORY.md when includeMemory is true', () => {
-      const homeDir = manager.initHome('test-agent');
-      fs.writeFileSync(path.join(homeDir, 'MEMORY.md'), '# Memory\n\nUser prefers dark mode.', 'utf-8');
-
-      const withMemory = manager.readInjectableFiles('test-agent', true);
-      expect(withMemory).toContain('MEMORY.md');
-      expect(withMemory).toContain('dark mode');
-
-      const withoutMemory = manager.readInjectableFiles('test-agent', false);
-      expect(withoutMemory).toBeDefined();
-      expect(withoutMemory).not.toContain('MEMORY.md');
     });
 
     it('should include BOOTSTRAP.md when it exists', () => {

@@ -15,10 +15,9 @@
  *   ├── NOTES.md         环境工具备注
  *   ├── AGENTS.md        Agent 级规则
  *   ├── HEARTBEAT.md     心跳任务清单
- *   ├── MEMORY.md        长期记忆精华
  *   ├── BOOTSTRAP.md     首次引导脚本（完成后自删除）
  *   ├── sessions.jsonl   会话索引（追加式，每行一个 session）
- *   └── memory/          每日对话日志
+ *   └── memory/          Agent 级结构化记忆（由 memory-agent 扩展自动管理）
  */
 
 import fs from 'node:fs';
@@ -28,13 +27,10 @@ import { createLogger } from '@main/common/logger';
 const log = createLogger('agent-home');
 
 /** Agent Home 中的标准文件 */
-const HOME_FILES = ['SOUL.md', 'IDENTITY.md', 'USER.md', 'NOTES.md', 'AGENTS.md', 'HEARTBEAT.md', 'MEMORY.md'] as const;
+const HOME_FILES = ['SOUL.md', 'IDENTITY.md', 'USER.md', 'NOTES.md', 'AGENTS.md', 'HEARTBEAT.md'] as const;
 
 /** 需要注入到 system prompt 的文件（按优先级排序） */
 const INJECTABLE_FILES = ['BOOTSTRAP.md', 'SOUL.md', 'IDENTITY.md', 'USER.md', 'NOTES.md', 'HEARTBEAT.md'] as const;
-
-/** MEMORY.md 单独处理（仅主会话注入） */
-const MEMORY_FILE = 'MEMORY.md';
 
 /** 每个文件的用途说明（模板状态时展示） */
 const FILE_PURPOSES: Record<string, string> = {
@@ -43,8 +39,7 @@ const FILE_PURPOSES: Record<string, string> = {
   'IDENTITY.md': '身份名片：名字、风格、签名',
   'USER.md': '主人档案：用户称呼、偏好、使用场景',
   'NOTES.md': '环境工具备注：特殊配置、常用路径',
-  'HEARTBEAT.md': '心跳任务清单：定期检查和执行的事项',
-  'MEMORY.md': '长期记忆精华：从对话中提炼的核心知识'
+  'HEARTBEAT.md': '心跳任务清单：定期检查和执行的事项'
 };
 
 // ==================== 模板定义 ====================
@@ -113,14 +108,6 @@ function heartbeatTemplate(): string {
 `;
 }
 
-function memoryTemplate(): string {
-  return `# Memory
-
-<!-- 长期记忆精华：从每日对话日志中提炼的核心知识 -->
-<!-- 定期从 memory/YYYY-MM-DD.md 中整理重要信息到此处 -->
-`;
-}
-
 function agentsMdTemplate(): string {
   return `# Agent Rules
 
@@ -135,7 +122,6 @@ const TEMPLATES: Record<string, () => string> = {
   'USER.md': userTemplate,
   'NOTES.md': notesTemplate,
   'HEARTBEAT.md': heartbeatTemplate,
-  'MEMORY.md': memoryTemplate,
   'AGENTS.md': agentsMdTemplate
 };
 
@@ -218,18 +204,15 @@ export class AgentHomeManager {
    * 确保 Agent 始终知道自己的 Home 结构和每个文件的用途。
    *
    * @param agentId Agent ID
-   * @param includeMemory 是否包含 MEMORY.md（子 Agent 不注入）
    * @returns XML 包裹的文件内容块，或 undefined
    */
-  readInjectableFiles(agentId: string, includeMemory = true): string | undefined {
+  readInjectableFiles(agentId: string): string | undefined {
     const homeDir = path.join(this.homesDir, agentId);
     if (!fs.existsSync(homeDir)) return undefined;
 
     const sections: string[] = [];
 
-    const filesToLoad: readonly string[] = includeMemory ? [...INJECTABLE_FILES, MEMORY_FILE] : INJECTABLE_FILES;
-
-    for (const file of filesToLoad) {
+    for (const file of INJECTABLE_FILES) {
       const filePath = path.join(homeDir, file);
       try {
         const content = fs.readFileSync(filePath, 'utf-8').trim();
