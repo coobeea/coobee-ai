@@ -3,8 +3,8 @@
  * ModelSettings - 模型供应商管理
  *
  * 左右分栏：
- * - 左侧：供应商列表
- * - 右侧：供应商配置详情
+ * - 左侧：供应商列表（含启用状态）
+ * - 右侧：供应商配置详情（API Key / Base URL / 启用开关）
  */
 
 import { ref, computed, onMounted } from 'vue';
@@ -20,33 +20,34 @@ interface Model {
 interface Provider {
   id: string;
   name: string;
+  description?: string;
   type: string;
   status: 'connected' | 'disconnected' | 'error';
+  enabled: boolean;
   apiKey?: string;
   baseUrl?: string;
   models: Model[];
   modelCount: number;
+  websites?: Record<string, string>;
 }
 
-// ===== 供应商相关 =====
 const providers = ref<Provider[]>([]);
 const selectedProvider = ref<string>('');
 const loading = ref(true);
 const error = ref<string | null>(null);
+const saving = ref(false);
+const saveStatus = ref<'idle' | 'success' | 'error'>('idle');
 
-// 配置表单
 const config = ref({
   apiKey: '',
   baseUrl: '',
-  enabled: true
+  enabled: false
 });
 
-// 测试相关
 const testing = ref(false);
 const testStatus = ref<'idle' | 'success' | 'error'>('idle');
 const testErrorMsg = ref('');
 
-// 加载 Providers
 async function loadProviders(): Promise<void> {
   loading.value = true;
   error.value = null;
@@ -57,16 +58,21 @@ async function loadProviders(): Promise<void> {
 
     if (providersConfig) {
       providers.value = Object.entries(providersConfig).map(([id, cfg]) => {
-        const providerCfg = cfg as Record<string, unknown>;
+        const p = cfg as Record<string, unknown>;
+        const hasKey = !!(p.apiKey && typeof p.apiKey === 'string' && p.apiKey.length > 0);
+        const enabled = p.enabled !== false;
         return {
           id,
-          name: (providerCfg.name as string) || id,
-          type: (providerCfg.type as string) || 'OpenAI Compatible',
-          status: providerCfg.apiKey ? ('connected' as const) : ('disconnected' as const),
-          apiKey: providerCfg.apiKey as string | undefined,
-          baseUrl: providerCfg.baseUrl as string | undefined,
-          models: (providerCfg.models as Model[]) || [],
-          modelCount: (providerCfg.models as Model[])?.length || 0
+          name: (p.name as string) || id,
+          description: p.description as string | undefined,
+          type: (p.api as string) || 'OpenAI Compatible',
+          status: hasKey && enabled ? ('connected' as const) : ('disconnected' as const),
+          enabled,
+          apiKey: p.apiKey as string | undefined,
+          baseUrl: p.baseUrl as string | undefined,
+          models: (p.models as Model[]) || [],
+          modelCount: (p.models as Model[])?.length || 0,
+          websites: p.websites as Record<string, string> | undefined
         };
       });
 
@@ -81,43 +87,93 @@ async function loadProviders(): Promise<void> {
   }
 }
 
-// 选中的 Provider 信息
 const selectedProviderInfo = computed(() => {
   return providers.value.find((p) => p.id === selectedProvider.value);
 });
 
-// 选择 Provider
 function selectProvider(id: string): void {
   selectedProvider.value = id;
   const provider = providers.value.find((p) => p.id === id);
   if (provider) {
     config.value = {
-      apiKey: provider.apiKey || '',
+      apiKey: '',
       baseUrl: provider.baseUrl || '',
-      enabled: true
+      enabled: provider.enabled
     };
   }
-  // 重置测试状态
   testStatus.value = 'idle';
   testErrorMsg.value = '';
+  saveStatus.value = 'idle';
 }
 
-// 保存配置
 async function saveConfig(): Promise<void> {
   if (!selectedProvider.value) return;
-  // TODO: 这里应该调用 API 真实保存
-  // await gateway.request('config.patch', { ... })
 
-  // 更新本地状态
-  const provider = providers.value.find((p) => p.id === selectedProvider.value);
-  if (provider) {
-    provider.apiKey = config.value.apiKey;
-    provider.baseUrl = config.value.baseUrl;
-    provider.status = provider.apiKey ? 'connected' : 'disconnected';
+  saving.value = true;
+  saveStatus.value = 'idle';
+
+  try {
+    const providerId = selectedProvider.value;
+
+    // 1. 保存 API Key 到 secrets.json5（仅当用户输入了新值时）
+    if (config.value.apiKey) {
+      await gateway.request('config.saveProviderKey', {
+        providerId,
+        apiKey: config.value.apiKey
+      });
+    }
+
+    // 2. 保存 Base URL 到 coobee.json5
+    if (config.value.baseUrl) {
+      await gateway.request('config.updateProviderBaseUrl', {
+        providerId,
+        baseUrl: config.value.baseUrl
+      });
+    }
+
+    // 3. 保存启用状态
+    await gateway.request('config.toggleProvider', {
+      providerId,
+      enabled: config.value.enabled
+    });
+
+    saveStatus.value = 'success';
+
+    // 重新加载以更新状态
+    await loadProviders();
+    selectProvider(providerId);
+
+    setTimeout(() => {
+      saveStatus.value = 'idle';
+    }, 2000);
+  } catch (err: unknown) {
+    saveStatus.value = 'error';
+    console.error('保存配置失败:', err);
+  } finally {
+    saving.value = false;
   }
 }
 
-// 测试连通性
+async function toggleEnabled(): Promise<void> {
+  if (!selectedProvider.value) return;
+  config.value.enabled = !config.value.enabled;
+
+  try {
+    await gateway.request('config.toggleProvider', {
+      providerId: selectedProvider.value,
+      enabled: config.value.enabled
+    });
+    const provider = providers.value.find((p) => p.id === selectedProvider.value);
+    if (provider) {
+      provider.enabled = config.value.enabled;
+      provider.status = provider.enabled && provider.apiKey ? 'connected' : 'disconnected';
+    }
+  } catch (err: unknown) {
+    config.value.enabled = !config.value.enabled;
+    console.error('切换启用状态失败:', err);
+  }
+}
+
 async function testConnection(): Promise<void> {
   testing.value = true;
   testStatus.value = 'idle';
@@ -132,7 +188,6 @@ async function testConnection(): Promise<void> {
     testErrorMsg.value = err instanceof Error ? err.message : String(err);
   } finally {
     testing.value = false;
-    // 3秒后恢复默认状态
     setTimeout(() => {
       if (testStatus.value === 'success') {
         testStatus.value = 'idle';
@@ -141,16 +196,22 @@ async function testConnection(): Promise<void> {
   }
 }
 
-// 获取状态文本
-function getStatusText(status: string): string {
-  switch (status) {
-    case 'connected':
-      return '已连接';
-    case 'error':
-      return '错误';
-    default:
-      return '未配置';
-  }
+function getStatusText(provider: Provider): string {
+  if (!provider.enabled) return '未启用';
+  if (provider.apiKey) return '已配置';
+  return '未配置';
+}
+
+function getStatusColor(provider: Provider): string {
+  if (!provider.enabled) return 'bg-gray-400';
+  if (provider.apiKey) return 'bg-green-500';
+  return 'bg-orange-400';
+}
+
+function getStatusTextColor(provider: Provider): string {
+  if (!provider.enabled) return 'text-muted-foreground';
+  if (provider.apiKey) return 'text-green-600';
+  return 'text-orange-600';
 }
 
 onMounted(() => {
@@ -201,25 +262,9 @@ onMounted(() => {
             <!-- 状态 + 模型数 -->
             <div class="flex items-center justify-between text-xs mt-2 pt-2 border-t border-border/50">
               <div class="flex items-center gap-1.5">
-                <span
-                  :class="[
-                    'h-2 w-2 rounded-full',
-                    provider.status === 'connected'
-                      ? 'bg-green-500'
-                      : provider.status === 'error'
-                        ? 'bg-red-500'
-                        : 'bg-gray-400'
-                  ]">
-                </span>
-                <span
-                  :class="[
-                    provider.status === 'connected'
-                      ? 'text-green-600'
-                      : provider.status === 'error'
-                        ? 'text-red-600'
-                        : 'text-muted-foreground'
-                  ]">
-                  {{ getStatusText(provider.status) }}
+                <span :class="['h-2 w-2 rounded-full', getStatusColor(provider)]"></span>
+                <span :class="getStatusTextColor(provider)">
+                  {{ getStatusText(provider) }}
                 </span>
               </div>
               <span class="text-muted-foreground">{{ provider.modelCount }} 模型</span>
@@ -250,9 +295,51 @@ onMounted(() => {
       <!-- 详细配置内容 -->
       <div v-else class="mx-auto max-w-3xl flex flex-col gap-8">
         <!-- Header -->
-        <div class="border-b border-border pb-4">
-          <h1 class="text-xl font-bold">{{ selectedProviderInfo?.name }}</h1>
-          <p class="text-sm text-muted-foreground mt-1">{{ selectedProviderInfo?.type }}</p>
+        <div class="flex items-start justify-between border-b border-border pb-4">
+          <div>
+            <h1 class="text-xl font-bold">{{ selectedProviderInfo?.name }}</h1>
+            <p class="text-sm text-muted-foreground mt-1">{{
+              selectedProviderInfo?.description || selectedProviderInfo?.type
+            }}</p>
+            <div v-if="selectedProviderInfo?.websites" class="mt-2 flex gap-3">
+              <a
+                v-if="selectedProviderInfo.websites.official"
+                :href="selectedProviderInfo.websites.official"
+                target="_blank"
+                class="text-xs text-primary hover:underline"
+                >官网</a
+              >
+              <a
+                v-if="selectedProviderInfo.websites.apiKey"
+                :href="selectedProviderInfo.websites.apiKey"
+                target="_blank"
+                class="text-xs text-primary hover:underline"
+                >获取 API Key</a
+              >
+              <a
+                v-if="selectedProviderInfo.websites.docs"
+                :href="selectedProviderInfo.websites.docs"
+                target="_blank"
+                class="text-xs text-primary hover:underline"
+                >文档</a
+              >
+            </div>
+          </div>
+          <!-- 启用开关 -->
+          <button
+            :class="[
+              'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+              config.enabled ? 'bg-primary' : 'bg-muted'
+            ]"
+            role="switch"
+            :aria-checked="config.enabled"
+            @click="toggleEnabled">
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                config.enabled ? 'translate-x-5' : 'translate-x-0'
+              ]" />
+          </button>
         </div>
 
         <!-- Section 1: API 配置 -->
@@ -262,11 +349,14 @@ onMounted(() => {
             <div class="flex flex-col divide-y divide-border">
               <!-- API Key -->
               <div class="py-4">
-                <label class="mb-3 block text-sm font-medium"> API Key <span class="text-red-500">*</span> </label>
+                <label class="mb-2 block text-sm font-medium"> API Key <span class="text-red-500">*</span> </label>
+                <p class="mb-3 text-xs text-muted-foreground">
+                  {{ selectedProviderInfo?.apiKey ? '已配置（输入新值覆盖，留空保持不变）' : '未配置，请输入 API Key' }}
+                </p>
                 <input
                   v-model="config.apiKey"
                   type="password"
-                  placeholder="sk-..."
+                  :placeholder="selectedProviderInfo?.apiKey ? '已配置 · 输入新值覆盖' : 'sk-...'"
                   class="w-full rounded-md border border-input bg-background px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
               </div>
 
@@ -281,8 +371,16 @@ onMounted(() => {
               </div>
 
               <div class="pt-6 pb-2 flex items-center justify-between">
-                <!-- 测试状态提示 -->
+                <!-- 状态提示 -->
                 <div class="flex items-center gap-2">
+                  <span v-if="saveStatus === 'success'" class="text-sm text-green-600 flex items-center gap-1">
+                    <span class="i-carbon-checkmark-outline inline-block h-4 w-4"></span>
+                    保存成功
+                  </span>
+                  <span v-if="saveStatus === 'error'" class="text-sm text-red-600 flex items-center gap-1">
+                    <span class="i-carbon-warning-alt inline-block h-4 w-4"></span>
+                    保存失败
+                  </span>
                   <span v-if="testStatus === 'success'" class="text-sm text-green-600 flex items-center gap-1">
                     <span class="i-carbon-checkmark-outline inline-block h-4 w-4"></span>
                     连接成功
@@ -310,10 +408,15 @@ onMounted(() => {
                     {{ testing ? '测试中...' : '测试连接' }}
                   </button>
                   <button
-                    class="flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 text-sm font-medium transition-colors"
+                    :disabled="saving"
+                    class="flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
                     @click="saveConfig">
-                    <span class="i-carbon-save inline-block h-4 w-4"></span>
-                    保存更改
+                    <span
+                      :class="[
+                        'inline-block h-4 w-4',
+                        saving ? 'i-carbon-in-progress animate-spin' : 'i-carbon-save'
+                      ]"></span>
+                    {{ saving ? '保存中...' : '保存更改' }}
                   </button>
                 </div>
               </div>

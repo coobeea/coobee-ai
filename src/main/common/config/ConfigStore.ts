@@ -19,6 +19,11 @@ type DeepPartial<T> = {
 export class ConfigStore {
   constructor(private loader: ConfigLoader) {}
 
+  /** 获取 secrets 目录路径 */
+  get secretsDir(): string {
+    return this.loader.secretsDirPath;
+  }
+
   /**
    * 获取指定配置节
    */

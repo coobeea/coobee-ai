@@ -48,6 +48,11 @@ export class ConfigLoader {
     return path.join(this.configDir, CONFIG_FILE_NAME);
   }
 
+  /** secrets 目录绝对路径 */
+  get secretsDirPath(): string {
+    return this.secretsDir;
+  }
+
   /** secrets.json5 绝对路径 */
   get secretsFilePath(): string {
     return secretsPath(this.secretsDir);

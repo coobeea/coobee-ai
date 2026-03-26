@@ -12,6 +12,7 @@ import { GatewayErrorCode, GatewayMethodError } from '../protocol';
 import type { MethodGroup } from '../protocol';
 
 import { configStoreInstance } from '@main/common/config/ConfigStore';
+import { saveSecret } from '@main/common/config/ConfigSecrets';
 import type { CoobeeConfig } from '@main/common/config/schema';
 
 /** 获取 ConfigStore 实例 */
@@ -98,6 +99,93 @@ export const configMethods: MethodGroup = {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       store.patch(partial as any);
+      return { success: true };
+    },
+
+    /**
+     * 保存供应商 API Key 到 secrets.json5
+     *
+     * @param providerId - 供应商 ID
+     * @param apiKey - API Key（空字符串表示清空）
+     */
+    saveProviderKey: async (params) => {
+      const { providerId, apiKey } = params as { providerId?: string; apiKey?: string };
+      if (!providerId || typeof providerId !== 'string') {
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'providerId is required');
+      }
+      if (typeof apiKey !== 'string') {
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'apiKey must be a string');
+      }
+
+      const store = getConfigStore();
+      if (!store) {
+        throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, 'Config system not initialized');
+      }
+
+      saveSecret(store.secretsDir, providerId, apiKey);
+      store.getAll(); // force reload to pick up new key
+      return { success: true };
+    },
+
+    /**
+     * 切换供应商启用/禁用状态
+     *
+     * @param providerId - 供应商 ID
+     * @param enabled - 是否启用
+     */
+    toggleProvider: async (params) => {
+      const { providerId, enabled } = params as { providerId?: string; enabled?: boolean };
+      if (!providerId || typeof providerId !== 'string') {
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'providerId is required');
+      }
+      if (typeof enabled !== 'boolean') {
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'enabled must be a boolean');
+      }
+
+      const store = getConfigStore();
+      if (!store) {
+        throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, 'Config system not initialized');
+      }
+
+      store.patch({
+        models: {
+          providers: {
+            [providerId]: { enabled }
+          }
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      return { success: true };
+    },
+
+    /**
+     * 更新供应商 Base URL
+     *
+     * @param providerId - 供应商 ID
+     * @param baseUrl - 新的 Base URL
+     */
+    updateProviderBaseUrl: async (params) => {
+      const { providerId, baseUrl } = params as { providerId?: string; baseUrl?: string };
+      if (!providerId || typeof providerId !== 'string') {
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'providerId is required');
+      }
+      if (typeof baseUrl !== 'string') {
+        throw new GatewayMethodError(GatewayErrorCode.INVALID_PARAMS, 'baseUrl must be a string');
+      }
+
+      const store = getConfigStore();
+      if (!store) {
+        throw new GatewayMethodError(GatewayErrorCode.INTERNAL_ERROR, 'Config system not initialized');
+      }
+
+      store.patch({
+        models: {
+          providers: {
+            [providerId]: { baseUrl }
+          }
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
       return { success: true };
     }
   }
