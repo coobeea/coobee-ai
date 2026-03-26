@@ -207,6 +207,7 @@ async function loadModelList(): Promise<void> {
     if (providers) {
       for (const [providerId, provCfg] of Object.entries(providers)) {
         const prov = provCfg as Record<string, unknown>;
+        if (prov.enabled === false) continue;
         const provName = (prov.name as string) || providerId;
         const models = prov.models as Array<Record<string, unknown>> | undefined;
         if (models) {

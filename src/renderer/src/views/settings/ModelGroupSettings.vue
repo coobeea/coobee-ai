@@ -132,6 +132,7 @@ async function loadData(): Promise<void> {
       const modelList: AvailableModel[] = [];
       for (const [id, cfg] of Object.entries(providersConfig)) {
         const p = cfg as Record<string, unknown>;
+        if (p.enabled === false) continue;
         const provName = (p.name as string) || id;
         const models = (p.models as { id: string; name?: string }[]) || [];
         provList.push({ id, name: provName, models: models.map((m) => m.id) });

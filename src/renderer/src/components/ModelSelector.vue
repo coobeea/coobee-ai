@@ -98,14 +98,16 @@ async function loadProviders(): Promise<void> {
     const providersConfig = modelsConfig?.providers as Record<string, unknown> | undefined;
 
     if (providersConfig) {
-      providers.value = Object.entries(providersConfig).map(([id, cfg]) => {
-        const providerCfg = cfg as Record<string, unknown>;
-        return {
-          id,
-          name: (providerCfg.name as string) || id,
-          models: (providerCfg.models as Model[]) || []
-        };
-      });
+      providers.value = Object.entries(providersConfig)
+        .filter(([, cfg]) => (cfg as Record<string, unknown>).enabled !== false)
+        .map(([id, cfg]) => {
+          const providerCfg = cfg as Record<string, unknown>;
+          return {
+            id,
+            name: (providerCfg.name as string) || id,
+            models: (providerCfg.models as Model[]) || []
+          };
+        });
     }
 
     // 加载模型分组

@@ -56,6 +56,7 @@ async function loadModelOptions(): Promise<void> {
     if (providers) {
       for (const [, provCfg] of Object.entries(providers)) {
         const prov = provCfg as Record<string, unknown>;
+        if (prov.enabled === false) continue;
         const models = prov.models as Array<{ id: string; name?: string }> | undefined;
         if (models) {
           for (const m of models) {
