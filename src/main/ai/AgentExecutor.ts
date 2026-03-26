@@ -883,7 +883,12 @@ class AgentExecutor {
       resetApprovalCounter(sessionId);
 
       // === Extension Hooks: message_received + session_start + before_agent_start ===
-      await this.runExtensionHooks(sessionId, message, builder);
+      await Promise.race([
+        this.runExtensionHooks(sessionId, message, builder),
+        new Promise<void>((resolve) => setTimeout(resolve, 60_000))
+      ]).catch((err) => {
+        log.warn(`[AgentExecutor] Extension start hooks timed out or failed: sessionId=${sessionId}`, err);
+      });
 
       // 1. 创建 Runtime + 注册统一分发器
       runtime = await builder.sessionId(sessionId).build();
@@ -915,7 +920,12 @@ class AgentExecutor {
       // === Extension Hooks: agent_end + session_end ===
       // 使用稳定的 Agent ID（如果 builder 提供）而非临时 runtime.id
       const stableAgentId = builderAgentId2 || runtime.id;
-      await this.runExtensionEndHooks(sessionId, stableAgentId, result, duration);
+      await Promise.race([
+        this.runExtensionEndHooks(sessionId, stableAgentId, result, duration),
+        new Promise<void>((resolve) => setTimeout(resolve, 60_000))
+      ]).catch((err) => {
+        log.warn(`[AgentExecutor] Extension end hooks timed out or failed: sessionId=${sessionId}`, err);
+      });
 
       // agent:done 事件
       await this.emitAgentLifecycleEvent('agent:done', {

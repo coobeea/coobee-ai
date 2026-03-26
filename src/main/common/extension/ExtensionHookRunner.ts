@@ -30,7 +30,7 @@ export class ExtensionHookRunner {
 
   /**
    * 执行旁听型 Hook（void）
-   * 所有 handler 并行执行，任何 handler 抛错不影响其他
+   * 所有 handler 并行执行，任何 handler 抛错或超时不影响其他
    */
   async runVoidHook<K extends ExtensionHookName>(name: K, event: ExtensionHookEventMap[K]): Promise<void> {
     const hooks = this.registry.getHooks(name);
@@ -40,7 +40,7 @@ export class ExtensionHookRunner {
       hooks.map(async (hook) => {
         const start = Date.now();
         try {
-          await hook.handler(event);
+          await withTimeout(hook.handler(event), HOOK_TIMEOUT_MS, name, hook.extensionId);
         } catch (err) {
           console.error(`[ExtensionHookRunner] void hook "${name}" from "${hook.extensionId}" failed:`, err);
         } finally {
@@ -52,7 +52,7 @@ export class ExtensionHookRunner {
 
   /**
    * 执行拦截型 Hook（modifying）
-   * 按优先级顺序执行，结果逐步合并
+   * 按优先级顺序执行，结果逐步合并，单个 handler 超时则跳过
    */
   async runModifyingHook<K extends ExtensionHookName>(
     name: K,
@@ -66,7 +66,7 @@ export class ExtensionHookRunner {
     for (const hook of hooks) {
       const start = Date.now();
       try {
-        const result = await hook.handler(event);
+        const result = await withTimeout(hook.handler(event), HOOK_TIMEOUT_MS, name, hook.extensionId);
         if (result == null) continue;
 
         if (!merged) {
@@ -76,7 +76,6 @@ export class ExtensionHookRunner {
         }
       } catch (err) {
         console.error(`[ExtensionHookRunner] modifying hook "${name}" from "${hook.extensionId}" failed:`, err);
-        // 跳过失败的 handler，继续下一个
       } finally {
         logHookTiming(name, hook.extensionId, Date.now() - start);
       }
@@ -171,6 +170,36 @@ function mergeBeforeCompaction(prev: BeforeCompactionResult, next: BeforeCompact
 function joinOptional(a?: string, b?: string): string | undefined {
   if (a && b) return `${a}\n${b}`;
   return b ?? a;
+}
+
+// ==================== 超时保护 ====================
+
+/** 单个 Hook handler 的最大执行时间（30 秒） */
+const HOOK_TIMEOUT_MS = 30_000;
+
+/**
+ * 为 Promise 添加超时保护
+ * 超时后抛出 Error，确保 Promise.allSettled 能正常 settle
+ */
+function withTimeout<T>(promise: Promise<T> | T, timeoutMs: number, hookName: string, extId: string): Promise<T> {
+  if (!(promise instanceof Promise)) return Promise.resolve(promise);
+
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Hook "${hookName}" from "${extId}" timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise.then(
+      (val) => {
+        clearTimeout(timer);
+        resolve(val);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
 }
 
 // ==================== Hook 执行时间监控 ====================

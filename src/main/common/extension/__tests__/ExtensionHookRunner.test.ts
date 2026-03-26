@@ -626,6 +626,81 @@ describe('ExtensionHookRunner', () => {
     expect(calls).toEqual(['turn_start', 'turn_end', 'after_compaction']);
   });
 
+  // ---- 超时保护 ----
+
+  it('void hook 超时保护 — 挂起的 handler 不阻塞其他', async () => {
+    vi.useFakeTimers();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const calls: string[] = [];
+
+    registry.registerHook({
+      extensionId: 'ext-hang',
+      hookName: 'agent_end',
+      handler: () => new Promise(() => {}),
+      priority: 10
+    });
+    registry.registerHook({
+      extensionId: 'ext-fast',
+      hookName: 'agent_end',
+      handler: async () => {
+        calls.push('fast');
+      },
+      priority: 0
+    });
+
+    const promise = runner.runVoidHook('agent_end', {
+      sessionId: 's1',
+      agentId: 'test-agent',
+      success: true,
+      output: '',
+      durationMs: 100
+    });
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    await promise;
+
+    expect(calls).toContain('fast');
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('void hook "agent_end" from "ext-hang" failed'),
+      expect.objectContaining({ message: expect.stringContaining('timed out') })
+    );
+
+    consoleSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('modifying hook 超时保护 — 挂起的 handler 被跳过，其他结果正常', async () => {
+    vi.useFakeTimers();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    registry.registerHook({
+      extensionId: 'ext-hang',
+      hookName: 'before_agent_start',
+      handler: () => new Promise(() => {}),
+      priority: 50
+    });
+    registry.registerHook({
+      extensionId: 'ext-fast',
+      hookName: 'before_agent_start',
+      handler: async () => ({ prependContext: 'survived' }),
+      priority: 10
+    });
+
+    const promise = runner.runModifyingHook('before_agent_start', {
+      sessionId: 's1',
+      prompt: 'hello'
+    });
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    const result = await promise;
+
+    expect(result).toBeDefined();
+    expect(result!.prependContext).toBe('survived');
+
+    consoleSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
   // 中间 handler 抛错但前后 handler 结果正常合并
   it('三个 handler 中间抛错 — 前后结果正常合并', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
