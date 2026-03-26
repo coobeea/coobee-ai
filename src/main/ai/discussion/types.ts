@@ -21,10 +21,13 @@ export interface DiscussionMessage {
   timestamp: number;
 
   /** 消息类型 */
-  type: 'statement' | 'question' | 'answer' | 'objection' | 'agreement' | 'summary';
+  type: 'statement' | 'question' | 'answer' | 'objection' | 'agreement' | 'summary' | 'user';
 
   /** 引用的消息 ID（回复某条消息） */
   replyTo?: string;
+
+  /** @mention 的 agentId 列表 */
+  mentions?: string[];
 
   /** 元数据 */
   metadata?: Record<string, unknown>;
@@ -103,7 +106,8 @@ export type TurnStrategy =
   | 'reactive'
   | 'moderator-controlled'
   | 'sequential'
-  | 'concurrent';
+  | 'concurrent'
+  | 'group-chat';
 
 /**
  * 共识检测结果

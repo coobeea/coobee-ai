@@ -85,6 +85,11 @@ const router = createRouter({
           component: () => import('@/views/DiscussionView.vue') // ✅ 复用 DiscussionView
         },
         {
+          path: 'groupchat',
+          name: 'groupchat',
+          component: () => import('@/views/GroupChatView.vue')
+        },
+        {
           path: 'insight',
           name: 'insight',
           component: () => import('@/views/InsightView.vue')

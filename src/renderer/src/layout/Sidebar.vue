@@ -50,6 +50,7 @@ const mainMenuItems: MenuItem[] = [
 
 // 更多功能（显示在弹出菜单中）
 const moreMenuItems: MenuItem[] = [
+  { id: 'groupchat', label: '群聊', icon: 'i-carbon-group', route: '/groupchat' },
   { id: 'insight', label: '实时洞察', icon: 'i-carbon-analytics', route: '/insight' },
   { id: 'discussion', label: '群聊讨论', icon: 'i-carbon-chat', route: '/discussion' },
   { id: 'consultation', label: '专家会诊', icon: 'i-carbon-user-multiple', route: '/consultation' },

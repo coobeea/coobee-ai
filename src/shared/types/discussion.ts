@@ -9,8 +9,9 @@ export interface DiscussionMessage {
   agentId: string;
   content: string;
   timestamp: number;
-  type: 'statement' | 'question' | 'answer' | 'objection' | 'agreement' | 'summary';
+  type: 'statement' | 'question' | 'answer' | 'objection' | 'agreement' | 'summary' | 'user';
   replyTo?: string;
+  mentions?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -41,6 +42,7 @@ export interface DiscussionSession {
 export type TurnStrategy =
   | 'round-robin' // 顺序发言（轮流）
   | 'concurrent' // 并发发言（同时）
+  | 'group-chat' // 用户驱动的普通群聊
   | 'weighted' // 加权发言（未来）
   | 'reactive' // 响应式发言（未来）
   | 'moderator-controlled'; // 主持人控制（未来）
