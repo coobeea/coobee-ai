@@ -119,12 +119,14 @@ describe('AgentHomeManager', () => {
       expect(result).toContain('BOOTSTRAP.md');
     });
 
-    it('should return undefined when only template-only files remain (no bootstrap)', () => {
+    it('should include template-only files as placeholders (no bootstrap)', () => {
       const homeDir = manager.initHome('no-bootstrap');
-      // Remove BOOTSTRAP.md to simulate a post-bootstrap state
       fs.unlinkSync(path.join(homeDir, 'BOOTSTRAP.md'));
       const result = manager.readInjectableFiles('no-bootstrap');
-      expect(result).toBeUndefined();
+      expect(result).toBeDefined();
+      expect(result).toContain('尚未填写');
+      expect(result).toContain('SOUL.md');
+      expect(result).toContain('IDENTITY.md');
     });
 
     it('should include files with real content', () => {
@@ -147,11 +149,11 @@ describe('AgentHomeManager', () => {
 
       const withMemory = manager.readInjectableFiles('test-agent', true);
       expect(withMemory).toContain('MEMORY.md');
+      expect(withMemory).toContain('dark mode');
 
       const withoutMemory = manager.readInjectableFiles('test-agent', false);
-      if (withoutMemory) {
-        expect(withoutMemory).not.toContain('MEMORY.md');
-      }
+      expect(withoutMemory).toBeDefined();
+      expect(withoutMemory).not.toContain('MEMORY.md');
     });
 
     it('should include BOOTSTRAP.md when it exists', () => {
@@ -162,9 +164,9 @@ describe('AgentHomeManager', () => {
       expect(result).toContain('首次引导');
     });
 
-    it('should truncate content exceeding 8000 characters', () => {
+    it('should truncate content exceeding maxLen', () => {
       const homeDir = manager.initHome('verbose-agent');
-      const longContent = '# Soul\n\n' + 'A'.repeat(9000);
+      const longContent = '# Soul\n\n' + 'A'.repeat(11000);
       fs.writeFileSync(path.join(homeDir, 'SOUL.md'), longContent, 'utf-8');
 
       const result = manager.readInjectableFiles('verbose-agent');

@@ -108,6 +108,7 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
       const goalBlock = readGoalFile(workspace);
       const agentsMdBlock = await readAgentsMdFiles(Env.paths.agentsMdPath, agentHome, workspace);
       const agentHomeBlock = homeManager && agentId ? homeManager.readInjectableFiles(agentId) : undefined;
+      const workspaceCtxBlock = readWorkspaceContextFiles(workspace);
 
       // 收集 Extension 注入的指令（运行时注入，对所有 Agent 生效）
       const extensionInstructions = collectExtensionInstructions();
@@ -118,6 +119,7 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
         ...(agentsMdBlock ? [agentsMdBlock] : []),
         ...(agentHomeBlock ? [agentHomeBlock] : []),
         ...(goalBlock ? [goalBlock] : []),
+        ...(workspaceCtxBlock ? [workspaceCtxBlock] : []),
         ...(skillDiscoveryHint ? [skillDiscoveryHint] : []),
         ...(agentDiscoveryHint ? [agentDiscoveryHint] : []),
         ...extensionInstructions
@@ -161,6 +163,66 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
     return workspace;
   } catch (error) {
     log.warn(`[EnvInjector] Failed, continuing without env:`, error);
+    return undefined;
+  }
+}
+
+// ==================== 工作空间上下文文件读取 ====================
+
+/**
+ * 扫描工作空间根目录下的用户 .md 文件，作为会话级持久上下文注入
+ *
+ * 只读取工作空间根下的 .md 文件（不递归），排除：
+ *   - GOAL.md（已单独注入）
+ *   - .runtime/ 等系统目录下的文件
+ *
+ * 典型用例：Agent 在上一轮对话中写入 discussion_summary.md，
+ * 下一轮对话自动加载，保持跨轮次的对话连续性。
+ */
+function readWorkspaceContextFiles(workspace: string): string | undefined {
+  const EXCLUDED = new Set(['GOAL.md']);
+  const maxTotalLen = 6000;
+  const maxPerFile = 3000;
+
+  try {
+    const entries = fs.readdirSync(workspace, { withFileTypes: true });
+    const mdFiles = entries
+      .filter((e) => e.isFile() && e.name.endsWith('.md') && !EXCLUDED.has(e.name))
+      .map((e) => e.name)
+      .sort();
+
+    if (mdFiles.length === 0) return undefined;
+
+    const sections: string[] = [];
+    let totalLen = 0;
+
+    for (const file of mdFiles) {
+      if (totalLen >= maxTotalLen) break;
+      const filePath = path.join(workspace, file);
+      try {
+        let content = fs.readFileSync(filePath, 'utf-8').trim();
+        if (!content) continue;
+        if (content.length > maxPerFile) {
+          content = content.slice(0, maxPerFile) + '\n\n... (truncated)';
+        }
+        const section = `### ${file}\n\n${content}`;
+        sections.push(section);
+        totalLen += section.length;
+      } catch {
+        // 跳过不可读文件
+      }
+    }
+
+    if (sections.length === 0) return undefined;
+
+    return `<workspace_context>
+Session-persistent context files from the workspace root.
+These were created in previous conversation turns and auto-loaded for continuity.
+You may update or add new files in the workspace root to persist information across turns.
+
+${sections.join('\n\n---\n\n')}
+</workspace_context>`;
+  } catch {
     return undefined;
   }
 }

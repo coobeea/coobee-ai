@@ -36,6 +36,17 @@ const INJECTABLE_FILES = ['BOOTSTRAP.md', 'SOUL.md', 'IDENTITY.md', 'USER.md', '
 /** MEMORY.md 单独处理（仅主会话注入） */
 const MEMORY_FILE = 'MEMORY.md';
 
+/** 每个文件的用途说明（模板状态时展示） */
+const FILE_PURPOSES: Record<string, string> = {
+  'BOOTSTRAP.md': '首次引导脚本',
+  'SOUL.md': '人格灵魂：核心原则、行为边界、风格定调',
+  'IDENTITY.md': '身份名片：名字、风格、签名',
+  'USER.md': '主人档案：用户称呼、偏好、使用场景',
+  'NOTES.md': '环境工具备注：特殊配置、常用路径',
+  'HEARTBEAT.md': '心跳任务清单：定期检查和执行的事项',
+  'MEMORY.md': '长期记忆精华：从对话中提炼的核心知识'
+};
+
 // ==================== 模板定义 ====================
 
 function bootstrapTemplate(agentId: string): string {
@@ -203,6 +214,9 @@ export class AgentHomeManager {
   /**
    * 读取 Agent Home 中需要注入到 system prompt 的文件
    *
+   * 所有标准文件都会被加载——即使尚未填写（模板状态），也会以简要说明形式出现，
+   * 确保 Agent 始终知道自己的 Home 结构和每个文件的用途。
+   *
    * @param agentId Agent ID
    * @param includeMemory 是否包含 MEMORY.md（子 Agent 不注入）
    * @returns XML 包裹的文件内容块，或 undefined
@@ -213,24 +227,18 @@ export class AgentHomeManager {
 
     const sections: string[] = [];
 
-    for (const file of INJECTABLE_FILES) {
+    const filesToLoad: readonly string[] = includeMemory ? [...INJECTABLE_FILES, MEMORY_FILE] : INJECTABLE_FILES;
+
+    for (const file of filesToLoad) {
       const filePath = path.join(homeDir, file);
       try {
         const content = fs.readFileSync(filePath, 'utf-8').trim();
-        if (content && !isTemplateOnly(content)) {
+        if (!content) continue;
+        if (isTemplateOnly(content)) {
+          const purpose = FILE_PURPOSES[file] || '待填写';
+          sections.push(`### ${file} (${filePath})\n\n_[${purpose} — 尚未填写，请在对话中完善]_`);
+        } else {
           sections.push(`### ${file} (${filePath})\n\n${content}`);
-        }
-      } catch {
-        // 文件不存在或无法读取
-      }
-    }
-
-    if (includeMemory) {
-      const memoryPath = path.join(homeDir, MEMORY_FILE);
-      try {
-        const content = fs.readFileSync(memoryPath, 'utf-8').trim();
-        if (content && !isTemplateOnly(content)) {
-          sections.push(`### ${MEMORY_FILE} (${memoryPath})\n\n${content}`);
         }
       } catch {
         // 文件不存在或无法读取
@@ -240,7 +248,7 @@ export class AgentHomeManager {
     if (sections.length === 0) return undefined;
 
     let merged = sections.join('\n\n---\n\n');
-    const maxLen = 8000;
+    const maxLen = 10000;
     if (merged.length > maxLen) {
       merged = merged.slice(0, maxLen) + '\n\n... (truncated)';
     }
@@ -248,6 +256,7 @@ export class AgentHomeManager {
     return `<agent_home agentId="${agentId}" path="${homeDir}">
 These are YOUR persistent identity and memory files. They survive across sessions.
 You can update them using the \`write\` tool at the paths shown above each section.
+Files marked as "尚未填写" need your attention — fill them in to build your persistent persona.
 
 ${merged}
 </agent_home>`;
