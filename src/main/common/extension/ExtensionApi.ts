@@ -242,29 +242,12 @@ function createExtensionServices(): ExtensionServices {
     },
     llm: {
       async chat(messages) {
-        const { configStoreInstance } = await import('../config/ConfigStore');
-        const config = configStoreInstance?.getAll?.() || {};
-        const chatConfig = resolveChatConfigForApi(config);
-
-        if (!chatConfig) {
-          throw new Error(
-            'No chat model configured. Please enable a provider and set models.defaults.model.primary in coobee.json5'
-          );
-        }
-
-        const OpenAI = (await import('openai')).default;
-        const client = new OpenAI({
-          apiKey: chatConfig.apiKey,
-          baseURL: chatConfig.baseURL
-        });
-
-        const response = await client.chat.completions.create({
-          model: chatConfig.model,
-          messages: messages as Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-          temperature: 0.3
-        });
-
-        return response.choices?.[0]?.message?.content?.trim() || '';
+        const { agentExecutor } = await import('../../ai/AgentExecutor');
+        const llmChatMod = await import('../../ai/quality-loop/llm-chat');
+        const llmChat = llmChatMod.createLLMChat(
+          agentExecutor as unknown as Parameters<typeof llmChatMod.createLLMChat>[0]
+        );
+        return llmChat({ messages });
       },
       async embed(texts, options) {
         const { configStoreInstance } = await import('../config/ConfigStore');
@@ -349,54 +332,6 @@ function createExtensionServices(): ExtensionServices {
       }
     }
   };
-}
-
-/**
- * 从配置中解析可用于 chat 的 provider（供 ExtensionApi.services.llm.chat 使用）
- *
- * 解析优先级：models.defaults.model.primary → 第一个已启用且有 API Key 的 provider
- */
-function resolveChatConfigForApi(
-  config: Record<string, unknown>
-): { apiKey: string; baseURL?: string; model: string } | undefined {
-  const models = config.models as Record<string, unknown> | undefined;
-  const providers = models?.providers as Record<string, Record<string, unknown>> | undefined;
-  const defaults = models?.defaults as Record<string, unknown> | undefined;
-
-  if (!providers) return undefined;
-
-  const modelDefaults = defaults?.model as Record<string, unknown> | undefined;
-  const modelRef = modelDefaults?.primary as string | undefined;
-
-  if (!modelRef || typeof modelRef !== 'string') return undefined;
-
-  const parts = modelRef.split('/');
-  let providerId: string;
-  let modelId: string;
-
-  if (parts.length === 2) {
-    [providerId, modelId] = parts;
-  } else {
-    modelId = modelRef;
-    const found = Object.entries(providers).find(([_, p]) => {
-      const prov = p as Record<string, unknown>;
-      if (prov.enabled === false) return false;
-      const provModels = prov.models as Array<Record<string, unknown>> | undefined;
-      return provModels?.some((m) => m.id === modelId);
-    });
-    if (!found) return undefined;
-    providerId = found[0];
-  }
-
-  const provider = providers[providerId] as Record<string, unknown> | undefined;
-  if (!provider || provider.enabled === false) return undefined;
-
-  const apiKey = provider.apiKey as string | undefined;
-  const baseURL = provider.baseUrl as string | undefined;
-
-  if (!apiKey || apiKey.length === 0 || apiKey.startsWith('${')) return undefined;
-
-  return { apiKey, baseURL, model: modelId };
 }
 
 /**
