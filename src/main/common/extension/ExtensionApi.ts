@@ -249,6 +249,39 @@ function createExtensionServices(): ExtensionServices {
         );
         return llmChat({ messages });
       },
+      async runAgent(agentId, message) {
+        const { agentExecutor } = await import('../../ai/AgentExecutor');
+        const { AgentStore } = await import('../../ai/agents/AgentStore');
+        const { generateSnowflakeId } = await import('../../utils/SnowflakeIdGenerator');
+
+        const store = await AgentStore.getInstance();
+        const agentDef = await store.get(agentId);
+        if (!agentDef) {
+          throw new Error(`Agent "${agentId}" not found`);
+        }
+
+        const sessionId = `ext-agent-${agentId}-${generateSnowflakeId()}`;
+        const builder = agentExecutor
+          .piMono()
+          .lightweight(true)
+          .mode('chat')
+          .name(agentId)
+          .sessionMode('memory')
+          .maxTurns(1);
+
+        if (agentDef.instructions) {
+          builder.instructions(agentDef.instructions);
+        }
+
+        let output = '';
+        const gen = agentExecutor.stream({ sessionId, message, builder });
+        for await (const chunk of gen) {
+          if (chunk.type === 'text:delta' && chunk.content) {
+            output += chunk.content;
+          }
+        }
+        return output;
+      },
       async embed(texts, options) {
         const { configStoreInstance } = await import('../config/ConfigStore');
 

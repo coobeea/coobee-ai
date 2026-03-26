@@ -3,24 +3,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { classifyMemory, _resetInstructionsCache } from '../pipeline/classify';
+import { classifyMemory } from '../pipeline/classify';
 import type { ExtensionApi } from '@main/common/extension/types';
-
-const MOCK_INSTRUCTIONS = '你是一个记忆分类专家。分析内容并以 JSON 输出。';
 
 function createMockApi(): ExtensionApi {
   return {
     services: {
       llm: {
-        chat: vi.fn()
-      },
-      agent: {
-        getStore: vi.fn().mockResolvedValue({
-          get: vi.fn().mockResolvedValue({
-            id: 'memory-analyzer',
-            instructions: MOCK_INSTRUCTIONS
-          })
-        })
+        runAgent: vi.fn()
       }
     },
     logger: {
@@ -36,8 +26,27 @@ describe('classifyMemory', () => {
   let mockApi: ExtensionApi;
 
   beforeEach(() => {
-    _resetInstructionsCache();
     mockApi = createMockApi();
+  });
+
+  it('should call runAgent with memory-analyzer agent ID', async () => {
+    const mockResponse = JSON.stringify({
+      shouldRemember: true,
+      category: 'preference',
+      importance: 8,
+      summary: '用户偏好使用文件系统',
+      keywords: ['文件系统', '数据库'],
+      memory: '用户明确表示倾向使用文件系统存储而非数据库。'
+    });
+
+    vi.mocked(mockApi.services.llm.runAgent).mockResolvedValue(mockResponse);
+
+    await classifyMemory(mockApi, '好的，我们将使用文件系统存储，这样更简单可控。');
+
+    expect(mockApi.services.llm.runAgent).toHaveBeenCalledWith(
+      'memory-analyzer',
+      expect.stringContaining('好的，我们将使用文件系统存储')
+    );
   });
 
   it('should classify user preference', async () => {
@@ -50,7 +59,7 @@ describe('classifyMemory', () => {
       memory: '用户明确表示倾向使用文件系统存储而非数据库。'
     });
 
-    vi.mocked(mockApi.services.llm.chat).mockResolvedValue(mockResponse);
+    vi.mocked(mockApi.services.llm.runAgent).mockResolvedValue(mockResponse);
 
     const result = await classifyMemory(mockApi, '好的，我们将使用文件系统存储，这样更简单可控。');
 
@@ -70,7 +79,7 @@ describe('classifyMemory', () => {
       memory: '团队决定使用 LanceDB 替换原有的 SQLite 作为向量存储方案。'
     });
 
-    vi.mocked(mockApi.services.llm.chat).mockResolvedValue(mockResponse);
+    vi.mocked(mockApi.services.llm.runAgent).mockResolvedValue(mockResponse);
 
     const result = await classifyMemory(mockApi, '好的，我们将使用 LanceDB 替换 SQLite 作为向量存储方案。');
 
@@ -90,7 +99,7 @@ describe('classifyMemory', () => {
       reason: '无信息量的简单确认'
     });
 
-    vi.mocked(mockApi.services.llm.chat).mockResolvedValue(mockResponse);
+    vi.mocked(mockApi.services.llm.runAgent).mockResolvedValue(mockResponse);
 
     const result = await classifyMemory(mockApi, '收到，明白了。');
 
@@ -109,7 +118,7 @@ describe('classifyMemory', () => {
 }
 \`\`\``;
 
-    vi.mocked(mockApi.services.llm.chat).mockResolvedValue(mockResponse);
+    vi.mocked(mockApi.services.llm.runAgent).mockResolvedValue(mockResponse);
 
     const result = await classifyMemory(mockApi, '建议使用 Vue 3 的 script setup 语法。');
 
@@ -117,8 +126,8 @@ describe('classifyMemory', () => {
     expect(result.category).toBe('knowledge');
   });
 
-  it('should return default when LLM fails', async () => {
-    vi.mocked(mockApi.services.llm.chat).mockRejectedValue(new Error('API timeout'));
+  it('should return default when agent call fails', async () => {
+    vi.mocked(mockApi.services.llm.runAgent).mockRejectedValue(new Error('Agent not found'));
 
     const result = await classifyMemory(mockApi, 'test output');
 
@@ -126,23 +135,24 @@ describe('classifyMemory', () => {
     expect(result.reason).toContain('Classification failed');
   });
 
-  it('should fallback when AgentStore fails', async () => {
-    const failApi = createMockApi();
-    (failApi.services.agent.getStore as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Store unavailable'));
-
+  it('should truncate long input', async () => {
+    const longOutput = 'x'.repeat(5000);
     const mockResponse = JSON.stringify({
-      shouldRemember: true,
+      shouldRemember: false,
       category: 'fact',
-      importance: 5,
-      summary: '测试回退',
-      keywords: ['test'],
-      memory: '测试回退场景'
+      importance: 0,
+      summary: '',
+      keywords: [],
+      memory: '',
+      reason: '无意义内容'
     });
-    vi.mocked(failApi.services.llm.chat).mockResolvedValue(mockResponse);
 
-    const result = await classifyMemory(failApi, '这是一段需要分类的内容');
+    vi.mocked(mockApi.services.llm.runAgent).mockResolvedValue(mockResponse);
 
-    expect(result.shouldRemember).toBe(true);
-    expect(failApi.logger.warn).toHaveBeenCalled();
+    await classifyMemory(mockApi, longOutput);
+
+    const callArg = vi.mocked(mockApi.services.llm.runAgent).mock.calls[0][1];
+    expect(callArg).toContain('内容过长，已截断');
+    expect(callArg.length).toBeLessThan(5000);
   });
 });

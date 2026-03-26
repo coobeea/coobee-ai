@@ -164,6 +164,15 @@ export interface ExtensionServices {
   llm: {
     /** 调用 LLM 进行对话（使用默认模型） */
     chat(messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>): Promise<string>;
+    /**
+     * 通过指定 Agent 执行一次对话
+     *
+     * 系统自动加载该 Agent 的 instructions/model 等配置，
+     * 走 AgentExecutor 正路（lightweight chat 模式）。
+     * @param agentId Agent ID（如 'memory-analyzer'）
+     * @param message 用户输入内容
+     */
+    runAgent(agentId: string, message: string): Promise<string>;
     /** 生成文本的 embedding 向量 */
     embed(texts: string[], options?: { model?: string }): Promise<number[][]>;
   };
