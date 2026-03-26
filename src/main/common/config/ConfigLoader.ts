@@ -20,6 +20,7 @@ import { resolveEnvVars } from './ConfigEnv';
 import { mergeWithDefaults } from './ConfigDefaults';
 import { loadSecrets, mergeSecrets, secretsPath, ensureSecretsFile } from './ConfigSecrets';
 import { skillConfigPath, ensureSkillConfigFile } from '@main/ai/skills/SkillConfig';
+import { generateDefaultConfig } from './defaultConfigTemplate';
 import type { CoobeeConfig } from './schema';
 import { CoobeeConfigSchema } from './schema';
 import type { ConfigSnapshot, ConfigValidationIssue } from './types';
@@ -167,53 +168,7 @@ export class ConfigLoader {
       fs.mkdirSync(this.configDir, { recursive: true });
     }
     if (!fs.existsSync(this.configPath)) {
-      const defaultContent = `// Coobee AI 配置文件
-// 详细文档: https://github.com/coobee-ai/coobee-ai
-{
-  models: {
-    providers: {
-      // 阿里云百炼（默认启用）
-      dashscope: {
-        id: "dashscope",
-        name: "百炼",
-        description: "阿里云百炼平台，提供企业级AI模型服务",
-        baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        apiKey: "\${DASHSCOPE_API_KEY}",
-        enabled: true,
-        websites: {
-          official: "https://www.aliyun.com/product/bailian",
-          apiKey: "https://bailian.console.aliyun.com/?tab=model#/api-key",
-          docs: "https://help.aliyun.com/zh/model-studio/getting-started/"
-        },
-        models: [
-          { id: "qwen3-max", name: "Qwen3 Max", contextWindow: 32768, maxOutputTokens: 8192 },
-          { id: "qwen-plus-latest", name: "qwen-plus-latest", maxInputTokens: 131072, maxOutputTokens: 32768, reasoning: true },
-          { id: "qwen-turbo-latest", name: "qwen-turbo-latest" }
-        ]
-      }
-      // 更多 Provider 请参考文档添加: deepseek, silicon, 302ai, ollama, zhipu, doubao 等
-    },
-
-    // Agent 默认使用的模型和推理深度
-    defaults: {
-      model: { primary: "dashscope/qwen3-max" },
-      thinkingLevel: "medium"
-    }
-  },
-
-  ui: {
-    theme: "auto",
-    language: "zh-CN",
-    soundEffects: true
-  },
-
-  logging: {
-    level: "info",
-    file: true
-  }
-}
-`;
-      fs.writeFileSync(this.configPath, defaultContent, 'utf-8');
+      fs.writeFileSync(this.configPath, generateDefaultConfig(), 'utf-8');
     }
 
     // 同时确保 secrets.json5 和 skills.json5 存在
