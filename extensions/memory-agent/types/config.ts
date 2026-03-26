@@ -1,5 +1,5 @@
 /**
- * memory-smart 配置
+ * memory-agent 配置
  */
 
 export interface MemorySmartConfig {

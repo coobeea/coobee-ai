@@ -1,5 +1,5 @@
 /**
- * memory-auto — 记忆自动化 Extension
+ * memory-thread — 线程级记忆 Extension
  *
  * 两个核心功能：
  *   1. before_agent_start: 从结构化记忆语义检索 + Markdown 兜底，注入到上下文
@@ -62,8 +62,8 @@ const MIN_OUTPUT_FOR_SUMMARY = 200;
 // ==================== Extension 模块 ====================
 
 export default {
-  id: 'memory-auto',
-  name: 'Memory Auto',
+  id: 'memory-thread',
+  name: 'Memory Thread',
   register(api: ExtensionApi) {
     // 保存 api 引用供辅助函数使用
     apiRef = api;
@@ -150,7 +150,7 @@ export default {
 
           fs.appendFileSync(memoryFile, header + entries.join(''), 'utf-8');
 
-          api.logger.info(`[memory-auto] Captured ${entries.length} entries → memory/${today}.md`);
+          api.logger.info(`[memory-thread] Captured ${entries.length} entries → memory/${today}.md`);
         } catch (err) {
           api.logger.warn(`Memory signal capture failed: ${err}`);
         }
@@ -169,7 +169,7 @@ export default {
         try {
           const agentId = event.agentId;
           if (!agentId) {
-            api.logger.debug('[memory-auto] before_compaction: no agentId, skipping flush');
+            api.logger.debug('[memory-thread] before_compaction: no agentId, skipping flush');
             return;
           }
 
@@ -212,10 +212,10 @@ export default {
           fs.appendFileSync(memoryFile, header + entries.join(''), 'utf-8');
 
           api.logger.info(
-            `[memory-auto] Pre-compaction flush: ${entries.length} entries → homes/${agentId}/memory/${today}.md`
+            `[memory-thread] Pre-compaction flush: ${entries.length} entries → homes/${agentId}/memory/${today}.md`
           );
         } catch (err) {
-          api.logger.warn(`[memory-auto] Pre-compaction flush failed: ${err}`);
+          api.logger.warn(`[memory-thread] Pre-compaction flush failed: ${err}`);
         }
       },
       { priority: 10 }

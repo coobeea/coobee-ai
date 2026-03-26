@@ -15,7 +15,7 @@ describe('IndexManager', () => {
 
   beforeEach(async () => {
     const os = await import('node:os');
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'memory-smart-test-'));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'memory-agent-test-'));
     indexManager = new IndexManager(tempDir);
     await indexManager.initialize();
   });
@@ -104,7 +104,7 @@ describe('EntryStore', () => {
 
   beforeEach(async () => {
     const os = await import('node:os');
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'memory-smart-test-'));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'memory-agent-test-'));
     entryStore = new EntryStore(tempDir);
     await entryStore.initialize();
   });

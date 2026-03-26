@@ -1,0 +1,6 @@
+{
+  "id": "memory-thread",
+  "name": "Memory Thread",
+  "version": "1.0.0",
+  "description": "Thread-level memory: signal detection on agent_end, keyword recall on before_agent_start, compaction flush to agent home"
+}

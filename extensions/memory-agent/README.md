@@ -169,14 +169,14 @@ interface MemorySmartConfig {
 
 ## 与其他记忆系统的对比
 
-| 特性     | memory-smart    | memory-global  | memory-auto |
-| -------- | --------------- | -------------- | ----------- |
-| 隔离级别 | **Agent 级**    | 用户级（全局） | Agent 级    |
-| 存储方式 | 文件系统        | LanceDB (向量) | Markdown    |
-| 分类方式 | LLM 判断 (6类)  | 正则匹配       | 无分类      |
-| 召回速度 | 极快 (~30ms)    | 中等 (~100ms)  | 快          |
-| 召回方式 | LLM 自主 + 工具 | 向量相似度     | 手动读取    |
-| 适用场景 | 结构化记忆      | 语义检索       | 临时笔记    |
+| 特性     | memory-agent    | memory-global  | memory-thread |
+| -------- | --------------- | -------------- | ------------- |
+| 隔离级别 | **Agent 级**    | 用户级（全局） | Agent 级      |
+| 存储方式 | 文件系统        | LanceDB (向量) | Markdown      |
+| 分类方式 | LLM 判断 (6类)  | 正则匹配       | 无分类        |
+| 召回速度 | 极快 (~30ms)    | 中等 (~100ms)  | 快            |
+| 召回方式 | LLM 自主 + 工具 | 向量相似度     | 手动读取      |
+| 适用场景 | 结构化记忆      | 语义检索       | 临时笔记      |
 
 ## API 使用
 
@@ -190,7 +190,7 @@ await api.services.paths.getUserHome();
 await api.services.llm.chat(messages);
 
 // 日志
-api.logger.info('[memory-smart] ...', { agentId });
+api.logger.info('[memory-agent] ...', { agentId });
 ```
 
 ## 维护

@@ -1,0 +1,10 @@
+{
+  "id": "memory-agent",
+  "name": "Memory Agent",
+  "version": "1.0.0",
+  "description": "Per-agent LLM-powered memory classification with inverted index for fast recall",
+  "enabled": true,
+  "skills": "skills",
+  "autoInjectSkills": ["memory-agent"],
+  "injectInstructions": "<memory_agent>\nYou have structured memory (memory-agent) that auto-captures your outputs.\n\nLocation: ~/.coobee-ai/memory/agent/{agentId}/\n- index/{category}.md — Summaries (4-line format: title, id+date+keywords, desc, path)\n- entries/{category}/YYYY-MM.md — Full content\n\nCategories: preference, decision, lesson, entity, knowledge, fact\n\nRecall:\n1. Read index: read({ path: \"~/.coobee-ai/memory/agent/{agentId}/index/preference.md\" })\n2. Extract IDs/paths, then read full content from entries/\n\nWhen to recall:\n- User asks about past preferences, decisions, or learned facts\n- Before recommendations (check preference)\n- For factual questions (check knowledge/fact)\n</memory_agent>"
+}

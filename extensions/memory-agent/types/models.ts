@@ -1,5 +1,5 @@
 /**
- * memory-smart 数据模型
+ * memory-agent 数据模型
  */
 
 /** 记忆分类（维度） */

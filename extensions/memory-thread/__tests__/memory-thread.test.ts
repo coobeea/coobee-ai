@@ -1,14 +1,14 @@
 /**
- * memory-auto Extension 单元测试
+ * memory-thread Extension 单元测试
  *
- * 测试自动记忆注入（before_agent_start）和信号检测/摘要（agent_end）
+ * 测试线程级记忆注入（before_agent_start）和信号检测/摘要（agent_end）
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-const TEST_BASE = path.join(os.tmpdir(), `memory-auto-test-${process.pid}`);
+const TEST_BASE = path.join(os.tmpdir(), `memory-thread-test-${process.pid}`);
 const WORKSPACE = path.join(TEST_BASE, 'workspace');
 
 vi.mock('../../../src/main/common/env', () => ({
@@ -38,7 +38,7 @@ function cleanup(): void {
   }
 }
 
-describe('memory-auto Extension', () => {
+describe('memory-thread Extension', () => {
   beforeEach(() => {
     cleanup();
     ensureDirs();

@@ -1,5 +1,5 @@
 /**
- * memory-smart 临时 runtime ID 过滤测试
+ * memory-agent 临时 runtime ID 过滤测试
  *
  * 验证 isTemporaryRuntimeId() 正确识别临时 ID vs 真实 Agent ID
  */
@@ -41,7 +41,7 @@ function isTemporaryRuntimeId(agentId: string): boolean {
   return false;
 }
 
-describe('memory-smart 临时 runtime ID 过滤', () => {
+describe('memory-agent 临时 runtime ID 过滤', () => {
   describe('临时 runtime ID（应被过滤）', () => {
     it('PiMono runtime ID', () => {
       expect(isTemporaryRuntimeId('pi-agent-1772818456463-4wn5ay')).toBe(true);

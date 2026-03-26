@@ -1,7 +1,7 @@
 /**
- * memory-smart 扩展
+ * memory-agent 扩展
  *
- * LLM 驱动的智能记忆系统：
+ * LLM 驱动的 Agent 级记忆系统：
  * - 自动分类（LLM 判断）
  * - 倒排索引（快速召回）
  * - 文件存储（按月归档）
@@ -17,20 +17,20 @@ import { DEFAULT_CONFIG } from './types/config';
 import type { MemoryEntry } from './types/models';
 
 export default {
-  id: 'memory-smart',
-  name: 'Memory Smart',
+  id: 'memory-agent',
+  name: 'Memory Agent',
 
   async register(api: ExtensionApi) {
     const config = { ...DEFAULT_CONFIG };
 
-    api.logger.info('[memory-smart] ===== Extension 正在注册 =====', { config });
-    console.log('[memory-smart] Extension register() called - config:', config);
+    api.logger.info('[memory-agent] ===== Extension 正在注册 =====', { config });
+    console.log('[memory-agent] Extension register() called - config:', config);
 
     /**
      * agent_end 钩子：捕获并分类记忆（按 Agent 隔离）
      */
     api.on('agent_end', async (event) => {
-      api.logger.info('[memory-smart] agent_end 事件触发', {
+      api.logger.info('[memory-agent] agent_end 事件触发', {
         sessionId: event.sessionId,
         agentId: event.agentId,
         success: event.success,
@@ -38,13 +38,13 @@ export default {
       });
 
       if (!config.autoCapture) {
-        api.logger.debug('[memory-smart] autoCapture 已关闭，跳过');
+        api.logger.debug('[memory-agent] autoCapture 已关闭，跳过');
         return;
       }
 
       // 🆕 过滤临时 runtime ID（只保存真实 Agent 的记忆）
       if (isTemporaryRuntimeId(event.agentId)) {
-        api.logger.debug('[memory-smart] 临时 runtime ID，跳过记忆存储', {
+        api.logger.debug('[memory-agent] 临时 runtime ID，跳过记忆存储', {
           agentId: event.agentId
         });
         return;
@@ -54,7 +54,7 @@ export default {
 
       // 校验内容长度
       if (agentOutput.length < config.captureMinChars || agentOutput.length > config.captureMaxChars) {
-        api.logger.debug('[memory-smart] 内容长度不符合要求，跳过', {
+        api.logger.debug('[memory-agent] 内容长度不符合要求，跳过', {
           agentId: event.agentId,
           length: agentOutput.length,
           min: config.captureMinChars,
@@ -68,7 +68,7 @@ export default {
         const userHome = await api.services.paths.getUserHome();
         const memoryRoot = `${userHome}/memory/agent/${event.agentId}`;
 
-        api.logger.debug('[memory-smart] 初始化存储', { memoryRoot });
+        api.logger.debug('[memory-agent] 初始化存储', { memoryRoot });
 
         // 初始化存储组件（每次动态创建）
         const agentIndexManager = new IndexManager(memoryRoot);
@@ -77,17 +77,17 @@ export default {
         await agentIndexManager.initialize();
         await agentEntryStore.initialize();
 
-        api.logger.info('[memory-smart] 开始 LLM 分类', {
+        api.logger.info('[memory-agent] 开始 LLM 分类', {
           agentId: event.agentId,
           contentLength: agentOutput.length,
           contentPreview: agentOutput.substring(0, 100)
         });
-        console.log(`[memory-smart] 🤖 调用 LLM 分类 (长度: ${agentOutput.length})`);
+        console.log(`[memory-agent] 🤖 调用 LLM 分类 (长度: ${agentOutput.length})`);
 
         // LLM 分类
         const classification = await classifyMemory(api, agentOutput);
 
-        api.logger.info('[memory-smart] LLM 分类完成', {
+        api.logger.info('[memory-agent] LLM 分类完成', {
           agentId: event.agentId,
           shouldRemember: classification.shouldRemember,
           category: classification.category,
@@ -95,17 +95,17 @@ export default {
           reason: classification.reason
         });
         console.log(
-          `[memory-smart] LLM 分类结果: shouldRemember=${classification.shouldRemember}, category=${classification.category}, reason=${classification.reason}`
+          `[memory-agent] LLM 分类结果: shouldRemember=${classification.shouldRemember}, category=${classification.category}, reason=${classification.reason}`
         );
 
         if (!classification.shouldRemember) {
-          api.logger.info('[memory-smart] ⚠️ 内容不值得记忆，跳过', {
+          api.logger.info('[memory-agent] ⚠️ 内容不值得记忆，跳过', {
             agentId: event.agentId,
             reason: classification.reason,
             contentPreview: agentOutput.substring(0, 200)
           });
-          console.log(`[memory-smart] LLM 判断不值得记忆: ${classification.reason}`);
-          console.log(`[memory-smart] 内容预览: ${agentOutput.substring(0, 200)}`);
+          console.log(`[memory-agent] LLM 判断不值得记忆: ${classification.reason}`);
+          console.log(`[memory-agent] 内容预览: ${agentOutput.substring(0, 200)}`);
           return;
         }
 
@@ -135,16 +135,16 @@ export default {
           contentPath
         });
 
-        api.logger.info('[memory-smart] ✅ 记忆已保存', {
+        api.logger.info('[memory-agent] ✅ 记忆已保存', {
           agentId: event.agentId,
           id: entry.id,
           category: entry.category,
           importance: entry.importance,
           summary: entry.summary
         });
-        console.log(`[memory-smart] ✅ 记忆已保存: ${entry.summary} (ID: ${entry.id})`);
+        console.log(`[memory-agent] ✅ 记忆已保存: ${entry.summary} (ID: ${entry.id})`);
       } catch (err) {
-        api.logger.error('[memory-smart] 记忆捕获失败', {
+        api.logger.error('[memory-agent] 记忆捕获失败', {
           agentId: event.agentId,
           error: err instanceof Error ? err.message : String(err)
         });

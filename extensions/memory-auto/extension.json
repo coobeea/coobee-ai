@@ -1,6 +1,0 @@
-{
-  "id": "memory-auto",
-  "name": "Memory Auto",
-  "version": "1.0.0",
-  "description": "Automatic memory injection (before_agent_start) and memory signal detection (agent_end)"
-}
