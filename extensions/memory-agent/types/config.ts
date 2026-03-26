@@ -14,5 +14,5 @@ export interface MemorySmartConfig {
 export const DEFAULT_CONFIG: MemorySmartConfig = {
   autoCapture: true,
   captureMinChars: 10,
-  captureMaxChars: 10000 // 临时放大，用于调试
+  captureMaxChars: 50000
 };

@@ -33,29 +33,33 @@ const CLASSIFICATION_PROMPT = `你是一个记忆分类专家。请分析 Agent 
   "reason": "包含明确的技术偏好"
 }`;
 
+const CLASSIFY_INPUT_MAX_CHARS = 4000;
+
 /**
  * 使用 LLM 对 Agent 输出进行分类
  */
 export async function classifyMemory(api: ExtensionApi, agentOutput: string): Promise<ClassificationResult> {
-  const input = `Agent 输出内容：
-${agentOutput}`;
+  let trimmed = agentOutput;
+  if (trimmed.length > CLASSIFY_INPUT_MAX_CHARS) {
+    trimmed = trimmed.slice(0, CLASSIFY_INPUT_MAX_CHARS) + '\n\n... (内容过长，已截断)';
+  }
+
+  const input = `Agent 输出内容：\n${trimmed}`;
 
   try {
-    console.log('[memory-agent classify] 🔄 调用 LLM API...');
+    api.logger.info('[memory-agent classify] 调用 LLM API...', { inputLength: input.length });
     const response = await api.services.llm.chat([
       { role: 'system', content: CLASSIFICATION_PROMPT },
       { role: 'user', content: input }
     ]);
-    console.log(`[memory-agent classify] ✅ LLM 返回: ${response.substring(0, 200)}`);
+    api.logger.info('[memory-agent classify] LLM 返回', { preview: response.substring(0, 200) });
 
-    // 尝试解析 JSON
     const cleaned = response
       .trim()
       .replace(/^```json?\s*/, '')
       .replace(/```\s*$/, '');
     const result = JSON.parse(cleaned);
 
-    // 验证必填字段
     if (
       typeof result.shouldRemember !== 'boolean' ||
       typeof result.category !== 'string' ||
@@ -69,9 +73,8 @@ ${agentOutput}`;
 
     return result as ClassificationResult;
   } catch (err) {
-    // 分类失败时返回默认值（不记忆）
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error(`[memory-agent classify] ❌ 分类失败: ${errorMsg}`);
+    api.logger.error('[memory-agent classify] 分类失败', { error: errorMsg });
     return {
       shouldRemember: false,
       category: 'fact',

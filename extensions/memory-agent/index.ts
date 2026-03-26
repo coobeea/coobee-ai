@@ -52,13 +52,11 @@ export default {
 
       const agentOutput = (event.output || '').trim();
 
-      // 校验内容长度
-      if (agentOutput.length < config.captureMinChars || agentOutput.length > config.captureMaxChars) {
-        api.logger.debug('[memory-agent] 内容长度不符合要求，跳过', {
+      if (agentOutput.length < config.captureMinChars) {
+        api.logger.debug('[memory-agent] 内容太短，跳过', {
           agentId: event.agentId,
           length: agentOutput.length,
-          min: config.captureMinChars,
-          max: config.captureMaxChars
+          min: config.captureMinChars
         });
         return;
       }

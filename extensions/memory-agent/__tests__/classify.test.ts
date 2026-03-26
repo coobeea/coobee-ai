@@ -15,6 +15,12 @@ describe('classifyMemory', () => {
         llm: {
           chat: vi.fn()
         }
+      },
+      logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn()
       }
     } as unknown as ExtensionApi;
   });
