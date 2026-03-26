@@ -87,17 +87,10 @@ async function loadProviders(): Promise<void> {
   }
 }
 
-const sortedProviders = computed(() => {
-  return [...providers.value].sort((a, b) => {
-    const scoreOf = (p: Provider): number => {
-      if (p.enabled && p.apiKey) return 0;
-      if (p.enabled) return 1;
-      if (p.apiKey) return 2;
-      return 3;
-    };
-    return scoreOf(a) - scoreOf(b);
-  });
-});
+const enabledProviders = computed(() => providers.value.filter((p) => p.enabled));
+const disabledProviders = computed(() => providers.value.filter((p) => !p.enabled));
+
+const sortedProviders = computed(() => [...enabledProviders.value, ...disabledProviders.value]);
 
 const selectedProviderInfo = computed(() => {
   return providers.value.find((p) => p.id === selectedProvider.value);
@@ -247,41 +240,82 @@ onMounted(() => {
           <p class="text-sm">加载中...</p>
         </div>
 
-        <!-- Provider 卡片 -->
-        <div v-else class="flex flex-col gap-3">
+        <!-- Provider 卡片（分组） -->
+        <div v-else class="flex flex-col gap-1">
+          <!-- 已启用 -->
+          <template v-if="enabledProviders.length > 0">
+            <p class="px-1 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              已启用 · {{ enabledProviders.length }}
+            </p>
+            <div
+              v-for="provider in enabledProviders"
+              :key="provider.id"
+              :class="[
+                'cursor-pointer rounded-lg border p-3 transition-colors',
+                selectedProvider === provider.id ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-muted'
+              ]"
+              @click="selectProvider(provider.id)">
+              <div class="mb-1 flex items-center justify-between">
+                <h3 :class="['truncate text-sm font-semibold', selectedProvider === provider.id ? 'text-primary' : '']">
+                  {{ provider.name }}
+                </h3>
+                <div
+                  v-if="selectedProvider === provider.id"
+                  class="flex h-4 w-4 items-center justify-center rounded-full bg-primary">
+                  <span class="i-carbon-checkmark inline-block h-2.5 w-2.5 text-primary-foreground"></span>
+                </div>
+              </div>
+              <p class="mb-2 text-xs text-muted-foreground line-clamp-1">{{ provider.type }}</p>
+              <div class="mt-2 flex items-center justify-between border-t border-border/50 pt-2 text-xs">
+                <div class="flex items-center gap-1.5">
+                  <span :class="['h-2 w-2 rounded-full', getStatusColor(provider)]"></span>
+                  <span :class="getStatusTextColor(provider)">{{ getStatusText(provider) }}</span>
+                </div>
+                <span class="text-muted-foreground">{{ provider.modelCount }} 模型</span>
+              </div>
+            </div>
+          </template>
+
+          <!-- 分隔线 -->
           <div
-            v-for="provider in sortedProviders"
-            :key="provider.id"
-            :class="[
-              'cursor-pointer rounded-lg border p-3 transition-colors',
-              selectedProvider === provider.id ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-muted'
-            ]"
-            @click="selectProvider(provider.id)">
-            <!-- 头部：名称 + 选中状态 -->
-            <div class="mb-1 flex items-center justify-between">
-              <h3 :class="['truncate text-sm font-semibold', selectedProvider === provider.id ? 'text-primary' : '']">
-                {{ provider.name }}
-              </h3>
-              <div
-                v-if="selectedProvider === provider.id"
-                class="flex h-4 w-4 items-center justify-center rounded-full bg-primary">
-                <span class="i-carbon-checkmark inline-block h-2.5 w-2.5 text-primary-foreground"></span>
+            v-if="enabledProviders.length > 0 && disabledProviders.length > 0"
+            class="my-2 border-t border-border"></div>
+
+          <!-- 未启用 -->
+          <template v-if="disabledProviders.length > 0">
+            <p class="px-1 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              未启用 · {{ disabledProviders.length }}
+            </p>
+            <div
+              v-for="provider in disabledProviders"
+              :key="provider.id"
+              :class="[
+                'cursor-pointer rounded-lg border p-3 transition-colors opacity-60',
+                selectedProvider === provider.id
+                  ? 'border-primary bg-primary/5 opacity-100'
+                  : 'border-transparent hover:bg-muted hover:opacity-80'
+              ]"
+              @click="selectProvider(provider.id)">
+              <div class="mb-1 flex items-center justify-between">
+                <h3 :class="['truncate text-sm font-semibold', selectedProvider === provider.id ? 'text-primary' : '']">
+                  {{ provider.name }}
+                </h3>
+                <div
+                  v-if="selectedProvider === provider.id"
+                  class="flex h-4 w-4 items-center justify-center rounded-full bg-primary">
+                  <span class="i-carbon-checkmark inline-block h-2.5 w-2.5 text-primary-foreground"></span>
+                </div>
+              </div>
+              <p class="mb-2 text-xs text-muted-foreground line-clamp-1">{{ provider.type }}</p>
+              <div class="mt-2 flex items-center justify-between border-t border-border/50 pt-2 text-xs">
+                <div class="flex items-center gap-1.5">
+                  <span :class="['h-2 w-2 rounded-full', getStatusColor(provider)]"></span>
+                  <span :class="getStatusTextColor(provider)">{{ getStatusText(provider) }}</span>
+                </div>
+                <span class="text-muted-foreground">{{ provider.modelCount }} 模型</span>
               </div>
             </div>
-
-            <p class="mb-2 text-xs text-muted-foreground line-clamp-1">{{ provider.type }}</p>
-
-            <!-- 状态 + 模型数 -->
-            <div class="flex items-center justify-between text-xs mt-2 pt-2 border-t border-border/50">
-              <div class="flex items-center gap-1.5">
-                <span :class="['h-2 w-2 rounded-full', getStatusColor(provider)]"></span>
-                <span :class="getStatusTextColor(provider)">
-                  {{ getStatusText(provider) }}
-                </span>
-              </div>
-              <span class="text-muted-foreground">{{ provider.modelCount }} 模型</span>
-            </div>
-          </div>
+          </template>
 
           <!-- 空状态 -->
           <div
