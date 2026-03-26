@@ -33,6 +33,7 @@ import { registerAgentHomeRoutes } from './http/agent-home';
 import { registerWebhookRoutes } from './http/webhooks';
 import { registerDiscussionRoutes } from './http/discussion';
 import { registerTrainingRoutes } from './http/training';
+import { registerInsightRoutes } from './http/insight';
 import { GatewayErrorCode, GatewayMethodError } from './protocol/errors';
 import type {
   GatewayRequest,
@@ -282,6 +283,7 @@ export class Gateway implements GatewayApi {
     registerWebhookRoutes(router);
     registerDiscussionRoutes(router);
     registerTrainingRoutes(router);
+    registerInsightRoutes(router);
 
     // 动态挂载 Extension 注册的 HTTP 路由
     this.mountExtensionHttpRoutes(router);

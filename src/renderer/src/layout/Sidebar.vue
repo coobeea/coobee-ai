@@ -50,8 +50,9 @@ const mainMenuItems: MenuItem[] = [
 
 // 更多功能（显示在弹出菜单中）
 const moreMenuItems: MenuItem[] = [
+  { id: 'insight', label: '实时洞察', icon: 'i-carbon-analytics', route: '/insight' },
   { id: 'discussion', label: '群聊讨论', icon: 'i-carbon-chat', route: '/discussion' },
-  { id: 'consultation', label: '专家会诊', icon: 'i-carbon-user-multiple', route: '/consultation' }, // ✅ 使用独立路由，但复用同一个组件
+  { id: 'consultation', label: '专家会诊', icon: 'i-carbon-user-multiple', route: '/consultation' },
   { id: 'training', label: '智能体训练', icon: 'i-carbon-machine-learning-model', route: '/training' },
   { id: 'designer', label: 'Agent 设计器', icon: 'i-carbon-flow', route: '/designer' },
   { id: 'logs', label: '系统日志', icon: 'i-carbon-document-tasks', route: '/logs' },

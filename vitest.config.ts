@@ -21,6 +21,7 @@ export default defineConfig({
       'src/main/terminal/__tests__/**/*.test.ts',
       'src/main/channels/__tests__/**/*.test.ts',
       'src/main/training/__tests__/**/*.test.ts',
+      'src/main/insight/__tests__/**/*.test.ts',
       'src/renderer/**/__tests__/**/*.test.ts',
       'extensions/**/__tests__/**/*.test.ts'
     ],

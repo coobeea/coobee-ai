@@ -85,6 +85,16 @@ const router = createRouter({
           component: () => import('@/views/DiscussionView.vue') // ✅ 复用 DiscussionView
         },
         {
+          path: 'insight',
+          name: 'insight',
+          component: () => import('@/views/InsightView.vue')
+        },
+        {
+          path: 'insight/session/:id',
+          name: 'insight-session',
+          component: () => import('@/views/InsightSessionView.vue')
+        },
+        {
           path: 'training',
           name: 'training',
           component: () => import('@/views/TrainingView.vue')
