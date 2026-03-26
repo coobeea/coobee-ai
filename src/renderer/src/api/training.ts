@@ -3,9 +3,10 @@
  */
 
 import axios from 'axios';
+import configManager from '@/config';
 import type { TrainingSession, TrainingStatus } from '@shared/types/training';
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = `${configManager.getBaseUrl()}`;
 
 /**
  * 弱点分析结果

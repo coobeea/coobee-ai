@@ -3,9 +3,10 @@
  */
 
 import axios from 'axios';
+import configManager from '@/config';
 import type { AnalysisTemplate, InsightSession, AnalysisSnapshot, AnalysisResult } from '@shared/types/insight';
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = `${configManager.getBaseUrl()}`;
 
 interface ApiResponse<T> {
   success: boolean;
