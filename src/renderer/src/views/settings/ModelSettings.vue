@@ -77,7 +77,7 @@ async function loadProviders(): Promise<void> {
       });
 
       if (providers.value.length > 0 && !selectedProvider.value) {
-        selectProvider(providers.value[0].id);
+        selectProvider(sortedProviders.value[0].id);
       }
     }
   } catch (err: unknown) {
@@ -86,6 +86,18 @@ async function loadProviders(): Promise<void> {
     loading.value = false;
   }
 }
+
+const sortedProviders = computed(() => {
+  return [...providers.value].sort((a, b) => {
+    const scoreOf = (p: Provider): number => {
+      if (p.enabled && p.apiKey) return 0;
+      if (p.enabled) return 1;
+      if (p.apiKey) return 2;
+      return 3;
+    };
+    return scoreOf(a) - scoreOf(b);
+  });
+});
 
 const selectedProviderInfo = computed(() => {
   return providers.value.find((p) => p.id === selectedProvider.value);
@@ -238,7 +250,7 @@ onMounted(() => {
         <!-- Provider 卡片 -->
         <div v-else class="flex flex-col gap-3">
           <div
-            v-for="provider in providers"
+            v-for="provider in sortedProviders"
             :key="provider.id"
             :class="[
               'cursor-pointer rounded-lg border p-3 transition-colors',
