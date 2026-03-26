@@ -64,7 +64,7 @@ export default {
       try {
         // 获取当前 Agent 的 Home 目录，记忆存储在 Agent Home 下
         const agentHome = await api.services.paths.getAgentHome(event.agentId);
-        const memoryRoot = `${agentHome}/memory-classified`;
+        const memoryRoot = `${agentHome}/memory`;
 
         api.logger.debug('[memory-agent] 初始化存储', { memoryRoot });
 

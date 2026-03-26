@@ -297,52 +297,52 @@ def do_recognize(image_bytes: bytes, task: str = "text") -> tuple[str, int]:
         return "", 0
     
     import torch
-    from PIL import Image
+    import tempfile
     
-    # 从字节流加载图片
-    image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-    
-    # 获取任务提示词
     prompt = TASK_PROMPTS.get(task, "Text Recognition:")
     
-    # 构建消息（虚拟路径，仅用于格式）
-    messages = [{
-        "role": "user",
-        "content": [
-            {"type": "image", "url": "image"},
-            {"type": "text", "text": prompt}
-        ]
-    }]
+    tmp_file = None
+    try:
+        tmp_file = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+        tmp_file.write(image_bytes)
+        tmp_file.close()
+        
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "url": tmp_file.name},
+                {"type": "text", "text": prompt}
+            ]
+        }]
+        
+        t0 = time.time()
+        
+        inputs = ocr_processor.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=True,
+            return_tensors="pt"
+        ).to(ocr_model.device)
     
-    t0 = time.time()
-    
-    # 应用聊天模板
-    inputs = ocr_processor.apply_chat_template(
-        messages,
-        tokenize=True,
-        add_generation_prompt=True,
-        return_dict=True,
-        return_tensors="pt"
-    ).to(ocr_model.device)
-    
-    # 移除不需要的 token_type_ids
-    inputs.pop("token_type_ids", None)
-    
-    # 推理
-    with torch.no_grad():
-        generated_ids = ocr_model.generate(**inputs, max_new_tokens=8192)
-    
-    # 解码结果
-    text = ocr_processor.decode(
-        generated_ids[0][inputs["input_ids"].shape[1]:],
-        skip_special_tokens=True
-    )
-    
-    infer_ms = int((time.time() - t0) * 1000)
-    
-    log.info(f'识别完成: {task} 任务 | 耗时={infer_ms}ms | 字符数={len(text)}')
-    
-    return text, infer_ms
+        inputs.pop("token_type_ids", None)
+        
+        with torch.no_grad():
+            generated_ids = ocr_model.generate(**inputs, max_new_tokens=8192)
+        
+        text = ocr_processor.decode(
+            generated_ids[0][inputs["input_ids"].shape[1]:],
+            skip_special_tokens=True
+        )
+        
+        infer_ms = int((time.time() - t0) * 1000)
+        
+        log.info(f'识别完成: {task} 任务 | 耗时={infer_ms}ms | 字符数={len(text)}')
+        
+        return text, infer_ms
+    finally:
+        if tmp_file and os.path.exists(tmp_file.name):
+            os.unlink(tmp_file.name)
 
 
 async def recognize_image_async(image_bytes: bytes, task: str = "text") -> tuple[str, int]:

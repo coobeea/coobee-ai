@@ -237,7 +237,7 @@ export function formatRuntimePaths(env: AgentEnv): string {
   ├── AGENTS.md                             — Your skill and tool configuration
   ├── output/                               — Your persistent output files (training results, data)
   ├── skill-data/                           — Structured data from skills (survives across sessions)
-  └── memory-classified/                    — Agent-level structured memory (by memory-agent extension)
+  └── memory/                               — Agent-level structured memory (by memory-agent extension)
 
   **PURPOSE**: This is YOUR permanent space. Store training results, accumulated knowledge,
   and any data you want to reuse in future tasks here.
