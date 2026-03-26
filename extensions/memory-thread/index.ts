@@ -167,15 +167,6 @@ export default {
       'before_compaction',
       async (event) => {
         try {
-          const agentId = event.agentId;
-          if (!agentId) {
-            api.logger.debug('[memory-thread] before_compaction: no agentId, skipping flush');
-            return;
-          }
-
-          const agentHome = await getAgentHome(agentId);
-          if (!agentHome) return;
-
           const workspace = await getWorkspace(event.sessionId);
           if (!workspace) return;
 
@@ -200,9 +191,9 @@ export default {
 
           if (entries.length === 0) return;
 
-          // 写入 Agent Home 的 memory 目录
+          // 写入 workspace 的 memory 目录（会话级数据）
           const today = new Date().toISOString().slice(0, 10);
-          const memoryDir = path.join(agentHome, 'memory');
+          const memoryDir = path.join(workspace, 'memory');
           fs.mkdirSync(memoryDir, { recursive: true });
           const memoryFile = path.join(memoryDir, `${today}.md`);
 
@@ -212,7 +203,7 @@ export default {
           fs.appendFileSync(memoryFile, header + entries.join(''), 'utf-8');
 
           api.logger.info(
-            `[memory-thread] Pre-compaction flush: ${entries.length} entries → homes/${agentId}/memory/${today}.md`
+            `[memory-thread] Pre-compaction flush: ${entries.length} entries → workspace/memory/${today}.md`
           );
         } catch (err) {
           api.logger.warn(`[memory-thread] Pre-compaction flush failed: ${err}`);
@@ -233,16 +224,6 @@ async function getWorkspace(sessionId: string): Promise<string | null> {
   try {
     if (!apiRef) return null;
     return await apiRef.services.paths.getWorkspace(sessionId);
-  } catch {
-    return null;
-  }
-}
-
-/** 获取 Agent Home 目录路径 */
-async function getAgentHome(agentId: string): Promise<string | null> {
-  try {
-    if (!apiRef) return null;
-    return await apiRef.services.paths.getAgentHome(agentId);
   } catch {
     return null;
   }
