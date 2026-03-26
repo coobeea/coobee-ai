@@ -3,26 +3,41 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { classifyMemory } from '../pipeline/classify';
+import { classifyMemory, _resetInstructionsCache } from '../pipeline/classify';
 import type { ExtensionApi } from '@main/common/extension/types';
+
+const MOCK_INSTRUCTIONS = '你是一个记忆分类专家。分析内容并以 JSON 输出。';
+
+function createMockApi(): ExtensionApi {
+  return {
+    services: {
+      llm: {
+        chat: vi.fn()
+      },
+      agent: {
+        getStore: vi.fn().mockResolvedValue({
+          get: vi.fn().mockResolvedValue({
+            id: 'memory-analyzer',
+            instructions: MOCK_INSTRUCTIONS
+          })
+        })
+      }
+    },
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn()
+    }
+  } as unknown as ExtensionApi;
+}
 
 describe('classifyMemory', () => {
   let mockApi: ExtensionApi;
 
   beforeEach(() => {
-    mockApi = {
-      services: {
-        llm: {
-          chat: vi.fn()
-        }
-      },
-      logger: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn()
-      }
-    } as unknown as ExtensionApi;
+    _resetInstructionsCache();
+    mockApi = createMockApi();
   });
 
   it('should classify user preference', async () => {
@@ -109,5 +124,25 @@ describe('classifyMemory', () => {
 
     expect(result.shouldRemember).toBe(false);
     expect(result.reason).toContain('Classification failed');
+  });
+
+  it('should fallback when AgentStore fails', async () => {
+    const failApi = createMockApi();
+    (failApi.services.agent.getStore as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Store unavailable'));
+
+    const mockResponse = JSON.stringify({
+      shouldRemember: true,
+      category: 'fact',
+      importance: 5,
+      summary: '测试回退',
+      keywords: ['test'],
+      memory: '测试回退场景'
+    });
+    vi.mocked(failApi.services.llm.chat).mockResolvedValue(mockResponse);
+
+    const result = await classifyMemory(failApi, '这是一段需要分类的内容');
+
+    expect(result.shouldRemember).toBe(true);
+    expect(failApi.logger.warn).toHaveBeenCalled();
   });
 });
