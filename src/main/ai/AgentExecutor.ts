@@ -917,14 +917,11 @@ class AgentExecutor {
 
       const duration = Date.now() - startTime;
 
-      // === Extension Hooks: agent_end + session_end ===
-      // 使用稳定的 Agent ID（如果 builder 提供）而非临时 runtime.id
+      // === Extension Hooks: agent_end + session_end（fire-and-forget）===
+      // void 钩子不产生主流程需要的结果，异步执行不阻塞会话释放
       const stableAgentId = builderAgentId2 || runtime.id;
-      await Promise.race([
-        this.runExtensionEndHooks(sessionId, stableAgentId, result, duration),
-        new Promise<void>((resolve) => setTimeout(resolve, 60_000))
-      ]).catch((err) => {
-        log.warn(`[AgentExecutor] Extension end hooks timed out or failed: sessionId=${sessionId}`, err);
+      this.runExtensionEndHooks(sessionId, stableAgentId, result, duration).catch((err) => {
+        log.warn(`[AgentExecutor] Extension end hooks failed: sessionId=${sessionId}`, err);
       });
 
       // agent:done 事件
