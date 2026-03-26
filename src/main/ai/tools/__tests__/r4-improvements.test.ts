@@ -25,10 +25,7 @@ vi.mock('@main/common/logger', () => {
 vi.mock('@main/common/env', () => ({
   Env: {
     paths: {
-      userHome: '/mock/.home',
-      memoryDir: '/mock/.home/memory',
-      userMemoryDir: '/mock/.home/memory/user',
-      agentMemoryDir: '/mock/.home/memory/agent'
+      userHome: '/mock/.home'
     }
   }
 }));

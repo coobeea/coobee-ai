@@ -328,7 +328,6 @@ export function createFallbackToolContext(opts: { workspaceRoot: string; session
     eventsDir: path.join(workspace, '.runtime', 'events'),
     userHome,
     configDir: path.join(userHome, 'config'),
-    memoryDir: path.join(userHome, 'memory'),
     tempDir: os.tmpdir(),
     agentName: 'agent',
     agentMode: 'agent'

@@ -382,6 +382,7 @@ When you receive a user request, follow this protocol:
      · Core project knowledge → \`memory(action='write', file='MEMORY.md', content='...', append=true)\`
      · Only save durable, reusable knowledge — NOT session-specific details
    - At the **start** of non-trivial tasks, check existing memory: \`memory(action='list')\` or \`memory(action='search', query='...')\`
+   - For cross-session persistent memory, use Agent Home files (MEMORY.md, etc.)
 
 ## Quality Assurance — NEVER Skip
 
@@ -490,15 +491,13 @@ You can collaborate with other agents using \`delegate_to_agent\`:
  *   - COOBEE_WORKSPACE      — 工作空间目录
  *   - COOBEE_SESSION_ID     — 当前会话 ID
  *   - COOBEE_USER_HOME      — 应用主目录
- *   - COOBEE_MEMORY_DIR     — 记忆目录
  */
 function buildSkillEnvVars(env: AgentEnv): Record<string, string> {
   return {
     COOBEE_CONFIG_DIR: env.configDir,
     COOBEE_WORKSPACE: env.workspace,
     COOBEE_SESSION_ID: env.sessionId,
-    COOBEE_USER_HOME: env.userHome,
-    COOBEE_MEMORY_DIR: env.memoryDir
+    COOBEE_USER_HOME: env.userHome
   };
 }
 
@@ -566,19 +565,16 @@ async function buildToolExecutionContext(
   // 系统路径（从 Env 读取，失败时用合理默认值）
   let userHome = '';
   let configDir = '';
-  let memoryDir = '';
   let tempDir = '';
   try {
     const { Env } = await import('@main/common/env');
     userHome = Env.paths.userHome;
     configDir = Env.paths.configDir;
-    memoryDir = Env.paths.memoryDir;
     tempDir = Env.paths.temp;
   } catch {
     const os = await import('node:os');
     userHome = path.join(os.homedir(), '.coobee-ai');
     configDir = path.join(userHome, 'config');
-    memoryDir = path.join(userHome, 'memory');
     tempDir = os.tmpdir();
   }
 
@@ -610,7 +606,6 @@ async function buildToolExecutionContext(
     // 系统路径
     userHome,
     configDir,
-    memoryDir,
     tempDir,
 
     // Agent 信息（必填）

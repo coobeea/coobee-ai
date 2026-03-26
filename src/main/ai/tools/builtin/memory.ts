@@ -4,13 +4,9 @@
  * 让 Agent 主动管理自己的记忆。
  * 记忆是持久化的 Markdown 文件，不随会话结束而清除。
  *
- * 存储结构（参考 OpenClaw memory-core）：
- *   Agent 工作空间：
- *     {workspace}/MEMORY.md          — 主记忆文件（核心知识、偏好、经验）
- *     {workspace}/memory/*.md        — 分类记忆（preferences.md, lessons.md, 日期.md 等）
- *   全局共享：
- *     {userHome}/memory/MEMORY.md    — 全局主记忆
- *     {userHome}/memory/*.md         — 全局分类记忆
+ * 存储结构：
+ *   {workspace}/MEMORY.md          — 主记忆文件（核心知识、偏好、经验）
+ *   {workspace}/memory/*.md        — 分类记忆（preferences.md, lessons.md, 日期.md 等）
  *
  * 操作：
  *   - list:   列出可用记忆文件
@@ -58,26 +54,20 @@ const DEFAULT_MIN_SCORE = 0.1;
 export const memoryTool: ToolDefinition = {
   name: 'memory',
   description:
-    'Manage persistent memory files across sessions.\n\n' +
+    'Manage persistent memory files in the current workspace.\n\n' +
     'Actions:\n' +
     '- list: list memory files (MEMORY.md + memory/*.md)\n' +
     '- get: read a memory file\n' +
     '- write: create/update a memory file (Markdown recommended)\n' +
     '- search: search memory by keywords (multi-keyword, ranked results)\n\n' +
-    'Scopes:\n' +
-    '- "agent" (default): workspace-specific memory ({workspace}/MEMORY.md + memory/)\n' +
-    '- "user": global shared memory ({userHome}/memory/)\n\n' +
     'MEMORY.md is the primary memory file — use it for core knowledge, preferences, and key lessons.\n' +
     'memory/ directory holds categorized files (preferences.md, lessons.md, dates, etc.).\n' +
-    'Memory persists across sessions. Write only valuable long-term knowledge.',
+    'Memory persists within the session workspace. Write only valuable long-term knowledge.',
   category: ToolCategory.Memory,
   needUserConfirm: false,
   parameters: z.object({
     action: z.enum(['list', 'get', 'write', 'search']).describe('The action to perform'),
-    scope: z
-      .enum(['user', 'agent'])
-      .optional()
-      .describe('Memory scope. "agent" (default) = workspace-specific, "user" = global shared.'),
+    scope: z.enum(['agent']).optional().describe('Memory scope (default "agent" = workspace-specific).'),
     file: z
       .string()
       .optional()
@@ -345,48 +335,18 @@ interface MemoryRoots {
 /**
  * 解析记忆根目录
  *
- * agent scope:
- *   - 有 workspaceRoot → workspace 根目录（MEMORY.md + memory/）
- *   - 无 workspaceRoot → fallback 到 Env.paths.agentMemoryDir
- * user scope:  {userHome}/memory/（MEMORY.md + 子文件）
+ * agent scope: workspace 根目录（MEMORY.md + memory/）
+ * user scope: 同 agent scope（已统一到 workspace）
  */
-async function resolveMemoryRoots(scope: string, workspaceRoot?: string): Promise<MemoryRoots | null> {
-  if (scope === 'agent') {
-    if (workspaceRoot) {
-      // 优先：workspace 根目录（MEMORY.md + memory/）
-      const memorySubDir = path.join(workspaceRoot, 'memory');
-      fs.mkdirSync(memorySubDir, { recursive: true });
-      return {
-        primaryDir: workspaceRoot,
-        memorySubDir
-      };
-    }
-    // Fallback：Env.paths.agentMemoryDir（无 workspace 上下文时）
-    try {
-      const { Env } = await import('@main/common/env');
-      const agentMemDir = Env.paths.agentMemoryDir;
-      fs.mkdirSync(agentMemDir, { recursive: true });
-      return {
-        primaryDir: agentMemDir,
-        memorySubDir: agentMemDir
-      };
-    } catch {
-      return null;
-    }
-  }
+async function resolveMemoryRoots(_scope: string, workspaceRoot?: string): Promise<MemoryRoots | null> {
+  if (!workspaceRoot) return null;
 
-  // user scope
-  try {
-    const { Env } = await import('@main/common/env');
-    const userMemDir = Env.paths.userMemoryDir;
-    fs.mkdirSync(userMemDir, { recursive: true });
-    return {
-      primaryDir: userMemDir,
-      memorySubDir: userMemDir
-    };
-  } catch {
-    return null;
-  }
+  const memorySubDir = path.join(workspaceRoot, 'memory');
+  fs.mkdirSync(memorySubDir, { recursive: true });
+  return {
+    primaryDir: workspaceRoot,
+    memorySubDir
+  };
 }
 
 /**

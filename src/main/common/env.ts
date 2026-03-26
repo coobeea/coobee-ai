@@ -96,9 +96,6 @@ class EnvClass {
     agentsMdPath: string;
     configDir: string;
     secretsDir: string;
-    memoryDir: string;
-    userMemoryDir: string;
-    agentMemoryDir: string;
     sharedDriveDir: string;
     builtinAgentsDir: string;
     userAgentsDir: string;
@@ -167,23 +164,6 @@ class EnvClass {
        * @example 开发: <项目>/.home/secrets | 生产: ~/.coobee-ai/secrets
        */
       secretsDir: path.join(_userHome, 'secrets'),
-
-      // === 记忆目录（Memory）===
-      /**
-       * 记忆总根目录，与 workspaces 同级
-       *
-       * 结构：
-       *   memory/
-       *   ├── user/      用户级记忆（跨 Agent 共享，如偏好、长期记忆）
-       *   └── agent/     Agent 级记忆（按 Agent 隔离，如经验、学习成果）
-       *
-       * @example 开发: <项目>/.home/memory | 生产: ~/.coobee-ai/memory
-       */
-      memoryDir: path.join(_userHome, 'memory'),
-      /** 用户级记忆（跨 Agent 共享） */
-      userMemoryDir: path.join(_userHome, 'memory', 'user'),
-      /** Agent 级记忆（按 Agent 隔离） */
-      agentMemoryDir: path.join(_userHome, 'memory', 'agent'),
 
       // === 共享网盘目录（SharedDrive）===
       /**
@@ -415,7 +395,7 @@ class EnvClass {
    *
    * Agent Home 是 Agent 的持久化空间（跨会话保留），包含：
    *   SOUL.md / IDENTITY.md / USER.md / NOTES.md / AGENTS.md
-   *   HEARTBEAT.md / MEMORY.md / BOOTSTRAP.md / memory/
+   *   HEARTBEAT.md / MEMORY.md / BOOTSTRAP.md
    *
    * @param agentId Agent 唯一标识
    * @returns Home 目录绝对路径
@@ -424,7 +404,6 @@ class EnvClass {
     const homeDir = path.join(this.paths.homesDir, agentId);
     if (!fs.existsSync(homeDir)) {
       fs.mkdirSync(homeDir, { recursive: true });
-      fs.mkdirSync(path.join(homeDir, 'memory'), { recursive: true });
     }
     return homeDir;
   }
@@ -528,15 +507,7 @@ class EnvClass {
    * @param workspace 当前工作空间路径（可选，由 getWorkspaceDir 返回）
    */
   async getSkillSearchPaths(workspace?: string): Promise<string[]> {
-    const coreDirs = [
-      this.paths.userHome,
-      this.paths.configDir,
-      this.paths.memoryDir,
-      this.paths.userMemoryDir,
-      this.paths.agentMemoryDir,
-      this.paths.workspacesDir,
-      this.paths.userSkillsDir
-    ];
+    const coreDirs = [this.paths.userHome, this.paths.configDir, this.paths.workspacesDir, this.paths.userSkillsDir];
     const skillPaths = [this.paths.builtinSkillsDir, this.paths.userSkillsDir];
     if (workspace) {
       const wsSkills = path.join(workspace, 'skills');

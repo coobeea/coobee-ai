@@ -29,9 +29,6 @@ const mockEnv = {
     userSkillsDir: '/mock/.home/skills',
     builtinExtensionsDir: '/mock/extensions',
     userExtensionsDir: '/mock/.home/extensions',
-    memoryDir: '/mock/.home/memory',
-    userMemoryDir: '/mock/.home/memory/user',
-    agentMemoryDir: '/mock/.home/memory/agent',
     workspacesDir: '/mock/.home/workspaces',
     configDir: '/mock/.home/config',
     builtinAgentsDir: '/mock/agents',
@@ -115,7 +112,6 @@ describe('AgentEnv', () => {
         builtinExtensionsDir: '/mock/extensions',
         userExtensionsDir: '/mock/.home/extensions',
         loadedExtensions: [],
-        memoryDir: '/mock/.home/memory',
         availableTools: ['read', 'write', 'exec'],
         sandboxMode: 'path-only',
         execApproval: 'auto',
@@ -264,7 +260,6 @@ describe('AgentEnv', () => {
       builtinExtensionsDir: '/builtin/extensions',
       userExtensionsDir: '/home/test/extensions',
       loadedExtensions: ['ext-memory', 'ext-translate'],
-      memoryDir: '/home/test/memory',
       availableTools: ['read', 'write', 'edit', 'exec'],
       sandboxMode: 'path-only',
       execApproval: 'auto',
@@ -281,10 +276,9 @@ describe('AgentEnv', () => {
       expect(result).toContain('Platform: darwin/arm64');
       expect(result).toContain('dev');
       expect(result).toContain('Session: session-1');
-      expect(result).toContain('Workspace: /home/test/workspaces/session-1');
+      expect(result).toContain('Current Task Directory: /home/test/workspaces/session-1');
       // 关键目录
       expect(result).toContain('Config: /home/test/config');
-      expect(result).toContain('Memory: /home/test/memory');
       expect(result).toContain('Skills: builtin=/builtin/skills');
     });
 

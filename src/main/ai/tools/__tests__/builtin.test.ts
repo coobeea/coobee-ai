@@ -31,10 +31,7 @@ vi.mock('@main/common/logger', () => {
 // Mock env（memory 工具延迟导入 Env）
 vi.mock('@main/common/env', () => ({
   Env: {
-    paths: {
-      userMemoryDir: '/tmp/test-memory/user',
-      agentMemoryDir: '/tmp/test-memory/agent'
-    }
+    paths: {}
   }
 }));
 

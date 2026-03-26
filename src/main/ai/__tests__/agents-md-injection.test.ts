@@ -35,7 +35,6 @@ vi.mock('@main/common/env', () => ({
     paths: {
       configDir: '/mock/config',
       userHome: '/mock/home',
-      memoryDir: '/mock/memory',
       temp: '/mock/temp',
       homesDir: '/mock/homes',
       agentsMdPath: '' // set in beforeEach
@@ -61,8 +60,7 @@ vi.mock('../AgentEnv', () => ({
     skillPaths: ['/mock/skills'],
     sessionId: 'session-123',
     configDir: '/mock/config',
-    userHome: '/mock/home',
-    memoryDir: '/mock/memory'
+    userHome: '/mock/home'
   }),
   formatRuntimePaths: vi.fn().mockReturnValue('<runtime_paths />')
 }));
@@ -124,8 +122,7 @@ describe('AGENTS.md injection', () => {
       skillPaths: ['/mock/skills'],
       sessionId: 'session-123',
       configDir: '/mock/config',
-      userHome: tmpDir,
-      memoryDir: '/mock/memory'
+      userHome: tmpDir
     } as any);
 
     mockBuilder = {

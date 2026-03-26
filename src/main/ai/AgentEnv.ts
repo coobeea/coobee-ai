@@ -82,10 +82,6 @@ export interface AgentEnv {
   /** Agent Home 目录（homes/{agentId}/，跨会话持久化空间） */
   agentHome?: string;
 
-  // --- 记忆系统 ---
-  /** 记忆总根目录 */
-  memoryDir: string;
-
   // --- 能力清单 ---
   /** 可用工具名称列表 */
   availableTools: string[];
@@ -210,9 +206,6 @@ export async function buildAgentEnv(sessionId: string, workspace: string): Promi
     agentId: undefined,
     agentHome: undefined,
 
-    // 记忆系统
-    memoryDir: Env.paths.memoryDir,
-
     // 能力清单
     availableTools,
 
@@ -244,7 +237,7 @@ export function formatRuntimePaths(env: AgentEnv): string {
   ├── AGENTS.md                             — Your skill and tool configuration
   ├── output/                               — Your persistent output files (training results, data)
   ├── skill-data/                           — Structured data from skills (survives across sessions)
-  └── memory/                               — Your daily conversation logs
+  └── memory-classified/                    — Agent-level structured memory (by memory-agent extension)
 
   **PURPOSE**: This is YOUR permanent space. Store training results, accumulated knowledge,
   and any data you want to reuse in future tasks here.
@@ -272,7 +265,6 @@ ${agentHomeSection}
 
 Key System Directories:
 - Config: ${env.configDir}
-- Memory: ${env.memoryDir}
 - Skills: builtin=${env.builtinSkillsDir}, user=${env.userSkillsDir}
 - Agents: builtin=${env.builtinAgentsDir}, user=${env.userAgentsDir}
 

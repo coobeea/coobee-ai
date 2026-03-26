@@ -8,7 +8,6 @@ vi.mock('@main/common/env', () => ({
       configDir: '/mock/config',
       logs: '/mock/logs',
       userHome: '/mock/home',
-      memoryDir: '/mock/memory',
       temp: '/mock/temp',
       homesDir: '/mock/homes',
       agentsMdPath: '/mock/home/AGENTS.md'
@@ -103,8 +102,7 @@ describe('AgentEnvInjector', () => {
       skillPaths: ['/mock/skills'],
       sessionId: 'session-123',
       configDir: '/mock/config',
-      userHome: '/mock/home',
-      memoryDir: '/mock/memory'
+      userHome: '/mock/home'
     });
   });
 

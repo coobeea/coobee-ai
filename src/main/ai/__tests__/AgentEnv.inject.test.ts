@@ -151,8 +151,7 @@ describe('AgentExecutor — 环境注入', () => {
       isDev: true,
       skillPaths: ['/mock/builtin-skills', '/mock/.home/skills'],
       builtinSkillsDir: '/mock/builtin-skills',
-      userSkillsDir: '/mock/.home/skills',
-      memoryDir: '/mock/.home/memory'
+      userSkillsDir: '/mock/.home/skills'
     });
     mockFormatRuntimePaths.mockReturnValue('<runtime_paths>...</runtime_paths>');
     // scanSkills mock: 返回 skills 并设置内部状态

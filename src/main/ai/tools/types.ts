@@ -129,7 +129,7 @@ import type { AgentMode } from '../runtime/types';
  *   - Agent 信息：agentName, agentMode, agentId, agentType
  *   - 当前工作目录：cwd（exec / file 工具的默认基准）
  *   - 工作空间路径：sessionsDir, contextsDir, eventsDir, tasksDir, outputDir
- *   - 系统路径：userHome, configDir, memoryDir, tempDir
+ *   - 系统路径：userHome, configDir, tempDir
  *
  * 由 AgentEnvInjector 构建，通过 Builder → Runtime → ToolExecutionPipeline 注入。
  * 大模型不感知此上下文，仅工具执行函数内部使用。
@@ -181,9 +181,6 @@ export interface ToolExecutionContext extends SandboxContext {
 
   /** 配置目录（coobee.json5、secrets.json5 等） */
   configDir: string;
-
-  /** 记忆根目录 */
-  memoryDir: string;
 
   /** 系统临时目录 */
   tempDir: string;

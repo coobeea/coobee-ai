@@ -109,12 +109,6 @@ export function registerMonitoringRoutes(router: Router): void {
     try {
       const files: Array<{ name: string; path: string; size: number; mtime: string; scope: string }> = [];
 
-      // 全局记忆目录
-      const globalMemDir = Env.paths.memoryDir;
-      if (fs.existsSync(globalMemDir)) {
-        scanMemoryDir(globalMemDir, 'global', files);
-      }
-
       // 扫描所有工作空间的记忆
       const workspacesDir = Env.paths.workspacesDir;
       if (fs.existsSync(workspacesDir)) {
