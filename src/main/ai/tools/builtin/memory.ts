@@ -28,7 +28,6 @@ import { z } from 'zod';
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types';
 import { ToolCategory } from '../types';
 import { log } from '@main/common/logger';
-import { updateIndexEntry, getOrBuildIndex, searchIndex } from './memory-index';
 import { resolveSandboxPath } from '../../sandbox';
 
 /** 支持的记忆文件扩展名 */
@@ -221,8 +220,6 @@ export const memoryTool: ToolDefinition = {
         const separator = existing.endsWith('\n') ? '\n' : '\n\n';
         fs.writeFileSync(filePath, existing + separator + content, 'utf-8');
         log.info(`[memory] Appended: ${scope}/${file}`);
-        // 更新记忆索引
-        tryUpdateIndex(roots.memorySubDir, file, filePath);
         return {
           success: true,
           llmContent: `Memory file appended: ${scope}/${file}`
@@ -240,8 +237,6 @@ export const memoryTool: ToolDefinition = {
       fs.writeFileSync(filePath, finalContent, 'utf-8');
 
       log.info(`[memory] ${exists ? 'Updated' : 'Created'}: ${scope}/${file}`);
-      // 更新记忆索引
-      tryUpdateIndex(roots.memorySubDir, file, filePath);
 
       return {
         success: true,
@@ -265,31 +260,9 @@ export const memoryTool: ToolDefinition = {
         percentage: 0
       };
 
-      // 两阶段搜索：先索引预过滤，再全文搜索
-      const keywords = query
-        .toLowerCase()
-        .split(/\s+/)
-        .filter((k) => k.length > 0);
-
-      // Phase 1: 索引层快速匹配（标题/标签/摘要）
-      let indexHints: Set<string> | undefined;
-      try {
-        const indexEntries = getOrBuildIndex(roots.memorySubDir);
-        if (indexEntries.length > 0) {
-          const indexResults = searchIndex(indexEntries, keywords);
-          if (indexResults.length > 0) {
-            indexHints = new Set(indexResults.map((e) => e.file));
-          }
-        }
-      } catch {
-        // 索引不可用，降级到全文搜索
-      }
-
-      // Phase 2: 全文搜索（有索引提示时优先搜索匹配文件）
       const results = searchMemoryFiles(roots, query, {
         maxResults,
-        minScore: DEFAULT_MIN_SCORE,
-        indexHints
+        minScore: DEFAULT_MIN_SCORE
       });
 
       if (results.length === 0) {
@@ -512,8 +485,6 @@ export interface MemorySearchResult {
 interface SearchOptions {
   maxResults?: number;
   minScore?: number;
-  /** 索引层预过滤的文件名集合，命中的文件评分加权 */
-  indexHints?: Set<string>;
 }
 
 /**
@@ -588,11 +559,6 @@ export function searchMemoryFiles(roots: MemoryRoots, query: string, options?: S
     //    归一化到 0-1 范围
     let score = Math.min(1, (weightedScore / keywords.length) * (1 / Math.log2(totalWords + 2)));
 
-    // 索引命中加权（索引层标题/标签匹配的文件提升权重）
-    if (options?.indexHints?.has(path.basename(fileInfo.absolutePath))) {
-      score *= 1.3;
-    }
-
     // 主记忆文件加权
     if (fileInfo.isPrimary) {
       score *= 1.5;
@@ -664,24 +630,4 @@ function resolveMemoryPath(memoryRoot: string, file: string): string | null {
     return null;
   }
   return result.path;
-}
-
-// ==================== 索引更新辅助 ====================
-
-/**
- * 安全更新记忆索引（不阻塞主流程）
- *
- * 在写入记忆文件后调用。如果文件在 memorySubDir 中，更新索引。
- * 如果是 MEMORY.md 在 primaryDir 中，跳过索引更新（不在子目录中）。
- */
-function tryUpdateIndex(memorySubDir: string, file: string, filePath: string): void {
-  try {
-    const dir = path.dirname(filePath);
-    // 只索引 memorySubDir 下的文件
-    if (dir === memorySubDir) {
-      updateIndexEntry(memorySubDir, path.basename(filePath));
-    }
-  } catch (err) {
-    log.warn(`[memory] Index update failed for ${file}:`, err);
-  }
 }
