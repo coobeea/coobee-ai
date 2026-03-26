@@ -27,23 +27,23 @@ importers:
         specifier: ^15.3.0
         version: 15.3.0(koa@3.1.1)
       '@mariozechner/pi-agent-core':
-        specifier: 0.55.4
-        version: 0.55.4(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
+        specifier: 0.62.0
+        version: 0.62.0(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
       '@mariozechner/pi-ai':
-        specifier: 0.55.4
-        version: 0.55.4(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
+        specifier: 0.62.0
+        version: 0.62.0(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
       '@mariozechner/pi-coding-agent':
-        specifier: 0.55.4
-        version: 0.55.4(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
+        specifier: 0.62.0
+        version: 0.62.0(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
       '@mariozechner/pi-tui':
-        specifier: 0.55.4
-        version: 0.55.4
+        specifier: 0.62.0
+        version: 0.62.0
       '@modelcontextprotocol/sdk':
         specifier: ^1.25.3
         version: 1.25.3(hono@4.11.7)(zod@4.3.6)
       '@openai/agents':
-        specifier: ^0.5.3
-        version: 0.5.3(ws@8.19.0)(zod@4.3.6)
+        specifier: ^0.8.1
+        version: 0.8.1(ws@8.19.0)(zod@4.3.6)
       '@pinia/colada':
         specifier: ^0.21.2
         version: 0.21.2(pinia@3.0.4(typescript@5.9.3)(vue@3.5.27(typescript@5.9.3)))(vue@3.5.27(typescript@5.9.3))
@@ -1556,26 +1556,26 @@ packages:
     resolution: {integrity: sha512-faGUlTcXka5l7rv0lP3K3vGW/ejRuOS24RR2aSFWREUQqzjgdsuWNo/IiPqL3kWRGt6Ahl2+qcDAwtdeWeuGUw==}
     hasBin: true
 
-  '@mariozechner/pi-agent-core@0.55.4':
-    resolution: {integrity: sha512-g/rZMrP8X4rjqzU4kCV5LLFqOKR0jrYW3bNG7+lpENOVn6jU2GDpq8MIT2SacT76uPKQhVJII/oI9evGpnGI3w==}
+  '@mariozechner/pi-agent-core@0.62.0':
+    resolution: {integrity: sha512-SBjqgDrgKOaC+IGzFGB3jXQErv9H1QMYnWFvUg6ra6dG0ZgWFBUZb6unidngWLsmaxSDWes6KeKiVFMsr2VSEQ==}
     engines: {node: '>=20.0.0'}
 
-  '@mariozechner/pi-ai@0.55.4':
-    resolution: {integrity: sha512-q6fWN66N5wpYl/ri54v2Q3QBEz04+nBY67LmatM0xK3TKVgmeGPyQ1YXmRlyb5KhHxMDhNMxChkcHBABzfTi6g==}
-    engines: {node: '>=20.0.0'}
-    hasBin: true
-
-  '@mariozechner/pi-coding-agent@0.55.4':
-    resolution: {integrity: sha512-l/5NySVD1RplhzC3ssd/GtZlxkKKu34vY5VlT+m1mUBqYupBChitEwartVJR5znHoe02LtLXj4G6akOgyd36Ww==}
+  '@mariozechner/pi-ai@0.62.0':
+    resolution: {integrity: sha512-mJgryZ5RgBQG++tiETMtCQQJoH2MAhKetCfqI98NMvGydu7L9x2qC2JekQlRaAgIlTgv4MRH1UXHMEs4UweE/Q==}
     engines: {node: '>=20.0.0'}
     hasBin: true
 
-  '@mariozechner/pi-tui@0.55.4':
-    resolution: {integrity: sha512-LXoa0CV58lEfzbjXyuUMa4KwoPTzTegPZJEEzuc9p7LnlIn4/eBebhTXQmQ7Hxo+/zb3zpy2qoynKpKcEas9GQ==}
+  '@mariozechner/pi-coding-agent@0.62.0':
+    resolution: {integrity: sha512-f1NnExqsHuA6w8UVlBtPsvTBhdkMc0h1JD9SzGCdWTLou5GHJr2JIP6DlwV9IKWAnM+sAelaoFez+14wLP2zOQ==}
+    engines: {node: '>=20.6.0'}
+    hasBin: true
+
+  '@mariozechner/pi-tui@0.62.0':
+    resolution: {integrity: sha512-/At11PPe8l319MnUoK4wN5L/uVCU6bDdiIUzH8Ez0stOkjSF6isRXScZ+RMM+6iCKsD4muBTX8Cmcif+3/UWHA==}
     engines: {node: '>=20.0.0'}
 
-  '@mistralai/mistralai@1.10.0':
-    resolution: {integrity: sha512-tdIgWs4Le8vpvPiUEWne6tK0qbVc+jMenujnvTqOjogrJUsCSQhus0tHTU1avDDh5//Rq2dFgP9mWRAdIEoBqg==}
+  '@mistralai/mistralai@1.14.1':
+    resolution: {integrity: sha512-IiLmmZFCCTReQgPAT33r7KQ1nYo5JPdvGkrkZqA8qQ2qB1GHgs5LoP5K2ICyrjnpw2n8oSxMM/VP+liiKcGNlQ==}
 
   '@modelcontextprotocol/sdk@1.25.3':
     resolution: {integrity: sha512-vsAMBMERybvYgKbg/l4L1rhS7VXV1c0CtyJg72vwxONVX0l4ZfKVAnZEWTQixJGTzKnELjQ59e4NbdFDALRiAQ==}
@@ -1680,26 +1680,26 @@ packages:
     resolution: {integrity: sha512-/xGlezI6xfGO9NwuJlnwz/K14qD1kCSAGtacBHnGzeAIuJGazcp45KP5NuyARXoKb7cwulAGWVsbeSxdG/cb0Q==}
     engines: {node: ^18.17.0 || >=20.5.0}
 
-  '@openai/agents-core@0.5.3':
-    resolution: {integrity: sha512-k7zoeBZXHZsszpTN6VJFUlJiHBqGYJPZuSeUW54i9uvVu6jE8caMJYzAuco8XZSMBo2XH0d4bf0Tl3Jglo/Hgg==}
+  '@openai/agents-core@0.8.1':
+    resolution: {integrity: sha512-CHUppazb8zAMnH2QLdlU2baEEjupZWg/1FCwplga0avjl23Saz2jHJl87psq+kheZ/j/yvpkX/pZgU8h6ybzDw==}
     peerDependencies:
       zod: ^4.0.0
     peerDependenciesMeta:
       zod:
         optional: true
 
-  '@openai/agents-openai@0.5.3':
-    resolution: {integrity: sha512-3U81v/vtNVaKx6JmbkPUpCjxeAJ4wBnJvn/KF+YnXhMypTYes/nwp8nLIhVVVqzk+qR/vxgo5KACYfipDeJFAA==}
+  '@openai/agents-openai@0.8.1':
+    resolution: {integrity: sha512-X4e2r29imlsE52uh/bF10Lj4/KO7DR2dxYKsExAqhrkdubqwtuvRYLxm3i1wq0vnjk4ob2jg0bwxZDki+UrB0Q==}
     peerDependencies:
       zod: ^4.0.0
 
-  '@openai/agents-realtime@0.5.3':
-    resolution: {integrity: sha512-ZLPpxYGXah1WkbYflHQ0gdzCXqWko63gEa54Jt/OyBvNxYIF8mXgV/OQBC5eJssD+9/u24LQ6GEzyworpJH98w==}
+  '@openai/agents-realtime@0.8.1':
+    resolution: {integrity: sha512-ueppWcfQhYrX5t4EBuLc00kAAxu5NeZ31r0aw54zyVkXH21zccgPCbMOQ3eRvvaRmh20+U7EX9cFVJ7+26Sy6w==}
     peerDependencies:
       zod: ^4.0.0
 
-  '@openai/agents@0.5.3':
-    resolution: {integrity: sha512-zYZ2EQopvhGe7ljxKtIqLgfSIcVlasH577f7tuITvHu5/39/9VUh9XDCqZwPr+F+jKP6ZqakYWO0CusUtbxFBg==}
+  '@openai/agents@0.8.1':
+    resolution: {integrity: sha512-4TF15Z76GVubPrNA601ph12D2Fak7iD6gP+T8Q3RQUDSWaRWMcDQv3TiPiEVnlxbLkNA7OYHEl+FpdXXFp+s2g==}
     peerDependencies:
       zod: ^4.0.0
 
@@ -4818,18 +4818,6 @@ packages:
     resolution: {integrity: sha512-VXJjc87FScF88uafS3JllDgvAm+c/Slfz06lorj2uAY34rlUu0Nt+v8wreiImcrgAjjIHp1rXpTDlLOGw29WwQ==}
     engines: {node: '>=18'}
 
-  openai@6.10.0:
-    resolution: {integrity: sha512-ITxOGo7rO3XRMiKA5l7tQ43iNNu+iXGFAcf2t+aWVzzqRaS0i7m1K2BhxNdaveB+5eENhO0VY1FkiZzhBk4v3A==}
-    hasBin: true
-    peerDependencies:
-      ws: ^8.18.0
-      zod: ^3.25 || ^4.0
-    peerDependenciesMeta:
-      ws:
-        optional: true
-      zod:
-        optional: true
-
   openai@6.17.0:
     resolution: {integrity: sha512-NHRpPEUPzAvFOAFs9+9pC6+HCw/iWsYsKCMPXH5Kw7BpMxqd8g/A07/1o7Gx2TWtCnzevVRyKMRFqyiHyAlqcA==}
     hasBin: true
@@ -4842,8 +4830,20 @@ packages:
       zod:
         optional: true
 
-  openai@6.22.0:
-    resolution: {integrity: sha512-7Yvy17F33Bi9RutWbsaYt5hJEEJ/krRPOrwan+f9aCPuMat1WVsb2VNSII5W1EksKT6fF69TG/xj4XzodK3JZw==}
+  openai@6.26.0:
+    resolution: {integrity: sha512-zd23dbWTjiJ6sSAX6s0HrCZi41JwTA1bQVs0wLQPZ2/5o2gxOJA5wh7yOAUgwYybfhDXyhwlpeQf7Mlgx8EOCA==}
+    hasBin: true
+    peerDependencies:
+      ws: ^8.18.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      ws:
+        optional: true
+      zod:
+        optional: true
+
+  openai@6.33.0:
+    resolution: {integrity: sha512-xAYN1W3YsDXJWA5F277135YfkEk6H7D3D6vWwRhJ3OEkzRgcyK8z/P5P9Gyi/wB4N8kK9kM5ZjprfvyHagKmpw==}
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
@@ -6111,9 +6111,6 @@ packages:
     resolution: {integrity: sha512-pM/SU9d3YAggzi6MtR4h7ruuQlqKtad8e9S0fmxcMi+ueAK5Korys/aWcV9LIIHTVbj01NdzxcnXSN+O74ZIVA==}
     peerDependencies:
       zod: ^3.25 || ^4
-
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
   zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
@@ -7460,9 +7457,9 @@ snapshots:
       std-env: 3.10.0
       yoctocolors: 2.1.2
 
-  '@mariozechner/pi-agent-core@0.55.4(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)':
+  '@mariozechner/pi-agent-core@0.62.0(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)':
     dependencies:
-      '@mariozechner/pi-ai': 0.55.4(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
+      '@mariozechner/pi-ai': 0.62.0(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - aws-crt
@@ -7472,17 +7469,17 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-ai@0.55.4(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)':
+  '@mariozechner/pi-ai@0.62.0(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)':
     dependencies:
       '@anthropic-ai/sdk': 0.73.0(zod@4.3.6)
       '@aws-sdk/client-bedrock-runtime': 3.986.0
       '@google/genai': 1.40.0(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))
-      '@mistralai/mistralai': 1.10.0
+      '@mistralai/mistralai': 1.14.1
       '@sinclair/typebox': 0.34.48
       ajv: 8.17.1
       ajv-formats: 3.0.1(ajv@8.17.1)
       chalk: 5.6.2
-      openai: 6.10.0(ws@8.19.0)(zod@4.3.6)
+      openai: 6.26.0(ws@8.19.0)(zod@4.3.6)
       partial-json: 0.1.7
       proxy-agent: 6.5.0
       undici: 7.21.0
@@ -7496,12 +7493,12 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-coding-agent@0.55.4(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)':
+  '@mariozechner/pi-coding-agent@0.62.0(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)':
     dependencies:
       '@mariozechner/jiti': 2.6.5
-      '@mariozechner/pi-agent-core': 0.55.4(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
-      '@mariozechner/pi-ai': 0.55.4(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
-      '@mariozechner/pi-tui': 0.55.4
+      '@mariozechner/pi-agent-core': 0.62.0(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
+      '@mariozechner/pi-ai': 0.62.0(@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6))(ws@8.19.0)(zod@4.3.6)
+      '@mariozechner/pi-tui': 0.62.0
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 5.6.2
       cli-highlight: 2.1.11
@@ -7514,6 +7511,8 @@ snapshots:
       marked: 15.0.12
       minimatch: 10.2.4
       proper-lockfile: 4.1.2
+      strip-ansi: 7.1.2
+      undici: 7.21.0
       yaml: 2.8.2
     optionalDependencies:
       '@mariozechner/clipboard': 0.3.2
@@ -7526,19 +7525,24 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-tui@0.55.4':
+  '@mariozechner/pi-tui@0.62.0':
     dependencies:
       '@types/mime-types': 2.1.4
       chalk: 5.6.2
       get-east-asian-width: 1.4.0
-      koffi: 2.15.1
       marked: 15.0.12
       mime-types: 3.0.2
+    optionalDependencies:
+      koffi: 2.15.1
 
-  '@mistralai/mistralai@1.10.0':
+  '@mistralai/mistralai@1.14.1':
     dependencies:
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.1(zod@3.25.76)
+      ws: 8.19.0
+      zod: 4.3.6
+      zod-to-json-schema: 3.25.1(zod@4.3.6)
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   '@modelcontextprotocol/sdk@1.25.3(hono@4.11.7)(zod@4.3.6)':
     dependencies:
@@ -7647,10 +7651,10 @@ snapshots:
     dependencies:
       semver: 7.7.3
 
-  '@openai/agents-core@0.5.3(ws@8.19.0)(zod@4.3.6)':
+  '@openai/agents-core@0.8.1(ws@8.19.0)(zod@4.3.6)':
     dependencies:
       debug: 4.4.3
-      openai: 6.22.0(ws@8.19.0)(zod@4.3.6)
+      openai: 6.33.0(ws@8.19.0)(zod@4.3.6)
     optionalDependencies:
       '@modelcontextprotocol/sdk': 1.26.0(zod@4.3.6)
       zod: 4.3.6
@@ -7659,20 +7663,20 @@ snapshots:
       - supports-color
       - ws
 
-  '@openai/agents-openai@0.5.3(ws@8.19.0)(zod@4.3.6)':
+  '@openai/agents-openai@0.8.1(ws@8.19.0)(zod@4.3.6)':
     dependencies:
-      '@openai/agents-core': 0.5.3(ws@8.19.0)(zod@4.3.6)
+      '@openai/agents-core': 0.8.1(ws@8.19.0)(zod@4.3.6)
       debug: 4.4.3
-      openai: 6.22.0(ws@8.19.0)(zod@4.3.6)
+      openai: 6.33.0(ws@8.19.0)(zod@4.3.6)
       zod: 4.3.6
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - supports-color
       - ws
 
-  '@openai/agents-realtime@0.5.3(zod@4.3.6)':
+  '@openai/agents-realtime@0.8.1(zod@4.3.6)':
     dependencies:
-      '@openai/agents-core': 0.5.3(ws@8.19.0)(zod@4.3.6)
+      '@openai/agents-core': 0.8.1(ws@8.19.0)(zod@4.3.6)
       '@types/ws': 8.18.1
       debug: 4.4.3
       ws: 8.19.0
@@ -7683,13 +7687,13 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@openai/agents@0.5.3(ws@8.19.0)(zod@4.3.6)':
+  '@openai/agents@0.8.1(ws@8.19.0)(zod@4.3.6)':
     dependencies:
-      '@openai/agents-core': 0.5.3(ws@8.19.0)(zod@4.3.6)
-      '@openai/agents-openai': 0.5.3(ws@8.19.0)(zod@4.3.6)
-      '@openai/agents-realtime': 0.5.3(zod@4.3.6)
+      '@openai/agents-core': 0.8.1(ws@8.19.0)(zod@4.3.6)
+      '@openai/agents-openai': 0.8.1(ws@8.19.0)(zod@4.3.6)
+      '@openai/agents-realtime': 0.8.1(zod@4.3.6)
       debug: 4.4.3
-      openai: 6.22.0(ws@8.19.0)(zod@4.3.6)
+      openai: 6.33.0(ws@8.19.0)(zod@4.3.6)
       zod: 4.3.6
     transitivePeerDependencies:
       - '@cfworker/json-schema'
@@ -11040,17 +11044,17 @@ snapshots:
     dependencies:
       mimic-function: 5.0.1
 
-  openai@6.10.0(ws@8.19.0)(zod@4.3.6):
-    optionalDependencies:
-      ws: 8.19.0
-      zod: 4.3.6
-
   openai@6.17.0(ws@8.19.0)(zod@4.3.6):
     optionalDependencies:
       ws: 8.19.0
       zod: 4.3.6
 
-  openai@6.22.0(ws@8.19.0)(zod@4.3.6):
+  openai@6.26.0(ws@8.19.0)(zod@4.3.6):
+    optionalDependencies:
+      ws: 8.19.0
+      zod: 4.3.6
+
+  openai@6.33.0(ws@8.19.0)(zod@4.3.6):
     optionalDependencies:
       ws: 8.19.0
       zod: 4.3.6
@@ -12409,15 +12413,9 @@ snapshots:
 
   yoctocolors@2.1.2: {}
 
-  zod-to-json-schema@3.25.1(zod@3.25.76):
-    dependencies:
-      zod: 3.25.76
-
   zod-to-json-schema@3.25.1(zod@4.3.6):
     dependencies:
       zod: 4.3.6
-
-  zod@3.25.76: {}
 
   zod@4.3.6: {}
 
