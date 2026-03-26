@@ -34,7 +34,7 @@
 ### 1.3 ⏬ Extension Gateway 方法未注册到 Gateway（降级为 P3）
 
 - **位置**：`ReadyExtensionHook.ts`
-- **说明**：目前内置 Extension（memory-auto、tool-approval）均未使用 `registerGatewayMethod`，无实际消费者
+- **说明**：目前内置 Extension（memory-thread、tool-approval）均未使用 `registerGatewayMethod`，无实际消费者
 - **修复**：需要时在 `ReadyExtensionHook` 中获取 Gateway 实例注册
 
 ---

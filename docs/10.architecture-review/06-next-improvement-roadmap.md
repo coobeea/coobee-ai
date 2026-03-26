@@ -231,7 +231,7 @@ interface MemoryIndex {
 ```
 
 - Agent search 时先查索引，再按需读全文
-- memory-auto Extension 写入记忆时同步更新索引
+- memory-thread Extension 写入记忆时同步更新索引
 
 **阶段 B — FTS 搜索（中期可选）**：
 
@@ -312,7 +312,7 @@ export function register(api: ExtensionAPI): void {
 
 1. 在 `ExtensionManager` 中注册服务提供者
 2. Extension `register(api)` 的 `api` 参数增加 `services` 属性
-3. 迁移 tool-approval 和 memory-auto 使用 API 而非直接 import
+3. 迁移 tool-approval 和 memory-thread 使用 API 而非直接 import
 
 ### P4-3 并发控制升级
 

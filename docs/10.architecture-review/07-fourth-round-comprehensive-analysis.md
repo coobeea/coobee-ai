@@ -81,7 +81,7 @@ AgentExecutor.execute()
     ├── 4. Extension Hook: session_start
     │
     ├── 5. Extension Hook: before_agent_start
-    │       ├── memory-auto: 注入记忆摘要
+    │       ├── memory-thread: 注入记忆摘要
     │       └── 其他扩展: prependContext / replaceSystemPrompt
     │
     ├── 6. runtime.stream(input)  ← AbstractAgentRuntime 模板方法
@@ -113,7 +113,7 @@ AgentExecutor.execute()
     │       └── EventBus 广播 → StreamStore / StreamMonitor / 前端
     │
     ├── 8. Extension Hook: agent_end
-    │       └── memory-auto: 检测记忆信号词 → 追加 memory
+    │       └── memory-thread: 检测记忆信号词 → 追加 memory
     │
     ├── 9. Extension Hook: session_end
     │
@@ -267,7 +267,7 @@ deny 叠加 / allow 取交集 / confirm 叠加
 
 **发现 13（中）**：`tool-approval` Extension 的实现仍然直接 `import('../../src/main/ai/hitl/HitlApprovalManager')`，未使用 `api.services.hitl`。P4-2 的设计意图（Extension 通过 services 接口访问核心能力）尚未在内置扩展中落地。
 
-**发现 14（低）**：`memory-auto` Extension 直接读取文件系统（`fs.readFileSync`），未通过 `api.services` 提供的记忆服务接口，但这在当前设计下是合理的（Extension 直接操作文件是允许的）。
+**发现 14（低）**：`memory-thread` Extension 直接读取文件系统（`fs.readFileSync`），未通过 `api.services` 提供的记忆服务接口，但这在当前设计下是合理的（Extension 直接操作文件是允许的）。
 
 #### 3.4.3 Extension 加载流程
 
@@ -291,8 +291,8 @@ ReadyExtensionHook.execute()
 - **存储**：Markdown 文件（`MEMORY.md` + `memory/*.md`）
 - **搜索**：多关键字、逐行扫描、标题加权 ×2、主记忆 ×1.5、TF 归一化
 - **索引**：`.memory-index.json`（写入时增量更新）
-- **自动提取**：`memory-auto` Extension 在 `agent_end` 时检测信号词
-- **自动注入**：`memory-auto` Extension 在 `before_agent_start` 时注入摘要
+- **自动提取**：`memory-thread` Extension 在 `agent_end` 时检测信号词
+- **自动注入**：`memory-thread` Extension 在 `before_agent_start` 时注入摘要
 
 #### 3.5.2 索引利用度
 
@@ -390,7 +390,7 @@ chat.send → createBuilder(mode) → agentExecutor.submit({ sessionId, message,
 ### 4.2 coobee-ai 的独有优势
 
 1. **双 Runtime 架构**：同时支持 OpenAI 和 PiMono（MiniMax/DeepSeek 等），用户可选择不同 Provider
-2. **自我进化闭环**：self-reflection Skill + execution-protocol + memory-auto，Agent 能评估自身表现并积累经验
+2. **自我进化闭环**：self-reflection Skill + execution-protocol + memory-thread，Agent 能评估自身表现并积累经验
 3. **Skill 系统设计**：按需加载 + 后到覆盖 + Extension 贡献，轻量且灵活
 4. **Chat/Agent 双模式**：简化的对话模式 + 完整的 Agent 模式
 

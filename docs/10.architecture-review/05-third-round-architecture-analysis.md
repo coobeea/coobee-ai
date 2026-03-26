@@ -24,18 +24,18 @@
 
 ### 1.2 健康度对比（第 2 轮 → 第 3 轮）
 
-| 子系统         | 第 2 轮 | 第 3 轮 | 变化 | 说明                                                       |
-| -------------- | ------- | ------- | ---- | ---------------------------------------------------------- |
-| 执行链路       | ★★★★☆   | ★★★★☆   | →    | AgentExecutor 简化了 HITL 循环                             |
-| 工具系统       | ★★★★☆   | ★★★★★   | ↑    | 新增版本追踪、file-lock 已导出                             |
-| 流式输出       | ★★★★☆   | ★★★★☆   | →    | 未变化                                                     |
-| Skill 系统     | ★★★☆☆   | ★★★★☆   | ↑    | 修复 Extension Skill 发现、优先级覆盖、执行协议 Skill 化   |
-| Extension 系统 | ★★★☆☆   | ★★★★☆   | ↑    | 来源校验、2 个关键 Extension（tool-approval, memory-auto） |
-| HITL 系统      | ★★☆☆☆   | ★★★★★   | ↑↑   | SDK 无关、per-call 审批、Extension 驱动                    |
-| Memory 系统    | ★★☆☆☆   | ★★★★☆   | ↑↑   | 文件驱动 + 增强搜索 + 自动提取/注入                        |
-| 安全体系       | ★★☆☆☆   | ★★★☆☆   | ↑    | path-guard 完整、Extension 校验，但策略层级仍不足          |
-| 自我评估       | ★★★★☆   | ★★★★★   | ↑    | 经验沉淀、Skill 生成指导                                   |
-| 错误恢复       | ★☆☆☆☆   | ★★★☆☆   | ↑↑   | ErrorRecoveryChain 基础框架                                |
+| 子系统         | 第 2 轮 | 第 3 轮 | 变化 | 说明                                                         |
+| -------------- | ------- | ------- | ---- | ------------------------------------------------------------ |
+| 执行链路       | ★★★★☆   | ★★★★☆   | →    | AgentExecutor 简化了 HITL 循环                               |
+| 工具系统       | ★★★★☆   | ★★★★★   | ↑    | 新增版本追踪、file-lock 已导出                               |
+| 流式输出       | ★★★★☆   | ★★★★☆   | →    | 未变化                                                       |
+| Skill 系统     | ★★★☆☆   | ★★★★☆   | ↑    | 修复 Extension Skill 发现、优先级覆盖、执行协议 Skill 化     |
+| Extension 系统 | ★★★☆☆   | ★★★★☆   | ↑    | 来源校验、2 个关键 Extension（tool-approval, memory-thread） |
+| HITL 系统      | ★★☆☆☆   | ★★★★★   | ↑↑   | SDK 无关、per-call 审批、Extension 驱动                      |
+| Memory 系统    | ★★☆☆☆   | ★★★★☆   | ↑↑   | 文件驱动 + 增强搜索 + 自动提取/注入                          |
+| 安全体系       | ★★☆☆☆   | ★★★☆☆   | ↑    | path-guard 完整、Extension 校验，但策略层级仍不足            |
+| 自我评估       | ★★★★☆   | ★★★★★   | ↑    | 经验沉淀、Skill 生成指导                                     |
+| 错误恢复       | ★☆☆☆☆   | ★★★☆☆   | ↑↑   | ErrorRecoveryChain 基础框架                                  |
 
 ---
 
@@ -55,7 +55,7 @@ Gateway (IPC) → AgentExecutor.execute() / stream()
   │     ├── buildExecutionProtocol(skillManager) — Skill 优先、硬编码兜底
   │     └── formatRuntimePaths() + skillDiscoveryHint
   ├── Extension Hook: message_received → session_start → before_agent_start
-  │     └── memory-auto: 注入 MEMORY.md 摘要 + 相关记忆
+  │     └── memory-thread: 注入 MEMORY.md 摘要 + 相关记忆
   ├── Builder.build() → AgentRuntime 实例
   ├── runtime.stream() — ErrorRecoveryChain 包装
   │     ├── doStream() — SDK 特定实现
@@ -71,7 +71,7 @@ Gateway (IPC) → AgentExecutor.execute() / stream()
   │     │     └── yield StreamChunk → EventBus → 前端
   │     └── 错误时: ErrorRecoveryChain.recover() → retry/throw
   ├── Extension Hook: agent_end → session_end
-  │     ├── memory-auto: 检测记忆信号 → 自动保存
+  │     ├── memory-thread: 检测记忆信号 → 自动保存
   │     └── tool-approval: cleanupSession
   └── runtime.destroy()
 ```
@@ -99,7 +99,7 @@ Gateway (IPC) → AgentExecutor.execute() / stream()
 | Extension     | 位置                      | 注册 Hook                                    | 功能                                           |
 | ------------- | ------------------------- | -------------------------------------------- | ---------------------------------------------- |
 | tool-approval | extensions/tool-approval/ | session_start, session_end, before_tool_call | 统一 HITL 审批（ExecPolicy + needUserConfirm） |
-| memory-auto   | extensions/memory-auto/   | before_agent_start, agent_end                | 记忆自动注入 + 自动提取                        |
+| memory-thread | extensions/memory-thread/ | before_agent_start, agent_end                | 记忆自动注入 + 自动提取                        |
 
 ### 2.4 Skill 生态
 
@@ -122,7 +122,7 @@ Gateway (IPC) → AgentExecutor.execute() / stream()
 
 `src/main/ai/memory/` 包含完整的记忆子系统（SessionMemoryStore, ShortTermMemory, WorkingMemoryStore, LongTermMemoryStore, SessionAdapter），但**没有任何业务代码引用**。
 
-当前记忆系统完全通过 `tools/builtin/memory.ts`（文件驱动）+ `extensions/memory-auto/` 实现。
+当前记忆系统完全通过 `tools/builtin/memory.ts`（文件驱动）+ `extensions/memory-thread/` 实现。
 
 **建议**：
 

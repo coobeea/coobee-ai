@@ -46,7 +46,7 @@
 
 ### S004: EventBus 回调
 
-- **memory-auto**: 在 EventBus 回调中动态导入 Env
+- **memory-thread**: 在 EventBus 回调中动态导入 Env
 - **shared-drive-task-router**: 在 EventBus 回调中动态导入 AgentStore / ThreadStore / AgentExecutor
 
 ---

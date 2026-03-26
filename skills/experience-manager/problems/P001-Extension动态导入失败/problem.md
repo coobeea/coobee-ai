@@ -73,7 +73,7 @@ TypeError: Cannot read properties of undefined (reading 'getAppPath')
 
 ### 成功案例（对比）
 
-- `memory-auto` - 在 EventBus 回调中动态导入 Env（✅ 成功）
+- `memory-thread` - 在 EventBus 回调中动态导入 Env（✅ 成功）
 - `shared-drive-task-router` - 在 EventBus 回调中动态导入 AgentStore（✅ 成功）
 - `src/main/gateway/http/files.ts` - 主进程代码静态导入（✅ 成功）
 

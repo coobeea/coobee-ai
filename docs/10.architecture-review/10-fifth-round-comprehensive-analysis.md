@@ -180,7 +180,7 @@ Extension 模块 (extension.json + index.ts)
 | Extension       | 功能                                    |
 | --------------- | --------------------------------------- |
 | `tool-approval` | 工具调用审批（exec policy + HITL 流程） |
-| `memory-auto`   | 自动内存提取                            |
+| `memory-thread` | 自动内存提取                            |
 
 ---
 

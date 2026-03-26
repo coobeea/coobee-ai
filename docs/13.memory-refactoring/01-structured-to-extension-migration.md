@@ -12,8 +12,8 @@
 
 **重构前**，系统存在四种记忆机制并存：
 
-1. **memory-auto 扩展** → `workspace/memory/{date}.md`（自动写入）
-2. **memory-auto 扩展** → `homes/{agentId}/memory/{date}.md`（压缩前写入）
+1. **memory-thread 扩展** → `workspace/memory/{date}.md`（自动写入）
+2. **memory-thread 扩展** → `homes/{agentId}/memory/{date}.md`（压缩前写入）
 3. **memory tool** → `MEMORY.md` + `memory/*.md`（Agent 主动调用）
 4. **结构化记忆** → SQLite 数据库（理论上，但未启用）
 
@@ -24,7 +24,7 @@ src/main/ai/memory/structured/     ← 2000+ 行核心代码
          ↑
          │ 仅被这一个扩展调用
          │
-extensions/memory-auto/index.ts   ← 调用 StructuredMemoryService
+extensions/memory-thread/index.ts   ← 调用 StructuredMemoryService
 ```
 
 **问题**：
@@ -45,7 +45,7 @@ extensions/memory-auto/index.ts   ← 调用 StructuredMemoryService
 ┌─────────────────────────────────────────────────────┐
 │ 1. 会话级记忆（临时）                                │
 │    workspace/memory/{date}.md                       │
-│    管理者：memory-auto 扩展（agent_end hook）       │
+│    管理者：memory-thread 扩展（agent_end hook）       │
 │    生命周期：随 workspace 清理而消失                │
 └─────────────────────────────────────────────────────┘
 
@@ -53,7 +53,7 @@ extensions/memory-auto/index.ts   ← 调用 StructuredMemoryService
 │ 2. Agent 级记忆（持久文件）                          │
 │    homes/{agentId}/memory/{date}.md                 │
 │    homes/{agentId}/MEMORY.md                        │
-│    管理者：memory-auto + memory tool                │
+│    管理者：memory-thread + memory tool                │
 │    生命周期：永久保存（Markdown 文件）              │
 └─────────────────────────────────────────────────────┘
 
@@ -73,7 +73,7 @@ extensions/memory-auto/index.ts   ← 调用 StructuredMemoryService
 **改进前**：
 
 ```typescript
-// extensions/memory-auto/index.ts
+// extensions/memory-thread/index.ts
 const { Env } = await import('../../src/main/common/env');
 const { StructuredMemoryService } = await import('../../src/main/ai/memory/structured/service');
 ```
@@ -193,7 +193,7 @@ src/main/lifecycle/
 
 1. **过度耦合**：核心代码与扩展逻辑混在一起
 2. **未启用**：向量检索降级到 NoopEmbeddingProvider（因为没配 API key）
-3. **无用户**：只有 memory-auto 扩展在调用，其他模块不使用
+3. **无用户**：只有 memory-thread 扩展在调用，其他模块不使用
 4. **维护成本高**：修改记忆功能需要同时改 4 个地方
 
 ---
@@ -239,10 +239,10 @@ src/main/common/extension/ExtensionApi.ts (+97 行)
 + }
 ```
 
-### memory-auto 简化（-99 行）
+### memory-thread 简化（-99 行）
 
 ```diff
-extensions/memory-auto/index.ts (-99 行)
+extensions/memory-thread/index.ts (-99 行)
 - 删除 tryStructuredRetrieve()
 - 删除 tryStructuredMemorize()
 - 删除对 StructuredMemoryService 的调用
@@ -357,24 +357,24 @@ Duration  349ms
 **理由**：
 
 1. 旧系统架构债务太重（耦合度高）
-2. 只有一个用户（memory-auto），迁移成本低
+2. 只有一个用户（memory-thread），迁移成本低
 3. LanceDB 比 SQLite 更适合向量存储
 4. 扩展独立性是长期架构目标
 
-### 决策 2：保留 memory-auto 和 memory tool
+### 决策 2：保留 memory-thread 和 memory tool
 
 **为什么不删除**：
 
-1. **memory-auto** 管理 workspace 和 agent home 的 Markdown 记忆
+1. **memory-thread** 管理 workspace 和 agent home 的 Markdown 记忆
 2. **memory tool** 提供 Agent 主动操作记忆的能力
 3. 三者作用域不同：
-   - memory-auto: 会话级 + Agent 级
+   - memory-thread: 会话级 + Agent 级
    - memory tool: Agent 主动调用
    - memory-global: 全局长期记忆
 
 **职责清晰**：
 
-- memory-auto: 自动化，Markdown，分层隔离
+- memory-thread: 自动化，Markdown，分层隔离
 - memory-global: 自动化，向量数据库，全局共享
 - memory tool: 手动调用，文件操作，灵活控制
 
@@ -497,7 +497,7 @@ export default {
 
 **如需隔离**：
 
-- Agent 级记忆使用 `homes/{agentId}/MEMORY.md`（memory-auto + memory tool）
+- Agent 级记忆使用 `homes/{agentId}/MEMORY.md`（memory-thread + memory tool）
 - 用户级记忆使用 `memory tool` 的 `scope=user`
 
 ---

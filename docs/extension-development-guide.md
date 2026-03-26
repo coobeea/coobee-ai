@@ -227,4 +227,4 @@ export default {
 - Extension 加载: `src/main/common/extension/ExtensionLoader.ts`
 - 依赖注入示例: `extensions/discussion-channel/DiscussionChannel.ts`
 - 依赖注入示例: `extensions/shared-drive-task-router/index.ts`
-- 依赖注入示例: `extensions/memory-auto/index.ts`
+- 依赖注入示例: `extensions/memory-thread/index.ts`

@@ -268,7 +268,7 @@ LLM 需要主动调用 `memory(write)` 才能存储记忆。大多数情况下 L
 **方式 2：内置 Extension 自动触发（agent_end Hook）**
 
 ```typescript
-// extensions/builtin/memory-auto/index.ts
+// extensions/builtin/memory-thread/index.ts
 
 api.on('agent_end', async (event) => {
   const { sessionId, output, success } = event;
@@ -306,7 +306,7 @@ api.on('agent_end', async (event) => {
 在 `before_agent_start` Hook 中读取 MEMORY.md 摘要注入：
 
 ```typescript
-// extensions/builtin/memory-auto/index.ts
+// extensions/builtin/memory-thread/index.ts
 
 api.on('before_agent_start', async (event) => {
   const { sessionId, prompt } = event;
@@ -365,7 +365,7 @@ api.on('before_agent_start', async (event) => {
 
 ### P3-1 评估结果自动存入记忆 ✅ 已完成
 
-已合并到 P2-3（execution_protocol 第 5 步增加 "Report & Memorize" 记忆存储提示 + memory-auto Extension 自动提取）。
+已合并到 P2-3（execution_protocol 第 5 步增加 "Report & Memorize" 记忆存储提示 + memory-thread Extension 自动提取）。
 
 ---
 
@@ -581,8 +581,8 @@ async function backupBeforeWrite(filePath: string, workspaceRoot: string): Promi
 | P1-1 | HITL 独立于 SDK                 | ✅ 已完成（tool-approval Extension + before_tool_call Hook） |
 | P2-1 | Memory 存储结构重构             | ✅ 已完成（MEMORY.md + memory/\*.md 文件驱动）               |
 | P2-2 | 增强型关键字搜索                | ✅ 已完成（多关键字、TF 评分、标题加权、snippet）            |
-| P2-3 | 记忆自动提取                    | ✅ 已完成（execution_protocol + memory-auto Extension）      |
-| P2-4 | 会话启动记忆注入                | ✅ 已完成（memory-auto before_agent_start Hook）             |
+| P2-3 | 记忆自动提取                    | ✅ 已完成（execution_protocol + memory-thread Extension）    |
+| P2-4 | 会话启动记忆注入                | ✅ 已完成（memory-thread before_agent_start Hook）           |
 | P3-1 | 评估结果自动存入记忆            | ✅ 已完成（合并到 P2-3）                                     |
 | P1-2 | path-guard 符号链接修复         | ✅ 已完成（代码已有，新增符号链接测试覆盖）                  |
 | P1-3 | Extension Skill 发现 bug 修复   | ✅ 已完成（scanSkills 改用 agentEnv.skillPaths + 后到覆盖）  |

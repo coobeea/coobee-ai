@@ -3,7 +3,7 @@
 > 方案编号：S004  
 > 优先级：⭐ 低（架构限制）  
 > 验证状态：✅ 已验证  
-> 应用次数：多次（memory-auto, shared-drive-task-router）  
+> 应用次数：多次（memory-thread, shared-drive-task-router）  
 > 成功率：100%
 
 ---
@@ -110,12 +110,12 @@ export default {
 
 ### 成功案例
 
-- **memory-auto**: 在 EventBus 回调中动态导入 Env（✅ 成功）
+- **memory-thread**: 在 EventBus 回调中动态导入 Env（✅ 成功）
 - **shared-drive-task-router**: 在 EventBus 回调中动态导入 AgentStore / ThreadStore（✅ 成功）
 
 ### 代码位置
 
-- `extensions/memory-auto/index.ts` - getWorkspace() / getAgentHome()
+- `extensions/memory-thread/index.ts` - getWorkspace() / getAgentHome()
 - `extensions/shared-drive-task-router/index.ts` - dispatchToAnalyzer()
 
 ---

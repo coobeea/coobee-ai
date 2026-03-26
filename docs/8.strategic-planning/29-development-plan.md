@@ -419,7 +419,7 @@
 
 - `src/main/ai/memory/` — LongTermMemoryStore
 - `src/main/ai/tools/builtin/memory.ts` — memory 工具
-- `extensions/memory-auto/` — 自动记忆 Extension
+- `extensions/memory-thread/` — 自动记忆 Extension
 
 **操作**：
 

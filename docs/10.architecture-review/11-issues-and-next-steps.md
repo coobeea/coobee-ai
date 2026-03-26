@@ -282,7 +282,7 @@ Phase 4: 移除旧配置源
 | config Gateway 方法     | 中     | 配置 RPC 接口        |
 | security middleware     | 低     | 当前为空壳           |
 | AgentEnvInjector        | 低     | 复杂的注入逻辑       |
-| memory-auto Extension   | 低     | 自动内存提取         |
+| memory-thread Extension | 低     | 自动内存提取         |
 
 ---
 

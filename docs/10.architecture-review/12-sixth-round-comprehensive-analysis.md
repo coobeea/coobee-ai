@@ -212,7 +212,7 @@ ReadyExtensionHook (50):
 | ------------------- | --------- | ------------------ | ------------- |
 | message_received    | void      | AgentExecutor      | —             |
 | session_start       | void      | AgentExecutor      | tool-approval |
-| before_agent_start  | modifying | AgentExecutor      | memory-auto   |
+| before_agent_start  | modifying | AgentExecutor      | memory-thread |
 | turn_start          | void      | AgentExecutor      | —             |
 | turn_end            | void      | AgentExecutor      | —             |
 | before_tool_call    | modifying | ToolExecPipeline   | tool-approval |
@@ -220,7 +220,7 @@ ReadyExtensionHook (50):
 | tool_result_persist | modifying | ToolExecPipeline   | —             |
 | before_compaction   | modifying | OpenAIAgentRuntime | —             |
 | after_compaction    | void      | AgentExecutor      | —             |
-| agent_end           | void      | AgentExecutor      | memory-auto   |
+| agent_end           | void      | AgentExecutor      | memory-thread |
 | session_end         | void      | AgentExecutor      | tool-approval |
 | message_queued      | void      | MessagePipeline    | —             |
 | message_dequeued    | void      | MessagePipeline    | —             |

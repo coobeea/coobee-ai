@@ -240,7 +240,7 @@ function computeContentHash(summary: string, memoryType: string): string {
 
 ### 2.4 集成到 agent_end hook
 
-改造 `extensions/memory-auto/index.ts`：
+改造 `extensions/memory-thread/index.ts`：
 
 ```typescript
 api.on('agent_end', async (event) => {
@@ -348,7 +348,7 @@ async function retrieve(input: {
 
 ### 3.4 注入改造
 
-改造 `memory-auto` 的 `before_agent_start` hook：
+改造 `memory-thread` 的 `before_agent_start` hook：
 
 ```typescript
 api.on('before_agent_start', async (event) => {

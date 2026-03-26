@@ -42,7 +42,7 @@ coobee-ai 的 Agent 不仅是帮用户完成任务的工具，更应该是一个
 | Extension       | 功能                               |
 | --------------- | ---------------------------------- |
 | `tool-approval` | HITL 工具审批，ExecPolicy 安全策略 |
-| `memory-auto`   | 自动注入记忆，自动捕获记忆信号     |
+| `memory-thread` | 自动注入记忆，自动捕获记忆信号     |
 
 ### 2.4 Agent 启动时被注入的信息
 
@@ -51,7 +51,7 @@ coobee-ai 的 Agent 不仅是帮用户完成任务的工具，更应该是一个
 | `<execution_protocol>`   | 五步工作法（可被 Skill 覆盖）                                |
 | `<runtime_environment>`  | 平台、路径、Skill/Extension 目录、已加载 Extension、可用工具 |
 | `<skill_discovery>`      | Skill 发现提示                                               |
-| Extension prependContext | 由 Extension Hook 动态注入（如 memory-auto 的记忆）          |
+| Extension prependContext | 由 Extension Hook 动态注入（如 memory-thread 的记忆）        |
 
 ---
 
@@ -164,7 +164,7 @@ Agent 自我进化闭环：
     ↓
   行动（config_patch + skill_creator + extension_creator）
     ↓
-  记忆（memory + memory-auto Extension）
+  记忆（memory + memory-thread Extension）
     ↓
   认知（更新 Skills / 创建新 Skill / 修改配置）
 ```
