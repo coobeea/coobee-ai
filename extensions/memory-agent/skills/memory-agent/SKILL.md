@@ -15,13 +15,13 @@
 
 记忆系统使用两层文件结构，**按 Agent 隔离**存储。
 
-**基础路径**：`~/.coobee-ai/memory/agent/{currentAgentId}/`
+**基础路径**：`homes/{currentAgentId}/memory-classified/`
 
-> 注意：`{currentAgentId}` 是占位符，在实际使用时会自动解析为当前 Agent 的 ID（如 `business-analyst`）
+> 注意：`{currentAgentId}` 是占位符，在实际使用时会自动解析为当前 Agent 的 ID（如 `business-analyst`）。`homes/` 即 Agent Home 目录。
 
 ### 第 1 层：索引（Index Layer）
 
-位置：`~/.coobee-ai/memory/agent/{currentAgentId}/index/{category}.md`
+位置：`homes/{currentAgentId}/memory-classified/index/{category}.md`
 
 分类文件（6 个明确维度）：
 
@@ -58,7 +58,7 @@ entries/preference/2026-03.md
 
 ### 第 2 层：详细内容（Content Layer）
 
-位置：`~/.coobee-ai/memory/agent/{currentAgentId}/entries/{category}/{YYYY-MM}.md`
+位置：`homes/{currentAgentId}/memory-classified/entries/{category}/{YYYY-MM}.md`
 
 **内容格式**（纯文本，无多余符号）：
 
@@ -103,7 +103,7 @@ Agent 输出:
 
 ```typescript
 // 示例：用户问"我之前说过喜欢什么样的代码风格？"
-Read ~/.coobee-ai/memory/agent/{currentAgentId}/index/preference.md
+Read homes/{currentAgentId}/memory-classified/index/preference.md
 ```
 
 ### 步骤 3：扫描索引找到相关记忆
@@ -117,14 +117,14 @@ Read ~/.coobee-ai/memory/agent/{currentAgentId}/index/preference.md
 **方法 B：使用 Grep**（索引文件较大时）
 
 - 使用 `Grep` 工具搜索关键词
-- 示例：`Grep pattern="文件系统" path="~/.coobee-ai/memory/agent/{currentAgentId}/index/preference.md"`
+- 示例：`Grep pattern="文件系统" path="homes/{currentAgentId}/memory-classified/index/preference.md"`
 
 ### 步骤 4：读取详细内容
 
 从索引中提取的路径（如 `entries/preference/2026-03.md`），使用 `Read` 工具读取：
 
 ```typescript
-Read ~/.coobee-ai/memory/agent/{currentAgentId}/entries/preference/2026-03.md
+Read homes/{currentAgentId}/memory-classified/entries/preference/2026-03.md
 ```
 
 在内容中找到对应的 `=== mem-{id} ===` 区块。
@@ -152,7 +152,7 @@ Read ~/.coobee-ai/memory/agent/{currentAgentId}/entries/preference/2026-03.md
 **你的操作**：
 
 1. 判断分类：`preference`（偏好）
-2. 读取 `~/.coobee-ai/memory/agent/{currentAgentId}/index/preference.md`
+2. 读取 `homes/{currentAgentId}/memory-classified/index/preference.md`
 3. 扫描找到匹配关键词"数据库"的记忆
 4. 读取对应的内容文件
 5. 回答："根据之前的记忆（2026-03-05），你明确表示倾向使用文件系统而非数据库存储..."
