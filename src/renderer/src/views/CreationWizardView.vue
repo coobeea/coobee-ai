@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import {
   startCreation,
   chatWithAnalyst,
@@ -50,6 +51,18 @@ const PHASE_ICONS: Record<string, string> = {
   failed: '✗'
 };
 
+function targetLabel(t: CreationTargetType): string {
+  if (t === 'skill') return '技能';
+  if (t === 'agent') return '智能体';
+  return '知识库';
+}
+
+function targetIcon(t: CreationTargetType): string {
+  if (t === 'skill') return '⚡';
+  if (t === 'agent') return '🤖';
+  return '📚';
+}
+
 const sortedFiles = computed(() => {
   return [...sessionFiles.value]
     .filter((f) => f.filename !== '00-session.md')
@@ -81,8 +94,15 @@ watch(
   { deep: true }
 );
 
+const route = useRoute();
+
 onMounted(async () => {
   await loadSessions();
+  const queryType = route.query.targetType as string | undefined;
+  if (queryType === 'knowledge' || queryType === 'skill' || queryType === 'agent') {
+    newTargetType.value = queryType;
+    showNewDialog.value = true;
+  }
 });
 
 onUnmounted(() => {
@@ -103,7 +123,7 @@ async function openSession(session: CreationSessionMeta): Promise<void> {
     chatMessages.value = [
       {
         role: 'assistant',
-        content: `你好！我是需求分析师，帮你创建${session.targetType === 'skill' ? '技能' : '智能体'}。\n\n你的初始需求是：「${session.userRequirement}」\n\n让我来进一步了解你的需求。首先，请描述一下这个${session.targetType === 'skill' ? '技能' : '智能体'}主要解决什么问题？在什么场景下使用？`
+        content: `你好！我是需求分析师，帮你创建${targetLabel(session.targetType)}。\n\n你的初始需求是：「${session.userRequirement}」\n\n让我来进一步了解你的需求。首先，请描述一下这个${targetLabel(session.targetType)}主要解决什么问题？在什么场景下使用？`
       }
     ];
   } else if (session.status === 'autopilot' || session.status === 'paused') {
@@ -337,13 +357,19 @@ function getFilePhaseLabel(filename: string): string {
             <div class="flex items-center gap-3">
               <div
                 class="flex h-10 w-10 items-center justify-center rounded-lg"
-                :class="s.targetType === 'skill' ? 'bg-primary/10 text-primary' : 'bg-accent/10 text-accent'">
-                {{ s.targetType === 'skill' ? '⚡' : '🤖' }}
+                :class="
+                  s.targetType === 'skill'
+                    ? 'bg-primary/10 text-primary'
+                    : s.targetType === 'agent'
+                      ? 'bg-accent/10 text-accent'
+                      : 'bg-emerald-500/10 text-emerald-600'
+                ">
+                {{ targetIcon(s.targetType) }}
               </div>
               <div>
                 <div class="font-medium text-card-foreground">{{ s.name }}</div>
                 <div class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{{ s.targetType === 'skill' ? '技能' : '智能体' }}</span>
+                  <span>{{ targetLabel(s.targetType) }}</span>
                   <span
                     class="rounded-full px-2 py-0.5"
                     :class="{
@@ -404,6 +430,16 @@ function getFilePhaseLabel(filename: string): string {
               "
               @click="newTargetType = 'agent'">
               🤖 创建智能体 (Agent)
+            </button>
+            <button
+              class="flex-1 rounded-lg border-2 p-3 text-center text-sm transition"
+              :class="
+                newTargetType === 'knowledge'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border text-muted-foreground hover:border-primary/30'
+              "
+              @click="newTargetType = 'knowledge'">
+              📚 创建知识库 (Knowledge)
             </button>
           </div>
           <textarea
@@ -684,7 +720,7 @@ function getFilePhaseLabel(filename: string): string {
               <div class="text-5xl mb-4">🎉</div>
               <h2 class="text-xl font-semibold text-foreground">创建完成</h2>
               <p class="mt-2 text-sm text-muted-foreground">
-                {{ currentSession.targetType === 'skill' ? '技能' : '智能体' }}「{{ currentSession.name }}」已创建成功
+                {{ targetLabel(currentSession.targetType) }}「{{ currentSession.name }}」已创建成功
               </p>
               <p class="mt-1 text-xs text-muted-foreground">
                 共生成 {{ sortedFiles.length }} 个文件，点击左侧文件名查看详情

@@ -2,8 +2,9 @@ import { ChannelRuntime } from '@main/channels/ChannelRuntime';
 import { log } from '@main/common/logger';
 import { eventBus } from '@main/common/eventbus';
 import { CreationStore } from './CreationStore';
+import { KnowledgeStore } from '@main/knowledge/KnowledgeStore';
 import type { CreationSessionMeta, PhaseId, CreationTargetType } from '@shared/types/creation';
-import { PHASE_ORDER, PHASE_AGENTS, PHASE_LABELS } from '@shared/types/creation';
+import { PHASE_ORDER, PHASE_AGENTS, KB_PHASE_AGENTS, PHASE_LABELS } from '@shared/types/creation';
 
 const MAX_ITERATIONS = 2;
 
@@ -45,8 +46,9 @@ export class CreationPipeline {
     }
 
     const runtime = ChannelRuntime.getInstance();
+    const agentId = this.resolveAgentId(meta.targetType, 'requirements');
     const result = await runtime.executeAgent({
-      agentId: PHASE_AGENTS.requirements,
+      agentId,
       sessionId: `creation-${sessionId}-req`,
       message,
       context: { channel: 'creation', sessionId, phase: 'requirements' }
@@ -192,15 +194,12 @@ export class CreationPipeline {
       eventBus.emit('creation:phase-started', {
         sessionId,
         phaseId,
-        agentId: PHASE_AGENTS[phaseId],
+        agentId: this.resolveAgentId(meta.targetType, phaseId),
         label: PHASE_LABELS[phaseId]
       });
 
       try {
-        let agentId = PHASE_AGENTS[phaseId];
-        if (phaseId === 'implement' && meta.targetType === 'agent') {
-          agentId = 'agent-builder';
-        }
+        const agentId = this.resolveAgentId(meta.targetType, phaseId);
 
         const context = this.buildPhaseContext(sessionId, phaseId);
         const result = await runtime.executeAgent({
@@ -214,7 +213,7 @@ export class CreationPipeline {
           throw new Error(result.error);
         }
 
-        const outputFilename = this.getPhaseOutputFilename(phaseId, sessionId, iterationCount);
+        const outputFilename = this.getPhaseOutputFilename(phaseId, sessionId, iterationCount, meta.targetType);
         this.store.writeFile(sessionId, outputFilename, result.output);
         eventBus.emit('creation:file-created', { sessionId, filename: outputFilename, phase: phaseId });
 
@@ -279,6 +278,9 @@ export class CreationPipeline {
 
     meta = this.store.loadMeta(sessionId);
     if (meta) {
+      if (meta.targetType === 'knowledge') {
+        this.publishKnowledgeBase(sessionId, meta);
+      }
       meta.status = 'completed';
       this.store.saveMeta(meta);
       this.store.saveMetaJson(meta);
@@ -324,9 +326,41 @@ export class CreationPipeline {
     return context;
   }
 
-  private getPhaseOutputFilename(phaseId: PhaseId, _sessionId: string, iteration: number): string {
+  private resolveAgentId(targetType: CreationTargetType, phaseId: PhaseId): string {
+    if (targetType === 'knowledge') {
+      return KB_PHASE_AGENTS[phaseId];
+    }
+    if (phaseId === 'implement' && targetType === 'agent') {
+      return 'agent-builder';
+    }
+    return PHASE_AGENTS[phaseId];
+  }
+
+  private getPhaseOutputFilename(
+    phaseId: PhaseId,
+    _sessionId: string,
+    iteration: number,
+    targetType?: CreationTargetType
+  ): string {
     const phaseNum = String(PHASE_ORDER.indexOf(phaseId) + 1).padStart(2, '0');
     const version = iteration > 0 ? `v${iteration + 1}-` : 'v1-';
+
+    if (targetType === 'knowledge') {
+      switch (phaseId) {
+        case 'design':
+          return `${phaseNum}-toc.md`;
+        case 'implement':
+          return `${phaseNum}-${version}content.md`;
+        case 'validate':
+          return `${phaseNum}-${version}validation-report.md`;
+        case 'iterate':
+          return `${phaseNum}-iteration-record.md`;
+        case 'release':
+          return `${phaseNum}-release-summary.md`;
+        default:
+          return `${phaseNum}-output.md`;
+      }
+    }
 
     switch (phaseId) {
       case 'design':
@@ -342,6 +376,93 @@ export class CreationPipeline {
       default:
         return `${phaseNum}-output.md`;
     }
+  }
+
+  /**
+   * 将流水线构建产物整理为标准知识库目录
+   */
+  private publishKnowledgeBase(sessionId: string, meta: CreationSessionMeta): void {
+    try {
+      const kbStore = KnowledgeStore.getInstance();
+      const kbId = sessionId.replace('creation-', 'kb-');
+
+      const kbDir = kbStore.createFromPipeline(kbId, {
+        name: meta.name,
+        description: meta.userRequirement,
+        sourceSessionId: sessionId
+      });
+
+      const contentFile = this.store.readFile(sessionId, this.findLatestContentFile(sessionId));
+      if (contentFile) {
+        this.parseAndWriteKbContent(kbStore, kbId, contentFile);
+      }
+
+      const tocFile = this.store.readFile(sessionId, '02-toc.md');
+      if (tocFile) {
+        kbStore.writeFile(kbId, 'index.md', tocFile);
+      }
+
+      kbStore.updateMeta(kbId, {
+        chapterCount: kbStore.get(kbId)?.chapterCount ?? 0,
+        totalFiles: kbStore.get(kbId)?.totalFiles ?? 0
+      });
+
+      log.info(`[CreationPipeline] Published knowledge base: ${kbId} at ${kbDir}`);
+    } catch (err) {
+      log.error(`[CreationPipeline] Failed to publish KB for ${sessionId}:`, err);
+    }
+  }
+
+  private findLatestContentFile(sessionId: string): string {
+    const files = this.store.listFiles(sessionId);
+    const contentFiles = files.filter((f) => f.filename.startsWith('03-'));
+    if (contentFiles.length === 0) return '03-v1-content.md';
+    return contentFiles[contentFiles.length - 1].filename;
+  }
+
+  /**
+   * 将 Agent 输出的 Markdown 内容按章节结构写入 KB 目录
+   */
+  private parseAndWriteKbContent(kbStore: KnowledgeStore, kbId: string, content: string): void {
+    const lines = content.split('\n');
+    let chapterIdx = 0;
+    let sectionIdx = 0;
+    let currentChapter = '';
+    let currentBuffer: string[] = [];
+
+    const flush = (): void => {
+      if (currentChapter && currentBuffer.length > 0) {
+        const filename = `${String(sectionIdx).padStart(2, '0')}-content.md`;
+        kbStore.writeFile(kbId, `${currentChapter}/${filename}`, currentBuffer.join('\n'));
+      }
+      currentBuffer = [];
+    };
+
+    for (const line of lines) {
+      const h1Match = line.match(/^#\s+(.+)/);
+      const h2Match = line.match(/^##\s+(.+)/);
+
+      if (h1Match) {
+        flush();
+        chapterIdx++;
+        sectionIdx = 0;
+        const chapterName = h1Match[1]
+          .trim()
+          .replace(/[^a-zA-Z0-9\u4e00-\u9fff-_\s]/g, '')
+          .replace(/\s+/g, '-')
+          .toLowerCase();
+        currentChapter = `${String(chapterIdx).padStart(2, '0')}-${chapterName}`;
+        kbStore.writeFile(kbId, `${currentChapter}/_overview.md`, `# ${h1Match[1].trim()}\n`);
+        currentBuffer = [];
+      } else if (h2Match && currentChapter) {
+        flush();
+        sectionIdx++;
+        currentBuffer.push(line);
+      } else {
+        currentBuffer.push(line);
+      }
+    }
+    flush();
   }
 
   private findLatestValidationFile(sessionId: string): string {

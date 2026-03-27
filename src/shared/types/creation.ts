@@ -1,4 +1,4 @@
-export type CreationTargetType = 'skill' | 'agent';
+export type CreationTargetType = 'skill' | 'agent' | 'knowledge';
 
 export type CreationStatus = 'requirements' | 'autopilot' | 'completed' | 'paused' | 'failed';
 
@@ -70,4 +70,13 @@ export const PHASE_AGENTS: Record<PhaseId, string> = {
   validate: 'quality-validator',
   iterate: 'iteration-optimizer',
   release: 'creation-orchestrator'
+};
+
+export const KB_PHASE_AGENTS: Record<PhaseId, string> = {
+  requirements: 'kb-requirements-analyst',
+  design: 'kb-structure-designer',
+  implement: 'kb-content-builder',
+  validate: 'quality-validator',
+  iterate: 'iteration-optimizer',
+  release: 'kb-release-handler'
 };

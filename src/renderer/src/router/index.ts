@@ -110,6 +110,11 @@ const router = createRouter({
           component: () => import('@/views/TrainingDetailView.vue')
         },
         {
+          path: 'knowledge',
+          name: 'knowledge',
+          component: () => import('@/views/KnowledgeView.vue')
+        },
+        {
           path: 'creation',
           name: 'creation',
           component: () => import('@/views/CreationWizardView.vue')
