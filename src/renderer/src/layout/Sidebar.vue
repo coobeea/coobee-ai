@@ -52,6 +52,7 @@ const mainMenuItems: MenuItem[] = [
 const moreMenuItems: MenuItem[] = [
   { id: 'groupchat', label: '群聊', icon: 'i-carbon-group', route: '/groupchat' },
   { id: 'insight', label: '实时洞察', icon: 'i-carbon-analytics', route: '/insight' },
+  { id: 'groupchat', label: '群聊', icon: 'i-carbon-group', route: '/groupchat' },
   { id: 'discussion', label: '群聊讨论', icon: 'i-carbon-chat', route: '/discussion' },
   { id: 'consultation', label: '专家会诊', icon: 'i-carbon-user-multiple', route: '/consultation' },
   { id: 'training', label: '智能体训练', icon: 'i-carbon-machine-learning-model', route: '/training' },
