@@ -1,31 +1,30 @@
 # 智能创建流水线 — 技术方案
 
-> 版本：v1.0 | 日期：2026-03-06 | 状态：方案设计
+> 版本：v1.1 | 日期：2026-03-06 | 状态：方案设计
 
 ## 1. 架构总览
 
-### 1.1 核心架构：编排 Agent + 专业 Agent 协作
+### 1.1 核心理念：用户只需对话一次，后续全自动
 
 ```
-用户                   前端                        后端
- │                      │                           │
- │  "创建一个销售 Skill" │                           │
- │ ──────────────────→  │  POST /creation/start     │
- │                      │ ──────────────────────→   │
- │                      │                    ┌──────┴──────────────────────┐
- │                      │                    │   CreationPipeline          │
- │                      │                    │   (流程调度 + 状态持久化)    │
- │                      │                    │                             │
- │                      │                    │   Phase 1:                  │
- │                      │                    │   executeAgent(              │
- │                      │                    │     'requirements-analyst') │
- │                      │                    │                             │
- │   ←── SSE 事件流 ────┤←── eventBus ──────│   Phase 2:                  │
- │  (进度/中间结果/      │                    │   executeAgent(              │
- │   需要用户确认)       │                    │     'solution-designer')    │
- │                      │                    │   ...                       │
- │                      │                    └─────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                         创建流水线                                 │
+│                                                                  │
+│  ┌─────────────────────┐    ┌──────────────────────────────────┐ │
+│  │   Phase 1            │    │  Phase 2 → 3 → 4 → 5 → 6       │ │
+│  │   需求分析            │    │  全自动执行                      │ │
+│  │                     │    │                                  │ │
+│  │   用户 ←→ AI 对话    │ ─→ │  方案 → 生成 → 验证 → 迭代 → 发布│ │
+│  │   + 上传知识库       │    │  (用户观察进度，无需操作)         │ │
+│  │                     │    │                                  │ │
+│  │   产出：标准化文件集  │    │  产出：最终 Skill/Agent           │ │
+│  └─────────────────────┘    └──────────────────────────────────┘ │
+│                                                                  │
+│  ◉ 交互区（用户参与）         ○ 自动区（用户可观察、可干预）       │
+└──────────────────────────────────────────────────────────────────┘
 ```
+
+**核心体验**：用户只需要完成 Phase 1 的多轮对话，后续 5 个阶段全部自动化运行。用户可以实时观察进度，在关键节点**可选择**干预（回退、重跑），但默认情况下不需要任何操作。
 
 ### 1.2 两层架构
 
@@ -35,6 +34,20 @@
 | **执行层** | 每个 Phase 的具体业务逻辑          | 专业 Agent 通过 `ChannelRuntime.executeAgent` |
 
 流程层是「骨架」，执行层是「肌肉」。骨架固定且稳定，肌肉（Agent）可以独立升级和替换。
+
+### 1.3 知识库支持
+
+用户可以在 Phase 1 过程中提供**知识库**——一组参考文档。这些文档会：
+
+1. 在 Phase 1 中被 `requirements-analyst` 阅读，辅助需求理解
+2. 作为上下文传递给后续所有 Phase 的 Agent，确保生成产物与知识库内容一致
+3. 最终存储在创建会话的 `knowledge/` 目录下，供追溯
+
+知识库的来源可以是：
+
+- 用户上传的文件（txt、md、pdf 等）
+- 用户指定的本地目录路径
+- 粘贴的文本片段
 
 ## 2. 专业 Agent 定义
 
@@ -168,7 +181,8 @@ interface CreationSession {
   status: CreationStatus;
   currentPhase: PhaseId;
   phases: Record<PhaseId, PhaseState>;
-  requirements?: RequirementsOutput; // Phase 1 产出
+  knowledgeBase: KnowledgeItem[]; // 用户提供的知识库
+  requirements?: RequirementsOutput; // Phase 1 产出（标准化文件集）
   designs?: DesignOutput; // Phase 2 产出
   artifacts?: ArtifactOutput; // Phase 3 产出
   validation?: ValidationOutput; // Phase 4 产出
@@ -179,20 +193,16 @@ interface CreationSession {
 }
 
 type CreationStatus =
-  | 'requirements' // Phase 1 进行中
-  | 'design' // Phase 2 进行中
-  | 'implementing' // Phase 3 进行中
-  | 'validating' // Phase 4 进行中
-  | 'iterating' // Phase 5 进行中
-  | 'releasing' // Phase 6 进行中
+  | 'requirements' // Phase 1 进行中（用户交互）
+  | 'autopilot' // Phase 2-6 自动执行中（用户可观察）
   | 'completed' // 完成
-  | 'paused' // 用户暂停（等待确认）
+  | 'paused' // 用户主动暂停 / 需要干预
   | 'failed'; // 失败
 
 type PhaseId = 'requirements' | 'design' | 'implement' | 'validate' | 'iterate' | 'release';
 
 interface PhaseState {
-  status: 'pending' | 'running' | 'awaiting_user' | 'completed' | 'skipped' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'skipped' | 'failed';
   startedAt?: number;
   completedAt?: number;
   agentSessionId?: string; // 执行该 Phase 的 Agent 会话 ID
@@ -201,19 +211,71 @@ interface PhaseState {
 }
 ```
 
-### 3.2 Phase 产出类型
+### 3.2 知识库
+
+```typescript
+interface KnowledgeItem {
+  id: string;
+  type: 'file' | 'directory' | 'text';
+  name: string; // 显示名称
+  path?: string; // type='file'|'directory' 时的路径
+  content?: string; // type='text' 时的文本内容
+  addedAt: number;
+}
+```
+
+用户在 Phase 1 对话过程中可以随时添加知识库条目。知识库对后续所有 Phase 可见——Agent 收到的上下文中会包含知识库的摘要和引用。
+
+### 3.3 Phase 1 产出：标准化文件集
+
+Phase 1 结束后，`requirements-analyst` 将多轮对话的成果输出为**一组标准化文件**。这些文件是后续所有 Phase 的输入。
+
+```
+.home/creation/sessions/{sessionId}/requirements/
+├── requirements.md      # 【标准】需求文档 — 目标、场景、边界、约束
+├── input-spec.md        # 【标准】输入规范 — 数据格式、来源、示例
+├── output-spec.md       # 【标准】输出规范 — 格式、结构、示例
+├── criteria.json        # 【标准】验收标准 — 量化维度 + 达标线
+├── knowledge/           # 【可选】用户提供的知识库文件副本
+│   ├── doc1.md
+│   └── doc2.txt
+└── extras/              # 【可选】额外文件（根据对话中的需求动态生成）
+    ├── glossary.md      # 例：术语表
+    ├── examples.md      # 例：示例数据集
+    └── constraints.md   # 例：特殊约束说明
+```
+
+**标准文件**（每次创建必定生成）：
+
+| 文件              | 内容                                                      | 格式     |
+| ----------------- | --------------------------------------------------------- | -------- |
+| `requirements.md` | 核心需求文档：目标、使用场景（3-5个）、边界定义、目标用户 | Markdown |
+| `input-spec.md`   | 输入规范：数据格式、来源、字段说明、示例数据              | Markdown |
+| `output-spec.md`  | 输出规范：结果格式、结构定义、字段说明、示例输出          | Markdown |
+| `criteria.json`   | 验收标准：量化的评估维度，贯穿后续所有 Phase              | JSON     |
+
+**可选文件**（由 `requirements-analyst` 根据对话内容判断是否需要生成）：
+
+- 术语表（领域内有专业术语时）
+- 示例数据集（用户提供了样例时）
+- 特殊约束说明（有非常规限制时）
+- Skill 编排计划（创建 Agent 且涉及多个 Skill 时）
+
+### 3.4 标准化文件的结构化类型
 
 ```typescript
 interface RequirementsOutput {
   targetType: 'skill' | 'agent';
   name: string;
-  goal: string;
-  scenarios: string[];
-  input: { format: string; source: string };
-  output: { format: string; structure: string };
-  boundaries: { includes: string[]; excludes: string[] };
-  criteria: CriterionDimension[];
-  skillPlan?: SkillPlanItem[]; // 当 targetType='agent' 时，规划需要的 Skill
+  files: RequirementsFile[]; // 生成的文件列表
+  summary: string; // 需求摘要（一段话，用于传递给后续 Phase）
+  skillPlan?: SkillPlanItem[]; // 当 targetType='agent' 时
+}
+
+interface RequirementsFile {
+  filename: string; // 如 'requirements.md'
+  category: 'standard' | 'extra'; // 标准文件 vs 额外文件
+  content: string; // 文件内容
 }
 
 interface CriterionDimension {
@@ -230,11 +292,16 @@ interface SkillPlanItem {
   exists: boolean; // 系统中是否已有
   priority: 'required' | 'optional';
 }
+```
 
+### 3.5 Phase 2-6 产出类型
+
+```typescript
 interface DesignOutput {
-  selectedPlan: string; // 选中的方案 ID
+  selectedPlan: string; // 自动选择的最优方案 ID
   plans: DesignPlan[];
-  comparison?: string; // 对比分析文本
+  comparison: string; // 对比分析文本
+  selectionReason: string; // 为什么选择该方案
 }
 
 interface DesignPlan {
@@ -243,7 +310,7 @@ interface DesignPlan {
   approach: string; // 方案描述
   pros: string[];
   cons: string[];
-  suitableFor: string;
+  score: number; // 方案综合评分（0-100）
   outline: string; // 方案大纲（将用于 Phase 3）
 }
 
@@ -256,7 +323,7 @@ interface ArtifactOutput {
 interface ArtifactFile {
   path: string; // 相对路径
   content: string; // 文件内容
-  role: string; // 'main' | 'reference' | 'test' | 'config'
+  role: 'main' | 'reference' | 'test' | 'config';
 }
 
 interface ValidationOutput {
@@ -307,24 +374,60 @@ class CreationPipeline {
 }
 ```
 
-### 4.2 Phase 执行流程
+### 4.2 两种执行模式
 
-每个 Phase 的执行遵循统一模式：
+#### Phase 1：交互模式（用户参与）
+
+Phase 1 是唯一需要用户参与的阶段。执行流程：
 
 ```
-1. 更新 session 状态 → phase.status = 'running'
-2. 构建 Agent 消息（包含前序 Phase 的产出作为上下文）
-3. 调用 ChannelRuntime.executeAgent({ agentId, sessionId, message, context })
-4. 解析 Agent 输出为结构化数据
-5. 存储 Phase 产出到 session
-6. 判断是否需要用户确认：
-   - Phase 1（需求分析）→ 需要用户确认需求文档
-   - Phase 2（方案设计）→ 需要用户选择方案
-   - Phase 4（验证测试）→ 展示结果，用户决定是否迭代
-   - 其他 Phase → 自动推进
-7. 更新 session 状态 → phase.status = 'awaiting_user' 或 'completed'
-8. 广播事件 → eventBus.emit('creation:phase-complete', ...)
+1. 用户发送消息（或上传知识库文件）
+2. 路由到 requirements-analyst Agent
+3. Agent 分析后返回追问或确认
+4. 重复 1-3 直到 Agent 认为信息充足
+5. Agent 输出标准化文件集（requirements.md + input-spec.md + output-spec.md + criteria.json + 可选文件）
+6. 文件写入 sessions/{id}/requirements/
+7. Phase 1 完成 → 自动触发 autopilot
 ```
+
+用户在对话中可以随时：
+
+- 上传/添加知识库文件
+- 修改之前的回答
+- 让 AI 重新分析
+
+当 Agent 输出最终文件集后，Phase 1 结束，后续自动开始。
+
+#### Phase 2-6：自动模式（Autopilot）
+
+Phase 1 完成后，系统自动依次执行 Phase 2→3→4→5→6：
+
+```
+for phase in [design, implement, validate, iterate, release]:
+  1. 广播事件 → creation:phase-started
+  2. 构建上下文（前序 Phase 产出 + 知识库摘要）
+  3. 调用 executeAgent(phaseAgent, context)
+  4. 实时广播中间输出 → creation:phase-progress
+  5. 解析并存储 Phase 产出
+  6. 广播事件 → creation:phase-complete
+
+  // Phase 4 特殊逻辑：自动决定是否迭代
+  if phase == 'validate' && !validation.passed && iterations < maxIterations:
+    自动回到 Phase 3 重新生成（Phase 5 迭代逻辑）
+
+  // 任何 Phase 失败 → 暂停，等待用户干预
+  if phase.failed:
+    session.status = 'paused'
+    广播 → creation:needs-attention
+    break
+```
+
+**用户可选干预**（非必须）：
+
+- **暂停** → 暂停自动执行，查看当前状态
+- **回退** → 回到某个 Phase 重新执行
+- **跳过** → 跳过当前 Phase 继续
+- 如果用户不做任何操作，流水线会自动跑完
 
 ### 4.3 Agent 消息构建
 
@@ -374,10 +477,22 @@ function buildPhaseMessage(session: CreationSession, phaseId: PhaseId): string {
 ```
 .home/creation/
 ├── sessions/
-│   ├── {sessionId}.json              # 会话元数据
+│   ├── {sessionId}.json              # 会话元数据（CreationSession）
 │   └── {sessionId}/
-│       ├── requirements.json         # Phase 1 产出
-│       ├── designs.json              # Phase 2 产出
+│       ├── requirements/             # Phase 1 产出（标准化文件集）
+│       │   ├── requirements.md       # 【标准】需求文档
+│       │   ├── input-spec.md         # 【标准】输入规范
+│       │   ├── output-spec.md        # 【标准】输出规范
+│       │   ├── criteria.json         # 【标准】验收标准
+│       │   ├── extras/               # 【可选】额外文件
+│       │   │   └── ...
+│       │   └── knowledge/            # 用户提供的知识库副本
+│       │       └── ...
+│       ├── designs/                  # Phase 2 产出
+│       │   ├── plan-a.md
+│       │   ├── plan-b.md
+│       │   ├── comparison.md
+│       │   └── selection.json        # 选中方案及理由
 │       ├── artifacts/                # Phase 3 产出
 │       │   ├── v1/                   # 版本 1
 │       │   │   ├── SKILL.md
@@ -386,7 +501,8 @@ function buildPhaseMessage(session: CreationSession, phaseId: PhaseId): string {
 │       ├── validations/              # Phase 4 产出
 │       │   ├── report-v1.json
 │       │   └── report-v2.json
-│       └── iterations.json           # Phase 5 迭代记录
+│       ├── iterations.json           # Phase 5 迭代记录
+│       └── chat-history.json         # Phase 1 对话历史（用于追溯）
 └── templates/                        # 可复用的创建模板（未来扩展）
 ```
 
@@ -404,121 +520,225 @@ Phase 6（发布）将 `artifacts/v{final}/` 中的文件复制到正式目录�
 ### 6.1 路由
 
 ```
-POST   /gateway/creation/start          # 开始创建（传入需求文本 + 目标类型）
-GET    /gateway/creation/sessions        # 列出所有创建会话
-GET    /gateway/creation/sessions/:id    # 获取会话详情
-POST   /gateway/creation/sessions/:id/confirm   # 用户确认（选择方案、确认需求等）
-POST   /gateway/creation/sessions/:id/rerun     # 重跑当前 Phase
-POST   /gateway/creation/sessions/:id/back      # 回退到指定 Phase
-POST   /gateway/creation/sessions/:id/skip      # 跳过当前 Phase
-DELETE /gateway/creation/sessions/:id    # 取消/删除创建会话
+# Phase 1：对话交互
+POST   /gateway/creation/start                       # 开始创建（传入需求文本 + 目标类型）
+POST   /gateway/creation/sessions/:id/chat           # 发送对话消息（SSE 响应）
+POST   /gateway/creation/sessions/:id/knowledge      # 添加知识库条目
+DELETE /gateway/creation/sessions/:id/knowledge/:kid  # 删除知识库条目
+
+# 通用
+GET    /gateway/creation/sessions                    # 列出所有创建会话
+GET    /gateway/creation/sessions/:id                # 获取会话详情
+DELETE /gateway/creation/sessions/:id                # 取消/删除创建会话
+
+# 自动执行控制（Phase 2-6）
+POST   /gateway/creation/sessions/:id/launch         # Phase 1 完成后，启动自动执行
+POST   /gateway/creation/sessions/:id/pause          # 暂停自动执行
+POST   /gateway/creation/sessions/:id/resume         # 恢复自动执行
+POST   /gateway/creation/sessions/:id/rerun/:phase   # 重跑指定 Phase
+POST   /gateway/creation/sessions/:id/back/:phase    # 回退到指定 Phase
 ```
 
 ### 6.2 实时事件（通过 eventBus → WebSocket）
 
 ```
+# Phase 1 对话事件
+creation:chat-response    { sessionId, message, isComplete }     // AI 回复（流式）
+creation:requirements-ready { sessionId, files }                 // 标准化文件集生成完毕
+
+# 自动执行事件
 creation:phase-started    { sessionId, phaseId, agentId }
-creation:phase-progress   { sessionId, phaseId, message }        // Agent 中间输出
-creation:phase-complete   { sessionId, phaseId, output }
-creation:awaiting-user    { sessionId, phaseId, question, options }  // 需要用户输入
-creation:completed        { sessionId, artifacts }
-creation:failed           { sessionId, phaseId, error }
+creation:phase-progress   { sessionId, phaseId, message, detail } // Agent 中间输出（文件生成进度等）
+creation:phase-complete   { sessionId, phaseId, summary }
+creation:needs-attention  { sessionId, phaseId, reason }          // 失败或需要干预
+creation:completed        { sessionId, artifacts, report }
 ```
 
 ## 7. 前端交互设计
 
-### 7.1 创建向导视图（CreationWizardView）
+### 7.1 核心 UX 原则
 
-左侧：Phase 时间线（固定 6 步，高亮当前步骤）
-右侧：当前 Phase 的交互区域
+**用户只需要做一件事**：和 AI 对话，把需求说清楚。剩下的全自动。
+
+界面分为两个阶段，切换清晰：
 
 ```
-┌──────────────────────────────────────────────────┐
-│  创建向导 — 销售话术分析 Skill                      │
-├──────────┬───────────────────────────────────────┤
-│          │                                       │
-│  ① 需求  │   [当前 Phase 的交互区域]              │
-│  ● 进行中│                                       │
-│          │   Phase 1: 对话式界面                  │
-│  ② 方案  │   ┌─────────────────────────────┐     │
-│  ○ 待执行│   │ AI: 你想分析什么类型的话术？ │     │
-│          │   │ 用户: 销售场景的...          │     │
-│  ③ 生成  │   │ AI: 输出需要什么格式？       │     │
-│  ○ 待执行│   └─────────────────────────────┘     │
-│          │                                       │
-│  ④ 验证  │   Phase 2: 方案对比卡片               │
-│  ○ 待执行│   ┌──────┐ ┌──────┐ ┌──────┐         │
-│          │   │方案 A │ │方案 B│ │方案 C│         │
-│  ⑤ 迭代  │   └──────┘ └──────┘ └──────┘         │
-│  ○ 待执行│   [选择方案] [合并方案]                │
-│          │                                       │
-│  ⑥ 发布  │   Phase 3-4: 进度条 + 结果展示        │
-│  ○ 待执行│   Phase 5: 版本对比 + 迭代按钮         │
-│          │                                       │
-├──────────┴───────────────────────────────────────┤
-│  [返回上一步]  [跳过]  [重新生成]  [继续]          │
-└──────────────────────────────────────────────────┘
+阶段 A（交互）                       阶段 B（自动）
+┌─────────────────────┐            ┌─────────────────────┐
+│  "告诉我你的需求"    │  ────→    │  "正在为你创建..."    │
+│                     │  用户确认  │                     │
+│  对话 + 知识库上传   │            │  进度面板 + 实时日志  │
+└─────────────────────┘            └─────────────────────┘
 ```
 
-### 7.2 各 Phase 的交互组件
+### 7.2 阶段 A：需求对话界面
 
-| Phase      | 组件                    | 交互模式          | 用户操作                       |
-| ---------- | ----------------------- | ----------------- | ------------------------------ |
-| 1 需求分析 | `RequirementsChat.vue`  | 对话式            | 回答 AI 提问，确认需求文档     |
-| 2 方案设计 | `DesignComparison.vue`  | 卡片对比          | 选择方案 / 合并 / 提出修改意见 |
-| 3 实施生成 | `ImplementProgress.vue` | 进度条 + 实时预览 | 等待，查看中间产物             |
-| 4 验证测试 | `ValidationReport.vue`  | 报告展示          | 查看评分，决定是否迭代         |
-| 5 迭代优化 | `IterationPanel.vue`    | 版本对比 + 操作   | 选择迭代/接受当前版本          |
-| 6 发布存档 | `ReleaseConfirm.vue`    | 确认面板          | 确认发布位置和名称             |
+```
+┌──────────────────────────────────────────────────────────────┐
+│  创建 Skill — 需求分析                                [最小化] │
+├─────────────────────────────────┬────────────────────────────┤
+│                                 │                            │
+│   对话区域                       │   知识库 & 已确认信息       │
+│                                 │                            │
+│   ┌───────────────────────┐     │   📋 需求摘要              │
+│   │ 🤖 你想创建什么？      │     │   · 目标：销售话术分析     │
+│   │    请描述你的需求...   │     │   · 场景：客户沟通分析     │
+│   │                       │     │   · 状态：收集中...        │
+│   │ 👤 我想做一个销售话术  │     │                            │
+│   │    分析的技能...       │     │   📁 知识库 (2)            │
+│   │                       │     │   · 销售手册.md            │
+│   │ 🤖 了解。请问：       │     │   · 话术模板.txt           │
+│   │    1. 分析什么类型？   │     │   [+ 添加文件/文本]        │
+│   │    2. 输入是什么格式？ │     │                            │
+│   │                       │     │   📊 进度                  │
+│   │ 👤 ...                │     │   ██████░░░░ 60%           │
+│   └───────────────────────┘     │   还需确认：输出格式、边界  │
+│                                 │                            │
+│   [输入框...            ] [发送] │                            │
+│                                 │                            │
+├─────────────────────────────────┴────────────────────────────┤
+│  完成对话后，系统将自动执行方案设计→生成→验证→发布（预计5-10分钟）│
+└──────────────────────────────────────────────────────────────┘
+```
+
+**关键 UX 细节**：
+
+1. **右侧面板实时更新**：随着对话推进，AI 已确认的信息（目标、场景、输入、输出）实时展示在右侧，让用户清楚看到"还缺什么"
+2. **知识库上传区域**：随时可以拖拽文件或粘贴文本
+3. **底部提示**：明确告知用户"对话完成后全自动"，降低心理预期
+4. **进度指示**：显示需求收集的完整度百分比（基于标准文件所需信息）
+
+### 7.3 阶段 B：自动执行面板
+
+Phase 1 完成后，界面自动切换为进度展示面板：
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  创建 Skill — 自动执行中                            [暂停] [×] │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─ Phase 进度 ──────────────────────────────────────────┐   │
+│  │  ✅ ① 需求分析    完成 (3分钟)                         │   │
+│  │  ✅ ② 方案设计    完成 — 选择方案 B "渐进式分析"        │   │
+│  │  🔄 ③ 实施生成    进行中... (已 2 分钟)                │   │
+│  │  ○  ④ 验证测试    等待                                 │   │
+│  │  ○  ⑤ 迭代优化    等待                                 │   │
+│  │  ○  ⑥ 发布        等待                                 │   │
+│  └───────────────────────────────────────────────────────┘   │
+│                                                              │
+│  ┌─ 当前阶段详情 ────────────────────────────────────────┐   │
+│  │                                                       │   │
+│  │  ③ 实施生成                                           │   │
+│  │                                                       │   │
+│  │  正在生成文件：                                        │   │
+│  │  ✅ SKILL.md          — 主文件                         │   │
+│  │  🔄 references/       — 参考资料目录                    │   │
+│  │  ○  test-cases/       — 测试用例                       │   │
+│  │                                                       │   │
+│  │  ┌─ 实时预览 ───────────────────────────────────────┐ │   │
+│  │  │  # 销售话术分析                                  │ │   │
+│  │  │                                                  │ │   │
+│  │  │  ## 使用场景                                     │ │   │
+│  │  │  当需要分析客户沟通记录中的话术质量时...          │ │   │
+│  │  │  ...                                             │ │   │
+│  │  └──────────────────────────────────────────────────┘ │   │
+│  └───────────────────────────────────────────────────────┘   │
+│                                                              │
+│  [暂停] [查看需求文档] [查看方案] [返回上一步]                 │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**自动执行完成后**：
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  ✅ 创建完成 — 销售话术分析 Skill                              │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  📊 验证评分：87/100 (通过)                                   │
+│                                                              │
+│  ┌─ 产物清单 ────────────────────────────────────────────┐   │
+│  │  📄 skills/sales-analysis/SKILL.md       [查看] [编辑] │   │
+│  │  📁 skills/sales-analysis/references/    [查看]        │   │
+│  │  📁 skills/sales-analysis/test-cases/    [查看]        │   │
+│  └───────────────────────────────────────────────────────┘   │
+│                                                              │
+│  ┌─ 创建报告 ────────────────────────────────────────────┐   │
+│  │  · 迭代次数：1（V1 评分 72 → V2 评分 87）             │   │
+│  │  · 总耗时：8分钟                                       │   │
+│  │  · 方案：B "渐进式分析"（优于 A/C）                    │   │
+│  │  [查看完整报告]                                        │   │
+│  └───────────────────────────────────────────────────────┘   │
+│                                                              │
+│  [开始使用] [继续训练] [重新创建]                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 7.4 前端组件结构
+
+| 组件                      | 用途                        | 所在阶段 |
+| ------------------------- | --------------------------- | -------- |
+| `CreationWizardView.vue`  | 主视图，管理阶段切换        | 全局     |
+| `RequirementsChat.vue`    | 对话界面 + 消息列表         | 阶段 A   |
+| `KnowledgePanel.vue`      | 知识库管理（上传/删除）     | 阶段 A   |
+| `RequirementsSummary.vue` | 已确认信息的实时摘要        | 阶段 A   |
+| `AutopilotProgress.vue`   | Phase 2-6 进度展示          | 阶段 B   |
+| `PhaseDetail.vue`         | 单个 Phase 的详情和实时预览 | 阶段 B   |
+| `CreationReport.vue`      | 创建完成后的报告            | 完成     |
 
 ## 8. 实施计划
 
 ### 8.1 阶段划分
 
-**Phase A：核心框架（MVP）**
+**Phase A：需求对话（MVP 核心）**
 
-- [ ] 定义 `CreationSession` 类型和 `CreationStore`
-- [ ] 实现 `CreationPipeline` 流程引擎（状态机 + Phase 调度）
-- [ ] 创建 `requirements-analyst` Agent 定义
-- [ ] 创建 `skill-builder` Agent 定义
-- [ ] 实现 Phase 1（需求分析）+ Phase 3（生成）+ Phase 6（发布）的最小闭环
-- [ ] HTTP API 路由注册
-- [ ] 前端 `CreationWizardView` 骨架 + Phase 1 对话组件
-- [ ] 打通端到端：用户输入需求 → 对话分析 → 生成 Skill → 写入文件
+- [ ] 定义 `CreationSession`、`RequirementsOutput`、`KnowledgeItem` 等类型
+- [ ] 实现 `CreationStore`（会话持久化 + 文件存储）
+- [ ] 创建 `requirements-analyst` Agent 定义（含标准化文件输出指令）
+- [ ] 实现 Phase 1 对话路由（`/chat` SSE 接口）
+- [ ] 实现知识库上传/管理接口
+- [ ] 前端 `CreationWizardView` + `RequirementsChat` + `KnowledgePanel` + `RequirementsSummary`
+- [ ] 验证：用户可以通过对话 + 知识库生成标准化文件集
 
-**Phase B：质量保障**
+**Phase B：自动流水线**
 
+- [ ] 实现 `CreationPipeline` 自动执行引擎
 - [ ] 创建 `solution-designer` Agent 定义
+- [ ] 创建 `skill-builder` Agent 定义
 - [ ] 创建 `quality-validator` Agent 定义
-- [ ] 实现 Phase 2（方案设计）— 多方案生成和对比
-- [ ] 实现 Phase 4（验证测试）— 基于验收标准评分
-- [ ] 前端方案对比组件 + 验证报告组件
+- [ ] 实现 Phase 2→3→4→6 自动流水线
+- [ ] 实现验证不通过时自动迭代（Phase 5）
+- [ ] 前端 `AutopilotProgress` + `PhaseDetail`（实时进度 + 预览）
+- [ ] 验证：Phase 1 完成后，自动跑完到发布
 
-**Phase C：迭代能力**
+**Phase C：完善体验**
 
 - [ ] 创建 `iteration-optimizer` Agent 定义
-- [ ] 实现 Phase 5（迭代优化）— 多版本生成和对比
-- [ ] 前端迭代面板 + 版本对比
-- [ ] 完善 Phase 6 的存档逻辑（过程文档完整归档）
+- [ ] 完善迭代逻辑（多版本对比、智能优化建议）
+- [ ] 前端 `CreationReport`（创建完成报告）
+- [ ] 用户干预功能（暂停/回退/重跑）
+- [ ] 完善 Phase 6 存档逻辑（过程文档归档到产物目录）
 
 **Phase D：Agent 创建**
 
 - [ ] 创建 `agent-builder` Agent 定义
-- [ ] 实现 Agent 创建的差异化逻辑（人格文件、Skill 编排、Home 目录）
+- [ ] 实现 Agent 创建差异化逻辑（人格文件、Skill 编排、Home 目录）
 - [ ] 实现 Skill 子任务嵌套（创建 Agent 时自动创建所需 Skill）
 - [ ] 前端适配 Agent 创建流程
 
 ### 8.2 优先级原则
 
-1. **先 Skill 后 Agent** — Skill 流程更简单，验证 MVP 后再扩展到 Agent
-2. **先闭环后质量** — Phase A 先跑通 1→3→6 最小闭环，再加入 2（方案）、4（验证）、5（迭代）
-3. **先后端后前端** — Agent 定义和流程引擎先行，前端可以从简单的进度展示逐步丰富
+1. **Phase 1 最重要** — 对话质量决定一切，优先打磨 `requirements-analyst` 的引导能力
+2. **先 Skill 后 Agent** — Skill 流程更简单，验证后再扩展
+3. **先闭环后打磨** — Phase B 先跑通自动流水线，Phase C 再优化体验细节
 
 ## 9. 风险与应对
 
-| 风险                                              | 影响                 | 应对策略                                            |
-| ------------------------------------------------- | -------------------- | --------------------------------------------------- |
-| Agent 输出不符合预期的结构化格式                  | Phase 间无法传递数据 | Agent 指令中强制 JSON 格式 + 后端 fallback 解析     |
-| 单次创建消耗过多 Token（6 个 Phase × 长 context） | 成本高、速度慢       | Phase 间只传递摘要，不传全文；允许跳过可选 Phase    |
-| 需求分析对话轮次过多，用户失去耐心                | 体验差               | 提供"快速模式"跳过详细分析；AI 主动提供默认选项     |
-| 多版本迭代导致创建时间过长                        | 用户放弃             | 限制最大迭代次数（默认 2 次）；允许随时接受当前版本 |
+| 风险                             | 影响                 | 应对策略                                           |
+| -------------------------------- | -------------------- | -------------------------------------------------- |
+| Agent 输出不符合预期的结构化格式 | Phase 间无法传递数据 | Agent 指令中强制格式 + 后端 fallback 解析 + 重试   |
+| 单次创建消耗过多 Token           | 成本高、速度慢       | Phase 间只传递摘要和关键文件；知识库做摘要而非全文 |
+| Phase 1 对话轮次过多             | 用户失去耐心         | AI 主动提供默认选项；右侧显示"已收集/还缺什么"进度 |
+| 自动阶段某个 Phase 失败          | 流水线中断           | 自动重试 1 次；仍失败则暂停并通知用户              |
+| 自动执行时间过长                 | 用户离开             | 支持后台执行 + 完成通知；前端可随时查看进度        |
+| 迭代循环不收敛                   | 无限迭代             | 硬性限制最大迭代次数（默认 2 次）                  |
