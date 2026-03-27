@@ -38,6 +38,27 @@ export async function readKnowledgeFile(id: string, filePath: string): Promise<s
   return res.data.data?.content ?? '';
 }
 
+export async function createKnowledgeBase(name: string, description: string): Promise<KnowledgeBaseMeta> {
+  const res = await axios.post<ApiResponse<KnowledgeBaseMeta>>(`${BASE_URL}/gateway/knowledge/create`, {
+    name,
+    description
+  });
+  return res.data.data!;
+}
+
+export async function importKnowledgeBase(
+  name: string,
+  description: string,
+  zipBase64: string
+): Promise<KnowledgeBaseMeta> {
+  const res = await axios.post<ApiResponse<KnowledgeBaseMeta>>(`${BASE_URL}/gateway/knowledge/import`, {
+    name,
+    description,
+    zipBase64
+  });
+  return res.data.data!;
+}
+
 export async function deleteKnowledgeBase(id: string): Promise<void> {
   await axios.delete(`${BASE_URL}/gateway/knowledge/${id}`);
 }

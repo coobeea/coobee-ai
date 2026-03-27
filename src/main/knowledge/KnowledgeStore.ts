@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import AdmZip from 'adm-zip';
 import { Env } from '@main/common/env';
 import { log } from '@main/common/logger';
 import type { KnowledgeBaseMeta, KnowledgeTreeNode } from '@shared/types/knowledge';
@@ -94,6 +95,85 @@ export class KnowledgeStore {
     const dir = this.kbDir(id);
     if (!fs.existsSync(dir)) return [];
     return this.buildTree(dir, '');
+  }
+
+  /**
+   * 简单创建：只提供名称和描述，创建一个空知识库
+   */
+  createSimple(name: string, description: string): KnowledgeBaseMeta {
+    const id = `kb-${Date.now()}`;
+    const dir = this.kbDir(id);
+    fs.mkdirSync(dir, { recursive: true });
+
+    const now = Date.now();
+    const meta: KnowledgeBaseMeta = {
+      id,
+      name,
+      description,
+      chapterCount: 0,
+      totalFiles: 0,
+      createdAt: now,
+      updatedAt: now
+    };
+    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf-8');
+    fs.writeFileSync(
+      path.join(dir, 'index.md'),
+      `# ${name}\n\n> ${description}\n\n## 目录\n\n（空知识库，请导入内容）\n`,
+      'utf-8'
+    );
+    log.info(`[KnowledgeStore] Created simple KB: ${id}`);
+    return meta;
+  }
+
+  /**
+   * 从 ZIP 文件导入知识库
+   */
+  importFromZip(name: string, description: string, zipPath: string): KnowledgeBaseMeta {
+    const id = `kb-${Date.now()}`;
+    const dir = this.kbDir(id);
+    fs.mkdirSync(dir, { recursive: true });
+
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(dir, true);
+
+    const now = Date.now();
+    const meta: KnowledgeBaseMeta = {
+      id,
+      name,
+      description,
+      chapterCount: this.countChapters(dir),
+      totalFiles: this.countFiles(dir),
+      createdAt: now,
+      updatedAt: now
+    };
+    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf-8');
+
+    if (!fs.existsSync(path.join(dir, 'index.md'))) {
+      const tree = this.buildTree(dir, '');
+      const indexContent = this.generateIndexFromTree(name, description, tree);
+      fs.writeFileSync(path.join(dir, 'index.md'), indexContent, 'utf-8');
+    }
+
+    log.info(`[KnowledgeStore] Imported KB from ZIP: ${id} (${meta.totalFiles} files)`);
+    return meta;
+  }
+
+  private generateIndexFromTree(name: string, description: string, tree: KnowledgeTreeNode[]): string {
+    let content = `# ${name}\n\n> ${description}\n\n## 目录\n\n`;
+    for (const node of tree) {
+      if (node.type === 'directory') {
+        content += `### ${node.name}\n`;
+        if (node.children) {
+          for (const child of node.children) {
+            content += `- ${child.name}\n`;
+          }
+        }
+        content += '\n';
+      } else if (node.name !== 'index.md' && node.name !== 'meta.json') {
+        content += `- ${node.name}\n`;
+      }
+    }
+    return content;
   }
 
   /**
