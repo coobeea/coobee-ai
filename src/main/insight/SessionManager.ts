@@ -77,6 +77,12 @@ export class SessionManager {
     this.save(this.active);
   }
 
+  patchSession(sessionId: string, patch: Partial<InsightSession>): void {
+    if (!this.active || this.active.id !== sessionId) return;
+    Object.assign(this.active, patch);
+    this.save(this.active);
+  }
+
   updateLatestResult(sessionId: string, result: AnalysisResult, snapshotCount: number): void {
     if (!this.active || this.active.id !== sessionId) return;
     this.active.latestResult = result;

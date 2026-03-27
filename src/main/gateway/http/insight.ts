@@ -6,7 +6,7 @@ import type { Context } from 'koa';
 import type Router from '@koa/router';
 import { InsightOrchestrator } from '@main/insight/InsightOrchestrator';
 import { log } from '@main/common/logger';
-import type { AnalysisTemplate } from '@shared/types/insight';
+import type { AnalysisTemplate, SessionConfig } from '@shared/types/insight';
 
 let orchestrator: InsightOrchestrator;
 
@@ -118,6 +118,17 @@ export function registerInsightRoutes(router: Router): void {
   });
 
   // ==================== Analysis ====================
+
+  router.put('/insight/sessions/:id/config', (ctx: Context) => {
+    const config = ctx.request.body as SessionConfig;
+    const session = ensure().updateSessionConfig(ctx.params.id, config);
+    if (!session) {
+      ctx.status = 400;
+      ctx.body = { success: false, error: '只能更新活跃会话的配置' };
+      return;
+    }
+    ctx.body = { success: true, data: session };
+  });
 
   router.post('/insight/sessions/:id/transcript', (ctx: Context) => {
     const { text } = ctx.request.body as { text: string };

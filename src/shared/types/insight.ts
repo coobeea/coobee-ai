@@ -90,6 +90,13 @@ export interface AnalysisSnapshot {
 
 export type InsightSessionStatus = 'recording' | 'paused' | 'analyzing' | 'completed';
 
+export interface SessionConfig {
+  analysisPrompt?: string;
+  dimensions?: AnalysisDimension[];
+  refreshStrategy?: RefreshStrategy;
+  knowledgeBase?: string[];
+}
+
 export interface InsightSession {
   id: string;
   templateId: string;
@@ -101,4 +108,5 @@ export interface InsightSession {
   snapshotCount: number;
   latestResult?: AnalysisResult;
   metadata?: Record<string, unknown>;
+  config?: SessionConfig;
 }

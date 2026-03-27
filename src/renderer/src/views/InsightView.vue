@@ -2,7 +2,7 @@
 /**
  * InsightView — 实时洞察主视图
  *
- * 布局：顶栏 → 录音控制 → 左右分栏（文字流 | 分析卡片）→ 快照时间线
+ * 支持录音 + 手动文本输入两种数据采集方式
  */
 import { ref, computed, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -15,7 +15,8 @@ import type {
   InsightSession,
   AnalysisSnapshot,
   AnalysisResult,
-  DimensionChange
+  DimensionChange,
+  SessionConfig
 } from '@shared/types/insight';
 
 const router = useRouter();
@@ -35,6 +36,16 @@ const showTemplateSelector = ref(false);
 const selectedTemplateId = ref('');
 const loading = ref(false);
 const tab = ref<'active' | 'history'>('active');
+const inputMode = ref<'record' | 'text'>('text');
+const manualText = ref('');
+const copySuccess = ref('');
+const showConfigPanel = ref(false);
+const configPrompt = ref('');
+const showTemplateEditor = ref(false);
+const editingTemplate = ref<AnalysisTemplate | null>(null);
+const editTemplateName = ref('');
+const editTemplateDesc = ref('');
+const editTemplatePrompt = ref('');
 
 const currentTemplate = computed<AnalysisTemplate | null>(() => {
   if (!activeSession.value) return null;
@@ -49,13 +60,19 @@ const hasSession = computed(() => !!activeSession.value);
 const elapsedTime = ref('00:00:00');
 let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 
+let lastPartialLength = 0;
+
 // ==================== Audio Recorder ====================
 
 const audioRecorder = useAudioRecorder({
   onPartialResult: (text: string) => {
     if (!activeSession.value) return;
-    transcript.value += text;
-    insightApi.appendTranscript(activeSession.value.id, text).catch(() => {});
+    const delta = text.substring(lastPartialLength);
+    lastPartialLength = text.length;
+    if (delta) {
+      transcript.value += delta;
+      insightApi.appendTranscript(activeSession.value.id, delta).catch(() => {});
+    }
   },
   onSilence: () => {
     if (!activeSession.value) return;
@@ -112,11 +129,19 @@ async function startNewSession(): Promise<void> {
     activeSnapshotSeq.value = undefined;
     showTemplateSelector.value = false;
     tab.value = 'active';
+    lastPartialLength = 0;
 
-    await audioRecorder.connect();
-    await audioRecorder.startRecording();
+    if (inputMode.value === 'record') {
+      await audioRecorder.connect();
+      await audioRecorder.startRecording();
+    }
     startElapsedTimer();
     startPolling();
+
+    const tpl = templates.value.find((t) => t.id === selectedTemplateId.value);
+    if (tpl) {
+      configPrompt.value = tpl.analysisPrompt;
+    }
   } catch (err) {
     console.error('[InsightView] Start failed:', err);
   }
@@ -124,22 +149,28 @@ async function startNewSession(): Promise<void> {
 
 async function pauseCurrentSession(): Promise<void> {
   if (!activeSession.value) return;
-  audioRecorder.stopRecording();
+  if (inputMode.value === 'record') {
+    audioRecorder.stopRecording();
+  }
   const updated = await insightApi.pauseSession(activeSession.value.id);
   if (updated) activeSession.value = updated;
 }
 
 async function resumeCurrentSession(): Promise<void> {
   if (!activeSession.value) return;
-  await audioRecorder.startRecording();
+  if (inputMode.value === 'record') {
+    await audioRecorder.startRecording();
+  }
   const updated = await insightApi.resumeSession(activeSession.value.id);
   if (updated) activeSession.value = updated;
 }
 
 async function completeCurrentSession(): Promise<void> {
   if (!activeSession.value) return;
-  audioRecorder.stopRecording();
-  audioRecorder.disconnect();
+  if (inputMode.value === 'record') {
+    audioRecorder.stopRecording();
+    audioRecorder.disconnect();
+  }
   const updated = await insightApi.completeSession(activeSession.value.id);
   if (updated) {
     activeSession.value = null;
@@ -154,6 +185,92 @@ async function manualAnalyze(): Promise<void> {
   await insightApi.triggerAnalysis(activeSession.value.id);
 }
 
+async function submitManualText(): Promise<void> {
+  if (!activeSession.value || !manualText.value.trim()) return;
+  const text = manualText.value.trim();
+  transcript.value += (transcript.value ? '\n' : '') + text;
+  await insightApi.appendTranscript(activeSession.value.id, '\n' + text);
+  manualText.value = '';
+  await manualAnalyze();
+}
+
+// ==================== Config ====================
+
+async function saveSessionConfig(): Promise<void> {
+  if (!activeSession.value) return;
+  const config: SessionConfig = {
+    analysisPrompt: configPrompt.value
+  };
+  const updated = await insightApi.updateSessionConfig(activeSession.value.id, config);
+  if (updated) {
+    activeSession.value = updated;
+    showConfigPanel.value = false;
+  }
+}
+
+function openTemplateEditor(tpl: AnalysisTemplate): void {
+  editingTemplate.value = { ...tpl };
+  editTemplateName.value = tpl.name;
+  editTemplateDesc.value = tpl.description;
+  editTemplatePrompt.value = tpl.analysisPrompt;
+  showTemplateEditor.value = true;
+}
+
+async function saveTemplateEdit(): Promise<void> {
+  if (!editingTemplate.value) return;
+  if (editingTemplate.value.builtIn) {
+    const created = await insightApi.createTemplate({
+      ...editingTemplate.value,
+      name: editTemplateName.value,
+      description: editTemplateDesc.value,
+      analysisPrompt: editTemplatePrompt.value
+    });
+    if (created) templates.value.push(created);
+  } else {
+    const updated = await insightApi.updateTemplate(editingTemplate.value.id, {
+      name: editTemplateName.value,
+      description: editTemplateDesc.value,
+      analysisPrompt: editTemplatePrompt.value
+    });
+    if (updated) {
+      const idx = templates.value.findIndex((t) => t.id === updated.id);
+      if (idx >= 0) templates.value[idx] = updated;
+    }
+  }
+  showTemplateEditor.value = false;
+  editingTemplate.value = null;
+}
+
+// ==================== Copy ====================
+
+async function copyToClipboard(text: string, label: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    copySuccess.value = label;
+    setTimeout(() => {
+      copySuccess.value = '';
+    }, 2000);
+  } catch {
+    /* ignore */
+  }
+}
+
+function copyTranscript(): void {
+  copyToClipboard(transcript.value, 'transcript');
+}
+
+function copyResult(): void {
+  if (!latestResult.value) return;
+  const lines: string[] = [];
+  if (latestResult.value.summary) lines.push(`摘要：${latestResult.value.summary}\n`);
+  for (const [, dim] of Object.entries(latestResult.value.dimensions)) {
+    const val = Array.isArray(dim.value) ? (dim.value as string[]).join('、') : String(dim.value);
+    lines.push(`${dim.label}：${val}`);
+    if (dim.rawText) lines.push(`  → ${dim.rawText}`);
+  }
+  copyToClipboard(lines.join('\n'), 'result');
+}
+
 // ==================== Polling ====================
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -164,9 +281,8 @@ function startPolling(): void {
     if (!activeSession.value) return;
     try {
       const result = await insightApi.getLatestResult(activeSession.value.id);
-      if (result) {
-        latestResult.value = result;
-      }
+      if (result) latestResult.value = result;
+
       const snaps = await insightApi.getSnapshots(activeSession.value.id);
       if (snaps.length > snapshots.value.length) {
         const newSnap = snaps[snaps.length - 1];
@@ -261,55 +377,80 @@ function formatDuration(start: number, end?: number): string {
 </script>
 
 <template>
-  <div class="insight-view">
+  <div class="flex h-full flex-col overflow-hidden bg-background">
     <!-- 顶栏 -->
-    <header class="header">
-      <div class="header-left">
-        <div class="header-icon">
+    <header class="flex shrink-0 items-center justify-between border-b border-border px-6 py-3">
+      <div class="flex items-center gap-2.5">
+        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <span class="i-carbon-analytics inline-block h-4 w-4" />
         </div>
-        <h1 class="header-title">实时洞察</h1>
+        <h1 class="text-base font-bold text-foreground">实时洞察</h1>
       </div>
-      <div class="header-right">
-        <div class="tab-group">
-          <button :class="['tab-btn', { active: tab === 'active' }]" @click="tab = 'active'">实时分析</button>
-          <button :class="['tab-btn', { active: tab === 'history' }]" @click="tab = 'history'">
+      <div class="flex items-center gap-3">
+        <div class="flex gap-0.5 rounded-lg bg-surface-variant p-0.5">
+          <button
+            class="rounded-md px-3.5 py-1 text-xs transition-all"
+            :class="
+              tab === 'active'
+                ? 'bg-surface font-semibold text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            "
+            @click="tab = 'active'">
+            实时分析
+          </button>
+          <button
+            class="flex items-center gap-1 rounded-md px-3.5 py-1 text-xs transition-all"
+            :class="
+              tab === 'history'
+                ? 'bg-surface font-semibold text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            "
+            @click="tab = 'history'">
             历史记录
-            <span v-if="sessions.length" class="count-badge">{{ sessions.length }}</span>
+            <span
+              v-if="sessions.length"
+              class="rounded-full bg-primary/10 px-1.5 py-px text-[10px] font-bold text-primary">
+              {{ sessions.length }}
+            </span>
           </button>
         </div>
-        <button v-if="!hasSession" class="create-btn" @click="showTemplateSelector = true">
+        <button
+          v-if="!hasSession"
+          class="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+          @click="showTemplateSelector = true">
           <span class="i-carbon-add inline-block h-3.5 w-3.5" />
-          <span>新建会话</span>
+          新建会话
         </button>
       </div>
     </header>
 
     <!-- 实时分析 Tab -->
-    <div v-if="tab === 'active'" class="content">
+    <div v-if="tab === 'active'" class="flex flex-1 flex-col overflow-hidden">
       <!-- 无活跃会话：空态 -->
-      <div v-if="!hasSession && !loading" class="empty-state">
-        <span class="i-carbon-analytics inline-block h-12 w-12 opacity-[0.06]" />
-        <h3>开始实时洞察</h3>
-        <p>选择一个分析模板，开始录音并实时分析对话内容</p>
-        <button class="create-btn-lg" @click="showTemplateSelector = true">
+      <div v-if="!hasSession && !loading" class="flex flex-1 flex-col items-center justify-center gap-2 p-12">
+        <span class="i-carbon-analytics inline-block h-12 w-12 text-muted-foreground/20" />
+        <h3 class="mt-2 text-base font-semibold text-foreground/70">开始实时洞察</h3>
+        <p class="text-sm text-muted-foreground/60">选择一个分析模板，开始录音或输入文本进行实时分析</p>
+        <button
+          class="mt-3 flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+          @click="showTemplateSelector = true">
           <span class="i-carbon-add inline-block h-4 w-4" />
           选择模板开始
         </button>
-        <div class="template-cards">
+        <div class="mt-6 grid w-full max-w-xl grid-cols-2 gap-2.5">
           <div
             v-for="tpl in templates"
             :key="tpl.id"
-            class="tpl-card"
+            class="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border bg-card p-3 transition-all hover:border-primary/30 hover:bg-primary/5"
             @click="
               selectedTemplateId = tpl.id;
               showTemplateSelector = false;
               startNewSession();
             ">
-            <span class="tpl-icon">{{ tpl.icon }}</span>
-            <div class="tpl-info">
-              <div class="tpl-name">{{ tpl.name }}</div>
-              <div class="tpl-desc">{{ tpl.description }}</div>
+            <span class="mt-0.5 shrink-0 text-xl">{{ tpl.icon }}</span>
+            <div class="min-w-0">
+              <div class="text-sm font-semibold text-card-foreground/85">{{ tpl.name }}</div>
+              <div class="mt-0.5 text-xs leading-relaxed text-muted-foreground/60">{{ tpl.description }}</div>
             </div>
           </div>
         </div>
@@ -317,57 +458,194 @@ function formatDuration(start: number, end?: number): string {
 
       <!-- 有活跃会话 -->
       <template v-if="hasSession">
-        <!-- 录音控制面板 -->
-        <div class="recording-panel">
-          <div class="rec-left">
-            <span class="rec-dot" :class="{ recording: isRecording, paused: isPaused, analyzing: isAnalyzing }" />
-            <span class="rec-status">
-              {{ isRecording ? '录音中' : isPaused ? '已暂停' : isAnalyzing ? '分析中' : '' }}
+        <!-- 录音/输入控制面板 -->
+        <div class="flex shrink-0 items-center justify-between border-b border-border bg-surface px-5 py-2.5">
+          <div class="flex items-center gap-2.5">
+            <span
+              class="h-2 w-2 rounded-full"
+              :class="{
+                'animate-pulse bg-error': isRecording,
+                'bg-warning': isPaused,
+                'animate-pulse bg-info': isAnalyzing,
+                'bg-muted-foreground/30': !isRecording && !isPaused && !isAnalyzing
+              }" />
+            <span class="text-xs font-semibold text-foreground/70">
+              {{ isRecording ? '采集中' : isPaused ? '已暂停' : isAnalyzing ? '分析中' : '就绪' }}
             </span>
-            <span class="rec-time">{{ elapsedTime }}</span>
-            <span class="rec-template">{{ currentTemplate?.name }}</span>
-            <span v-if="snapshots.length" class="rec-snap-count"> 快照: #{{ snapshots.length }} </span>
+            <span class="font-mono text-sm font-bold tabular-nums text-foreground/50">{{ elapsedTime }}</span>
+            <span class="rounded bg-primary/10 px-2 py-0.5 text-[11px] text-primary/80">
+              {{ currentTemplate?.name }}
+            </span>
+            <span v-if="snapshots.length" class="text-[11px] text-muted-foreground/50">
+              快照: #{{ snapshots.length }}
+            </span>
           </div>
-          <div class="rec-right">
-            <button v-if="isRecording" class="ctrl-btn" title="暂停" @click="pauseCurrentSession">
+          <div class="flex items-center gap-1.5">
+            <!-- 输入模式切换 -->
+            <div class="mr-2 flex gap-0.5 rounded-md bg-surface-variant p-0.5">
+              <button
+                class="rounded px-2 py-1 text-[11px] transition-all"
+                :class="
+                  inputMode === 'text'
+                    ? 'bg-surface font-semibold text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                "
+                @click="inputMode = 'text'">
+                文本
+              </button>
+              <button
+                class="rounded px-2 py-1 text-[11px] transition-all"
+                :class="
+                  inputMode === 'record'
+                    ? 'bg-surface font-semibold text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                "
+                @click="inputMode = 'record'">
+                录音
+              </button>
+            </div>
+            <button
+              v-if="isRecording && inputMode === 'record'"
+              class="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-variant text-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+              title="暂停"
+              @click="pauseCurrentSession">
               <span class="i-carbon-pause inline-block h-3.5 w-3.5" />
             </button>
-            <button v-if="isPaused" class="ctrl-btn" title="继续" @click="resumeCurrentSession">
+            <button
+              v-if="isPaused"
+              class="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-variant text-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+              title="继续"
+              @click="resumeCurrentSession">
               <span class="i-carbon-play inline-block h-3.5 w-3.5" />
             </button>
-            <button class="ctrl-btn" title="手动分析" @click="manualAnalyze">
+            <button
+              class="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-variant text-foreground/60 transition-colors hover:bg-primary/15 hover:text-primary"
+              title="手动分析"
+              @click="manualAnalyze">
               <span class="i-carbon-analytics inline-block h-3.5 w-3.5" />
             </button>
-            <button class="ctrl-btn ctrl-stop" title="结束会话" @click="completeCurrentSession">
+            <button
+              class="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-variant text-foreground/60 transition-colors hover:bg-primary/15 hover:text-primary"
+              title="会话配置"
+              @click="showConfigPanel = !showConfigPanel">
+              <span class="i-carbon-settings inline-block h-3.5 w-3.5" />
+            </button>
+            <button
+              class="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-variant text-foreground/60 transition-colors hover:bg-error/15 hover:text-error"
+              title="结束会话"
+              @click="completeCurrentSession">
               <span class="i-carbon-stop inline-block h-3.5 w-3.5" />
             </button>
           </div>
         </div>
 
+        <!-- 会话配置面板 -->
+        <div v-if="showConfigPanel" class="shrink-0 border-b border-border bg-card px-5 py-3">
+          <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">分析提示词</div>
+          <textarea
+            v-model="configPrompt"
+            class="w-full rounded-lg border border-border bg-input-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground/40 focus:border-primary focus:outline-none"
+            rows="3"
+            placeholder="自定义分析提示词..." />
+          <div class="mt-2 flex justify-end gap-2">
+            <button
+              class="rounded-md px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent"
+              @click="showConfigPanel = false">
+              取消
+            </button>
+            <button
+              class="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+              @click="saveSessionConfig">
+              保存
+            </button>
+          </div>
+        </div>
+
         <!-- 主内容：左右分栏 -->
-        <div class="main-split">
-          <!-- 左：文字流 -->
-          <div class="transcript-panel">
-            <div class="panel-header">实时文字流</div>
-            <div class="transcript-body">
-              <p v-if="transcript" class="transcript-text">{{ transcript }}</p>
-              <p v-else class="transcript-placeholder">等待语音输入...</p>
+        <div class="flex min-h-0 flex-1 overflow-hidden">
+          <!-- 左：文字流 + 输入 -->
+          <div class="flex min-w-0 flex-1 flex-col border-r border-border">
+            <div
+              class="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+              <span>{{ inputMode === 'record' ? '实时文字流' : '文本输入' }}</span>
+              <button
+                v-if="transcript"
+                class="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] normal-case tracking-normal transition-colors"
+                :class="
+                  copySuccess === 'transcript'
+                    ? 'bg-success/10 text-success'
+                    : 'text-muted-foreground/50 hover:bg-accent hover:text-foreground'
+                "
+                @click="copyTranscript">
+                <span
+                  class="inline-block h-3 w-3"
+                  :class="copySuccess === 'transcript' ? 'i-carbon-checkmark' : 'i-carbon-copy'" />
+                {{ copySuccess === 'transcript' ? '已复制' : '复制' }}
+              </button>
+            </div>
+            <div class="flex-1 overflow-y-auto px-4 py-3">
+              <p v-if="transcript" class="whitespace-pre-wrap break-words text-sm leading-7 text-foreground/80">
+                {{ transcript }}
+              </p>
+              <p v-else class="text-sm text-muted-foreground/35">
+                {{ inputMode === 'record' ? '等待语音输入...' : '在下方输入文本内容...' }}
+              </p>
+            </div>
+            <!-- 手动文本输入区域 -->
+            <div v-if="inputMode === 'text'" class="shrink-0 border-t border-border/50 px-4 py-3">
+              <div class="flex gap-2">
+                <textarea
+                  v-model="manualText"
+                  class="flex-1 rounded-lg border border-border bg-input-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground/40 focus:border-primary focus:outline-none"
+                  rows="3"
+                  placeholder="粘贴或输入对话内容..."
+                  @keydown.ctrl.enter="submitManualText"
+                  @keydown.meta.enter="submitManualText" />
+                <button
+                  class="shrink-0 self-end rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                  :disabled="!manualText.trim()"
+                  @click="submitManualText">
+                  提交并分析
+                </button>
+              </div>
+              <p class="mt-1 text-[11px] text-muted-foreground/40">Ctrl+Enter 快捷提交</p>
             </div>
           </div>
 
           <!-- 右：分析结果卡片 -->
-          <div class="result-panel">
-            <div class="panel-header">
-              分析结果
-              <span v-if="latestResult?.confidence" class="confidence-badge">
-                置信度 {{ Math.round(latestResult.confidence * 100) }}%
-              </span>
+          <div class="flex min-w-0 flex-1 flex-col">
+            <div
+              class="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+              <span>分析结果</span>
+              <div class="flex items-center gap-2">
+                <span
+                  v-if="latestResult?.confidence"
+                  class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-primary/70">
+                  置信度 {{ Math.round(latestResult.confidence * 100) }}%
+                </span>
+                <button
+                  v-if="latestResult"
+                  class="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] normal-case tracking-normal transition-colors"
+                  :class="
+                    copySuccess === 'result'
+                      ? 'bg-success/10 text-success'
+                      : 'text-muted-foreground/50 hover:bg-accent hover:text-foreground'
+                  "
+                  @click="copyResult">
+                  <span
+                    class="inline-block h-3 w-3"
+                    :class="copySuccess === 'result' ? 'i-carbon-checkmark' : 'i-carbon-copy'" />
+                  {{ copySuccess === 'result' ? '已复制' : '复制' }}
+                </button>
+              </div>
             </div>
-            <div v-if="latestResult" class="result-body">
-              <div v-if="latestResult.summary" class="result-summary">
+            <div v-if="latestResult" class="flex-1 overflow-y-auto px-4 py-3">
+              <div
+                v-if="latestResult.summary"
+                class="mb-3 rounded-lg bg-primary/5 px-3 py-2 text-sm leading-relaxed text-foreground/75">
                 {{ latestResult.summary }}
               </div>
-              <div class="dim-grid">
+              <div class="flex flex-col gap-2">
                 <DimensionRenderer
                   v-for="(dim, key) in latestResult.dimensions"
                   :key="String(key)"
@@ -377,9 +655,9 @@ function formatDuration(start: number, end?: number): string {
                   :show-trend="currentTemplate?.dimensions.find((d) => d.key === String(key))?.showTrend" />
               </div>
             </div>
-            <div v-else class="result-empty">
-              <span class="i-carbon-chart-area inline-block h-8 w-8 opacity-[0.06]" />
-              <p>等待首次分析...</p>
+            <div v-else class="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground/40">
+              <span class="i-carbon-chart-area inline-block h-8 w-8" />
+              <p class="text-sm">等待首次分析...</p>
             </div>
           </div>
         </div>
@@ -390,25 +668,32 @@ function formatDuration(start: number, end?: number): string {
     </div>
 
     <!-- 历史记录 Tab -->
-    <div v-if="tab === 'history'" class="content">
-      <div v-if="sessions.length === 0" class="empty-state">
-        <span class="i-carbon-document inline-block h-10 w-10 opacity-[0.06]" />
-        <p>暂无历史记录</p>
+    <div v-if="tab === 'history'" class="flex-1 overflow-y-auto">
+      <div v-if="sessions.length === 0" class="flex flex-col items-center justify-center gap-2 p-12">
+        <span class="i-carbon-document inline-block h-10 w-10 text-muted-foreground/20" />
+        <p class="text-sm text-muted-foreground/50">暂无历史记录</p>
       </div>
-      <div v-else class="history-list">
-        <div v-for="s in sessions" :key="s.id" class="history-item">
-          <div class="history-info">
-            <div class="history-name">{{ s.templateName }}</div>
-            <div class="history-meta">
+      <div v-else class="flex flex-col gap-1.5 px-5 py-3">
+        <div
+          v-for="s in sessions"
+          :key="s.id"
+          class="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-2.5 transition-all hover:border-border-variant hover:bg-accent/30">
+          <div>
+            <div class="text-sm font-semibold text-card-foreground/80">{{ s.templateName }}</div>
+            <div class="mt-0.5 text-xs text-muted-foreground/55">
               {{ formatDate(s.startTime) }} · {{ formatDuration(s.startTime, s.endTime) }} ·
               {{ s.snapshotCount }} 次分析
             </div>
           </div>
-          <div class="history-actions">
-            <button class="action-btn" @click="viewHistorySession(s.id)">
+          <div class="flex gap-1">
+            <button
+              class="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              @click="viewHistorySession(s.id)">
               <span class="i-carbon-view inline-block h-3.5 w-3.5" /> 查看
             </button>
-            <button class="action-btn action-delete" @click="deleteHistorySession(s.id)">
+            <button
+              class="flex items-center rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-error/10 hover:text-error"
+              @click="deleteHistorySession(s.id)">
               <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
             </button>
           </div>
@@ -418,533 +703,130 @@ function formatDuration(start: number, end?: number): string {
 
     <!-- 模板选择对话框 -->
     <Teleport to="body">
-      <div v-if="showTemplateSelector" class="modal-overlay" @click.self="showTemplateSelector = false">
-        <div class="modal-content">
-          <h3 class="modal-title">选择分析模板</h3>
-          <div class="modal-templates">
+      <div
+        v-if="showTemplateSelector"
+        class="fixed inset-0 z-[200] flex items-center justify-center bg-overlay/40"
+        @click.self="showTemplateSelector = false">
+        <div class="w-[520px] max-h-[80vh] overflow-y-auto rounded-2xl bg-popover p-6 shadow-2xl">
+          <h3 class="mb-4 text-base font-bold text-popover-foreground">选择分析模板</h3>
+
+          <!-- 输入模式选择 -->
+          <div class="mb-4 flex items-center gap-3">
+            <span class="text-xs text-muted-foreground/70">数据采集方式：</span>
+            <div class="flex gap-0.5 rounded-lg bg-surface-variant p-0.5">
+              <button
+                class="rounded-md px-3 py-1 text-xs transition-all"
+                :class="
+                  inputMode === 'text'
+                    ? 'bg-surface font-semibold text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                "
+                @click="inputMode = 'text'">
+                手动输入文本
+              </button>
+              <button
+                class="rounded-md px-3 py-1 text-xs transition-all"
+                :class="
+                  inputMode === 'record'
+                    ? 'bg-surface font-semibold text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                "
+                @click="inputMode = 'record'">
+                实时录音
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2">
             <div
               v-for="tpl in templates"
               :key="tpl.id"
-              class="modal-tpl"
-              :class="{ selected: selectedTemplateId === tpl.id }"
+              class="flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-all"
+              :class="
+                selectedTemplateId === tpl.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
+              "
               @click="selectedTemplateId = tpl.id">
-              <span class="tpl-icon-lg">{{ tpl.icon }}</span>
-              <div class="tpl-detail">
-                <div class="tpl-name">{{ tpl.name }}</div>
-                <div class="tpl-desc">{{ tpl.description }}</div>
-                <div class="tpl-dims">{{ tpl.dimensions.length }} 个分析维度</div>
+              <span class="shrink-0 text-[28px]">{{ tpl.icon }}</span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-semibold text-popover-foreground">{{ tpl.name }}</span>
+                  <button
+                    class="rounded p-0.5 text-muted-foreground/40 transition-colors hover:bg-accent hover:text-foreground"
+                    title="编辑模板"
+                    @click.stop="openTemplateEditor(tpl)">
+                    <span class="i-carbon-edit inline-block h-3 w-3" />
+                  </button>
+                </div>
+                <div class="mt-0.5 text-xs text-muted-foreground/60">{{ tpl.description }}</div>
+                <div class="mt-1 text-[11px] text-muted-foreground/40">{{ tpl.dimensions.length }} 个分析维度</div>
               </div>
             </div>
           </div>
-          <div class="modal-footer">
-            <button class="modal-cancel" @click="showTemplateSelector = false">取消</button>
-            <button class="modal-confirm" :disabled="!selectedTemplateId" @click="startNewSession"> 开始录音 </button>
+          <div class="mt-5 flex justify-end gap-2">
+            <button
+              class="rounded-lg px-5 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent"
+              @click="showTemplateSelector = false">
+              取消
+            </button>
+            <button
+              class="rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="!selectedTemplateId"
+              @click="startNewSession">
+              {{ inputMode === 'record' ? '开始录音' : '开始分析' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 模板编辑对话框 -->
+    <Teleport to="body">
+      <div
+        v-if="showTemplateEditor"
+        class="fixed inset-0 z-[210] flex items-center justify-center bg-overlay/40"
+        @click.self="showTemplateEditor = false">
+        <div class="w-[520px] max-h-[80vh] overflow-y-auto rounded-2xl bg-popover p-6 shadow-2xl">
+          <h3 class="mb-4 text-base font-bold text-popover-foreground">
+            {{ editingTemplate?.builtIn ? '基于内置模板创建' : '编辑模板' }}
+          </h3>
+          <div v-if="editingTemplate?.builtIn" class="mb-3 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+            内置模板不可修改，保存后将创建一个副本。
+          </div>
+          <div class="flex flex-col gap-3">
+            <div>
+              <label class="mb-1 block text-xs font-semibold text-muted-foreground/70">名称</label>
+              <input
+                v-model="editTemplateName"
+                class="w-full rounded-lg border border-border bg-input-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold text-muted-foreground/70">描述</label>
+              <input
+                v-model="editTemplateDesc"
+                class="w-full rounded-lg border border-border bg-input-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold text-muted-foreground/70">分析提示词</label>
+              <textarea
+                v-model="editTemplatePrompt"
+                class="w-full rounded-lg border border-border bg-input-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                rows="5" />
+            </div>
+          </div>
+          <div class="mt-5 flex justify-end gap-2">
+            <button
+              class="rounded-lg px-5 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent"
+              @click="showTemplateEditor = false">
+              取消
+            </button>
+            <button
+              class="rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+              @click="saveTemplateEdit">
+              {{ editingTemplate?.builtIn ? '创建副本' : '保存' }}
+            </button>
           </div>
         </div>
       </div>
     </Teleport>
   </div>
 </template>
-
-<style scoped>
-.insight-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-}
-
-/* ====== Header ====== */
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px 12px;
-  border-bottom: 1px solid hsl(var(--border) / 0.3);
-  flex-shrink: 0;
-}
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.header-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: hsl(var(--primary) / 0.08);
-  color: hsl(var(--primary));
-}
-.header-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: hsl(var(--foreground));
-  margin: 0;
-}
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.tab-group {
-  display: flex;
-  gap: 2px;
-  background: hsl(var(--foreground) / 0.04);
-  border-radius: 8px;
-  padding: 2px;
-}
-.tab-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 14px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  color: hsl(var(--muted-foreground));
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.tab-btn.active {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-weight: 600;
-  box-shadow: 0 1px 3px hsl(var(--foreground) / 0.06);
-}
-.count-badge {
-  font-size: 10px;
-  font-weight: 700;
-  background: hsl(var(--primary) / 0.1);
-  color: hsl(var(--primary));
-  padding: 1px 5px;
-  border-radius: 99px;
-}
-.create-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 16px;
-  border-radius: 8px;
-  background: hsl(var(--primary));
-  color: white;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.create-btn:hover {
-  opacity: 0.9;
-}
-
-/* ====== Content ====== */
-.content {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-/* ====== Empty State ====== */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 24px;
-  gap: 8px;
-  color: hsl(var(--muted-foreground) / 0.6);
-  text-align: center;
-}
-.empty-state h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: hsl(var(--foreground) / 0.7);
-  margin: 8px 0 0;
-}
-.empty-state p {
-  font-size: 13px;
-  margin: 0;
-}
-.create-btn-lg {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 24px;
-  border-radius: 10px;
-  background: hsl(var(--primary));
-  color: white;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 12px;
-}
-.template-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 10px;
-  margin-top: 24px;
-  width: 100%;
-  max-width: 560px;
-}
-.tpl-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid hsl(var(--border) / 0.3);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.tpl-card:hover {
-  border-color: hsl(var(--primary) / 0.3);
-  background: hsl(var(--primary) / 0.03);
-}
-.tpl-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-.tpl-info {
-  min-width: 0;
-}
-.tpl-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: hsl(var(--foreground) / 0.85);
-}
-.tpl-desc {
-  font-size: 11.5px;
-  color: hsl(var(--muted-foreground) / 0.6);
-  margin-top: 2px;
-  line-height: 1.4;
-}
-
-/* ====== Recording Panel ====== */
-.recording-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 20px;
-  background: hsl(var(--foreground) / 0.02);
-  border-bottom: 1px solid hsl(var(--border) / 0.2);
-  flex-shrink: 0;
-}
-.rec-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.rec-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: hsl(var(--muted-foreground) / 0.3);
-}
-.rec-dot.recording {
-  background: hsl(0 84% 60%);
-  animation: pulse-rec 1.2s ease-in-out infinite;
-}
-.rec-dot.paused {
-  background: hsl(38 92% 50%);
-}
-.rec-dot.analyzing {
-  background: hsl(217 91% 60%);
-  animation: pulse-rec 1s ease-in-out infinite;
-}
-@keyframes pulse-rec {
-  0%,
-  100% {
-    opacity: 1;
-    box-shadow: 0 0 0 0 hsl(0 84% 60% / 0.4);
-  }
-  50% {
-    opacity: 0.6;
-    box-shadow: 0 0 0 4px hsl(0 84% 60% / 0);
-  }
-}
-.rec-status {
-  font-size: 12px;
-  font-weight: 600;
-  color: hsl(var(--foreground) / 0.7);
-}
-.rec-time {
-  font-size: 13px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: hsl(var(--foreground) / 0.5);
-}
-.rec-template {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: hsl(var(--primary) / 0.08);
-  color: hsl(var(--primary) / 0.8);
-}
-.rec-snap-count {
-  font-size: 11px;
-  color: hsl(var(--muted-foreground) / 0.5);
-}
-.rec-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.ctrl-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: hsl(var(--foreground) / 0.04);
-  color: hsl(var(--foreground) / 0.6);
-  cursor: pointer;
-  transition: all 0.12s;
-}
-.ctrl-btn:hover {
-  background: hsl(var(--foreground) / 0.08);
-  color: hsl(var(--foreground));
-}
-.ctrl-stop:hover {
-  background: hsl(0 84% 60% / 0.12);
-  color: hsl(0 84% 50%);
-}
-
-/* ====== Main Split ====== */
-.main-split {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-.transcript-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid hsl(var(--border) / 0.2);
-  min-width: 0;
-}
-.result-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: hsl(var(--muted-foreground) / 0.7);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  border-bottom: 1px solid hsl(var(--border) / 0.15);
-  flex-shrink: 0;
-}
-.confidence-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 99px;
-  background: hsl(var(--primary) / 0.08);
-  color: hsl(var(--primary) / 0.7);
-  text-transform: none;
-  letter-spacing: 0;
-}
-.transcript-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-}
-.transcript-text {
-  font-size: 13.5px;
-  line-height: 1.8;
-  color: hsl(var(--foreground) / 0.8);
-  white-space: pre-wrap;
-  word-break: break-word;
-  margin: 0;
-}
-.transcript-placeholder {
-  color: hsl(var(--muted-foreground) / 0.35);
-  font-size: 13px;
-}
-.result-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 16px;
-}
-.result-summary {
-  font-size: 13px;
-  color: hsl(var(--foreground) / 0.75);
-  padding: 8px 12px;
-  background: hsl(var(--primary) / 0.04);
-  border-radius: 8px;
-  margin-bottom: 12px;
-  line-height: 1.5;
-}
-.dim-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.result-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  gap: 8px;
-  color: hsl(var(--muted-foreground) / 0.4);
-  font-size: 13px;
-}
-
-/* ====== History ====== */
-.history-list {
-  padding: 12px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.history-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid hsl(var(--border) / 0.25);
-  transition: all 0.15s;
-}
-.history-item:hover {
-  border-color: hsl(var(--border) / 0.4);
-  background: hsl(var(--foreground) / 0.02);
-}
-.history-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: hsl(var(--foreground) / 0.8);
-}
-.history-meta {
-  font-size: 11.5px;
-  color: hsl(var(--muted-foreground) / 0.55);
-  margin-top: 2px;
-}
-.history-actions {
-  display: flex;
-  gap: 4px;
-}
-.action-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  color: hsl(var(--muted-foreground));
-  cursor: pointer;
-  transition: all 0.12s;
-}
-.action-btn:hover {
-  background: hsl(var(--foreground) / 0.05);
-  color: hsl(var(--foreground));
-}
-.action-delete:hover {
-  background: hsl(0 84% 60% / 0.08);
-  color: hsl(0 84% 50%);
-}
-
-/* ====== Modal ====== */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: hsl(0 0% 0% / 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-}
-.modal-content {
-  background: hsl(var(--background));
-  border-radius: 16px;
-  padding: 24px;
-  width: 480px;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 60px hsl(0 0% 0% / 0.25);
-}
-.modal-title {
-  font-size: 16px;
-  font-weight: 700;
-  margin: 0 0 16px;
-}
-.modal-templates {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.modal-tpl {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid hsl(var(--border) / 0.3);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.modal-tpl:hover {
-  border-color: hsl(var(--primary) / 0.3);
-}
-.modal-tpl.selected {
-  border-color: hsl(var(--primary));
-  background: hsl(var(--primary) / 0.04);
-}
-.tpl-icon-lg {
-  font-size: 28px;
-  flex-shrink: 0;
-}
-.tpl-detail {
-  min-width: 0;
-}
-.tpl-dims {
-  font-size: 11px;
-  color: hsl(var(--muted-foreground) / 0.5);
-  margin-top: 4px;
-}
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 20px;
-}
-.modal-cancel {
-  padding: 8px 20px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: hsl(var(--muted-foreground));
-  cursor: pointer;
-}
-.modal-cancel:hover {
-  background: hsl(var(--foreground) / 0.05);
-}
-.modal-confirm {
-  padding: 8px 24px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  background: hsl(var(--primary));
-  color: white;
-  cursor: pointer;
-}
-.modal-confirm:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.modal-confirm:not(:disabled):hover {
-  opacity: 0.9;
-}
-</style>

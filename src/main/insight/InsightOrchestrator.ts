@@ -13,7 +13,7 @@ import { SnapshotStore } from './SnapshotStore';
 import { TranscriptBuffer } from './TranscriptBuffer';
 import { AnalysisTrigger } from './AnalysisTrigger';
 import { InsightAnalyzer } from './InsightAnalyzer';
-import type { AnalysisSnapshot, InsightSession, AnalysisTemplate } from '@shared/types/insight';
+import type { AnalysisSnapshot, InsightSession, AnalysisTemplate, SessionConfig } from '@shared/types/insight';
 
 export class InsightOrchestrator {
   private templateStore: TemplateStore;
@@ -117,6 +117,22 @@ export class InsightOrchestrator {
     return this.sessionManager.deleteSession(sessionId);
   }
 
+  updateSessionConfig(sessionId: string, config: SessionConfig): InsightSession | null {
+    const active = this.sessionManager.getActive();
+    if (!active || active.id !== sessionId) return null;
+
+    active.config = { ...active.config, ...config };
+
+    if (config.refreshStrategy && this.trigger) {
+      this.trigger.destroy();
+      this.trigger = new AnalysisTrigger(config.refreshStrategy, () => this.runAnalysis());
+    }
+
+    this.sessionManager.patchSession(sessionId, { config: active.config });
+    log.info(`[InsightOrchestrator] Session config updated: ${sessionId}`);
+    return active;
+  }
+
   // ==================== Transcript ====================
 
   appendTranscript(sessionId: string, text: string): void {
@@ -156,8 +172,17 @@ export class InsightOrchestrator {
     const session = this.sessionManager.getActive();
     if (!session || !this.buffer) return;
 
-    const template = this.templateStore.get(session.templateId);
-    if (!template) return;
+    const baseTemplate = this.templateStore.get(session.templateId);
+    if (!baseTemplate) return;
+
+    const template: AnalysisTemplate = session.config
+      ? {
+          ...baseTemplate,
+          analysisPrompt: session.config.analysisPrompt ?? baseTemplate.analysisPrompt,
+          dimensions: session.config.dimensions ?? baseTemplate.dimensions,
+          refreshStrategy: session.config.refreshStrategy ?? baseTemplate.refreshStrategy
+        }
+      : baseTemplate;
 
     const fullTranscript = this.buffer.getFullText();
     const newText = this.buffer.getNewText();

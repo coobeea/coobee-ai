@@ -4,7 +4,13 @@
 
 import axios from 'axios';
 import configManager from '@/config';
-import type { AnalysisTemplate, InsightSession, AnalysisSnapshot, AnalysisResult } from '@shared/types/insight';
+import type {
+  AnalysisTemplate,
+  InsightSession,
+  AnalysisSnapshot,
+  AnalysisResult,
+  SessionConfig
+} from '@shared/types/insight';
 
 const BASE_URL = `${configManager.getBaseUrl()}`;
 
@@ -80,6 +86,19 @@ export async function completeSession(id: string): Promise<InsightSession | null
 export async function deleteSession(id: string): Promise<boolean> {
   const res = await axios.delete<ApiResponse<void>>(`${BASE_URL}/gateway/insight/sessions/${id}`);
   return res.data.success;
+}
+
+export async function updateSessionConfig(sessionId: string, config: SessionConfig): Promise<InsightSession | null> {
+  const res = await axios.put<ApiResponse<InsightSession>>(
+    `${BASE_URL}/gateway/insight/sessions/${sessionId}/config`,
+    config
+  );
+  return res.data.data ?? null;
+}
+
+export async function updateTemplate(id: string, updates: Partial<AnalysisTemplate>): Promise<AnalysisTemplate | null> {
+  const res = await axios.put<ApiResponse<AnalysisTemplate>>(`${BASE_URL}/gateway/insight/templates/${id}`, updates);
+  return res.data.data ?? null;
 }
 
 // ==================== Transcript & Analysis ====================
