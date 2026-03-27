@@ -169,49 +169,183 @@
 }
 ````
 
-## 3. 数据模型
+## 3. 设计原则：一切皆 Markdown 文件
 
-### 3.1 创建会话（CreationSession）
+### 3.1 文件落地原则
 
-```typescript
-interface CreationSession {
-  id: string;
-  targetType: 'skill' | 'agent';
-  userRequirement: string; // 用户原始需求文本
-  status: CreationStatus;
-  currentPhase: PhaseId;
-  phases: Record<PhaseId, PhaseState>;
-  knowledgeBase: KnowledgeItem[]; // 用户提供的知识库
-  requirements?: RequirementsOutput; // Phase 1 产出（标准化文件集）
-  designs?: DesignOutput; // Phase 2 产出
-  artifacts?: ArtifactOutput; // Phase 3 产出
-  validation?: ValidationOutput; // Phase 4 产出
-  iterations: IterationRecord[]; // Phase 5 迭代记录
-  finalVersion?: string; // 最终采用的版本号
-  createdAt: number;
-  updatedAt: number;
-}
+**所有产出都以 Markdown 文件落地**，不使用数据库、不使用 JSON 数据文件。
 
-type CreationStatus =
-  | 'requirements' // Phase 1 进行中（用户交互）
-  | 'autopilot' // Phase 2-6 自动执行中（用户可观察）
-  | 'completed' // 完成
-  | 'paused' // 用户主动暂停 / 需要干预
-  | 'failed'; // 失败
+- 每个 Phase 的产出是**一组 .md 文件**
+- 会话状态用一个 `00-session.md` 文件记录（YAML frontmatter + Markdown 正文）
+- 用户可以在界面上**看到所有自动产生的文件**，点击即可查看内容
+- 文件使用**统一的编号命名规范**：`{编号}-{名称}.md`
 
-type PhaseId = 'requirements' | 'design' | 'implement' | 'validate' | 'iterate' | 'release';
+### 3.2 统一命名规范
 
-interface PhaseState {
-  status: 'pending' | 'running' | 'completed' | 'skipped' | 'failed';
-  startedAt?: number;
-  completedAt?: number;
-  agentSessionId?: string; // 执行该 Phase 的 Agent 会话 ID
-  output?: unknown; // Phase 产出数据
-  error?: string;
-}
+所有文件按照 `{编号}-{名称}.md` 格式命名，编号按 Phase 分段：
+
+| Phase             | 编号范围 | 示例                                                          |
+| ----------------- | -------- | ------------------------------------------------------------- |
+| 会话信息          | `00-`    | `00-session.md`                                               |
+| Phase 1: 需求分析 | `01-`    | `01-requirements.md`, `01-input-spec.md`, `01-output-spec.md` |
+| Phase 2: 方案设计 | `02-`    | `02-plan-a.md`, `02-plan-b.md`, `02-comparison.md`            |
+| Phase 3: 实施生成 | `03-`    | `03-v1-SKILL.md`, `03-v1-references.md`                       |
+| Phase 4: 验证测试 | `04-`    | `04-v1-validation-report.md`                                  |
+| Phase 5: 迭代优化 | `05-`    | `05-iteration-v1-to-v2.md`                                    |
+| Phase 6: 发布     | `06-`    | `06-release-summary.md`                                       |
+
+### 3.3 完整的会话目录结构
+
+```
+.home/creation/sessions/{sessionId}/
+│
+├── 00-session.md                      # 会话元信息（状态、进度、时间线）
+│
+├── 01-requirements.md                 # 【标准】需求文档
+├── 01-input-spec.md                   # 【标准】输入规范
+├── 01-output-spec.md                  # 【标准】输出规范
+├── 01-criteria.md                     # 【标准】验收标准（量化维度）
+├── 01-chat-history.md                 # Phase 1 对话记录
+├── 01-glossary.md                     # 【可选】术语表
+├── 01-examples.md                     # 【可选】示例数据集
+├── 01-skill-plan.md                   # 【可选】Skill 编排计划（Agent 创建时）
+│
+├── 02-plan-a.md                       # 方案 A
+├── 02-plan-b.md                       # 方案 B
+├── 02-plan-c.md                       # 方案 C
+├── 02-comparison.md                   # 方案对比分析
+├── 02-selection.md                    # 方案选择及理由
+│
+├── 03-v1-SKILL.md                     # V1 版本产物（主文件）
+├── 03-v1-references.md                # V1 参考资料
+├── 03-v1-test-cases.md                # V1 测试用例
+│
+├── 04-v1-validation-report.md         # V1 验证报告
+│
+├── 05-iteration-v1-to-v2.md           # 迭代记录（V1→V2 的改动和原因）
+│
+├── 03-v2-SKILL.md                     # V2 版本产物（迭代后）
+├── 03-v2-references.md                # V2 参考资料
+├── 03-v2-test-cases.md                # V2 测试用例
+│
+├── 04-v2-validation-report.md         # V2 验证报告
+│
+├── 06-release-summary.md              # 发布摘要（最终产物清单 + 创建报告）
+│
+└── knowledge/                         # 用户提供的知识库文件（原始副本）
+    ├── sales-manual.md
+    └── talk-templates.txt
 ```
 
-### 3.2 知识库
+### 3.4 `00-session.md` 格式
+
+会话状态也用 Markdown 文件记录：
+
+```markdown
+---
+id: 'creation-20260306-001'
+targetType: skill
+name: '销售话术分析'
+status: autopilot
+currentPhase: implement
+createdAt: 2026-03-06T10:30:00Z
+updatedAt: 2026-03-06T10:35:00Z
+---
+
+# 创建会话：销售话术分析 Skill
+
+## 进度
+
+| Phase      | 状态      | 开始时间 | 完成时间 | 耗时  |
+| ---------- | --------- | -------- | -------- | ----- |
+| ① 需求分析 | ✅ 完成   | 10:30    | 10:33    | 3分钟 |
+| ② 方案设计 | ✅ 完成   | 10:33    | 10:34    | 1分钟 |
+| ③ 实施生成 | 🔄 进行中 | 10:34    | -        | -     |
+| ④ 验证测试 | ○ 等待    | -        | -        | -     |
+| ⑤ 迭代优化 | ○ 等待    | -        | -        | -     |
+| ⑥ 发布     | ○ 等待    | -        | -        | -     |
+
+## 知识库
+
+- `knowledge/sales-manual.md` — 销售手册
+- `knowledge/talk-templates.txt` — 话术模板
+
+## 需求摘要
+
+创建一个销售话术分析技能，能够从客户沟通录音文本中提取话术质量、客户意图...
+```
+
+后端通过解析 YAML frontmatter 获取结构化数据，通过 Markdown 正文展示人类可读的状态信息。
+
+### 3.5 各 Phase 产出文件示例
+
+#### `01-criteria.md` — 验收标准
+
+```markdown
+# 验收标准
+
+## 评估维度
+
+| 维度     | 权重 | 达标线 | 说明                       |
+| -------- | ---- | ------ | -------------------------- |
+| 准确性   | 30%  | ≥ 85分 | 核心功能覆盖率达到预期     |
+| 完整度   | 25%  | ≥ 80分 | 所有定义的场景均有处理逻辑 |
+| 格式规范 | 15%  | ≥ 90分 | 符合 SKILL.md 结构规范     |
+| 可用性   | 20%  | ≥ 80分 | 无需额外说明即可使用       |
+| 鲁棒性   | 10%  | ≥ 70分 | 边界情况有明确处理         |
+
+## 总分达标线
+
+总分 ≥ 80 且无单维度低于 60 → 通过
+```
+
+#### `04-v1-validation-report.md` — 验证报告
+
+```markdown
+---
+version: v1
+overallScore: 72
+passed: false
+---
+
+# 验证报告 — V1
+
+## 评分
+
+| 维度     | 得分 | 达标线 | 结果 | 说明                 |
+| -------- | ---- | ------ | ---- | -------------------- |
+| 准确性   | 80   | ≥ 85   | ❌   | 缺少对复杂场景的覆盖 |
+| 完整度   | 70   | ≥ 80   | ❌   | 异常处理逻辑不完整   |
+| 格式规范 | 95   | ≥ 90   | ✅   | 格式符合标准         |
+| 可用性   | 65   | ≥ 80   | ❌   | 部分指令描述模糊     |
+| 鲁棒性   | 50   | ≥ 70   | ❌   | 无边界处理说明       |
+
+## 场景测试
+
+### 场景 1：标准销售对话分析
+
+- **结果**：✅ 通过
+- **输出**：正确识别了购买意愿和主要关注点
+
+### 场景 2：包含闲聊的混合对话
+
+- **结果**：❌ 未通过
+- **输出**：未能正确过滤无关内容
+
+## 薄弱点
+
+1. 异常处理逻辑不完整
+2. 边界情况未覆盖
+3. 部分指令描述模糊
+
+## 改进建议
+
+1. 补充边界情况处理
+2. 优化指令描述的清晰度
+3. 增加混合内容过滤逻辑
+```
+
+### 3.6 知识库
 
 ```typescript
 interface KnowledgeItem {
@@ -224,127 +358,7 @@ interface KnowledgeItem {
 }
 ```
 
-用户在 Phase 1 对话过程中可以随时添加知识库条目。知识库对后续所有 Phase 可见——Agent 收到的上下文中会包含知识库的摘要和引用。
-
-### 3.3 Phase 1 产出：标准化文件集
-
-Phase 1 结束后，`requirements-analyst` 将多轮对话的成果输出为**一组标准化文件**。这些文件是后续所有 Phase 的输入。
-
-```
-.home/creation/sessions/{sessionId}/requirements/
-├── requirements.md      # 【标准】需求文档 — 目标、场景、边界、约束
-├── input-spec.md        # 【标准】输入规范 — 数据格式、来源、示例
-├── output-spec.md       # 【标准】输出规范 — 格式、结构、示例
-├── criteria.json        # 【标准】验收标准 — 量化维度 + 达标线
-├── knowledge/           # 【可选】用户提供的知识库文件副本
-│   ├── doc1.md
-│   └── doc2.txt
-└── extras/              # 【可选】额外文件（根据对话中的需求动态生成）
-    ├── glossary.md      # 例：术语表
-    ├── examples.md      # 例：示例数据集
-    └── constraints.md   # 例：特殊约束说明
-```
-
-**标准文件**（每次创建必定生成）：
-
-| 文件              | 内容                                                      | 格式     |
-| ----------------- | --------------------------------------------------------- | -------- |
-| `requirements.md` | 核心需求文档：目标、使用场景（3-5个）、边界定义、目标用户 | Markdown |
-| `input-spec.md`   | 输入规范：数据格式、来源、字段说明、示例数据              | Markdown |
-| `output-spec.md`  | 输出规范：结果格式、结构定义、字段说明、示例输出          | Markdown |
-| `criteria.json`   | 验收标准：量化的评估维度，贯穿后续所有 Phase              | JSON     |
-
-**可选文件**（由 `requirements-analyst` 根据对话内容判断是否需要生成）：
-
-- 术语表（领域内有专业术语时）
-- 示例数据集（用户提供了样例时）
-- 特殊约束说明（有非常规限制时）
-- Skill 编排计划（创建 Agent 且涉及多个 Skill 时）
-
-### 3.4 标准化文件的结构化类型
-
-```typescript
-interface RequirementsOutput {
-  targetType: 'skill' | 'agent';
-  name: string;
-  files: RequirementsFile[]; // 生成的文件列表
-  summary: string; // 需求摘要（一段话，用于传递给后续 Phase）
-  skillPlan?: SkillPlanItem[]; // 当 targetType='agent' 时
-}
-
-interface RequirementsFile {
-  filename: string; // 如 'requirements.md'
-  category: 'standard' | 'extra'; // 标准文件 vs 额外文件
-  content: string; // 文件内容
-}
-
-interface CriterionDimension {
-  key: string;
-  label: string;
-  weight: number; // 0-1，所有维度权重之和 = 1
-  standard: string; // 达标线的文字描述
-  passThreshold: number; // 达标分数线（0-100）
-}
-
-interface SkillPlanItem {
-  name: string;
-  purpose: string;
-  exists: boolean; // 系统中是否已有
-  priority: 'required' | 'optional';
-}
-```
-
-### 3.5 Phase 2-6 产出类型
-
-```typescript
-interface DesignOutput {
-  selectedPlan: string; // 自动选择的最优方案 ID
-  plans: DesignPlan[];
-  comparison: string; // 对比分析文本
-  selectionReason: string; // 为什么选择该方案
-}
-
-interface DesignPlan {
-  id: string; // plan-a, plan-b, plan-c
-  name: string;
-  approach: string; // 方案描述
-  pros: string[];
-  cons: string[];
-  score: number; // 方案综合评分（0-100）
-  outline: string; // 方案大纲（将用于 Phase 3）
-}
-
-interface ArtifactOutput {
-  version: string; // v1, v2...
-  files: ArtifactFile[]; // 生成的文件列表
-  selfCheckScore?: number; // 生成时的自检分数
-}
-
-interface ArtifactFile {
-  path: string; // 相对路径
-  content: string; // 文件内容
-  role: 'main' | 'reference' | 'test' | 'config';
-}
-
-interface ValidationOutput {
-  version: string;
-  overallScore: number;
-  passed: boolean;
-  dimensionScores: { key: string; score: number; comment: string }[];
-  scenarioTests: { scenario: string; passed: boolean; output: string; comment: string }[];
-  weaknesses: string[];
-  suggestions: string[];
-}
-
-interface IterationRecord {
-  fromVersion: string;
-  toVersion: string;
-  reason: string; // 为什么需要迭代
-  changes: string[]; // 做了哪些改动
-  validationBefore: ValidationOutput;
-  validationAfter: ValidationOutput;
-}
-```
+用户在 Phase 1 对话中可以随时添加知识库条目。知识库文件存储在 `knowledge/` 子目录下。
 
 ## 4. 流程引擎设计
 
@@ -352,25 +366,36 @@ interface IterationRecord {
 
 ```typescript
 class CreationPipeline {
-  // 固定的流程步骤顺序
   private static PHASES: PhaseId[] = ['requirements', 'design', 'implement', 'validate', 'iterate', 'release'];
 
-  // 每个 Phase 对应的 Agent ID
   private static PHASE_AGENTS: Record<PhaseId, string> = {
     requirements: 'requirements-analyst',
     design: 'solution-designer',
     implement: 'skill-builder', // 或 agent-builder，根据 targetType
     validate: 'quality-validator',
     iterate: 'iteration-optimizer',
-    release: 'creation-orchestrator' // 发布由编排 Agent 处理
+    release: 'creation-orchestrator'
   };
 
+  // 所有状态通过读写 00-session.md 的 YAML frontmatter 维护
   async start(userRequirement: string, targetType: 'skill' | 'agent'): Promise<string>;
-  async advanceToNextPhase(sessionId: string): Promise<void>;
-  async userConfirm(sessionId: string, choice: UserChoice): Promise<void>;
+  async launchAutopilot(sessionId: string): Promise<void>; // Phase 1 完成后启动
+  async pause(sessionId: string): Promise<void>;
+  async resume(sessionId: string): Promise<void>;
   async rerunPhase(sessionId: string, phaseId: PhaseId): Promise<void>;
   async goBackToPhase(sessionId: string, phaseId: PhaseId): Promise<void>;
-  async getSession(sessionId: string): Promise<CreationSession>;
+
+  // 文件操作
+  async listFiles(sessionId: string): Promise<FileInfo[]>; // 扫描目录
+  async readFile(sessionId: string, filename: string): Promise<string>;
+}
+
+interface FileInfo {
+  filename: string; // 如 '01-requirements.md'
+  phase: PhaseId; // 根据编号前缀推断
+  status: 'completed' | 'writing' | 'pending';
+  size: number;
+  updatedAt: number;
 }
 ```
 
@@ -431,89 +456,82 @@ for phase in [design, implement, validate, iterate, release]:
 
 ### 4.3 Agent 消息构建
 
-每个 Phase 的 Agent 收到的消息需要包含前序阶段的上下文：
+每个 Phase 的 Agent 收到的上下文 = 读取前序 Phase 的 Markdown 文件，拼接成消息：
 
 ```typescript
-function buildPhaseMessage(session: CreationSession, phaseId: PhaseId): string {
-  let message = `## 创建任务\n\n`;
-  message += `**目标类型**：${session.targetType}\n`;
-  message += `**用户需求**：${session.userRequirement}\n\n`;
+async function buildPhaseMessage(sessionDir: string, phaseId: PhaseId): Promise<string> {
+  const files = await fs.readdir(sessionDir);
+  let message = '';
 
-  // Phase 2+ 包含需求分析结果
-  if (session.requirements) {
-    message += `## 需求分析结果\n\n${JSON.stringify(session.requirements, null, 2)}\n\n`;
+  // 读取 00-session.md 获取基本信息
+  const sessionMd = await fs.readFile(path.join(sessionDir, '00-session.md'), 'utf-8');
+  message += `${sessionMd}\n\n---\n\n`;
+
+  // 按编号顺序读取前序 Phase 的文件
+  const currentPhaseNum = PHASE_NUM_MAP[phaseId]; // design=2, implement=3, ...
+  const priorFiles = files
+    .filter((f) => f.endsWith('.md') && f !== '00-session.md')
+    .filter((f) => parseInt(f.split('-')[0]) < currentPhaseNum)
+    .sort();
+
+  for (const file of priorFiles) {
+    const content = await fs.readFile(path.join(sessionDir, file), 'utf-8');
+    message += `## 📄 ${file}\n\n${content}\n\n---\n\n`;
   }
 
-  // Phase 3+ 包含选定方案
-  if (session.designs) {
-    const selected = session.designs.plans.find((p) => p.id === session.designs!.selectedPlan);
-    message += `## 确定方案\n\n${selected?.outline}\n\n`;
-  }
-
-  // Phase 4+ 包含生成产物
-  if (session.artifacts) {
-    message += `## 当前产物\n\n`;
-    for (const file of session.artifacts.files) {
-      message += `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\`\n\n`;
+  // 知识库摘要
+  const knowledgeDir = path.join(sessionDir, 'knowledge');
+  if (await exists(knowledgeDir)) {
+    const kFiles = await fs.readdir(knowledgeDir);
+    message += `## 📁 知识库（${kFiles.length} 个文件）\n\n`;
+    for (const kf of kFiles) {
+      const kContent = await fs.readFile(path.join(knowledgeDir, kf), 'utf-8');
+      message += `### ${kf}\n\n${kContent.slice(0, 2000)}\n\n`; // 截断防止 context 过长
     }
   }
 
-  // Phase 5 包含验证结果
-  if (session.validation) {
-    message += `## 验证结果\n\n${JSON.stringify(session.validation, null, 2)}\n\n`;
-  }
-
   // Phase-specific 指令
-  message += getPhaseSpecificPrompt(phaseId, session);
+  message += getPhaseSpecificPrompt(phaseId);
 
   return message;
 }
 ```
 
+核心思路：**一切数据来源于文件，一切产出写入文件**。Agent 读文件获取上下文，Agent 产出写成新的文件。
+
 ## 5. 持久化设计
 
-### 5.1 存储路径
+### 5.1 纯文件存储
+
+所有数据存储在文件系统中，**不使用任何数据库**。
 
 ```
-.home/creation/
-├── sessions/
-│   ├── {sessionId}.json              # 会话元数据（CreationSession）
-│   └── {sessionId}/
-│       ├── requirements/             # Phase 1 产出（标准化文件集）
-│       │   ├── requirements.md       # 【标准】需求文档
-│       │   ├── input-spec.md         # 【标准】输入规范
-│       │   ├── output-spec.md        # 【标准】输出规范
-│       │   ├── criteria.json         # 【标准】验收标准
-│       │   ├── extras/               # 【可选】额外文件
-│       │   │   └── ...
-│       │   └── knowledge/            # 用户提供的知识库副本
-│       │       └── ...
-│       ├── designs/                  # Phase 2 产出
-│       │   ├── plan-a.md
-│       │   ├── plan-b.md
-│       │   ├── comparison.md
-│       │   └── selection.json        # 选中方案及理由
-│       ├── artifacts/                # Phase 3 产出
-│       │   ├── v1/                   # 版本 1
-│       │   │   ├── SKILL.md
-│       │   │   └── ...
-│       │   └── v2/                   # 版本 2（迭代后）
-│       ├── validations/              # Phase 4 产出
-│       │   ├── report-v1.json
-│       │   └── report-v2.json
-│       ├── iterations.json           # Phase 5 迭代记录
-│       └── chat-history.json         # Phase 1 对话历史（用于追溯）
-└── templates/                        # 可复用的创建模板（未来扩展）
+.home/creation/sessions/
+├── {sessionId}/                       # 每个创建会话一个目录
+│   ├── 00-session.md                  # 会话元信息（YAML frontmatter）
+│   ├── 01-*.md                        # Phase 1 产出文件
+│   ├── 02-*.md                        # Phase 2 产出文件
+│   ├── 03-*.md                        # Phase 3 产出文件
+│   ├── 04-*.md                        # Phase 4 产出文件
+│   ├── 05-*.md                        # Phase 5 产出文件
+│   ├── 06-*.md                        # Phase 6 产出文件
+│   └── knowledge/                     # 知识库文件
+└── {sessionId2}/
+    └── ...
 ```
+
+后端通过文件系统操作（`fs.readdir`、`fs.readFile`、`fs.writeFile`）完成所有持久化。
+
+会话列表 = 扫描 `sessions/` 目录下的子目录，读取每个 `00-session.md` 的 YAML frontmatter。
 
 ### 5.2 与最终产物的关系
 
-Phase 6（发布）将 `artifacts/v{final}/` 中的文件复制到正式目录：
+Phase 6（发布）将最终版本的产物文件复制到正式目录：
 
 - Skill → `skills/{skill-name}/SKILL.md`（+ references/ 等）
 - Agent → `agents/{agentId}.json` + `homes/{agentId}/`（IDENTITY.md 等）
 
-同时在正式产物目录下创建 `.creation/` 链接或摘要，方便追溯创建过程。
+同时在正式产物目录下创建 `.creation/` 目录，存放创建过程的摘要引用。
 
 ## 6. HTTP API 设计
 
@@ -531,6 +549,10 @@ GET    /gateway/creation/sessions                    # 列出所有创建会话
 GET    /gateway/creation/sessions/:id                # 获取会话详情
 DELETE /gateway/creation/sessions/:id                # 取消/删除创建会话
 
+# 文件浏览（所有产出都是文件，前端需要读取和展示）
+GET    /gateway/creation/sessions/:id/files          # 列出会话下所有文件（名称+状态）
+GET    /gateway/creation/sessions/:id/files/:name    # 读取单个文件内容（渲染 Markdown）
+
 # 自动执行控制（Phase 2-6）
 POST   /gateway/creation/sessions/:id/launch         # Phase 1 完成后，启动自动执行
 POST   /gateway/creation/sessions/:id/pause          # 暂停自动执行
@@ -543,15 +565,20 @@ POST   /gateway/creation/sessions/:id/back/:phase    # 回退到指定 Phase
 
 ```
 # Phase 1 对话事件
-creation:chat-response    { sessionId, message, isComplete }     // AI 回复（流式）
-creation:requirements-ready { sessionId, files }                 // 标准化文件集生成完毕
+creation:chat-response      { sessionId, message, isComplete }      // AI 回复（流式）
+creation:requirements-ready { sessionId, files[] }                  // 标准化文件集生成完毕
+
+# 文件事件（前端文件树实时更新的关键）
+creation:file-created       { sessionId, filename, phase }          // 新文件生成
+creation:file-updated       { sessionId, filename }                 // 文件内容更新
+creation:file-writing       { sessionId, filename, progress }       // 文件正在写入（大文件）
 
 # 自动执行事件
-creation:phase-started    { sessionId, phaseId, agentId }
-creation:phase-progress   { sessionId, phaseId, message, detail } // Agent 中间输出（文件生成进度等）
-creation:phase-complete   { sessionId, phaseId, summary }
-creation:needs-attention  { sessionId, phaseId, reason }          // 失败或需要干预
-creation:completed        { sessionId, artifacts, report }
+creation:phase-started      { sessionId, phaseId, agentId }
+creation:phase-progress     { sessionId, phaseId, message }         // Agent 中间状态
+creation:phase-complete     { sessionId, phaseId, summary }
+creation:needs-attention    { sessionId, phaseId, reason }          // 失败或需要干预
+creation:completed          { sessionId, files[], report }
 ```
 
 ## 7. 前端交互设计
@@ -608,83 +635,102 @@ creation:completed        { sessionId, artifacts, report }
 3. **底部提示**：明确告知用户"对话完成后全自动"，降低心理预期
 4. **进度指示**：显示需求收集的完整度百分比（基于标准文件所需信息）
 
-### 7.3 阶段 B：自动执行面板
+### 7.3 阶段 B：自动执行面板 + 文件浏览器
 
-Phase 1 完成后，界面自动切换为进度展示面板：
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  创建 Skill — 自动执行中                            [暂停] [×] │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌─ Phase 进度 ──────────────────────────────────────────┐   │
-│  │  ✅ ① 需求分析    完成 (3分钟)                         │   │
-│  │  ✅ ② 方案设计    完成 — 选择方案 B "渐进式分析"        │   │
-│  │  🔄 ③ 实施生成    进行中... (已 2 分钟)                │   │
-│  │  ○  ④ 验证测试    等待                                 │   │
-│  │  ○  ⑤ 迭代优化    等待                                 │   │
-│  │  ○  ⑥ 发布        等待                                 │   │
-│  └───────────────────────────────────────────────────────┘   │
-│                                                              │
-│  ┌─ 当前阶段详情 ────────────────────────────────────────┐   │
-│  │                                                       │   │
-│  │  ③ 实施生成                                           │   │
-│  │                                                       │   │
-│  │  正在生成文件：                                        │   │
-│  │  ✅ SKILL.md          — 主文件                         │   │
-│  │  🔄 references/       — 参考资料目录                    │   │
-│  │  ○  test-cases/       — 测试用例                       │   │
-│  │                                                       │   │
-│  │  ┌─ 实时预览 ───────────────────────────────────────┐ │   │
-│  │  │  # 销售话术分析                                  │ │   │
-│  │  │                                                  │ │   │
-│  │  │  ## 使用场景                                     │ │   │
-│  │  │  当需要分析客户沟通记录中的话术质量时...          │ │   │
-│  │  │  ...                                             │ │   │
-│  │  └──────────────────────────────────────────────────┘ │   │
-│  └───────────────────────────────────────────────────────┘   │
-│                                                              │
-│  [暂停] [查看需求文档] [查看方案] [返回上一步]                 │
-└──────────────────────────────────────────────────────────────┘
-```
-
-**自动执行完成后**：
+Phase 1 完成后，界面切换为三栏布局：左侧文件树、中间进度/预览、右侧详情。
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  ✅ 创建完成 — 销售话术分析 Skill                              │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  📊 验证评分：87/100 (通过)                                   │
-│                                                              │
-│  ┌─ 产物清单 ────────────────────────────────────────────┐   │
-│  │  📄 skills/sales-analysis/SKILL.md       [查看] [编辑] │   │
-│  │  📁 skills/sales-analysis/references/    [查看]        │   │
-│  │  📁 skills/sales-analysis/test-cases/    [查看]        │   │
-│  └───────────────────────────────────────────────────────┘   │
-│                                                              │
-│  ┌─ 创建报告 ────────────────────────────────────────────┐   │
-│  │  · 迭代次数：1（V1 评分 72 → V2 评分 87）             │   │
-│  │  · 总耗时：8分钟                                       │   │
-│  │  · 方案：B "渐进式分析"（优于 A/C）                    │   │
-│  │  [查看完整报告]                                        │   │
-│  └───────────────────────────────────────────────────────┘   │
-│                                                              │
-│  [开始使用] [继续训练] [重新创建]                              │
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  创建 Skill — 销售话术分析                              [暂停] [×]    │
+├──────────┬──────────────────────────────────┬────────────────────────┤
+│          │                                  │                        │
+│  📁 文件  │   进度 & 预览                     │   文件内容              │
+│          │                                  │                        │
+│  ✅ 00-  │  ┌─ Phase 进度 ──────────────┐   │  # 01-requirements.md  │
+│  session │  │ ✅ ① 需求分析   3分钟      │   │                        │
+│          │  │ ✅ ② 方案设计   1分钟      │   │  ## 核心目标            │
+│  ✅ 01-  │  │ 🔄 ③ 实施生成  进行中...  │   │  分析销售场景中的       │
+│  require │  │ ○  ④ 验证测试              │   │  客户沟通话术质量...    │
+│  ments   │  │ ○  ⑤ 迭代优化              │   │                        │
+│  ✅ 01-  │  │ ○  ⑥ 发布                  │   │  ## 使用场景            │
+│  input-  │  └────────────────────────────┘   │  1. 电话销售录音分析    │
+│  spec    │                                  │  2. 在线客服对话分析    │
+│  ✅ 01-  │  ┌─ 当前阶段 ────────────────┐   │  ...                    │
+│  output- │  │ ③ 正在生成：               │   │                        │
+│  spec    │  │ ✅ 03-v1-SKILL.md          │   │                        │
+│  ✅ 01-  │  │ 🔄 03-v1-references.md     │   │                        │
+│  criteria│  │ ○  03-v1-test-cases.md     │   │                        │
+│          │  └────────────────────────────┘   │                        │
+│  ✅ 02-  │                                  │                        │
+│  plan-a  │  实时预览：                       │                        │
+│  ✅ 02-  │  ┌──────────────────────────┐    │                        │
+│  plan-b  │  │ # 销售话术分析            │    │                        │
+│  ✅ 02-  │  │ ## 使用场景              │    │                        │
+│  compari │  │ 当需要分析客户沟通...    │    │                        │
+│  son     │  └──────────────────────────┘    │                        │
+│  🔄 03-  │                                  │                        │
+│  v1-SKIL │                                  │                        │
+│  L       │                                  │                        │
+│          │                                  │                        │
+│  📁 know │                                  │                        │
+│  ledge/  │                                  │                        │
+│          │                                  │                        │
+├──────────┴──────────────────────────────────┴────────────────────────┤
+│  [暂停]  [返回上一步]  全部文件 12 个，已生成 8 个                      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-### 7.4 前端组件结构
+**文件浏览器的 UX 关键点**：
 
-| 组件                      | 用途                        | 所在阶段 |
-| ------------------------- | --------------------------- | -------- |
-| `CreationWizardView.vue`  | 主视图，管理阶段切换        | 全局     |
-| `RequirementsChat.vue`    | 对话界面 + 消息列表         | 阶段 A   |
-| `KnowledgePanel.vue`      | 知识库管理（上传/删除）     | 阶段 A   |
-| `RequirementsSummary.vue` | 已确认信息的实时摘要        | 阶段 A   |
-| `AutopilotProgress.vue`   | Phase 2-6 进度展示          | 阶段 B   |
-| `PhaseDetail.vue`         | 单个 Phase 的详情和实时预览 | 阶段 B   |
-| `CreationReport.vue`      | 创建完成后的报告            | 完成     |
+1. **实时更新** — 每当 Agent 生成一个新文件，文件树自动刷新，新文件出现并带有动画
+2. **状态图标** — ✅ 已完成、🔄 生成中、○ 等待生成
+3. **点击查看** — 点击任意文件，右侧面板渲染 Markdown 内容
+4. **按编号排序** — 文件天然按 `01-`, `02-`, `03-`... 排序，清晰展示创建流程
+5. **knowledge/ 目录** — 知识库文件独立展示，用户上传的参考资料一目了然
+
+### 7.4 创建完成界面
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  ✅ 创建完成 — 销售话术分析 Skill                                      │
+├──────────┬───────────────────────────────────────────────────────────┤
+│          │                                                           │
+│  📁 全部  │  📊 创建报告                                              │
+│  文件     │                                                           │
+│  (16个)   │  验证评分：87/100 (✅ 通过)                                │
+│          │  迭代次数：1（V1 72分 → V2 87分）                          │
+│  00-...  │  总耗时：8分钟                                             │
+│  01-...  │  选用方案：B "渐进式分析"                                  │
+│  01-...  │                                                           │
+│  01-...  │  ┌─ 最终产物 ─────────────────────────────────────────┐   │
+│  01-...  │  │  📄 03-v2-SKILL.md              → skills/目标目录   │   │
+│  02-...  │  │  📄 03-v2-references.md         → skills/目标目录   │   │
+│  02-...  │  │  📄 03-v2-test-cases.md         → skills/目标目录   │   │
+│  02-...  │  └────────────────────────────────────────────────────┘   │
+│  03-...  │                                                           │
+│  03-...  │  ┌─ 全流程文件 ───────────────────────────────────────┐   │
+│  04-...  │  │  ← 点击左侧文件树查看任意阶段的完整产出             │   │
+│  05-...  │  └────────────────────────────────────────────────────┘   │
+│  06-...  │                                                           │
+│          │  [发布到技能库] [继续训练] [重新创建]                       │
+│  📁 know │                                                           │
+│  ledge/  │                                                           │
+│          │                                                           │
+└──────────┴───────────────────────────────────────────────────────────┘
+```
+
+### 7.5 前端组件结构
+
+| 组件                      | 用途                           | 所在阶段      |
+| ------------------------- | ------------------------------ | ------------- |
+| `CreationWizardView.vue`  | 主视图，管理阶段切换和整体布局 | 全局          |
+| `RequirementsChat.vue`    | 对话界面 + 消息列表            | 阶段 A        |
+| `KnowledgePanel.vue`      | 知识库管理（上传/删除）        | 阶段 A        |
+| `RequirementsSummary.vue` | 已确认信息的实时摘要           | 阶段 A        |
+| `FileTree.vue`            | 文件浏览器树形结构             | 阶段 B + 完成 |
+| `FileViewer.vue`          | Markdown 文件内容渲染          | 阶段 B + 完成 |
+| `AutopilotProgress.vue`   | Phase 2-6 进度 + 实时预览      | 阶段 B        |
+| `CreationReport.vue`      | 创建完成后的报告               | 完成          |
 
 ## 8. 实施计划
 
