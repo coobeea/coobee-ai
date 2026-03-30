@@ -248,31 +248,34 @@ export function formatRuntimePaths(env: AgentEnv): string {
 `
     : '';
 
+  const projectDirSection = env.projectDir
+    ? `
+⭐ **工程目录 / Project Directory**: \`${env.projectDir}/\`
+  这是用户为当前会话指定的工程目录（根目录）。
+  所有中间产物、解析数据、输出文件都应保存到此目录。
+  当用户提到"根目录""项目目录""工程目录""project directory"时，指的就是这个路径。
+`
+    : '';
+
   return `<runtime_environment>
 Your Runtime Environment:
 - Session: ${env.sessionId}
-- Current Task Directory: ${env.workspace}
+${env.projectDir ? `- 工程目录 (Project Dir): ${env.projectDir}` : ''}
+- Internal Workspace: ${env.workspace}
 - Platform: ${env.platform}/${env.arch} (${env.isDev ? 'dev' : 'prod'})
 - Security: sandbox=${env.sandboxMode}, exec=${env.execApproval}
 - Model: ${env.defaultModel} (thinking=${env.thinkingLevel})
 - Extensions: ${extensionsList}
 
 Directory Structure:
+${projectDirSection}
 ${agentHomeSection}
-${
-  env.projectDir
-    ? `**Project Directory (User-specified Output)**: ${env.projectDir}/
-  All intermediate results, parsed data, and output files go here.
-  When the user says "root directory" or "project directory", they mean this path.
-
-`
-    : ''
-}**Current Task Workspace (Temporary)**: ${env.workspace}/
+**Current Task Workspace (Internal/Temporary)**: ${env.workspace}/
   ├── .runtime/                             — System internal files (sessions, contexts, logs)
   ├── tasks/                                — Multi-agent collaboration area
   └── GOAL.md                               — Task goal file
 
-  **PURPOSE**: This is the temporary sandbox for the CURRENT task.
+  **PURPOSE**: This is the internal sandbox for the CURRENT task.
   Files here are task-specific and may be cleaned up after task completion.
 
 Key System Directories:
@@ -286,15 +289,14 @@ File Output Guidelines:
 ${
   env.projectDir
     ? `
-1. **Project Outputs (Intermediate & Final Results)** → Project Directory
-   - ${env.projectDir}/            — All task outputs, parsed data, generated content
-   - When the user says "root directory" or "project directory", they mean HERE
-   Example: Processed files, analysis results, generated content
+1. **工程目录（首选输出位置）** → ${env.projectDir}/
+   - 所有任务输出、中间结果、解析数据、生成内容都放这里
+   - 用户说"根目录""项目目录""工程目录"时，指的就是这个路径
+   - 读取用户资料、浏览项目文件时，也应从此目录开始
 
-2. **Persistent Outputs (Training Results, Knowledge)** → Agent Home
-   - {agentHome}/output/           — Cross-session persistent files
-   - {agentHome}/skill-data/       — Structured data from skills
-   Example: Accumulated knowledge, long-term memory
+2. **Agent Home（跨会话持久化）** → ${env.agentHome || '{agentHome}'}/
+   - output/           — 跨会话持久化文件（训练成果、知识积累）
+   - skill-data/       — Skill 结构化数据
 `
     : `
 1. **Persistent Outputs (Training Results, Knowledge)** → Agent Home
@@ -309,7 +311,12 @@ ${
 }
 3. **System Files** (DO NOT manually modify)
    - {workspace}/.runtime/         — Managed by system
-
-**IMPORTANT**: When user asks "check our root directory" or similar, they usually mean ${env.projectDir ? `the Project Directory (${env.projectDir})` : `Agent Home (${env.agentHome || 'N/A'})`}.
+${
+  env.projectDir
+    ? `
+**重要**：你的主要工作目录是工程目录 \`${env.projectDir}\`。当用户要求查看文件、列出目录内容、或保存输出时，默认使用此目录。`
+    : `
+**IMPORTANT**: When user asks "check our root directory" or similar, they usually mean ${env.agentHome ? `Agent Home (${env.agentHome})` : 'the current workspace'}.`
+}
 </runtime_environment>`;
 }
