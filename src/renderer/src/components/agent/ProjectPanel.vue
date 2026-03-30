@@ -17,17 +17,19 @@ import FileTreeNodeVue from './FileTreeNode.vue';
 const logStore = useLogStore();
 
 // 从 ThreadView 注入目录模式
-type DirectoryMode = 'agent-home' | 'workspace';
+type DirectoryMode = 'agent-home' | 'workspace' | 'project';
 const directoryMode = inject<Ref<DirectoryMode>>('directoryMode', ref('agent-home'));
 const toggleDirectoryMode = inject<() => void>('toggleDirectoryMode', () => {});
+const setProjectDir = inject<() => Promise<void>>('setProjectDir', async () => {});
 
-const directoryTitle = computed(() => {
-  return directoryMode.value === 'agent-home' ? '智能体目录' : '任务工作目录';
-});
+const DIRECTORY_META: Record<DirectoryMode, { title: string; icon: string; switchHint: string }> = {
+  'agent-home': { title: '智能体目录', icon: 'i-carbon-user-avatar', switchHint: '切换到任务目录' },
+  workspace: { title: '任务工作目录', icon: 'i-carbon-folder-shared', switchHint: '切换到工程目录' },
+  project: { title: '工程目录', icon: 'i-carbon-document-folder', switchHint: '切换到智能体目录' }
+};
 
-const directoryIcon = computed(() => {
-  return directoryMode.value === 'agent-home' ? 'i-carbon-user-avatar' : 'i-carbon-folder-shared';
-});
+const directoryTitle = computed(() => DIRECTORY_META[directoryMode.value].title);
+const directoryIcon = computed(() => DIRECTORY_META[directoryMode.value].icon);
 
 const props = defineProps<{
   threadId?: string;
@@ -340,7 +342,14 @@ defineExpose({ selectDirectory });
         <button
           v-if="projectPath"
           class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
-          :title="directoryMode === 'agent-home' ? '切换到任务目录' : '切换到智能体目录'"
+          title="设置工程目录"
+          @click="setProjectDir">
+          <span class="i-carbon-folder-move-to inline-block h-3 w-3"></span>
+        </button>
+        <button
+          v-if="projectPath"
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
+          :title="DIRECTORY_META[directoryMode].switchHint"
           @click="toggleDirectoryMode">
           <span class="i-carbon-switcher inline-block h-3 w-3"></span>
         </button>

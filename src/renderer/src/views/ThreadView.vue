@@ -42,9 +42,10 @@ const workspaceReady = computed(() => projectPath.value !== null);
 
 const threadId = computed(() => route.params.id as string);
 
-// 目录切换：智能体目录 vs 任务工作目录
-type DirectoryMode = 'agent-home' | 'workspace';
+// 目录切换：智能体目录 / 任务工作目录 / 工程目录
+type DirectoryMode = 'agent-home' | 'workspace' | 'project';
 const directoryMode = ref<DirectoryMode>('agent-home');
+const customProjectDir = ref<string | null>(null);
 
 // 提供 addToChat 方法给 ProjectPanel/FileTreeNode
 function addToChat(node: { path: string; name: string; type: 'file' | 'directory' }): void {
@@ -58,6 +59,8 @@ provide('addToChat', addToChat);
 provide('addFileToTask', undefined);
 provide('directoryMode', directoryMode);
 provide('toggleDirectoryMode', toggleDirectoryMode);
+provide('customProjectDir', customProjectDir);
+provide('setProjectDir', setProjectDir);
 
 const pendingSkillRef = ref<string | null>(null);
 
@@ -71,20 +74,38 @@ provide('pendingSkillRef', pendingSkillRef);
 
 // 根据当前模式更新显示的目录路径
 function updateProjectPathForMode(thread: { agentHomePath?: string; workspacePath?: string }): void {
-  if (directoryMode.value === 'agent-home') {
+  if (directoryMode.value === 'project' && customProjectDir.value) {
+    projectPath.value = customProjectDir.value;
+  } else if (directoryMode.value === 'agent-home') {
     projectPath.value = thread.agentHomePath || thread.workspacePath || '';
   } else {
     projectPath.value = thread.workspacePath || thread.agentHomePath || '';
   }
 }
 
-// 切换目录模式
+// 循环切换目录模式（三种）
+const MODES: DirectoryMode[] = ['agent-home', 'workspace', 'project'];
 function toggleDirectoryMode(): void {
   const thread = threadsStore.threads.find((t) => t.id === threadId.value);
   if (!thread) return;
 
-  directoryMode.value = directoryMode.value === 'agent-home' ? 'workspace' : 'agent-home';
+  const idx = MODES.indexOf(directoryMode.value);
+  directoryMode.value = MODES[(idx + 1) % MODES.length];
   updateProjectPathForMode(thread);
+}
+
+// 设置工程目录
+async function setProjectDir(): Promise<void> {
+  try {
+    const result = await window.api?.openDirectory();
+    if (result) {
+      customProjectDir.value = result;
+      directoryMode.value = 'project';
+      projectPath.value = result;
+    }
+  } catch (err) {
+    console.warn('[ThreadView] 选择工程目录失败:', err);
+  }
 }
 
 // 监听模式切换，重新加载目录
@@ -182,6 +203,14 @@ onUnmounted(() => {
 
     <!-- 已选目录：三栏工作区 -->
     <div v-else class="flex min-h-0 flex-1">
+      <!-- 左侧折叠时的展开条 -->
+      <div
+        v-if="leftCollapsed"
+        class="flex h-full w-6 shrink-0 cursor-pointer flex-col items-center border-r border-gray-200/60 bg-gray-50/30 pt-2 transition-colors hover:bg-gray-100/60"
+        title="展开文件面板"
+        @click="leftCollapsed = false">
+        <span class="i-carbon-chevron-right inline-block h-3 w-3 text-gray-400"></span>
+      </div>
       <ProjectPanel v-model:collapsed="leftCollapsed" v-model:project-path="projectPath" :thread-id="threadId" />
       <div class="middle-area">
         <WorkbenchPanel />
