@@ -201,9 +201,60 @@ export class KnowledgeStore {
   }
 
   writeFile(id: string, filePath: string, content: string): void {
-    const fullPath = path.join(this.kbDir(id), filePath);
+    const safePath = filePath.replace(/\.\./g, '');
+    const fullPath = path.join(this.kbDir(id), safePath);
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, content, 'utf-8');
+    this.touchMeta(id);
+  }
+
+  deleteFile(id: string, filePath: string): boolean {
+    const safePath = filePath.replace(/\.\./g, '');
+    const fullPath = path.join(this.kbDir(id), safePath);
+    if (!fs.existsSync(fullPath)) return false;
+
+    if (fs.statSync(fullPath).isDirectory()) {
+      fs.rmSync(fullPath, { recursive: true, force: true });
+    } else {
+      fs.unlinkSync(fullPath);
+    }
+
+    const parentDir = path.dirname(fullPath);
+    const kbRoot = this.kbDir(id);
+    if (parentDir !== kbRoot && fs.existsSync(parentDir)) {
+      const remaining = fs.readdirSync(parentDir);
+      if (remaining.length === 0) {
+        fs.rmdirSync(parentDir);
+      }
+    }
+
+    this.touchMeta(id);
+    log.info(`[KnowledgeStore] Deleted file: ${id}/${safePath}`);
+    return true;
+  }
+
+  importIntoExisting(id: string, zipPath: string): KnowledgeBaseMeta | null {
+    const dir = this.kbDir(id);
+    if (!fs.existsSync(dir)) return null;
+
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(dir, true);
+
+    this.touchMeta(id);
+    log.info(`[KnowledgeStore] Imported additional content into KB: ${id}`);
+    return this.get(id);
+  }
+
+  regenerateIndex(id: string): string | null {
+    const meta = this.get(id);
+    if (!meta) return null;
+
+    const tree = this.buildTree(this.kbDir(id), '');
+    const content = this.generateIndexFromTree(meta.name, meta.description, tree);
+    fs.writeFileSync(path.join(this.kbDir(id), 'index.md'), content, 'utf-8');
+    this.touchMeta(id);
+    log.info(`[KnowledgeStore] Regenerated index for KB: ${id}`);
+    return content;
   }
 
   updateMeta(id: string, updates: Partial<KnowledgeBaseMeta>): void {
@@ -211,6 +262,21 @@ export class KnowledgeStore {
     if (!existing) return;
     const merged = { ...existing, ...updates, updatedAt: Date.now() };
     fs.writeFileSync(path.join(this.kbDir(id), 'meta.json'), JSON.stringify(merged, null, 2), 'utf-8');
+  }
+
+  private touchMeta(id: string): void {
+    const metaPath = path.join(this.kbDir(id), 'meta.json');
+    if (fs.existsSync(metaPath)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+        raw.updatedAt = Date.now();
+        raw.totalFiles = this.countFiles(this.kbDir(id));
+        raw.chapterCount = this.countChapters(this.kbDir(id));
+        fs.writeFileSync(metaPath, JSON.stringify(raw, null, 2), 'utf-8');
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   private buildTree(baseDir: string, relativePath: string): KnowledgeTreeNode[] {

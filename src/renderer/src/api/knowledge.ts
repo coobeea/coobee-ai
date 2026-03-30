@@ -59,6 +59,26 @@ export async function importKnowledgeBase(
   return res.data.data!;
 }
 
+export async function saveKnowledgeFile(id: string, filePath: string, content: string): Promise<void> {
+  await axios.put(`${BASE_URL}/gateway/knowledge/${id}/write`, { path: filePath, content });
+}
+
+export async function deleteKnowledgeFile(id: string, filePath: string): Promise<void> {
+  await axios.delete(`${BASE_URL}/gateway/knowledge/${id}/file`, { params: { path: filePath } });
+}
+
+export async function importIntoKnowledgeBase(id: string, zipBase64: string): Promise<KnowledgeBaseMeta> {
+  const res = await axios.post<ApiResponse<KnowledgeBaseMeta>>(`${BASE_URL}/gateway/knowledge/${id}/import`, {
+    zipBase64
+  });
+  return res.data.data!;
+}
+
+export async function regenerateIndex(id: string): Promise<string> {
+  const res = await axios.post<ApiResponse<{ content: string }>>(`${BASE_URL}/gateway/knowledge/${id}/reindex`);
+  return res.data.data?.content ?? '';
+}
+
 export async function deleteKnowledgeBase(id: string): Promise<void> {
   await axios.delete(`${BASE_URL}/gateway/knowledge/${id}`);
 }

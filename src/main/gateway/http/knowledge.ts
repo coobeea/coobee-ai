@@ -89,6 +89,60 @@ export function registerKnowledgeRoutes(router: Router): void {
     ctx.body = { success: true, data: { path: filePath, content } };
   });
 
+  router.put('/knowledge/:id/write', (ctx: Context) => {
+    const { path: filePath, content } = ctx.request.body as { path?: string; content?: string };
+    if (!filePath) {
+      ctx.status = 400;
+      ctx.body = { success: false, error: 'path is required' };
+      return;
+    }
+    getStore().writeFile(ctx.params.id, filePath, content ?? '');
+    ctx.body = { success: true };
+  });
+
+  router.delete('/knowledge/:id/file', (ctx: Context) => {
+    const filePath = ctx.query.path as string;
+    if (!filePath) {
+      ctx.status = 400;
+      ctx.body = { success: false, error: 'path query parameter is required' };
+      return;
+    }
+    const deleted = getStore().deleteFile(ctx.params.id, filePath);
+    ctx.body = { success: deleted };
+  });
+
+  router.post('/knowledge/:id/import', async (ctx: Context) => {
+    const { zipBase64 } = ctx.request.body as { zipBase64?: string };
+    if (!zipBase64) {
+      ctx.status = 400;
+      ctx.body = { success: false, error: 'zipBase64 is required' };
+      return;
+    }
+    const tmpFile = path.join(os.tmpdir(), `kb-merge-${Date.now()}.zip`);
+    try {
+      fs.writeFileSync(tmpFile, Buffer.from(zipBase64, 'base64'));
+      const meta = getStore().importIntoExisting(ctx.params.id, tmpFile);
+      if (!meta) {
+        ctx.status = 404;
+        ctx.body = { success: false, error: 'Knowledge base not found' };
+        return;
+      }
+      ctx.body = { success: true, data: meta };
+    } finally {
+      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+    }
+  });
+
+  router.post('/knowledge/:id/reindex', (ctx: Context) => {
+    const content = getStore().regenerateIndex(ctx.params.id);
+    if (content === null) {
+      ctx.status = 404;
+      ctx.body = { success: false, error: 'Knowledge base not found' };
+      return;
+    }
+    ctx.body = { success: true, data: { content } };
+  });
+
   router.delete('/knowledge/:id', (ctx: Context) => {
     const deleted = getStore().delete(ctx.params.id);
     ctx.body = { success: deleted };
