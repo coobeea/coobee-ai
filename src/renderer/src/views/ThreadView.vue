@@ -47,6 +47,9 @@ type DirectoryMode = 'agent-home' | 'workspace' | 'project';
 const directoryMode = ref<DirectoryMode>('agent-home');
 const customProjectDir = ref<string | null>(null);
 
+// 每个会话独立存储工程目录
+const projectDirByThread = new Map<string, string>();
+
 // 提供 addToChat 方法给 ProjectPanel/FileTreeNode
 function addToChat(node: { path: string; name: string; type: 'file' | 'directory' }): void {
   chatPanelRef.value?.insertFileReference({
@@ -83,18 +86,21 @@ function updateProjectPathForMode(thread: { agentHomePath?: string; workspacePat
   }
 }
 
-// 循环切换目录模式（三种）
-const MODES: DirectoryMode[] = ['agent-home', 'workspace', 'project'];
+// 循环切换目录模式（无工程目录时跳过 project 模式）
 function toggleDirectoryMode(): void {
   const thread = threadsStore.threads.find((t) => t.id === threadId.value);
   if (!thread) return;
 
-  const idx = MODES.indexOf(directoryMode.value);
-  directoryMode.value = MODES[(idx + 1) % MODES.length];
+  const modes: DirectoryMode[] = customProjectDir.value
+    ? ['agent-home', 'workspace', 'project']
+    : ['agent-home', 'workspace'];
+
+  const idx = modes.indexOf(directoryMode.value);
+  directoryMode.value = modes[(idx + 1) % modes.length];
   updateProjectPathForMode(thread);
 }
 
-// 设置工程目录
+// 设置工程目录（绑定到当前会话）
 async function setProjectDir(): Promise<void> {
   try {
     const result = await window.api?.openDirectory();
@@ -102,6 +108,10 @@ async function setProjectDir(): Promise<void> {
       customProjectDir.value = result;
       directoryMode.value = 'project';
       projectPath.value = result;
+      // 持久化到当前会话
+      if (threadId.value) {
+        projectDirByThread.set(threadId.value, result);
+      }
     }
   } catch (err) {
     console.warn('[ThreadView] 选择工程目录失败:', err);
@@ -118,16 +128,24 @@ watch(directoryMode, () => {
 
 function enterWorkspaceForThread(id: string): void {
   const thread = threadsStore.threads.find((t) => t.id === id);
+
+  // 恢复该会话的工程目录（如有），否则重置到默认模式
+  const savedProjectDir = projectDirByThread.get(id);
+  if (savedProjectDir) {
+    customProjectDir.value = savedProjectDir;
+    directoryMode.value = 'project';
+  } else {
+    customProjectDir.value = null;
+    directoryMode.value = 'agent-home';
+  }
+
   if (thread) {
     agentsStore.selectAgent(thread.agentId);
-    // 根据当前模式选择显示的目录
     updateProjectPathForMode(thread);
   }
   threadsStore.selectThread(id);
   closeAllFiles();
 
-  // 在发起网络请求前，直接先切换 Store 的 active sessionId，
-  // 以便 loadHistory 能识别过期请求
   chatStore.sessionId = id;
   chatStore.loadHistory(id);
 }
