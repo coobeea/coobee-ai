@@ -242,8 +242,7 @@ export const chatMethods: MethodGroup = {
           title: message.slice(0, 50),
           agentId: agentId || 'default',
           agentMode,
-          agentType,
-          metadata: projectDir ? { projectDir } : undefined
+          agentType
         });
         sid = thread.id;
         log.info(`[chat.send] Auto-created thread: ${sid}`);
@@ -251,8 +250,8 @@ export const chatMethods: MethodGroup = {
         try {
           const threadStore = await ThreadStore.getInstance();
           const thread = await threadStore.get(sid);
-          if (thread?.metadata?.projectDir) {
-            resolvedProjectDir = thread.metadata.projectDir as string;
+          if (thread?.projectDir) {
+            resolvedProjectDir = thread.projectDir;
           }
         } catch {
           // 读取失败不影响主流程
