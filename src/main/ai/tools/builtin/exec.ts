@@ -31,7 +31,6 @@ import { ProcessRegistry } from '../../process/ProcessRegistry';
 import { checkExecPolicy } from '../../sandbox/exec-policy';
 import { scanCommand } from '../security/command-scanner';
 import { getPtyManager } from '@main/terminal/PtyManager';
-import { notifyFileChanged } from '../pipeline';
 
 /** 默认超时（ms）— 2 分钟，覆盖大部分构建/测试场景 */
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -332,9 +331,6 @@ export const execTool: ToolDefinition = {
       type: 'output',
       content: `Command ${exitInfo} in ${result.metadata?.duration}ms`
     };
-
-    // 前台命令可能修改了文件，通知前端刷新文件树
-    notifyFileChanged([cwd], context);
 
     return result;
   }

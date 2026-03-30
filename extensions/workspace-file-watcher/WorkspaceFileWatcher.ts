@@ -2,7 +2,8 @@
  * Workspace File Watcher - 工作空间文件监控器
  *
  * 功能：
- *   - 监控 .home/workspaces/{threadId}/ 目录下的文件变化
+ *   - 监控 workspace 目录 (.home/workspaces/{threadId}/) 的文件变化
+ *   - 同时监控 Thread 上设置的 projectDir（工程目录）
  *   - 自动续期：任何 stream 事件都延长监控时间（60s keepalive）
  *   - 批量推送：300ms 去抖后批量推送文件变化到前端
  *   - 自动清理：60s 无事件或任务结束时自动停止监控
@@ -13,7 +14,7 @@
  *   3. 60s keepalive 超时 → 自动停止（兜底防泄漏）
  *
  * 架构设计：
- *   - 每个 threadId 独立 FSWatcher 实例（避免跨任务污染）
+ *   - 每个 threadId 最多两个 FSWatcher（workspace + projectDir）
  *   - Map 管理所有活跃监控（防止泄漏）
  *   - 双层 Timer（keepalive 续期 + debounce 去抖）
  */
@@ -47,8 +48,10 @@ async function initDeps(
 
 /** 单个监控实例 */
 interface WatcherInstance {
-  /** chokidar FSWatcher */
+  /** chokidar FSWatcher（workspace 目录） */
   watcher: FSWatcher;
+  /** chokidar FSWatcher（projectDir，可选） */
+  projectWatcher: FSWatcher | null;
   /** 续期计时器（60s 无事件自动停止） */
   keepaliveTimer: NodeJS.Timeout;
   /** 去抖计时器（300ms 批量推送） */
@@ -57,6 +60,8 @@ interface WatcherInstance {
   changedFiles: Set<string>;
   /** 监控的目录 */
   watchPath: string;
+  /** 工程目录（可选） */
+  projectDir: string | null;
   /** 启动时间 */
   startedAt: number;
 }
@@ -240,6 +245,49 @@ export class WorkspaceFileWatcher {
   // ==================== 监控管理 ====================
 
   /**
+   * 创建 chokidar watcher 实例
+   */
+  private createFSWatcher(watchPath: string, threadId: string): FSWatcher {
+    const fsw = watch(watchPath, {
+      ignored: [
+        /(^|[/\\])\../, // 忽略隐藏文件
+        /node_modules/,
+        /\.git/
+      ],
+      persistent: true,
+      ignoreInitial: true,
+      awaitWriteFinish: {
+        stabilityThreshold: 200,
+        pollInterval: 100
+      }
+    });
+
+    fsw.on('all', (event, filePath) => {
+      this.onFileChange(threadId, event, filePath);
+    });
+
+    fsw.on('error', (error) => {
+      log.error(`[WorkspaceFileWatcher] Watcher error for ${threadId}:`, error);
+    });
+
+    return fsw;
+  }
+
+  /**
+   * 查询 Thread 的 projectDir
+   */
+  private async resolveProjectDir(threadId: string): Promise<string | null> {
+    try {
+      const { ThreadStore } = await import('../../src/main/ai/threads/ThreadStore');
+      const store = await ThreadStore.getInstance();
+      const thread = await store.get(threadId);
+      return thread?.projectDir || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * 启动文件监控
    */
   private async startWatch(threadId: string): Promise<void> {
@@ -251,12 +299,10 @@ export class WorkspaceFileWatcher {
     // Lazy 获取 workspacesDir（通过 ExtensionApi 统一获取）
     if (!this.workspacesDir && apiRef) {
       try {
-        // ✅ 通过 ExtensionApi 统一获取工作空间根目录
         this.workspacesDir = await apiRef.services.paths.getWorkspacesDir();
         log.info(`[WorkspaceFileWatcher] Resolved workspacesDir: ${this.workspacesDir}`);
       } catch (err) {
         log.error(`[WorkspaceFileWatcher] Failed to resolve workspacesDir:`, err);
-        // Env not available yet, will retry on next startWatch call
       }
     }
 
@@ -272,42 +318,33 @@ export class WorkspaceFileWatcher {
     }
 
     const watchPath = path.join(this.workspacesDir, threadId);
+    const watcher = this.createFSWatcher(watchPath, threadId);
 
-    const watcher = watch(watchPath, {
-      ignored: [
-        /(^|[/\\])\../, // 忽略隐藏文件
-        /node_modules/, // 忽略 node_modules
-        /\.git/ // 忽略 .git
-      ],
-      persistent: true,
-      ignoreInitial: true,
-      awaitWriteFinish: {
-        stabilityThreshold: 200,
-        pollInterval: 100
-      }
-    });
-
-    watcher.on('all', (event, filePath) => {
-      this.onFileChange(threadId, event, filePath);
-    });
-
-    watcher.on('error', (error) => {
-      log.error(`[WorkspaceFileWatcher] Watcher error for ${threadId}:`, error);
-    });
+    // 查询 Thread 是否设置了 projectDir，同时监控
+    const projectDir = await this.resolveProjectDir(threadId);
+    let projectWatcher: FSWatcher | null = null;
+    if (projectDir) {
+      projectWatcher = this.createFSWatcher(projectDir, threadId);
+      log.info(`[WorkspaceFileWatcher] Also watching projectDir: ${projectDir}`);
+    }
 
     const keepaliveTimer = this.createKeepaliveTimer(threadId);
 
     const instance: WatcherInstance = {
       watcher,
+      projectWatcher,
       keepaliveTimer,
       debounceTimer: null,
       changedFiles: new Set(),
       watchPath,
+      projectDir,
       startedAt: Date.now()
     };
 
     this.watchers.set(threadId, instance);
-    log.info(`[WorkspaceFileWatcher] Started watching: ${threadId} (path: ${watchPath})`);
+    log.info(
+      `[WorkspaceFileWatcher] Started watching: ${threadId} (workspace: ${watchPath}${projectDir ? `, project: ${projectDir}` : ''})`
+    );
   }
 
   /**
@@ -317,18 +354,21 @@ export class WorkspaceFileWatcher {
     const instance = this.watchers.get(threadId);
     if (!instance) return;
 
-    // 清理 keepalive timer
     clearTimeout(instance.keepaliveTimer);
 
-    // 清理 debounce timer（如果有）
     if (instance.debounceTimer) {
       clearTimeout(instance.debounceTimer);
     }
 
-    // 关闭 chokidar watcher
     instance.watcher.close().catch((err) => {
-      log.warn(`[WorkspaceFileWatcher] Error closing watcher for ${threadId}:`, err);
+      log.warn(`[WorkspaceFileWatcher] Error closing workspace watcher for ${threadId}:`, err);
     });
+
+    if (instance.projectWatcher) {
+      instance.projectWatcher.close().catch((err) => {
+        log.warn(`[WorkspaceFileWatcher] Error closing project watcher for ${threadId}:`, err);
+      });
+    }
 
     this.watchers.delete(threadId);
     log.info(`[WorkspaceFileWatcher] Stopped watching: ${threadId}`);
@@ -369,18 +409,13 @@ export class WorkspaceFileWatcher {
     const instance = this.watchers.get(threadId);
     if (!instance) return;
 
-    // 只关心 add/change/unlink 事件
     if (!['add', 'change', 'unlink'].includes(event)) return;
 
-    // 计算相对路径（相对于 workspace 根目录）
-    const relativePath = path.relative(instance.watchPath, filePath);
+    // 使用绝对路径（前端用绝对路径匹配目录）
+    instance.changedFiles.add(filePath);
 
-    // 添加到变化缓冲区
-    instance.changedFiles.add(relativePath);
+    log.debug(`[WorkspaceFileWatcher] File ${event}: ${threadId} → ${filePath}`);
 
-    log.debug(`[WorkspaceFileWatcher] File ${event}: ${threadId}/${relativePath}`);
-
-    // 去抖：延迟推送
     this.scheduleFlush(threadId, instance);
   }
 
@@ -438,12 +473,15 @@ export class WorkspaceFileWatcher {
   /**
    * 获取监控信息
    */
-  getWatcherInfo(threadId: string): { watchPath: string; startedAt: number; fileCount: number } | null {
+  getWatcherInfo(
+    threadId: string
+  ): { watchPath: string; projectDir: string | null; startedAt: number; fileCount: number } | null {
     const instance = this.watchers.get(threadId);
     if (!instance) return null;
 
     return {
       watchPath: instance.watchPath,
+      projectDir: instance.projectDir,
       startedAt: instance.startedAt,
       fileCount: instance.changedFiles.size
     };
