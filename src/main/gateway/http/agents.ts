@@ -412,7 +412,7 @@ function createBuilderFromAgentDef(
     .name(def.name || def.id)
     .agentId(def.id)
     .mode(agentMode)
-    .sessionMode('memory')
+    .sessionMode('file')
     .lightweight(true)
     .instructions(def.instructions);
 

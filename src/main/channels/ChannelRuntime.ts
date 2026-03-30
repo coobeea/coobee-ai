@@ -157,8 +157,8 @@ export class ChannelRuntime {
     const builder = agentExecutor
       .piMono()
       .name(agentDef.name || agentDef.id)
-      .mode('agent') // ✅ 使用 Agent 模式（工具优先，更强的自主性）
-      .sessionMode('memory')
+      .mode('agent')
+      .sessionMode('file')
       .instructions(this.enhanceInstructions(agentDef.instructions, context));
 
     // 2. 注入工具

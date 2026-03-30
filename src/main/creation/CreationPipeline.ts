@@ -36,7 +36,11 @@ export class CreationPipeline {
 
   /**
    * Phase 1：处理用户对话消息
-   * 携带完整对话历史，确保 Agent 不丢失上下文
+   *
+   * 会话连续性由 sessionMode('file') 保证：
+   *   - 同一 sessionId 的所有交互共享同一个 .jsonl 文件
+   *   - SDK 自动加载历史消息，Agent 天然能看到完整对话上下文
+   *   - transcript 另存一份供前端恢复 UI 状态
    */
   async chat(sessionId: string, message: string): Promise<string> {
     const meta = this.store.loadMeta(sessionId);
@@ -46,30 +50,18 @@ export class CreationPipeline {
     }
 
     const transcript = this.store.loadTranscript(sessionId);
+    const isFirstMessage = transcript.length === 0;
 
-    const contextParts: string[] = [];
-    contextParts.push(
-      `## 创建目标\n\n类型：${meta.targetType}\n名称：${meta.name}\n原始需求：${meta.userRequirement}\n`
-    );
-
-    if (transcript.length > 0) {
-      contextParts.push(`## 对话历史\n`);
-      for (const msg of transcript) {
-        const label = msg.role === 'user' ? '👤 用户' : '🤖 分析师';
-        contextParts.push(`${label}：${msg.content}\n`);
-      }
-    }
-
-    contextParts.push(`## 当前用户消息\n\n${message}`);
-
-    const fullMessage = contextParts.join('\n');
+    const agentMessage = isFirstMessage
+      ? `## 创建目标\n\n- 类型：${meta.targetType}\n- 名称：${meta.name}\n- 原始需求：${meta.userRequirement}\n\n## 用户消息\n\n${message}`
+      : message;
 
     const runtime = ChannelRuntime.getInstance();
     const agentId = this.resolveAgentId(meta.targetType, 'requirements');
     const result = await runtime.executeAgent({
       agentId,
       sessionId: `creation-${sessionId}-req`,
-      message: fullMessage,
+      message: agentMessage,
       context: { channel: 'creation', sessionId, phase: 'requirements' }
     });
 

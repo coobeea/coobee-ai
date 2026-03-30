@@ -311,7 +311,7 @@ export class DiscussionCoordinator {
         .piMono()
         .name('DiscussionModerator')
         .mode('chat')
-        .sessionMode('memory')
+        .sessionMode('file')
         .instructions(MODERATOR_SYSTEM_PROMPT)
         .sessionId(sessionId);
 
@@ -370,7 +370,7 @@ export class DiscussionCoordinator {
         .piMono()
         .name('DiscussionSummary')
         .mode('chat')
-        .sessionMode('memory')
+        .sessionMode('file')
         .instructions(
           `你是一场讨论的主持人。讨论已达到最大轮次但未完全达成共识。请综合各方观点，给出一个平衡的最终结论。结论应该：
 1. 总结各方共识的部分
