@@ -141,7 +141,7 @@ export class InsightOrchestrator {
 
     this.buffer.append(text);
     this.sessionManager.appendTranscript(sessionId, text);
-    this.trigger?.onNewTextReceived(this.buffer.getNewCharCount());
+    this.trigger?.onTextAppended(text);
   }
 
   notifySilence(sessionId: string): void {

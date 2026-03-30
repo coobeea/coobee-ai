@@ -22,10 +22,19 @@ export interface AnalysisDimension {
 }
 
 export interface RefreshStrategy {
-  trigger: 'silence' | 'interval' | 'manual' | 'hybrid';
+  trigger: 'silence' | 'interval' | 'manual' | 'hybrid' | 'content' | 'smart';
+  /** 定时间隔（秒），用于 interval / hybrid 模式的兜底检查 */
   intervalSeconds?: number;
+  /** 最小新增字符数：interval/silence 模式下需要累积这么多字才触发 */
   minNewChars?: number;
+  /** 静默毫秒数 */
   silenceMs?: number;
+  /** 内容驱动：新增字符达到此数量立即触发（默认 50） */
+  charThreshold?: number;
+  /** 智能触发：新增字符达到此数量 + 末尾标点 → 立即触发（默认 20） */
+  smartThreshold?: number;
+  /** 防抖毫秒数：停止输入后多久触发（默认 3000） */
+  debounceMs?: number;
 }
 
 export type TemplateCategory = 'sales' | 'service' | 'meeting' | 'interview' | 'custom';

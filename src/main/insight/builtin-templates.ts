@@ -69,9 +69,12 @@ export const builtinTemplates: AnalysisTemplate[] = [
     analysisPrompt:
       '你是一位资深销售分析专家。你正在实时监听一场销售对话。对话内容可能包含口语化表达、闲聊和离题内容，你需要从中提取有价值的销售信号。请保持客观，基于事实分析，不要过度推断。',
     refreshStrategy: {
-      trigger: 'hybrid',
-      intervalSeconds: 45,
-      minNewChars: 80,
+      trigger: 'smart',
+      charThreshold: 50,
+      smartThreshold: 20,
+      debounceMs: 3000,
+      intervalSeconds: 30,
+      minNewChars: 50,
       silenceMs: 2000
     },
     builtIn: true,
@@ -128,9 +131,12 @@ export const builtinTemplates: AnalysisTemplate[] = [
     analysisPrompt:
       '你是一位专业的会议记录员。你正在实时记录一场会议。请从对话中提取关键信息，忽略寒暄和重复内容。对于行动项，尽量标注提到的负责人。',
     refreshStrategy: {
-      trigger: 'hybrid',
-      intervalSeconds: 60,
-      minNewChars: 120,
+      trigger: 'smart',
+      charThreshold: 80,
+      smartThreshold: 30,
+      debounceMs: 4000,
+      intervalSeconds: 45,
+      minNewChars: 80,
       silenceMs: 3000
     },
     builtIn: true,
@@ -188,9 +194,12 @@ export const builtinTemplates: AnalysisTemplate[] = [
     analysisPrompt:
       '你是一位专业服务顾问的助手。你正在实时分析一场技术/业务咨询对话。重点关注客户的痛点、方案的匹配度以及潜在风险。忽略无关闲聊。',
     refreshStrategy: {
-      trigger: 'hybrid',
-      intervalSeconds: 50,
-      minNewChars: 100,
+      trigger: 'smart',
+      charThreshold: 60,
+      smartThreshold: 25,
+      debounceMs: 3000,
+      intervalSeconds: 35,
+      minNewChars: 60,
       silenceMs: 2500
     },
     builtIn: true,
@@ -250,9 +259,12 @@ export const builtinTemplates: AnalysisTemplate[] = [
     analysisPrompt:
       '你是一位经验丰富的面试评估助手。你正在实时分析一场面试对话。客观评估候选人的技术能力和沟通能力。注意区分面试官的引导性提问和候选人的实际回答。',
     refreshStrategy: {
-      trigger: 'hybrid',
-      intervalSeconds: 60,
-      minNewChars: 150,
+      trigger: 'smart',
+      charThreshold: 80,
+      smartThreshold: 30,
+      debounceMs: 4000,
+      intervalSeconds: 45,
+      minNewChars: 80,
       silenceMs: 3000
     },
     builtIn: true,

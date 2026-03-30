@@ -61,12 +61,18 @@ const triggerLabel = computed(() => {
   const strategy = currentTemplate.value?.refreshStrategy;
   if (!strategy) return '';
   const labels: Record<string, string> = {
+    smart: '智能',
+    content: '内容驱动',
     interval: '定时',
     silence: '静默',
     hybrid: '混合',
     manual: '手动'
   };
   const mode = labels[strategy.trigger] || strategy.trigger;
+  if (strategy.trigger === 'smart' || strategy.trigger === 'content') {
+    const debounce = (strategy.debounceMs ?? 3000) / 1000;
+    return `${mode} · ${debounce}s防抖`;
+  }
   if (strategy.trigger === 'interval' || strategy.trigger === 'hybrid') {
     return `${mode} · ${strategy.intervalSeconds ?? 45}s`;
   }
