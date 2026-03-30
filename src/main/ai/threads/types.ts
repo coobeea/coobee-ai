@@ -66,6 +66,9 @@ export interface ThreadDefinition {
   /** 最后更新时间（ISO 8601） */
   updatedAt: string;
 
+  /** 工程目录（用户为此会话指定的输出目标路径） */
+  projectDir?: string;
+
   /** 扩展元数据（保留字段） */
   metadata?: Record<string, unknown>;
 }
@@ -87,6 +90,8 @@ export interface ThreadIndexEntry {
   workspacePath: string;
   /** Agent Home 目录路径（用于前端展示 Agent 持久化数据） */
   agentHomePath: string;
+  /** 工程目录（用户指定的输出目标路径） */
+  projectDir?: string;
 }
 
 // ==================== 创建 / 更新参数 ====================
@@ -111,6 +116,7 @@ export interface UpdateThreadParams {
   status?: ThreadStatus;
   runStatus?: ThreadRunStatus;
   messageCount?: number;
+  projectDir?: string | null;
   metadata?: Record<string, unknown>;
 }
 

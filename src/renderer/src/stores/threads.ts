@@ -34,6 +34,8 @@ export interface ThreadEntry {
   workspacePath: string;
   /** Agent Home 目录路径（用于展示 Agent 持久化数据） */
   agentHomePath: string;
+  /** 工程目录（用户指定的输出目标路径） */
+  projectDir?: string;
 }
 
 /** HTTP 基础路径 */
@@ -156,10 +158,10 @@ export const useThreadsStore = defineStore('threads', () => {
     return thread;
   }
 
-  /** 更新 Thread（部分更新，如标题、消息数等） */
+  /** 更新 Thread（部分更新，如标题、消息数、工程目录等） */
   async function updateThread(
     threadId: string,
-    params: { title?: string; messageCount?: number; status?: string }
+    params: { title?: string; messageCount?: number; status?: string; projectDir?: string | null }
   ): Promise<boolean> {
     try {
       const result = await apiRequest<{ thread: ThreadEntry }>(`/${threadId}`, {

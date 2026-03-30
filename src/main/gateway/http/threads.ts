@@ -124,6 +124,7 @@ export function registerThreadRoutes(router: Router): void {
         title: body.title as string | undefined,
         status: body.status as 'active' | 'archived' | 'deleted' | undefined,
         messageCount: body.messageCount as number | undefined,
+        projectDir: body.projectDir as string | null | undefined,
         metadata: body.metadata as Record<string, unknown> | undefined
       });
       if (!thread) {

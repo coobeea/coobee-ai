@@ -47,9 +47,6 @@ type DirectoryMode = 'agent-home' | 'workspace' | 'project';
 const directoryMode = ref<DirectoryMode>('agent-home');
 const customProjectDir = ref<string | null>(null);
 
-// 每个会话独立存储工程目录
-const projectDirByThread = new Map<string, string>();
-
 // 提供 addToChat 方法给 ProjectPanel/FileTreeNode
 function addToChat(node: { path: string; name: string; type: 'file' | 'directory' }): void {
   chatPanelRef.value?.insertFileReference({
@@ -100,7 +97,7 @@ function toggleDirectoryMode(): void {
   updateProjectPathForMode(thread);
 }
 
-// 设置工程目录（绑定到当前会话）
+// 设置工程目录（持久化到 Thread）
 async function setProjectDir(): Promise<void> {
   try {
     const result = await window.api?.openDirectory();
@@ -108,9 +105,9 @@ async function setProjectDir(): Promise<void> {
       customProjectDir.value = result;
       directoryMode.value = 'project';
       projectPath.value = result;
-      // 持久化到当前会话
+      // 持久化到 Thread 后端
       if (threadId.value) {
-        projectDirByThread.set(threadId.value, result);
+        threadsStore.updateThread(threadId.value, { projectDir: result });
       }
     }
   } catch (err) {
@@ -129,10 +126,9 @@ watch(directoryMode, () => {
 function enterWorkspaceForThread(id: string): void {
   const thread = threadsStore.threads.find((t) => t.id === id);
 
-  // 恢复该会话的工程目录（如有），否则重置到默认模式
-  const savedProjectDir = projectDirByThread.get(id);
-  if (savedProjectDir) {
-    customProjectDir.value = savedProjectDir;
+  // 从 Thread 恢复工程目录（如有），否则重置到默认模式
+  if (thread?.projectDir) {
+    customProjectDir.value = thread.projectDir;
     directoryMode.value = 'project';
   } else {
     customProjectDir.value = null;
