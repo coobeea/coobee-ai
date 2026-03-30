@@ -39,10 +39,11 @@ function getEnumBadgeClass(value: unknown): string {
 </script>
 
 <template>
-  <div class="rounded-xl border border-border bg-card px-3.5 py-2.5 transition-colors hover:bg-accent/30">
-    <div class="mb-1.5 flex items-center gap-1.5">
-      <span v-if="props.icon" class="text-sm">{{ props.icon }}</span>
-      <span class="text-xs font-semibold text-muted-foreground/80">{{ props.dimension.label }}</span>
+  <div
+    class="rounded-xl border border-border/80 bg-card px-4 py-3 shadow-[0_1px_2px_0_rgba(0,0,0,0.04)] transition-colors hover:border-border hover:bg-accent/20">
+    <div class="mb-2 flex items-center gap-2">
+      <span v-if="props.icon" class="text-base">{{ props.icon }}</span>
+      <span class="text-xs font-bold text-foreground/70">{{ props.dimension.label }}</span>
       <span
         v-if="props.showTrend && props.change"
         class="ml-auto text-sm font-bold"

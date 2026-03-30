@@ -57,6 +57,22 @@ const isPaused = computed(() => activeSession.value?.status === 'paused');
 const isAnalyzing = computed(() => activeSession.value?.status === 'analyzing');
 const hasSession = computed(() => !!activeSession.value);
 
+const triggerLabel = computed(() => {
+  const strategy = currentTemplate.value?.refreshStrategy;
+  if (!strategy) return '';
+  const labels: Record<string, string> = {
+    interval: '定时',
+    silence: '静默',
+    hybrid: '混合',
+    manual: '手动'
+  };
+  const mode = labels[strategy.trigger] || strategy.trigger;
+  if (strategy.trigger === 'interval' || strategy.trigger === 'hybrid') {
+    return `${mode} · ${strategy.intervalSeconds ?? 45}s`;
+  }
+  return mode;
+});
+
 const elapsedTime = ref('00:00:00');
 let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -459,25 +475,37 @@ function formatDuration(start: number, end?: number): string {
       <!-- 有活跃会话 -->
       <template v-if="hasSession">
         <!-- 录音/输入控制面板 -->
-        <div class="flex shrink-0 items-center justify-between border-b border-border bg-surface px-5 py-2.5">
-          <div class="flex items-center gap-2.5">
+        <div
+          class="flex shrink-0 items-center justify-between border-b-2 border-border bg-surface px-5 py-2.5 shadow-sm">
+          <div class="flex items-center gap-3">
             <span
-              class="h-2 w-2 rounded-full"
+              class="h-2.5 w-2.5 rounded-full ring-2 ring-offset-1 ring-offset-surface"
               :class="{
-                'animate-pulse bg-error': isRecording,
-                'bg-warning': isPaused,
-                'animate-pulse bg-info': isAnalyzing,
-                'bg-muted-foreground/30': !isRecording && !isPaused && !isAnalyzing
+                'animate-pulse bg-error ring-error/30': isRecording,
+                'bg-warning ring-warning/30': isPaused,
+                'animate-pulse bg-info ring-info/30': isAnalyzing,
+                'bg-muted-foreground/30 ring-muted/30': !isRecording && !isPaused && !isAnalyzing
               }" />
-            <span class="text-xs font-semibold text-foreground/70">
+            <span class="text-xs font-bold text-foreground/80">
               {{ isRecording ? '采集中' : isPaused ? '已暂停' : isAnalyzing ? '分析中' : '就绪' }}
             </span>
-            <span class="font-mono text-sm font-bold tabular-nums text-foreground/50">{{ elapsedTime }}</span>
-            <span class="rounded bg-primary/10 px-2 py-0.5 text-[11px] text-primary/80">
+            <div class="h-4 w-px bg-border" />
+            <span class="font-mono text-sm font-bold tabular-nums text-foreground/60">{{ elapsedTime }}</span>
+            <div class="h-4 w-px bg-border" />
+            <span class="rounded-md bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
               {{ currentTemplate?.name }}
             </span>
-            <span v-if="snapshots.length" class="text-[11px] text-muted-foreground/50">
-              快照: #{{ snapshots.length }}
+            <span
+              v-if="triggerLabel"
+              class="rounded-md bg-accent/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+              :title="`分析触发策略：${triggerLabel}`">
+              <span class="i-carbon-timer mr-0.5 inline-block h-3 w-3 align-[-2px]" />
+              {{ triggerLabel }}
+            </span>
+            <span
+              v-if="snapshots.length"
+              class="rounded-md bg-surface-variant px-2 py-0.5 text-[10px] font-medium text-muted-foreground/60">
+              快照 #{{ snapshots.length }}
             </span>
           </div>
           <div class="flex items-center gap-1.5">
@@ -562,19 +590,24 @@ function formatDuration(start: number, end?: number): string {
         </div>
 
         <!-- 主内容：左右分栏 -->
-        <div class="flex min-h-0 flex-1 overflow-hidden">
+        <div class="flex min-h-0 flex-1 gap-px overflow-hidden bg-border">
           <!-- 左：文字流 + 输入 -->
-          <div class="flex min-w-0 flex-1 flex-col border-r border-border">
+          <div class="flex min-w-0 flex-1 flex-col bg-background">
             <div
-              class="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
-              <span>{{ inputMode === 'record' ? '实时文字流' : '文本输入' }}</span>
+              class="flex shrink-0 items-center justify-between border-b-2 border-primary/20 bg-surface/60 px-5 py-2.5">
+              <div class="flex items-center gap-2">
+                <span class="i-carbon-text-align-left inline-block h-4 w-4 text-primary/60" />
+                <span class="text-xs font-bold tracking-wide text-foreground/80">
+                  {{ inputMode === 'record' ? '实时文字流' : '文本输入' }}
+                </span>
+              </div>
               <button
                 v-if="transcript"
-                class="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] normal-case tracking-normal transition-colors"
+                class="flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors"
                 :class="
                   copySuccess === 'transcript'
                     ? 'bg-success/10 text-success'
-                    : 'text-muted-foreground/50 hover:bg-accent hover:text-foreground'
+                    : 'text-muted-foreground/60 hover:bg-accent hover:text-foreground'
                 "
                 @click="copyTranscript">
                 <span
@@ -583,8 +616,8 @@ function formatDuration(start: number, end?: number): string {
                 {{ copySuccess === 'transcript' ? '已复制' : '复制' }}
               </button>
             </div>
-            <div class="flex-1 overflow-y-auto px-4 py-3">
-              <p v-if="transcript" class="whitespace-pre-wrap break-words text-sm leading-7 text-foreground/80">
+            <div class="flex-1 overflow-y-auto px-5 py-4">
+              <p v-if="transcript" class="whitespace-pre-wrap break-words text-sm leading-7 text-foreground/85">
                 {{ transcript }}
               </p>
               <p v-else class="text-sm text-muted-foreground/35">
@@ -592,11 +625,11 @@ function formatDuration(start: number, end?: number): string {
               </p>
             </div>
             <!-- 手动文本输入区域 -->
-            <div v-if="inputMode === 'text'" class="shrink-0 border-t border-border/50 px-4 py-3">
+            <div v-if="inputMode === 'text'" class="shrink-0 border-t-2 border-border bg-surface/40 px-5 py-3">
               <div class="flex gap-2">
                 <textarea
                   v-model="manualText"
-                  class="flex-1 rounded-lg border border-border bg-input-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground/40 focus:border-primary focus:outline-none"
+                  class="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground/40 focus:border-primary focus:outline-none"
                   rows="3"
                   placeholder="粘贴或输入对话内容..."
                   @keydown.ctrl.enter="submitManualText"
@@ -613,23 +646,25 @@ function formatDuration(start: number, end?: number): string {
           </div>
 
           <!-- 右：分析结果卡片 -->
-          <div class="flex min-w-0 flex-1 flex-col">
-            <div
-              class="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
-              <span>分析结果</span>
+          <div class="flex min-w-0 flex-1 flex-col bg-card">
+            <div class="flex shrink-0 items-center justify-between border-b-2 border-accent/30 bg-accent/5 px-5 py-2.5">
+              <div class="flex items-center gap-2">
+                <span class="i-carbon-chart-area inline-block h-4 w-4 text-accent" />
+                <span class="text-xs font-bold tracking-wide text-foreground/80">分析结果</span>
+              </div>
               <div class="flex items-center gap-2">
                 <span
                   v-if="latestResult?.confidence"
-                  class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-primary/70">
+                  class="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-bold text-primary">
                   置信度 {{ Math.round(latestResult.confidence * 100) }}%
                 </span>
                 <button
                   v-if="latestResult"
-                  class="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] normal-case tracking-normal transition-colors"
+                  class="flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors"
                   :class="
                     copySuccess === 'result'
                       ? 'bg-success/10 text-success'
-                      : 'text-muted-foreground/50 hover:bg-accent hover:text-foreground'
+                      : 'text-muted-foreground/60 hover:bg-accent hover:text-foreground'
                   "
                   @click="copyResult">
                   <span
@@ -639,13 +674,13 @@ function formatDuration(start: number, end?: number): string {
                 </button>
               </div>
             </div>
-            <div v-if="latestResult" class="flex-1 overflow-y-auto px-4 py-3">
+            <div v-if="latestResult" class="flex-1 overflow-y-auto px-5 py-4">
               <div
                 v-if="latestResult.summary"
-                class="mb-3 rounded-lg bg-primary/5 px-3 py-2 text-sm leading-relaxed text-foreground/75">
+                class="mb-4 rounded-xl border border-primary/15 bg-primary/5 px-4 py-3 text-sm leading-relaxed text-foreground/80">
                 {{ latestResult.summary }}
               </div>
-              <div class="flex flex-col gap-2">
+              <div class="flex flex-col gap-2.5">
                 <DimensionRenderer
                   v-for="(dim, key) in latestResult.dimensions"
                   :key="String(key)"

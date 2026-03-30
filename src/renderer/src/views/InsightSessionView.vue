@@ -112,25 +112,26 @@ function formatDuration(start: number, end?: number): string {
 
     <template v-if="!loading && session">
       <!-- 主体 -->
-      <div class="flex min-h-0 flex-1 overflow-hidden">
+      <div class="flex min-h-0 flex-1 gap-px overflow-hidden bg-border">
         <!-- 左：文字流 -->
-        <div class="flex min-w-0 flex-1 flex-col border-r border-border">
+        <div class="flex min-w-0 flex-1 flex-col bg-background">
           <div
-            class="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
-            <span>
-              完整转写文本
+            class="flex shrink-0 items-center justify-between border-b-2 border-primary/20 bg-surface/60 px-5 py-2.5">
+            <div class="flex items-center gap-2">
+              <span class="i-carbon-text-align-left inline-block h-4 w-4 text-primary/60" />
+              <span class="text-xs font-bold tracking-wide text-foreground/80">完整转写文本</span>
               <span
                 v-if="activeSnapshot"
-                class="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-primary/70">
+                class="ml-1 rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
                 快照 #{{ activeSnapshot.sequence }}：新增 {{ activeSnapshot.newText.length }} 字
               </span>
-            </span>
+            </div>
             <button
-              class="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] normal-case tracking-normal transition-colors"
+              class="flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors"
               :class="
                 copySuccess === 'transcript'
                   ? 'bg-success/10 text-success'
-                  : 'text-muted-foreground/50 hover:bg-accent hover:text-foreground'
+                  : 'text-muted-foreground/60 hover:bg-accent hover:text-foreground'
               "
               @click="copyTranscript">
               <span
@@ -139,34 +140,36 @@ function formatDuration(start: number, end?: number): string {
               {{ copySuccess === 'transcript' ? '已复制' : '复制' }}
             </button>
           </div>
-          <div class="flex-1 overflow-y-auto px-4 py-3">
-            <p v-if="activeSnapshot" class="whitespace-pre-wrap break-words text-sm leading-7 text-foreground/80">
+          <div class="flex-1 overflow-y-auto px-5 py-4">
+            <p v-if="activeSnapshot" class="whitespace-pre-wrap break-words text-sm leading-7 text-foreground/85">
               {{ activeSnapshot.fullTranscript }}
             </p>
-            <p v-else class="whitespace-pre-wrap break-words text-sm leading-7 text-foreground/80">
+            <p v-else class="whitespace-pre-wrap break-words text-sm leading-7 text-foreground/85">
               {{ session.transcript || '（无转写内容）' }}
             </p>
           </div>
         </div>
 
         <!-- 右：分析结果 -->
-        <div class="flex min-w-0 flex-1 flex-col">
-          <div
-            class="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
-            <span>分析结果</span>
+        <div class="flex min-w-0 flex-1 flex-col bg-card">
+          <div class="flex shrink-0 items-center justify-between border-b-2 border-accent/30 bg-accent/5 px-5 py-2.5">
+            <div class="flex items-center gap-2">
+              <span class="i-carbon-chart-area inline-block h-4 w-4 text-accent" />
+              <span class="text-xs font-bold tracking-wide text-foreground/80">分析结果</span>
+            </div>
             <div class="flex items-center gap-2">
               <span
                 v-if="activeSnapshot?.result.confidence"
-                class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-primary/70">
+                class="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-bold text-primary">
                 置信度 {{ Math.round(activeSnapshot.result.confidence * 100) }}%
               </span>
               <button
                 v-if="activeSnapshot"
-                class="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] normal-case tracking-normal transition-colors"
+                class="flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors"
                 :class="
                   copySuccess === 'result'
                     ? 'bg-success/10 text-success'
-                    : 'text-muted-foreground/50 hover:bg-accent hover:text-foreground'
+                    : 'text-muted-foreground/60 hover:bg-accent hover:text-foreground'
                 "
                 @click="copyResult">
                 <span
@@ -176,13 +179,13 @@ function formatDuration(start: number, end?: number): string {
               </button>
             </div>
           </div>
-          <div v-if="activeSnapshot" class="flex-1 overflow-y-auto px-4 py-3">
+          <div v-if="activeSnapshot" class="flex-1 overflow-y-auto px-5 py-4">
             <div
               v-if="activeSnapshot.result.summary"
-              class="mb-3 rounded-lg bg-primary/5 px-3 py-2 text-sm leading-relaxed text-foreground/75">
+              class="mb-4 rounded-xl border border-primary/15 bg-primary/5 px-4 py-3 text-sm leading-relaxed text-foreground/80">
               {{ activeSnapshot.result.summary }}
             </div>
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2.5">
               <DimensionRenderer
                 v-for="(dim, key) in activeSnapshot.result.dimensions"
                 :key="String(key)"
