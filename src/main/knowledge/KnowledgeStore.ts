@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import AdmZip from 'adm-zip';
-import mammoth from 'mammoth';
 import { Env } from '@main/common/env';
 import { log } from '@main/common/logger';
 import type {
@@ -183,16 +182,14 @@ export class KnowledgeStore {
     }
   }
 
-  async getSourcesAsText(id: string): Promise<string> {
+  /**
+   * 列出所有源文件的绝对路径和相对路径，供 KnowledgeBuilder 逐文件提取
+   */
+  listSourceFiles(id: string): { absPath: string; relPath: string; ext: string }[] {
     const srcDir = this.sourcesDir(id);
-    if (!fs.existsSync(srcDir)) return '';
+    if (!fs.existsSync(srcDir)) return [];
 
-    const TEXT_EXTS = new Set(['.md', '.txt', '.csv', '.json', '.xml', '.html', '.htm', '.yaml', '.yml']);
-    const DOCX_EXTS = new Set(['.docx', '.doc']);
-
-    const parts: string[] = [];
-    const files: { fullPath: string; rel: string; ext: string }[] = [];
-
+    const files: { absPath: string; relPath: string; ext: string }[] = [];
     const collect = (dir: string, prefix: string): void => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         if (entry.name.startsWith('.')) continue;
@@ -201,33 +198,12 @@ export class KnowledgeStore {
         if (entry.isDirectory()) {
           collect(fullPath, rel);
         } else {
-          files.push({ fullPath, rel, ext: path.extname(entry.name).toLowerCase() });
+          files.push({ absPath: fullPath, relPath: rel, ext: path.extname(entry.name).toLowerCase() });
         }
       }
     };
     collect(srcDir, '');
-
-    for (const file of files) {
-      if (TEXT_EXTS.has(file.ext)) {
-        try {
-          const content = fs.readFileSync(file.fullPath, 'utf-8');
-          parts.push(`\n===== 文件: ${file.rel} =====\n${content}`);
-        } catch {
-          /* skip unreadable */
-        }
-      } else if (DOCX_EXTS.has(file.ext)) {
-        try {
-          const result = await mammoth.extractRawText({ path: file.fullPath });
-          if (result.value.trim()) {
-            parts.push(`\n===== 文件: ${file.rel} =====\n${result.value}`);
-          }
-        } catch (err) {
-          log.warn(`[KnowledgeStore] Failed to extract text from ${file.rel}:`, err);
-        }
-      }
-    }
-
-    return parts.join('\n');
+    return files;
   }
 
   // ==================== 构建内容（由 KnowledgeBuilder 调用） ====================
