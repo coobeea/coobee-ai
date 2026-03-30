@@ -114,6 +114,33 @@ export function formatFileError(error: unknown, filePath: string, operation: str
   };
 }
 
+// ==================== 文件变更通知 ====================
+
+/**
+ * 通知前端文件已变更
+ *
+ * 通过 EventBus 发出 workspace:file-changed 事件，
+ * WorkspaceBridge 会将其转发给前端，触发文件树刷新。
+ *
+ * @param absolutePaths - 变更文件的绝对路径列表
+ * @param context       - 工具执行上下文（需要 threadId）
+ */
+export function notifyFileChanged(absolutePaths: string[], context?: ToolExecutionContext): void {
+  if (!context?.threadId || absolutePaths.length === 0) return;
+
+  import('@main/common/eventbus')
+    .then(({ eventBus }) => {
+      eventBus.emit('workspace:file-changed', {
+        threadId: context.threadId,
+        files: absolutePaths,
+        timestamp: Date.now()
+      });
+    })
+    .catch(() => {
+      /* eventBus 不可用时静默 */
+    });
+}
+
 // ==================== 取消信号检查 ====================
 
 /**

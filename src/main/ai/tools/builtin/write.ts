@@ -13,7 +13,7 @@ import { dirname, extname } from 'node:path';
 import { z } from 'zod';
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types';
 import { ToolCategory } from '../types';
-import { resolveToolPath, formatFileError, checkAborted } from '../pipeline';
+import { resolveToolPath, formatFileError, checkAborted, notifyFileChanged } from '../pipeline';
 import { withFileLock } from './file-lock';
 import { backupBeforeWrite } from './file-backup';
 import { canWrite } from '../security/sensitive-paths';
@@ -104,6 +104,8 @@ export const writeTool: ToolDefinition = {
       const summary = `Successfully wrote ${byteSize} bytes (${lineCount} lines) to ${filePath}`;
 
       yield { type: 'output', content: summary };
+
+      notifyFileChanged([absolutePath], context);
 
       return {
         success: true,

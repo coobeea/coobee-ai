@@ -12,7 +12,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { ToolDefinition, ToolStreamUpdate, ToolResult, ToolExecutionContext } from '../types';
 import { ToolCategory } from '../types';
-import { resolveToolPath, formatFileError, checkAborted } from '../pipeline';
+import { resolveToolPath, formatFileError, checkAborted, notifyFileChanged } from '../pipeline';
 import { withFileLock } from './file-lock';
 import { backupBeforeWrite } from './file-backup';
 
@@ -135,6 +135,8 @@ export const editTool: ToolDefinition = {
       const summary = `${stat} in ${filePath}`;
 
       yield { type: 'output', content: summary };
+
+      notifyFileChanged([absolutePath], context);
 
       return {
         success: true,
