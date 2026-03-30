@@ -3,9 +3,17 @@ import * as path from 'path';
 import AdmZip from 'adm-zip';
 import { Env } from '@main/common/env';
 import { log } from '@main/common/logger';
-import type { KnowledgeBaseMeta, KnowledgeTreeNode } from '@shared/types/knowledge';
+import type {
+  KnowledgeBaseMeta,
+  KnowledgeBaseStatus,
+  KnowledgeTreeNode,
+  SourceMaterial
+} from '@shared/types/knowledge';
 
 const KB_DIR = 'knowledge';
+const SOURCES_DIR = '_sources';
+const META_FILE = 'meta.json';
+const CONTENT_DIR = 'content';
 
 export class KnowledgeStore {
   private static instance: KnowledgeStore;
@@ -27,44 +35,52 @@ export class KnowledgeStore {
     return path.join(this.root, id);
   }
 
+  private contentDir(id: string): string {
+    return path.join(this.kbDir(id), CONTENT_DIR);
+  }
+
+  private sourcesDir(id: string): string {
+    return path.join(this.kbDir(id), SOURCES_DIR);
+  }
+
+  // ==================== CRUD ====================
+
   list(): KnowledgeBaseMeta[] {
     if (!fs.existsSync(this.root)) return [];
-
     const entries = fs.readdirSync(this.root, { withFileTypes: true });
     const results: KnowledgeBaseMeta[] = [];
-
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const meta = this.get(entry.name);
       if (meta) results.push(meta);
     }
-
-    return results.sort((a, b) => b.createdAt - a.createdAt);
+    return results.sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   get(id: string): KnowledgeBaseMeta | null {
     const dir = this.kbDir(id);
     if (!fs.existsSync(dir)) return null;
-
-    const metaPath = path.join(dir, 'meta.json');
+    const metaPath = path.join(dir, META_FILE);
     if (fs.existsSync(metaPath)) {
       try {
         const raw = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as KnowledgeBaseMeta;
-        raw.totalFiles = this.countFiles(dir);
-        raw.chapterCount = this.countChapters(dir);
+        raw.totalFiles = this.countFiles(this.contentDir(id));
+        raw.chapterCount = this.countChapters(this.contentDir(id));
+        raw.sourceCount = this.countSources(id);
         return raw;
       } catch {
-        // fallback below
+        /* fallback */
       }
     }
-
     const stat = fs.statSync(dir);
     return {
       id,
       name: id,
       description: '',
-      chapterCount: this.countChapters(dir),
-      totalFiles: this.countFiles(dir),
+      status: 'empty',
+      chapterCount: 0,
+      totalFiles: 0,
+      sourceCount: 0,
       createdAt: stat.birthtimeMs,
       updatedAt: stat.mtimeMs
     };
@@ -78,216 +94,289 @@ export class KnowledgeStore {
     return true;
   }
 
-  getIndex(id: string): string | null {
-    const indexPath = path.join(this.kbDir(id), 'index.md');
-    if (!fs.existsSync(indexPath)) return null;
-    return fs.readFileSync(indexPath, 'utf-8');
+  // ==================== 创建知识库 ====================
+
+  create(name: string, description: string): KnowledgeBaseMeta {
+    const id = `kb-${Date.now()}`;
+    const dir = this.kbDir(id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(this.sourcesDir(id), { recursive: true });
+    fs.mkdirSync(this.contentDir(id), { recursive: true });
+
+    const now = Date.now();
+    const meta: KnowledgeBaseMeta = {
+      id,
+      name,
+      description,
+      status: 'empty',
+      chapterCount: 0,
+      totalFiles: 0,
+      sourceCount: 0,
+      createdAt: now,
+      updatedAt: now
+    };
+    this.saveMeta(id, meta);
+    log.info(`[KnowledgeStore] Created KB: ${id}`);
+    return meta;
   }
+
+  // ==================== 源材料管理 ====================
+
+  addSource(id: string, fileName: string, data: Buffer): SourceMaterial {
+    const srcDir = this.sourcesDir(id);
+    fs.mkdirSync(srcDir, { recursive: true });
+
+    const safeName = fileName.replace(/[^a-zA-Z0-9._\-\u4e00-\u9fff]/g, '_');
+    const filePath = path.join(srcDir, safeName);
+    fs.writeFileSync(filePath, data);
+
+    const ext = path.extname(safeName).toLowerCase();
+    const typeMap: Record<string, SourceMaterial['type']> = {
+      '.zip': 'zip',
+      '.pdf': 'pdf',
+      '.doc': 'word',
+      '.docx': 'word',
+      '.md': 'markdown',
+      '.txt': 'text',
+      '.png': 'image',
+      '.jpg': 'image',
+      '.jpeg': 'image',
+      '.gif': 'image',
+      '.webp': 'image'
+    };
+
+    const material: SourceMaterial = {
+      name: safeName,
+      path: safeName,
+      type: typeMap[ext] || 'other',
+      size: data.length,
+      addedAt: Date.now()
+    };
+
+    if (ext === '.zip') {
+      this.extractZipToSources(id, filePath);
+    }
+
+    this.updateStatus(id, 'empty');
+    log.info(`[KnowledgeStore] Added source: ${id}/${safeName} (${material.type}, ${data.length} bytes)`);
+    return material;
+  }
+
+  listSources(id: string): SourceMaterial[] {
+    const srcDir = this.sourcesDir(id);
+    if (!fs.existsSync(srcDir)) return [];
+
+    const materials: SourceMaterial[] = [];
+    this.walkSources(srcDir, '', materials);
+    return materials.sort((a, b) => b.addedAt - a.addedAt);
+  }
+
+  readSourceContent(id: string, filePath: string): string | null {
+    const safePath = filePath.replace(/\.\./g, '');
+    const fullPath = path.join(this.sourcesDir(id), safePath);
+    if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) return null;
+    try {
+      return fs.readFileSync(fullPath, 'utf-8');
+    } catch {
+      return null;
+    }
+  }
+
+  getSourcesAsText(id: string): string {
+    const srcDir = this.sourcesDir(id);
+    if (!fs.existsSync(srcDir)) return '';
+
+    const parts: string[] = [];
+    const walk = (dir: string, prefix: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith('.')) continue;
+        const fullPath = path.join(dir, entry.name);
+        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          walk(fullPath, rel);
+        } else {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (['.md', '.txt', '.csv', '.json', '.xml', '.html'].includes(ext)) {
+            try {
+              const content = fs.readFileSync(fullPath, 'utf-8');
+              parts.push(`\n===== 文件: ${rel} =====\n${content}`);
+            } catch {
+              /* skip binary files */
+            }
+          }
+        }
+      }
+    };
+    walk(srcDir, '');
+    return parts.join('\n');
+  }
+
+  // ==================== 构建内容（由 KnowledgeBuilder 调用） ====================
+
+  writeContentFile(id: string, filePath: string, content: string): void {
+    const fullPath = path.join(this.contentDir(id), filePath);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, content, 'utf-8');
+  }
+
+  clearContent(id: string): void {
+    const dir = this.contentDir(id);
+    if (fs.existsSync(dir)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  updateStatus(id: string, status: KnowledgeBaseStatus, buildProgress?: string): void {
+    const metaPath = path.join(this.kbDir(id), META_FILE);
+    if (!fs.existsSync(metaPath)) return;
+    try {
+      const raw = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+      raw.status = status;
+      raw.updatedAt = Date.now();
+      if (buildProgress !== undefined) raw.buildProgress = buildProgress;
+      if (status === 'ready') {
+        raw.totalFiles = this.countFiles(this.contentDir(id));
+        raw.chapterCount = this.countChapters(this.contentDir(id));
+        raw.buildProgress = undefined;
+      }
+      fs.writeFileSync(metaPath, JSON.stringify(raw, null, 2), 'utf-8');
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // ==================== 内容读取（浏览用） ====================
 
   readFile(id: string, filePath: string): string | null {
     const safePath = filePath.replace(/\.\./g, '');
-    const fullPath = path.join(this.kbDir(id), safePath);
+    const fullPath = path.join(this.contentDir(id), safePath);
     if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) return null;
     return fs.readFileSync(fullPath, 'utf-8');
   }
 
+  getIndex(id: string): string | null {
+    const indexPath = path.join(this.contentDir(id), 'index.md');
+    if (!fs.existsSync(indexPath)) return null;
+    return fs.readFileSync(indexPath, 'utf-8');
+  }
+
   listTree(id: string): KnowledgeTreeNode[] {
-    const dir = this.kbDir(id);
+    const dir = this.contentDir(id);
     if (!fs.existsSync(dir)) return [];
     return this.buildTree(dir, '');
   }
 
-  /**
-   * 简单创建：只提供名称和描述，创建一个空知识库
-   */
-  createSimple(name: string, description: string): KnowledgeBaseMeta {
-    const id = `kb-${Date.now()}`;
-    const dir = this.kbDir(id);
-    fs.mkdirSync(dir, { recursive: true });
+  // ==================== Pipeline 兼容 ====================
 
-    const now = Date.now();
-    const meta: KnowledgeBaseMeta = {
-      id,
-      name,
-      description,
-      chapterCount: 0,
-      totalFiles: 0,
-      createdAt: now,
-      updatedAt: now
-    };
-    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf-8');
-    fs.writeFileSync(
-      path.join(dir, 'index.md'),
-      `# ${name}\n\n> ${description}\n\n## 目录\n\n（空知识库，请导入内容）\n`,
-      'utf-8'
-    );
-    log.info(`[KnowledgeStore] Created simple KB: ${id}`);
-    return meta;
-  }
-
-  /**
-   * 从 ZIP 文件导入知识库
-   */
-  importFromZip(name: string, description: string, zipPath: string): KnowledgeBaseMeta {
-    const id = `kb-${Date.now()}`;
-    const dir = this.kbDir(id);
-    fs.mkdirSync(dir, { recursive: true });
-
-    const zip = new AdmZip(zipPath);
-    zip.extractAllTo(dir, true);
-
-    const now = Date.now();
-    const meta: KnowledgeBaseMeta = {
-      id,
-      name,
-      description,
-      chapterCount: this.countChapters(dir),
-      totalFiles: this.countFiles(dir),
-      createdAt: now,
-      updatedAt: now
-    };
-    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf-8');
-
-    if (!fs.existsSync(path.join(dir, 'index.md'))) {
-      const tree = this.buildTree(dir, '');
-      const indexContent = this.generateIndexFromTree(name, description, tree);
-      fs.writeFileSync(path.join(dir, 'index.md'), indexContent, 'utf-8');
-    }
-
-    log.info(`[KnowledgeStore] Imported KB from ZIP: ${id} (${meta.totalFiles} files)`);
-    return meta;
-  }
-
-  private generateIndexFromTree(name: string, description: string, tree: KnowledgeTreeNode[]): string {
-    let content = `# ${name}\n\n> ${description}\n\n## 目录\n\n`;
-    for (const node of tree) {
-      if (node.type === 'directory') {
-        content += `### ${node.name}\n`;
-        if (node.children) {
-          for (const child of node.children) {
-            content += `- ${child.name}\n`;
-          }
-        }
-        content += '\n';
-      } else if (node.name !== 'index.md' && node.name !== 'meta.json') {
-        content += `- ${node.name}\n`;
-      }
-    }
-    return content;
-  }
-
-  /**
-   * 由 CreationPipeline release 阶段调用：
-   * 根据构建产物初始化一个知识库目录
-   */
   createFromPipeline(kbId: string, meta: { name: string; description: string; sourceSessionId?: string }): string {
     const dir = this.kbDir(kbId);
     fs.mkdirSync(dir, { recursive: true });
+    const contentDir = this.contentDir(kbId);
+    fs.mkdirSync(contentDir, { recursive: true });
 
     const now = Date.now();
     const metaObj: KnowledgeBaseMeta = {
       id: kbId,
       name: meta.name,
       description: meta.description,
+      status: 'building',
       chapterCount: 0,
       totalFiles: 0,
+      sourceCount: 0,
       createdAt: now,
       updatedAt: now,
       sourceSessionId: meta.sourceSessionId
     };
-    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(metaObj, null, 2), 'utf-8');
+    this.saveMeta(kbId, metaObj);
     log.info(`[KnowledgeStore] Created KB from pipeline: ${kbId}`);
-    return dir;
+    return contentDir;
   }
 
+  /** Pipeline 兼容：写文件到 content 目录 */
   writeFile(id: string, filePath: string, content: string): void {
-    const safePath = filePath.replace(/\.\./g, '');
-    const fullPath = path.join(this.kbDir(id), safePath);
-    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-    fs.writeFileSync(fullPath, content, 'utf-8');
-    this.touchMeta(id);
-  }
-
-  deleteFile(id: string, filePath: string): boolean {
-    const safePath = filePath.replace(/\.\./g, '');
-    const fullPath = path.join(this.kbDir(id), safePath);
-    if (!fs.existsSync(fullPath)) return false;
-
-    if (fs.statSync(fullPath).isDirectory()) {
-      fs.rmSync(fullPath, { recursive: true, force: true });
-    } else {
-      fs.unlinkSync(fullPath);
-    }
-
-    const parentDir = path.dirname(fullPath);
-    const kbRoot = this.kbDir(id);
-    if (parentDir !== kbRoot && fs.existsSync(parentDir)) {
-      const remaining = fs.readdirSync(parentDir);
-      if (remaining.length === 0) {
-        fs.rmdirSync(parentDir);
-      }
-    }
-
-    this.touchMeta(id);
-    log.info(`[KnowledgeStore] Deleted file: ${id}/${safePath}`);
-    return true;
-  }
-
-  importIntoExisting(id: string, zipPath: string): KnowledgeBaseMeta | null {
-    const dir = this.kbDir(id);
-    if (!fs.existsSync(dir)) return null;
-
-    const zip = new AdmZip(zipPath);
-    zip.extractAllTo(dir, true);
-
-    this.touchMeta(id);
-    log.info(`[KnowledgeStore] Imported additional content into KB: ${id}`);
-    return this.get(id);
-  }
-
-  regenerateIndex(id: string): string | null {
-    const meta = this.get(id);
-    if (!meta) return null;
-
-    const tree = this.buildTree(this.kbDir(id), '');
-    const content = this.generateIndexFromTree(meta.name, meta.description, tree);
-    fs.writeFileSync(path.join(this.kbDir(id), 'index.md'), content, 'utf-8');
-    this.touchMeta(id);
-    log.info(`[KnowledgeStore] Regenerated index for KB: ${id}`);
-    return content;
+    this.writeContentFile(id, filePath, content);
   }
 
   updateMeta(id: string, updates: Partial<KnowledgeBaseMeta>): void {
     const existing = this.get(id);
     if (!existing) return;
     const merged = { ...existing, ...updates, updatedAt: Date.now() };
-    fs.writeFileSync(path.join(this.kbDir(id), 'meta.json'), JSON.stringify(merged, null, 2), 'utf-8');
+    this.saveMeta(id, merged);
   }
 
-  private touchMeta(id: string): void {
-    const metaPath = path.join(this.kbDir(id), 'meta.json');
-    if (fs.existsSync(metaPath)) {
-      try {
-        const raw = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-        raw.updatedAt = Date.now();
-        raw.totalFiles = this.countFiles(this.kbDir(id));
-        raw.chapterCount = this.countChapters(this.kbDir(id));
-        fs.writeFileSync(metaPath, JSON.stringify(raw, null, 2), 'utf-8');
-      } catch {
-        /* ignore */
+  // ==================== Private helpers ====================
+
+  private saveMeta(id: string, meta: KnowledgeBaseMeta): void {
+    fs.writeFileSync(path.join(this.kbDir(id), META_FILE), JSON.stringify(meta, null, 2), 'utf-8');
+  }
+
+  private extractZipToSources(id: string, zipPath: string): void {
+    try {
+      const extractDir = path.join(this.sourcesDir(id), `_extracted_${Date.now()}`);
+      const zip = new AdmZip(zipPath);
+      zip.extractAllTo(extractDir, true);
+      log.info(`[KnowledgeStore] Extracted ZIP to sources: ${extractDir}`);
+    } catch (err) {
+      log.error(`[KnowledgeStore] Failed to extract ZIP:`, err);
+    }
+  }
+
+  private walkSources(dir: string, prefix: string, out: SourceMaterial[]): void {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue;
+      const fullPath = path.join(dir, entry.name);
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        this.walkSources(fullPath, rel, out);
+      } else {
+        const ext = path.extname(entry.name).toLowerCase();
+        const typeMap: Record<string, SourceMaterial['type']> = {
+          '.zip': 'zip',
+          '.pdf': 'pdf',
+          '.doc': 'word',
+          '.docx': 'word',
+          '.md': 'markdown',
+          '.txt': 'text',
+          '.png': 'image',
+          '.jpg': 'image',
+          '.jpeg': 'image'
+        };
+        const stat = fs.statSync(fullPath);
+        out.push({
+          name: entry.name,
+          path: rel,
+          type: typeMap[ext] || 'other',
+          size: stat.size,
+          addedAt: stat.mtimeMs
+        });
       }
     }
   }
 
+  private countSources(id: string): number {
+    const srcDir = this.sourcesDir(id);
+    if (!fs.existsSync(srcDir)) return 0;
+    let count = 0;
+    const walk = (d: string): void => {
+      for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+        if (entry.name.startsWith('.')) continue;
+        if (entry.isDirectory()) walk(path.join(d, entry.name));
+        else count++;
+      }
+    };
+    walk(srcDir);
+    return count;
+  }
+
   private buildTree(baseDir: string, relativePath: string): KnowledgeTreeNode[] {
     const fullDir = relativePath ? path.join(baseDir, relativePath) : baseDir;
+    if (!fs.existsSync(fullDir)) return [];
     const entries = fs.readdirSync(fullDir, { withFileTypes: true });
     const nodes: KnowledgeTreeNode[] = [];
-
     for (const entry of entries) {
-      if (entry.name.startsWith('.') || entry.name === 'meta.json') continue;
+      if (entry.name.startsWith('.') || entry.name === META_FILE) continue;
       const rel = relativePath ? `${relativePath}/${entry.name}` : entry.name;
-
       if (entry.isDirectory()) {
         nodes.push({
           name: entry.name,
@@ -296,32 +385,25 @@ export class KnowledgeStore {
           children: this.buildTree(baseDir, rel)
         });
       } else if (entry.name.endsWith('.md')) {
-        nodes.push({
-          name: entry.name,
-          path: rel,
-          type: 'file'
-        });
+        nodes.push({ name: entry.name, path: rel, type: 'file' });
       }
     }
-
     return nodes.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   private countChapters(dir: string): number {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    return entries.filter((e) => e.isDirectory() && /^\d{2}-/.test(e.name)).length;
+    if (!fs.existsSync(dir)) return 0;
+    return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && /^\d{2}-/.test(e.name)).length;
   }
 
   private countFiles(dir: string): number {
+    if (!fs.existsSync(dir)) return 0;
     let count = 0;
     const walk = (d: string): void => {
       for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
         if (entry.name.startsWith('.')) continue;
-        if (entry.isDirectory()) {
-          walk(path.join(d, entry.name));
-        } else if (entry.name.endsWith('.md')) {
-          count++;
-        }
+        if (entry.isDirectory()) walk(path.join(d, entry.name));
+        else if (entry.name.endsWith('.md')) count++;
       }
     };
     walk(dir);

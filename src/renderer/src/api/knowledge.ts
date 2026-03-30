@@ -1,6 +1,6 @@
 import axios from 'axios';
 import configManager from '@/config';
-import type { KnowledgeBaseMeta, KnowledgeTreeNode } from '@shared/types/knowledge';
+import type { KnowledgeBaseMeta, KnowledgeTreeNode, SourceMaterial } from '@shared/types/knowledge';
 
 const BASE_URL = `${configManager.getBaseUrl()}`;
 
@@ -20,11 +20,6 @@ export async function getKnowledgeBase(id: string): Promise<KnowledgeBaseMeta | 
   return res.data.data ?? null;
 }
 
-export async function getKnowledgeIndex(id: string): Promise<string> {
-  const res = await axios.get<ApiResponse<{ content: string }>>(`${BASE_URL}/gateway/knowledge/${id}/index`);
-  return res.data.data?.content ?? '';
-}
-
 export async function getKnowledgeTree(id: string): Promise<KnowledgeTreeNode[]> {
   const res = await axios.get<ApiResponse<KnowledgeTreeNode[]>>(`${BASE_URL}/gateway/knowledge/${id}/tree`);
   return res.data.data ?? [];
@@ -38,6 +33,11 @@ export async function readKnowledgeFile(id: string, filePath: string): Promise<s
   return res.data.data?.content ?? '';
 }
 
+export async function listSources(id: string): Promise<SourceMaterial[]> {
+  const res = await axios.get<ApiResponse<SourceMaterial[]>>(`${BASE_URL}/gateway/knowledge/${id}/sources`);
+  return res.data.data ?? [];
+}
+
 export async function createKnowledgeBase(name: string, description: string): Promise<KnowledgeBaseMeta> {
   const res = await axios.post<ApiResponse<KnowledgeBaseMeta>>(`${BASE_URL}/gateway/knowledge/create`, {
     name,
@@ -46,37 +46,23 @@ export async function createKnowledgeBase(name: string, description: string): Pr
   return res.data.data!;
 }
 
-export async function importKnowledgeBase(
-  name: string,
-  description: string,
-  zipBase64: string
-): Promise<KnowledgeBaseMeta> {
-  const res = await axios.post<ApiResponse<KnowledgeBaseMeta>>(`${BASE_URL}/gateway/knowledge/import`, {
-    name,
-    description,
+export async function uploadSource(id: string, fileName: string, fileBase64: string): Promise<SourceMaterial> {
+  const res = await axios.post<ApiResponse<SourceMaterial>>(`${BASE_URL}/gateway/knowledge/${id}/upload`, {
+    fileName,
+    fileBase64
+  });
+  return res.data.data!;
+}
+
+export async function uploadZipSource(id: string, zipBase64: string): Promise<SourceMaterial> {
+  const res = await axios.post<ApiResponse<SourceMaterial>>(`${BASE_URL}/gateway/knowledge/${id}/upload-zip`, {
     zipBase64
   });
   return res.data.data!;
 }
 
-export async function saveKnowledgeFile(id: string, filePath: string, content: string): Promise<void> {
-  await axios.put(`${BASE_URL}/gateway/knowledge/${id}/write`, { path: filePath, content });
-}
-
-export async function deleteKnowledgeFile(id: string, filePath: string): Promise<void> {
-  await axios.delete(`${BASE_URL}/gateway/knowledge/${id}/file`, { params: { path: filePath } });
-}
-
-export async function importIntoKnowledgeBase(id: string, zipBase64: string): Promise<KnowledgeBaseMeta> {
-  const res = await axios.post<ApiResponse<KnowledgeBaseMeta>>(`${BASE_URL}/gateway/knowledge/${id}/import`, {
-    zipBase64
-  });
-  return res.data.data!;
-}
-
-export async function regenerateIndex(id: string): Promise<string> {
-  const res = await axios.post<ApiResponse<{ content: string }>>(`${BASE_URL}/gateway/knowledge/${id}/reindex`);
-  return res.data.data?.content ?? '';
+export async function buildKnowledgeBase(id: string): Promise<void> {
+  await axios.post(`${BASE_URL}/gateway/knowledge/${id}/build`);
 }
 
 export async function deleteKnowledgeBase(id: string): Promise<void> {
