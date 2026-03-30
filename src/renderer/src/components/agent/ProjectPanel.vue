@@ -22,10 +22,10 @@ const directoryMode = inject<Ref<DirectoryMode>>('directoryMode', ref('agent-hom
 const toggleDirectoryMode = inject<() => void>('toggleDirectoryMode', () => {});
 const setProjectDir = inject<() => Promise<void>>('setProjectDir', async () => {});
 
-const DIRECTORY_META: Record<DirectoryMode, { title: string; icon: string; switchHint: string }> = {
-  'agent-home': { title: '智能体目录', icon: 'i-carbon-user-avatar', switchHint: '切换到任务目录' },
-  workspace: { title: '任务工作目录', icon: 'i-carbon-folder-shared', switchHint: '切换到工程目录' },
-  project: { title: '工程目录', icon: 'i-carbon-document-folder', switchHint: '切换到智能体目录' }
+const DIRECTORY_META: Record<DirectoryMode, { title: string; icon: string }> = {
+  'agent-home': { title: '智能体目录', icon: 'i-carbon-user-avatar' },
+  workspace: { title: '任务工作目录', icon: 'i-carbon-folder-shared' },
+  project: { title: '工程目录', icon: 'i-carbon-folder-details' }
 };
 
 const directoryTitle = computed(() => DIRECTORY_META[directoryMode.value].title);
@@ -333,36 +333,41 @@ defineExpose({ selectDirectory });
     tabindex="0"
     @keydown="handlePaste">
     <!-- 面板标题 -->
-    <div class="flex h-10 shrink-0 items-center justify-between border-b border-gray-200/60 px-3">
-      <div class="flex items-center gap-1.5">
+    <div class="flex h-10 shrink-0 items-center border-b border-gray-200/60 px-2">
+      <!-- 左侧：目录模式切换（点击循环切换） -->
+      <button
+        v-if="projectPath"
+        class="flex flex-1 items-center gap-1.5 rounded px-1 py-0.5 transition hover:bg-gray-100"
+        title="点击切换目录模式"
+        @click="toggleDirectoryMode">
+        <span :class="directoryIcon" class="inline-block h-3.5 w-3.5 text-gray-500"></span>
+        <span class="truncate text-xs font-semibold text-gray-600">{{ directoryTitle }}</span>
+        <span class="i-carbon-chevron-sort inline-block h-2.5 w-2.5 shrink-0 text-gray-400"></span>
+      </button>
+      <div v-else class="flex flex-1 items-center gap-1.5 px-1">
         <span :class="directoryIcon" class="inline-block h-3.5 w-3.5 text-gray-500"></span>
         <span class="text-xs font-semibold text-gray-600">{{ directoryTitle }}</span>
       </div>
-      <div class="flex items-center gap-0.5">
+
+      <!-- 右侧：操作按钮 -->
+      <div class="flex items-center">
         <button
           v-if="projectPath"
-          class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
-          title="设置工程目录"
+          class="flex h-6 w-6 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
+          title="指定工程目录"
           @click="setProjectDir">
-          <span class="i-carbon-folder-move-to inline-block h-3 w-3"></span>
+          <span class="i-carbon-folder-add inline-block h-3.5 w-3.5"></span>
         </button>
         <button
           v-if="projectPath"
-          class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
-          :title="DIRECTORY_META[directoryMode].switchHint"
-          @click="toggleDirectoryMode">
-          <span class="i-carbon-switcher inline-block h-3 w-3"></span>
-        </button>
-        <button
-          v-if="projectPath"
-          class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
+          class="flex h-6 w-6 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
           title="刷新"
           @click="() => loadTree(false)">
-          <span class="i-carbon-renew inline-block h-3 w-3" :class="{ 'animate-spin': loading }"></span>
+          <span class="i-carbon-renew inline-block h-3.5 w-3.5" :class="{ 'animate-spin': loading }"></span>
         </button>
         <button
-          class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
-          title="折叠"
+          class="flex h-6 w-6 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
+          title="折叠面板"
           @click="isCollapsed = true">
           <span class="i-carbon-chevron-left inline-block h-3 w-3"></span>
         </button>

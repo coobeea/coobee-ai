@@ -125,11 +125,8 @@ export function registerFileRoutes(router: Router): void {
       return;
     }
 
-    const workspacesDir = Env.paths.workspacesDir;
-    const homesDir = Env.paths.homesDir;
-
-    // 允许访问 workspaces/ 或 homes/ 目录
-    if (!isPathSafe(dirPath, workspacesDir) && !isPathSafe(dirPath, homesDir)) {
+    // 安全检查：禁止路径遍历攻击，但允许用户选择的外部目录
+    if (!isPathSafe(dirPath)) {
       ctx.status = 400;
       ctx.body = { error: 'Invalid path: directory traversal not allowed' };
       return;
@@ -179,11 +176,7 @@ export function registerFileRoutes(router: Router): void {
       return;
     }
 
-    const workspacesDir = Env.paths.workspacesDir;
-    const homesDir = Env.paths.homesDir;
-
-    // 允许访问 workspaces/ 或 homes/ 目录
-    if (!isPathSafe(filePath, workspacesDir) && !isPathSafe(filePath, homesDir)) {
+    if (!isPathSafe(filePath)) {
       ctx.status = 400;
       ctx.body = { error: 'Invalid path: directory traversal not allowed' };
       return;
@@ -323,11 +316,7 @@ export function registerFileRoutes(router: Router): void {
       return;
     }
 
-    const workspacesDir = Env.paths.workspacesDir;
-    const homesDir = Env.paths.homesDir;
-
-    // 允许访问 workspaces/ 或 homes/ 目录
-    if (!isPathSafe(filePath, workspacesDir) && !isPathSafe(filePath, homesDir)) {
+    if (!isPathSafe(filePath)) {
       ctx.status = 400;
       ctx.body = { error: 'Invalid path: directory traversal not allowed' };
       return;
