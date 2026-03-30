@@ -304,6 +304,28 @@ export class CreationStore {
     return true;
   }
 
+  // ==================== Chat Transcript ====================
+
+  private transcriptPath(sessionId: string): string {
+    return path.join(this.sessionDir(sessionId), '.chat-transcript.json');
+  }
+
+  loadTranscript(sessionId: string): { role: 'user' | 'assistant'; content: string }[] {
+    const fp = this.transcriptPath(sessionId);
+    if (!fs.existsSync(fp)) return [];
+    try {
+      return JSON.parse(fs.readFileSync(fp, 'utf-8'));
+    } catch {
+      return [];
+    }
+  }
+
+  appendTranscript(sessionId: string, messages: { role: 'user' | 'assistant'; content: string }[]): void {
+    const existing = this.loadTranscript(sessionId);
+    existing.push(...messages);
+    fs.writeFileSync(this.transcriptPath(sessionId), JSON.stringify(existing, null, 2), 'utf-8');
+  }
+
   private inferPhase(filename: string): FileInfo['phase'] {
     if (filename === '00-session.md') return 'meta';
     const prefix = filename.split('-')[0];

@@ -83,6 +83,13 @@ export function registerCreationRoutes(router: Router): void {
     ctx.body = { success: removed };
   });
 
+  // ==================== 对话记录 ====================
+
+  router.get('/creation/sessions/:id/transcript', (ctx: Context) => {
+    const transcript = getStore().loadTranscript(ctx.params.id);
+    ctx.body = { success: true, data: transcript };
+  });
+
   // ==================== 通用 ====================
 
   router.get('/creation/sessions', (ctx: Context) => {

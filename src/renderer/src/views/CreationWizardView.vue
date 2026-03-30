@@ -13,7 +13,8 @@ import {
   addKnowledge,
   launchAutopilot,
   pauseAutopilot,
-  resumeAutopilot
+  resumeAutopilot,
+  loadTranscript
 } from '@/api/creation';
 import type { CreationSessionMeta, CreationTargetType, FileInfo } from '@shared/types/creation';
 import { PHASE_ORDER, PHASE_LABELS } from '@shared/types/creation';
@@ -120,12 +121,18 @@ async function openSession(session: CreationSessionMeta): Promise<void> {
 
   if (session.status === 'requirements') {
     stage.value = 'requirements';
-    chatMessages.value = [
-      {
-        role: 'assistant',
-        content: `你好！我是需求分析师，帮你创建${targetLabel(session.targetType)}。\n\n你的初始需求是：「${session.userRequirement}」\n\n让我来进一步了解你的需求。首先，请描述一下这个${targetLabel(session.targetType)}主要解决什么问题？在什么场景下使用？`
-      }
-    ];
+
+    const transcript = await loadTranscript(session.id);
+    if (transcript.length > 0) {
+      chatMessages.value = transcript;
+    } else {
+      chatMessages.value = [
+        {
+          role: 'assistant',
+          content: `你好！我是需求分析师，帮你创建${targetLabel(session.targetType)}。\n\n你的初始需求是：「${session.userRequirement}」\n\n让我来进一步了解你的需求。首先，请描述一下这个${targetLabel(session.targetType)}主要解决什么问题？在什么场景下使用？`
+        }
+      ];
+    }
   } else if (session.status === 'autopilot' || session.status === 'paused') {
     stage.value = 'autopilot';
     startPolling();

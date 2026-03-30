@@ -36,7 +36,7 @@ export class CreationPipeline {
 
   /**
    * Phase 1：处理用户对话消息
-   * 返回 Agent 的回复文本
+   * 携带完整对话历史，确保 Agent 不丢失上下文
    */
   async chat(sessionId: string, message: string): Promise<string> {
     const meta = this.store.loadMeta(sessionId);
@@ -45,18 +45,42 @@ export class CreationPipeline {
       throw new Error(`Session is not in requirements phase (current: ${meta.status})`);
     }
 
+    const transcript = this.store.loadTranscript(sessionId);
+
+    const contextParts: string[] = [];
+    contextParts.push(
+      `## 创建目标\n\n类型：${meta.targetType}\n名称：${meta.name}\n原始需求：${meta.userRequirement}\n`
+    );
+
+    if (transcript.length > 0) {
+      contextParts.push(`## 对话历史\n`);
+      for (const msg of transcript) {
+        const label = msg.role === 'user' ? '👤 用户' : '🤖 分析师';
+        contextParts.push(`${label}：${msg.content}\n`);
+      }
+    }
+
+    contextParts.push(`## 当前用户消息\n\n${message}`);
+
+    const fullMessage = contextParts.join('\n');
+
     const runtime = ChannelRuntime.getInstance();
     const agentId = this.resolveAgentId(meta.targetType, 'requirements');
     const result = await runtime.executeAgent({
       agentId,
       sessionId: `creation-${sessionId}-req`,
-      message,
+      message: fullMessage,
       context: { channel: 'creation', sessionId, phase: 'requirements' }
     });
 
     if (result.error) {
       log.error(`[CreationPipeline] Phase 1 chat error: ${result.error}`);
     }
+
+    this.store.appendTranscript(sessionId, [
+      { role: 'user', content: message },
+      { role: 'assistant', content: result.output }
+    ]);
 
     return result.output;
   }

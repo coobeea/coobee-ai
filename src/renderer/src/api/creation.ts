@@ -36,6 +36,13 @@ export async function finishRequirements(
   await axios.post(`${BASE_URL}/gateway/creation/sessions/${sessionId}/finish-requirements`, { files });
 }
 
+export async function loadTranscript(sessionId: string): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
+  const res = await axios.get<ApiResponse<{ role: 'user' | 'assistant'; content: string }[]>>(
+    `${BASE_URL}/gateway/creation/sessions/${sessionId}/transcript`
+  );
+  return res.data.data ?? [];
+}
+
 export async function listSessions(): Promise<CreationSessionMeta[]> {
   const res = await axios.get<ApiResponse<CreationSessionMeta[]>>(`${BASE_URL}/gateway/creation/sessions`);
   return res.data.data ?? [];
