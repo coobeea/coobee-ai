@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import AdmZip from 'adm-zip';
+import mammoth from 'mammoth';
 import { Env } from '@main/common/env';
 import { log } from '@main/common/logger';
 import type {
@@ -182,32 +183,50 @@ export class KnowledgeStore {
     }
   }
 
-  getSourcesAsText(id: string): string {
+  async getSourcesAsText(id: string): Promise<string> {
     const srcDir = this.sourcesDir(id);
     if (!fs.existsSync(srcDir)) return '';
 
+    const TEXT_EXTS = new Set(['.md', '.txt', '.csv', '.json', '.xml', '.html', '.htm', '.yaml', '.yml']);
+    const DOCX_EXTS = new Set(['.docx', '.doc']);
+
     const parts: string[] = [];
-    const walk = (dir: string, prefix: string): void => {
+    const files: { fullPath: string; rel: string; ext: string }[] = [];
+
+    const collect = (dir: string, prefix: string): void => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         if (entry.name.startsWith('.')) continue;
         const fullPath = path.join(dir, entry.name);
         const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
-          walk(fullPath, rel);
+          collect(fullPath, rel);
         } else {
-          const ext = path.extname(entry.name).toLowerCase();
-          if (['.md', '.txt', '.csv', '.json', '.xml', '.html'].includes(ext)) {
-            try {
-              const content = fs.readFileSync(fullPath, 'utf-8');
-              parts.push(`\n===== 文件: ${rel} =====\n${content}`);
-            } catch {
-              /* skip binary files */
-            }
-          }
+          files.push({ fullPath, rel, ext: path.extname(entry.name).toLowerCase() });
         }
       }
     };
-    walk(srcDir, '');
+    collect(srcDir, '');
+
+    for (const file of files) {
+      if (TEXT_EXTS.has(file.ext)) {
+        try {
+          const content = fs.readFileSync(file.fullPath, 'utf-8');
+          parts.push(`\n===== 文件: ${file.rel} =====\n${content}`);
+        } catch {
+          /* skip unreadable */
+        }
+      } else if (DOCX_EXTS.has(file.ext)) {
+        try {
+          const result = await mammoth.extractRawText({ path: file.fullPath });
+          if (result.value.trim()) {
+            parts.push(`\n===== 文件: ${file.rel} =====\n${result.value}`);
+          }
+        } catch (err) {
+          log.warn(`[KnowledgeStore] Failed to extract text from ${file.rel}:`, err);
+        }
+      }
+    }
+
     return parts.join('\n');
   }
 

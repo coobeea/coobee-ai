@@ -73,7 +73,7 @@ export class KnowledgeBuilder {
     const meta = this.store.get(kbId);
     if (!meta) throw new Error(`Knowledge base not found: ${kbId}`);
 
-    const sourcesText = this.store.getSourcesAsText(kbId);
+    const sourcesText = await this.store.getSourcesAsText(kbId);
     if (!sourcesText.trim()) {
       this.store.updateStatus(kbId, 'error', '没有可读取的源材料');
       throw new Error('No readable source materials');
@@ -130,7 +130,7 @@ ${sourcesText.substring(0, 80000)}
     const meta = this.store.get(kbId);
     if (!meta) throw new Error(`Knowledge base not found: ${kbId}`);
 
-    const sourcesText = this.store.getSourcesAsText(kbId);
+    const sourcesText = await this.store.getSourcesAsText(kbId);
     const existingIndex = this.store.getIndex(kbId);
 
     if (!sourcesText.trim()) {
