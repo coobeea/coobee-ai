@@ -31,6 +31,7 @@ export abstract class BaseAgentBuilder {
   protected _providerConfig?: ProviderConfig;
   protected _providerModelId?: string;
   protected _agentId?: string;
+  protected _projectDir?: string;
 
   /** Agent 定义 ID（关联到 AgentStore 中的 Agent 定义） */
   agentId(id: string): this {
@@ -160,6 +161,22 @@ export abstract class BaseAgentBuilder {
   /** 获取当前设置的工作区根目录 */
   getWorkspaceRoot(): string | undefined {
     return this._workspaceRoot;
+  }
+
+  /**
+   * 工程目录（用户指定的输出目标目录）
+   *
+   * 设置后，Agent 的工作目录（cwd）指向此目录，
+   * 中间产物、解析结果、输出文件均写入工程目录。
+   * 会话内部文件（.runtime/、.jsonl）仍存储在 workspace 目录。
+   */
+  projectDir(dir: string): this {
+    this._projectDir = dir;
+    return this;
+  }
+
+  getProjectDir(): string | undefined {
+    return this._projectDir;
   }
 
   /** 工具执行上下文（由 EnvInjector 自动设置） */

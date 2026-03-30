@@ -76,6 +76,10 @@ export interface AgentEnv {
   /** 已加载的 Extension ID 列表 */
   loadedExtensions: string[];
 
+  // --- 工程目录 ---
+  /** 用户指定的工程目录（中间产物、输出文件的目标路径） */
+  projectDir?: string;
+
   // --- Agent Home ---
   /** Agent 定义 ID（关联了 AgentDefinition 时存在） */
   agentId?: string;
@@ -255,7 +259,15 @@ Your Runtime Environment:
 
 Directory Structure:
 ${agentHomeSection}
-**Current Task Workspace (Temporary)**: ${env.workspace}/
+${
+  env.projectDir
+    ? `**Project Directory (User-specified Output)**: ${env.projectDir}/
+  All intermediate results, parsed data, and output files go here.
+  When the user says "root directory" or "project directory", they mean this path.
+
+`
+    : ''
+}**Current Task Workspace (Temporary)**: ${env.workspace}/
   ├── .runtime/                             — System internal files (sessions, contexts, logs)
   ├── tasks/                                — Multi-agent collaboration area
   └── GOAL.md                               — Task goal file
@@ -271,7 +283,20 @@ Key System Directories:
 File Output Guidelines:
 
 **Where to save files?**
+${
+  env.projectDir
+    ? `
+1. **Project Outputs (Intermediate & Final Results)** → Project Directory
+   - ${env.projectDir}/            — All task outputs, parsed data, generated content
+   - When the user says "root directory" or "project directory", they mean HERE
+   Example: Processed files, analysis results, generated content
 
+2. **Persistent Outputs (Training Results, Knowledge)** → Agent Home
+   - {agentHome}/output/           — Cross-session persistent files
+   - {agentHome}/skill-data/       — Structured data from skills
+   Example: Accumulated knowledge, long-term memory
+`
+    : `
 1. **Persistent Outputs (Training Results, Knowledge)** → Agent Home
    - {agentHome}/output/           — General persistent files
    - {agentHome}/skill-data/       — Structured data from skills
@@ -280,15 +305,11 @@ File Output Guidelines:
 2. **Temporary Task Files** → Current Task Workspace
    - {workspace}/                  — Task-specific temporary files
    Example: Intermediate results, debug logs, scratch files
-
+`
+}
 3. **System Files** (DO NOT manually modify)
    - {workspace}/.runtime/         — Managed by system
 
-**Decision Rule**:
-- Will you need this file in future tasks? → Agent Home
-- Is this file only for current task? → Workspace
-- Not sure? → Ask yourself: "Is this training/accumulation or task-specific?"
-
-**IMPORTANT**: When user asks "check our root directory" or similar, they usually mean Agent Home (${env.agentHome || 'N/A'}), not the temporary workspace.
+**IMPORTANT**: When user asks "check our root directory" or similar, they usually mean ${env.projectDir ? `the Project Directory (${env.projectDir})` : `Agent Home (${env.agentHome || 'N/A'})`}.
 </runtime_environment>`;
 }

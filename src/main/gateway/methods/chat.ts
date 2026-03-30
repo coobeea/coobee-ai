@@ -205,13 +205,15 @@ export const chatMethods: MethodGroup = {
         sessionId,
         mode = 'agent',
         agentId,
-        skillRef
+        skillRef,
+        projectDir
       } = params as {
         message?: string;
         sessionId?: string;
         mode?: AgentMode;
         agentId?: string;
         skillRef?: string;
+        projectDir?: string;
       };
 
       if (!message) {
@@ -229,6 +231,7 @@ export const chatMethods: MethodGroup = {
 
       // 自动创建 Thread
       let sid = sessionId;
+      let resolvedProjectDir = projectDir;
       if (!sid) {
         const threadStore = await ThreadStore.getInstance();
         const multiAgentModes: AgentMode[] = ['orchestrator', 'swarm', 'quality-loop'];
@@ -239,10 +242,21 @@ export const chatMethods: MethodGroup = {
           title: message.slice(0, 50),
           agentId: agentId || 'default',
           agentMode,
-          agentType
+          agentType,
+          metadata: projectDir ? { projectDir } : undefined
         });
         sid = thread.id;
         log.info(`[chat.send] Auto-created thread: ${sid}`);
+      } else if (!resolvedProjectDir) {
+        try {
+          const threadStore = await ThreadStore.getInstance();
+          const thread = await threadStore.get(sid);
+          if (thread?.metadata?.projectDir) {
+            resolvedProjectDir = thread.metadata.projectDir as string;
+          }
+        } catch {
+          // 读取失败不影响主流程
+        }
       }
 
       log.info(`[chat.send] sessionId=${sid}, mode=${mode}${agentId ? `, agentId=${agentId}` : ''}`);
@@ -282,6 +296,10 @@ export const chatMethods: MethodGroup = {
         }
 
         const builder = agentDef ? createBuilderFromDefinition(agentDef, mode) : createBuilder(mode);
+
+        if (resolvedProjectDir) {
+          builder.projectDir(resolvedProjectDir);
+        }
 
         // skillRef: 显式 Skill 注入 — 将 Skill 全文作为强制指令追加到 system prompt
         if (skillRef) {

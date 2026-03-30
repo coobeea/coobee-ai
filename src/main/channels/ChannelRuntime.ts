@@ -49,6 +49,8 @@ export class ChannelRuntime {
     message: string;
     /** Channel 上下文 */
     context: ChannelContext;
+    /** 工程目录（可选，Agent 输出目标路径） */
+    projectDir?: string;
   }): Promise<{ output: string; error?: string }> {
     try {
       // 1. 加载 Agent 定义
@@ -64,6 +66,11 @@ export class ChannelRuntime {
 
       // 2. 构建 Builder
       const builder = await this.buildAgentExecutor(agentDef, params.context);
+
+      // 2b. 设置工程目录
+      if (params.projectDir) {
+        builder.projectDir(params.projectDir);
+      }
 
       // 3. 执行（收集完整输出）
       const gen = agentExecutor.stream({

@@ -51,6 +51,12 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
     const agentEnv = await buildAgentEnv(sessionId, workspace);
     const agentId = (builder as unknown as { getAgentId?: () => string | undefined }).getAgentId?.();
 
+    // 2b. 注入工程目录
+    const builderProjectDir = (builder as unknown as { getProjectDir?: () => string | undefined }).getProjectDir?.();
+    if (builderProjectDir) {
+      agentEnv.projectDir = builderProjectDir;
+    }
+
     let agentHome: string | undefined;
     let homeManager: AgentHomeManager | undefined;
     if (agentId) {
@@ -139,8 +145,10 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
 
       // 5. 构建工具执行上下文（由 Runtime 的 convertTools 注入到每个工具）
       //    包含沙箱信息 + Agent/Session 上下文
+      //    有工程目录时，工具操作的根目录指向工程目录
+      const effectiveCwd = builderProjectDir || workspace;
       const envVars = buildSkillEnvVars(agentEnv);
-      const toolCtx = await buildToolExecutionContext(workspace, sessionId, envVars, {
+      const toolCtx = await buildToolExecutionContext(effectiveCwd, sessionId, envVars, {
         agentId: agentId || undefined,
         agentName: builder.getName?.() || undefined,
         agentMode: mode
@@ -150,16 +158,23 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
 
     // ====== Chat & Agent 共享：基础环境设置 ======
 
-    // 6. 设置会话存储目录（指向 .runtime/ 系统空间）
+    // 6. 设置会话存储目录（指向 .runtime/ 系统空间，始终在 workspace 内）
     builder.sessionDir(path.join(workspace, '.runtime', 'sessions'));
 
-    // 7. 设置工作目录（统一 API：两个 Builder 都支持 workspaceRoot()）
-    builder.workspaceRoot(workspace);
+    // 7. 工作目录：有工程目录时优先使用工程目录，否则用 workspace
+    const effectiveCwdShared = builderProjectDir || workspace;
+    builder.workspaceRoot(effectiveCwdShared);
 
-    // 8. 设置上下文快照目录（.runtime/ 系统空间）
+    // 8. 设置上下文快照目录（.runtime/ 系统空间，始终在 workspace 内）
     builder.contextDir(path.join(workspace, '.runtime', 'contexts'));
 
-    log.info(`[EnvInjector] Injected: sessionId=${sessionId}, mode=${mode}, workspace=${workspace}`);
+    if (builderProjectDir) {
+      log.info(
+        `[EnvInjector] Injected: sessionId=${sessionId}, mode=${mode}, workspace=${workspace}, projectDir=${builderProjectDir}`
+      );
+    } else {
+      log.info(`[EnvInjector] Injected: sessionId=${sessionId}, mode=${mode}, workspace=${workspace}`);
+    }
     return workspace;
   } catch (error) {
     log.warn(`[EnvInjector] Failed, continuing without env:`, error);
@@ -493,12 +508,16 @@ You can collaborate with other agents using \`delegate_to_agent\`:
  *   - COOBEE_USER_HOME      — 应用主目录
  */
 function buildSkillEnvVars(env: AgentEnv): Record<string, string> {
-  return {
+  const vars: Record<string, string> = {
     COOBEE_CONFIG_DIR: env.configDir,
     COOBEE_WORKSPACE: env.workspace,
     COOBEE_SESSION_ID: env.sessionId,
     COOBEE_USER_HOME: env.userHome
   };
+  if (env.projectDir) {
+    vars.COOBEE_PROJECT_DIR = env.projectDir;
+  }
+  return vars;
 }
 
 // ==================== 工具执行上下文构建 ====================
