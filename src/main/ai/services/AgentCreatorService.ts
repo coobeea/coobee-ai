@@ -1,26 +1,25 @@
 /**
  * AI 驱动的智能体创建服务
  *
- * 接收用户自然语言需求，通过一次轻量 LLM 调用生成完整的 AgentDefinition，
+ * 接收用户自然语言需求，通过 AgentExecutor 调用 LLM 生成完整的 AgentDefinition，
  * 然后通过 AgentStore 持久化。
  *
  * 设计：
- *   - 单次 OpenAI chat.completions.create（JSON mode）
+ *   - 通过 AgentExecutor.stream() 调用（✅ 享受完整错误恢复能力）
  *   - 系统提示词融合 agent-creator Skill 的完整分析流程
  *   - 动态注入可用 Tools（name）和 Skills（name + description）
  *   - 支持进度回调（SSE 流式通知前端）
- *   - 不启动完整 Agent 会话，轻量且快速
+ *   - lightweight 模式，不持久化会话
  */
 
-import OpenAI from 'openai';
 import { createLogger } from '@main/common/logger';
 import { agentExecutor } from '@main/ai/AgentExecutor';
-import { resolveApiKey } from '@main/ai/provider/ApiKeyResolver';
 import { ToolRegistry } from '@main/ai/tools/registry';
 import { builtinTools } from '@main/ai/tools';
 import { SkillManager } from '@main/ai/skills/SkillManager';
 import { AgentStore } from '@main/ai/agents/AgentStore';
 import type { AgentDefinition, CreateAgentParams } from '@main/ai/agents/types';
+import type { StreamChunk } from '@main/ai/runtime/types';
 
 const log = createLogger('agent-creator-service');
 
@@ -184,33 +183,22 @@ function getAvailableSkills(): SkillInfo[] {
   }));
 }
 
-// ==================== OpenAI 客户端 ====================
+// ==================== Agent Builder 辅助函数 ====================
 
-/** 创建 OpenAI 客户端，复用 Provider 系统配置 */
-function createOpenAIClient(): { client: OpenAI; model: string } {
-  const providerSystem = agentExecutor.getProviderSystem?.();
-  if (!providerSystem) {
-    throw new Error('Provider 系统未初始化，无法创建 AI 客户端');
-  }
-
-  const { selector, registry } = providerSystem;
-  const ref = selector.resolve();
-  const provider = registry.get(ref.provider);
-  if (!provider) {
-    throw new Error(`Provider "${ref.provider}" 未找到`);
-  }
-
-  const apiKey = resolveApiKey(provider.apiKey, provider.id);
-  if (!apiKey) {
-    throw new Error(`Provider "${ref.provider}" 未配置 API Key`);
-  }
-
-  const client = new OpenAI({
-    apiKey,
-    baseURL: provider.baseUrl
-  });
-
-  return { client, model: ref.model };
+/**
+ * 创建临时 Agent 定义（用于通过 AgentExecutor 调用 LLM）
+ *
+ * 参考 quickChat 的实现模式
+ */
+function createTempAgentBuilder(systemPrompt: string): ReturnType<typeof agentExecutor.piMono> {
+  return agentExecutor
+    .piMono()
+    .name('智能体创建助手')
+    .agentId('temp-agent-creator')
+    .mode('chat')
+    .sessionMode('file')
+    .lightweight(true) // ✅ 轻量模式，不持久化会话
+    .instructions(systemPrompt); // 动态系统提示词
 }
 
 // ==================== 核心逻辑 ====================
@@ -244,7 +232,7 @@ export async function aiCreateAgent(requirement: string, onProgress?: ProgressCa
     detail: `发现 ${tools.length} 个工具、${skills.length} 个技能`
   });
 
-  // Step 2: 生成阶段 — 调用 LLM
+  // Step 2: 生成阶段 — 通过 AgentExecutor 调用（✅ 自动错误恢复）
   emit({
     step: 'generating',
     message: '正在生成智能体定义...',
@@ -252,23 +240,58 @@ export async function aiCreateAgent(requirement: string, onProgress?: ProgressCa
   });
 
   const systemPrompt = buildSystemPrompt(tools, skills);
-  const { client, model } = createOpenAIClient();
-  log.debug(`[AgentCreatorService] 使用模型: ${model}`);
+  const builder = createTempAgentBuilder(systemPrompt);
 
-  const response = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: requirement }
-    ],
-    temperature: 0.7,
-    max_tokens: 2000
-  });
+  // 临时会话 ID（不持久化）
+  const sessionId = `agent-create-${Date.now()}`;
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    emit({ step: 'error', message: 'AI 未返回有效内容' });
-    throw new Error('AI 未返回有效内容');
+  let content = '';
+
+  try {
+    // 执行流式对话（✅ 通过 AgentExecutor，自动错误恢复）
+    const gen = agentExecutor.stream({
+      sessionId,
+      message: requirement,
+      builder
+    });
+
+    let r = await gen.next();
+    while (!r.done) {
+      const chunk: StreamChunk = r.value;
+
+      // 收集文本内容
+      if (chunk.type === 'text:delta' && chunk.content) {
+        content += chunk.content;
+      }
+
+      // 透传错误恢复事件（前端可显示"重试中..."）
+      if (chunk.type === 'run:error') {
+        emit({
+          step: 'generating',
+          message: `恢复中: ${chunk.content}`
+        });
+      }
+
+      r = await gen.next();
+    }
+
+    if (!content.trim()) {
+      emit({ step: 'error', message: 'AI 未返回有效内容' });
+      throw new Error('AI 未返回有效内容');
+    }
+
+    // 去除可能的 Markdown 代码块标记
+    content = content
+      .replace(/```json?\s*\n?/g, '')
+      .replace(/```\s*$/g, '')
+      .trim();
+
+    log.debug(`[AgentCreatorService] LLM 返回内容长度: ${content.length}`);
+  } catch (error) {
+    log.error(`[AgentCreatorService] 生成阶段失败:`, error);
+    const msg = error instanceof Error ? error.message : String(error);
+    emit({ step: 'error', message: `生成失败: ${msg}` });
+    throw error;
   }
 
   // Step 3: 校验阶段 — 解析和校验

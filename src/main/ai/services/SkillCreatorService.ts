@@ -1,11 +1,11 @@
 /**
  * AI 驱动的技能创建服务
  *
- * 接收用户自然语言需求，通过一次轻量 LLM 调用生成 SKILL.md 文件内容，
+ * 接收用户自然语言需求，通过 AgentExecutor 调用 LLM 生成 SKILL.md 文件内容，
  * 然后写入到用户技能目录（userSkillsDir）。
  *
  * 设计：
- *   - 单次 OpenAI chat.completions.create（JSON mode）
+ *   - 通过 AgentExecutor.stream() 调用（✅ 享受完整错误恢复能力）
  *   - 系统提示词融合 skill-creator Skill 的创建流程
  *   - 支持进度回调（SSE 流式通知前端）
  *   - 生成后写入 {userSkillsDir}/{skill-name}/SKILL.md
@@ -13,12 +13,11 @@
 
 import fs from 'fs';
 import path from 'path';
-import OpenAI from 'openai';
 import { mkdirp } from 'mkdirp';
 import { createLogger } from '@main/common/logger';
 import { agentExecutor } from '@main/ai/AgentExecutor';
-import { resolveApiKey } from '@main/ai/provider/ApiKeyResolver';
 import { SkillManager } from '@main/ai/skills/SkillManager';
+import type { StreamChunk } from '@main/ai/runtime/types';
 
 const log = createLogger('skill-creator-service');
 
@@ -134,33 +133,22 @@ description 是系统匹配 Skill 的关键。要：
 - 必须严格输出 JSON 对象，不要有其他文字`;
 }
 
-// ==================== OpenAI 客户端 ====================
+// ==================== Agent Builder 辅助函数 ====================
 
-/** 创建 OpenAI 客户端，复用 Provider 系统配置 */
-function createOpenAIClient(): { client: OpenAI; model: string } {
-  const providerSystem = agentExecutor.getProviderSystem?.();
-  if (!providerSystem) {
-    throw new Error('Provider 系统未初始化，无法创建 AI 客户端');
-  }
-
-  const { selector, registry } = providerSystem;
-  const ref = selector.resolve();
-  const provider = registry.get(ref.provider);
-  if (!provider) {
-    throw new Error(`Provider "${ref.provider}" 未找到`);
-  }
-
-  const apiKey = resolveApiKey(provider.apiKey, provider.id);
-  if (!apiKey) {
-    throw new Error(`Provider "${ref.provider}" 未配置 API Key`);
-  }
-
-  const client = new OpenAI({
-    apiKey,
-    baseURL: provider.baseUrl
-  });
-
-  return { client, model: ref.model };
+/**
+ * 创建临时 Agent 定义（用于通过 AgentExecutor 调用 LLM）
+ *
+ * 参考 quickChat 的实现模式
+ */
+function createTempAgentBuilder(systemPrompt: string): ReturnType<typeof agentExecutor.piMono> {
+  return agentExecutor
+    .piMono()
+    .name('技能创建助手')
+    .agentId('temp-skill-creator')
+    .mode('chat')
+    .sessionMode('file')
+    .lightweight(true) // ✅ 轻量模式，不持久化会话
+    .instructions(systemPrompt); // 动态系统提示词
 }
 
 // ==================== 核心逻辑 ====================
@@ -189,7 +177,7 @@ export async function aiCreateSkill(
     detail: '理解技能场景和用途'
   });
 
-  // Step 2: 生成阶段 — 调用 LLM
+  // Step 2: 生成阶段 — 通过 AgentExecutor 调用（✅ 自动错误恢复）
   emit({
     step: 'generating',
     message: '正在生成技能定义...',
@@ -197,23 +185,58 @@ export async function aiCreateSkill(
   });
 
   const systemPrompt = buildSystemPrompt();
-  const { client, model } = createOpenAIClient();
-  log.debug(`[SkillCreatorService] 使用模型: ${model}`);
+  const builder = createTempAgentBuilder(systemPrompt);
 
-  const response = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: requirement }
-    ],
-    temperature: 0.7,
-    max_tokens: 4000
-  });
+  // 临时会话 ID（不持久化）
+  const sessionId = `skill-create-${Date.now()}`;
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    emit({ step: 'error', message: 'AI 未返回有效内容' });
-    throw new Error('AI 未返回有效内容');
+  let content = '';
+
+  try {
+    // 执行流式对话（✅ 通过 AgentExecutor，自动错误恢复）
+    const gen = agentExecutor.stream({
+      sessionId,
+      message: requirement,
+      builder
+    });
+
+    let r = await gen.next();
+    while (!r.done) {
+      const chunk: StreamChunk = r.value;
+
+      // 收集文本内容
+      if (chunk.type === 'text:delta' && chunk.content) {
+        content += chunk.content;
+      }
+
+      // 透传错误恢复事件（前端可显示"重试中..."）
+      if (chunk.type === 'run:error') {
+        emit({
+          step: 'generating',
+          message: `恢复中: ${chunk.content}`
+        });
+      }
+
+      r = await gen.next();
+    }
+
+    if (!content.trim()) {
+      emit({ step: 'error', message: 'AI 未返回有效内容' });
+      throw new Error('AI 未返回有效内容');
+    }
+
+    // 去除可能的 Markdown 代码块标记
+    content = content
+      .replace(/```json?\s*\n?/g, '')
+      .replace(/```\s*$/g, '')
+      .trim();
+
+    log.debug(`[SkillCreatorService] LLM 返回内容长度: ${content.length}`);
+  } catch (error) {
+    log.error(`[SkillCreatorService] 生成阶段失败:`, error);
+    const msg = error instanceof Error ? error.message : String(error);
+    emit({ step: 'error', message: `生成失败: ${msg}` });
+    throw error;
   }
 
   // 解析 JSON
