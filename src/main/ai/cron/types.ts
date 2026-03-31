@@ -111,7 +111,11 @@ export interface CronJobExecution {
   error?: string;
 
   /** 执行日志 */
-  logs?: string[];
+  logs: Array<{
+    timestamp: string;
+    level: 'info' | 'error' | 'warn';
+    message: string;
+  }>;
 }
 
 // ==================== 声明式 Job ====================

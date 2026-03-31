@@ -48,15 +48,25 @@ export class CronJobExecutor {
 
     this.runningExecutions.set(executionId, execution);
 
+    // 辅助函数：记录日志到 execution.logs（同时输出到控制台）
+    const addLog = (level: 'info' | 'error' | 'warn', message: string): void => {
+      execution.logs.push({
+        timestamp: new Date().toISOString(),
+        level,
+        message
+      });
+      log[level](`[CronJobExecutor] [${job.name}] ${message}`);
+    };
+
     try {
-      log.info(`[CronJobExecutor] 开始执行作业: ${job.id} - ${job.name} (${job.source || 'dynamic'})`);
+      addLog('info', `开始执行作业 (${job.source || 'dynamic'})`);
 
       let resultText: string;
 
       if (job.source === 'declarative') {
-        resultText = await this.executeDeclarative(job);
+        resultText = await this.executeDeclarative(job, addLog);
       } else {
-        resultText = await this.executeDynamic(job);
+        resultText = await this.executeDynamic(job, addLog);
       }
 
       execution.status = 'success';
@@ -68,7 +78,7 @@ export class CronJobExecutor {
         runCount: job.runCount + 1
       });
 
-      log.info(`[CronJobExecutor] 作业执行成功: ${job.id}`);
+      addLog('info', `执行成功，耗时 ${Date.now() - new Date(execution.startedAt).getTime()}ms`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -83,14 +93,14 @@ export class CronJobExecutor {
         lastError: errorMessage
       });
 
-      log.error(`[CronJobExecutor] 作业执行失败: ${job.id}`, error);
+      addLog('error', `执行失败: ${errorMessage}`);
 
       if (job.failCount + 1 >= 3) {
         await this.store.update(job.id, {
           status: 'disabled',
           lastError: `连续失败 ${job.failCount + 1} 次，已自动禁用`
         });
-        log.warn(`[CronJobExecutor] 作业 ${job.id} 连续失败 ${job.failCount + 1} 次，已自动禁用`);
+        addLog('warn', `连续失败 ${job.failCount + 1} 次，已自动禁用`);
       }
     } finally {
       await this.store.saveExecution(execution);
@@ -103,7 +113,10 @@ export class CronJobExecutor {
    * - 如果指定了 agentId，则通过 Agent 执行（类似动态 Job）
    * - 否则直接调用 BaseCronJob.execute()
    */
-  private async executeDeclarative(job: CronJobDefinition): Promise<string> {
+  private async executeDeclarative(
+    job: CronJobDefinition,
+    addLog: (level: 'info' | 'error' | 'warn', message: string) => void
+  ): Promise<string> {
     const instance = this.declarativeJobs.get(job.id);
     if (!instance) {
       throw new Error(`声明式 Job 实例未注册: ${job.id}`);
@@ -111,30 +124,42 @@ export class CronJobExecutor {
 
     // 如果声明式 Job 指定了 agentId，则通过 Agent 执行
     if (instance.agentId) {
+      addLog('info', `通过 Agent "${instance.agentId}" 执行`);
       // 构造包含任务描述的 job 对象传递给 executeDynamic
       const jobWithTask: CronJobDefinition = {
         ...job,
         task: instance.taskForAgent || job.description
       };
-      return await this.executeDynamic(jobWithTask);
+      return await this.executeDynamic(jobWithTask, addLog);
     }
 
     // 否则直接调用 execute 方法
-    return await instance.execute({
+    addLog('info', `直接执行声明式任务`);
+    const result = await instance.execute({
       jobId: job.id,
       jobName: job.name,
       startTime: new Date()
     });
+
+    // 解析结果，提取日志（如果有的话）
+    addLog('info', `任务返回: ${result.slice(0, 100)}${result.length > 100 ? '...' : ''}`);
+    return result;
   }
 
   /**
    * 动态 Job 执行：通过 AgentExecutor 驱动 Agent
    */
-  private async executeDynamic(job: CronJobDefinition): Promise<string> {
+  private async executeDynamic(
+    job: CronJobDefinition,
+    addLog: (level: 'info' | 'error' | 'warn', message: string) => void
+  ): Promise<string> {
     const agentExecutor = getAgentExecutor();
     const sessionId = `cron-${job.id}-${Date.now()}`;
     const agentName = job.agentId || 'app-copilot';
     const builder = agentExecutor.piMono().name(agentName);
+
+    addLog('info', `创建 Agent 会话: ${sessionId}`);
+    addLog('info', `任务描述: ${job.task.slice(0, 100)}${job.task.length > 100 ? '...' : ''}`);
 
     const result = await agentExecutor.submitAndWait({
       sessionId,
@@ -142,6 +167,7 @@ export class CronJobExecutor {
       builder
     });
 
+    addLog('info', `Agent 执行完成`);
     return result.output || '执行成功';
   }
 
