@@ -49,6 +49,8 @@ const agentsStore = useAgentsStore();
 const cronJobs = ref<CronJobDefinition[]>([]);
 const loading = ref(false);
 const showCreateDialog = ref(false);
+const showEditDialog = ref(false);
+const editingJob = ref<CronJobDefinition | null>(null);
 const error = ref<{ message: string; details?: string } | null>(null);
 
 const isMac = navigator.platform?.includes('Mac') ?? false;
@@ -62,6 +64,16 @@ const parsing = ref(false);
 const parsedResult = ref<ParsedCronResult | null>(null);
 const parseError = ref('');
 const creating = ref(false);
+
+// 编辑表单状态
+const editForm = ref({
+  name: '',
+  description: '',
+  cronExpression: '',
+  task: '',
+  agentId: ''
+});
+const updating = ref(false);
 
 const BASE_URL = `${configManager.getBaseUrl()}/gateway/cron-jobs`;
 
@@ -101,6 +113,25 @@ function openCreateDialog(): void {
 function closeCreateDialog(): void {
   showCreateDialog.value = false;
   parsedResult.value = null;
+  parseError.value = '';
+}
+
+function openEditDialog(job: CronJobDefinition): void {
+  editingJob.value = job;
+  editForm.value = {
+    name: job.name,
+    description: job.description,
+    cronExpression: job.cronExpression,
+    task: job.task,
+    agentId: job.agentId || ''
+  };
+  parseError.value = '';
+  showEditDialog.value = true;
+}
+
+function closeEditDialog(): void {
+  showEditDialog.value = false;
+  editingJob.value = null;
   parseError.value = '';
 }
 
@@ -216,6 +247,39 @@ async function toggleJobStatus(job: CronJobDefinition): Promise<void> {
       message: '更新任务状态失败',
       details: err instanceof Error ? err.message : String(err)
     };
+  }
+}
+
+async function updateCronJob(): Promise<void> {
+  if (!editingJob.value || !editForm.value.agentId) {
+    parseError.value = '请选择一个智能体';
+    return;
+  }
+
+  updating.value = true;
+  parseError.value = '';
+
+  try {
+    const res = await fetch(`${BASE_URL}/${editingJob.value.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: editForm.value.name,
+        description: editForm.value.description,
+        cronExpression: editForm.value.cronExpression,
+        task: editForm.value.task,
+        agentId: editForm.value.agentId
+      })
+    });
+
+    if (!res.ok) throw new Error('Failed to update cron job');
+
+    closeEditDialog();
+    await loadCronJobs();
+  } catch (err) {
+    parseError.value = err instanceof Error ? err.message : '更新失败';
+  } finally {
+    updating.value = false;
   }
 }
 
@@ -362,15 +426,21 @@ function getAgentName(agentId?: string): string {
           </div>
 
           <div class="cv-job-footer">
-            <button
-              class="cv-action-btn"
-              :class="job.status === 'active' ? 'cv-warn' : 'cv-success'"
-              @click="toggleJobStatus(job)">
-              <span
-                class="inline-block h-3.5 w-3.5"
-                :class="job.status === 'active' ? 'i-carbon-pause' : 'i-carbon-play'" />
-              <span>{{ job.status === 'active' ? '暂停' : '恢复' }}</span>
-            </button>
+            <div class="cv-job-footer-left">
+              <button
+                class="cv-action-btn"
+                :class="job.status === 'active' ? 'cv-warn' : 'cv-success'"
+                @click="toggleJobStatus(job)">
+                <span
+                  class="inline-block h-3.5 w-3.5"
+                  :class="job.status === 'active' ? 'i-carbon-pause' : 'i-carbon-play'" />
+                <span>{{ job.status === 'active' ? '暂停' : '恢复' }}</span>
+              </button>
+              <button class="cv-action-btn" @click="openEditDialog(job)">
+                <span class="i-carbon-edit inline-block h-3.5 w-3.5" />
+                <span>编辑</span>
+              </button>
+            </div>
             <button class="cv-action-btn cv-danger" @click="deleteCronJob(job.id)">
               <span class="i-carbon-trash-can inline-block h-3.5 w-3.5" />
             </button>
@@ -378,6 +448,117 @@ function getAgentName(agentId?: string): string {
         </div>
       </div>
     </div>
+
+    <!-- 编辑任务弹窗 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showEditDialog" class="cv-overlay" @click.self="closeEditDialog">
+          <div class="cv-dialog">
+            <div class="cv-dialog-header">
+              <span class="i-carbon-edit inline-block h-4 w-4" />
+              <span>编辑定时任务</span>
+            </div>
+
+            <div class="cv-dialog-body">
+              <!-- 任务名称 -->
+              <div class="cv-section">
+                <h4 class="cv-section-title">
+                  <span class="i-carbon-text-font inline-block h-3 w-3" />
+                  任务名称
+                </h4>
+                <input
+                  v-model="editForm.name"
+                  type="text"
+                  class="cv-text-input"
+                  placeholder="简短的任务名称（4-10字）" />
+              </div>
+
+              <!-- 任务描述 -->
+              <div class="cv-section">
+                <h4 class="cv-section-title">
+                  <span class="i-carbon-document inline-block h-3 w-3" />
+                  任务描述
+                </h4>
+                <textarea
+                  v-model="editForm.description"
+                  rows="2"
+                  class="cv-text-input"
+                  placeholder="详细描述任务的目的和内容"></textarea>
+              </div>
+
+              <!-- Cron 表达式 -->
+              <div class="cv-section">
+                <h4 class="cv-section-title">
+                  <span class="i-carbon-timer inline-block h-3 w-3" />
+                  调度规则
+                </h4>
+                <input
+                  v-model="editForm.cronExpression"
+                  type="text"
+                  class="cv-text-input font-mono"
+                  placeholder="例如：0 9 * * * （每天 9 点）" />
+                <p class="cv-hint">标准 Cron 表达式（5 位：分 时 日 月 周）</p>
+              </div>
+
+              <!-- 执行指令 -->
+              <div class="cv-section">
+                <h4 class="cv-section-title">
+                  <span class="i-carbon-task inline-block h-3 w-3" />
+                  执行指令
+                </h4>
+                <textarea
+                  v-model="editForm.task"
+                  rows="4"
+                  class="cv-text-input"
+                  placeholder="智能体将收到的具体指令"></textarea>
+              </div>
+
+              <!-- 执行智能体 -->
+              <div class="cv-section">
+                <h4 class="cv-section-title">
+                  <span class="i-carbon-bot inline-block h-3 w-3" />
+                  执行智能体
+                </h4>
+                <div class="cv-agent-chips">
+                  <label
+                    v-for="agent in agentsStore.agents"
+                    :key="agent.id"
+                    class="cv-agent-chip"
+                    :class="{ selected: editForm.agentId === agent.id }">
+                    <input
+                      v-model="editForm.agentId"
+                      type="radio"
+                      name="editAgent"
+                      :value="agent.id"
+                      class="cv-radio-hidden" />
+                    <span class="i-carbon-bot inline-block h-3 w-3" />
+                    <span>{{ agent.name }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 错误提示 -->
+              <div v-if="parseError" class="cv-parse-error">
+                <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
+                {{ parseError }}
+              </div>
+            </div>
+
+            <div class="cv-dialog-footer">
+              <button class="cv-text-btn" @click="closeEditDialog">取消</button>
+              <button
+                class="cv-primary-btn"
+                :disabled="!editForm.name || !editForm.agentId || updating"
+                @click="updateCronJob">
+                <span v-if="updating" class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin" />
+                <span v-else class="i-carbon-checkmark inline-block h-3.5 w-3.5" />
+                保存修改
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- 创建任务弹窗 -->
     <Teleport to="body">
@@ -788,6 +969,12 @@ function getAgentName(agentId?: string): string {
   border-top: 1px solid hsl(var(--border) / 0.15);
 }
 
+.cv-job-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .cv-action-btn {
   display: inline-flex;
   align-items: center;
@@ -1093,6 +1280,37 @@ function getAgentName(agentId?: string): string {
   font-size: 10px;
   font-weight: 400;
   color: hsl(var(--muted-foreground) / 0.4);
+}
+
+/* ====== Text Input ====== */
+.cv-text-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid hsl(var(--border) / 0.35);
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: hsl(var(--foreground));
+  background: hsl(var(--surface) / 0.5);
+  transition: all 0.15s ease;
+  resize: vertical;
+}
+
+.cv-text-input:focus {
+  outline: none;
+  border-color: hsl(var(--primary) / 0.3);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.06);
+  background: hsl(var(--surface));
+}
+
+.cv-text-input::placeholder {
+  color: hsl(var(--muted-foreground) / 0.3);
+}
+
+.cv-hint {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  margin-top: 4px;
 }
 
 /* ====== Agent Chips ====== */
