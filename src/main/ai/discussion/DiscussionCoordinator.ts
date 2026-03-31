@@ -168,12 +168,10 @@ export class DiscussionCoordinator {
         `- Mode: ${this.getTurnMode() === 'sequential' ? '顺序发言' : '并发发言'}`
     );
 
-    // 5. 开始第1轮协调（后台异步执行，不阻塞 start() 返回）
-    // ✅ 使用 setImmediate 放到下一个事件循环，让 HTTP 请求先返回
-    setImmediate(() => {
-      this.coordinateNextRound().catch((err) => {
-        log.error('[DiscussionCoordinator] Failed to start coordination:', err);
-      });
+    // 5. 立即启动协调（Promise 不等待，让 HTTP 响应先返回）
+    // ✅ 不使用 setImmediate，避免重启时调度丢失
+    this.coordinateNextRound().catch((err) => {
+      log.error('[DiscussionCoordinator] Failed to start coordination:', err);
     });
 
     log.info(`[DiscussionCoordinator] Discussion ${this.threadId} started (coordination running in background)`);
@@ -213,12 +211,10 @@ export class DiscussionCoordinator {
       messageCount: session.messages.length
     });
 
-    // 3. 继续协调（后台异步执行）
-    // ✅ 使用 setImmediate 放到下一个事件循环，让恢复操作立即返回
-    setImmediate(() => {
-      coordinator.coordinateNextRound().catch((err) => {
-        log.error(`[DiscussionCoordinator] Failed to resume coordination for ${threadId}:`, err);
-      });
+    // 3. 立即继续协调（Promise 不等待，让恢复操作立即返回）
+    // ✅ 不使用 setImmediate，避免重启时调度丢失
+    coordinator.coordinateNextRound().catch((err) => {
+      log.error(`[DiscussionCoordinator] Failed to resume coordination for ${threadId}:`, err);
     });
 
     log.info(`[DiscussionCoordinator] Discussion ${threadId} resumed (coordination running in background)`);
@@ -567,11 +563,14 @@ export class DiscussionCoordinator {
       discussionSessionId: this.threadId
     };
 
+    // ✅ 合并传入的 metadata，而不是完全替换（避免丢失字段）
+    const mergedMetadata: CoordinatorMetadata = metadata ? { ...currentMetadata, ...metadata } : currentMetadata;
+
     const newCheckpoint: ThreadCheckpoint = {
       threadId: this.threadId,
       runStatus: 'running',
       updatedAt: new Date().toISOString(),
-      metadata: metadata || currentMetadata
+      metadata: mergedMetadata as unknown as Record<string, unknown>
     };
 
     await CheckpointManager.getInstance().save(newCheckpoint);
@@ -904,11 +903,10 @@ export class DiscussionCoordinator {
     const threadStore = await ThreadStore.getInstance();
     await threadStore.update(this.threadId, { runStatus: 'running' });
 
-    // 6. 开始新一轮协调（后台异步执行）
-    setImmediate(() => {
-      this.coordinateNextRound().catch((err) => {
-        log.error('[DiscussionCoordinator] Failed to continue discussion:', err);
-      });
+    // 6. 立即开始新一轮协调（Promise 不等待，让 HTTP 响应先返回）
+    // ✅ 不使用 setImmediate，避免重启时调度丢失
+    this.coordinateNextRound().catch((err) => {
+      log.error('[DiscussionCoordinator] Failed to continue discussion:', err);
     });
 
     log.info(`[DiscussionCoordinator] Discussion ${this.threadId} continued with new topic`);
