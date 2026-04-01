@@ -90,6 +90,12 @@ Usage notes:
 </skill>
 
 <skill>
+<name>poc-lifecycle</name>
+<description>POC 生命周期管理标准流程。指导 Agent 按照 5 阶段工作法（需求分析、方案设计、反思优化、实施跟踪、验收报告）执行复杂任务，确保质量、可追溯、可复盘。Use when: (1) user requests "complete implementation", "don't be lazy", "follow standard process", (2) complex tasks with keywords like 重构/架构/设计/迁移/改造, (3) tasks involving multiple files or modules, (4) high-value tasks requiring quality assurance. Triggers on: 完整地实现, 不要偷懒, 按照标准流程, 需求分析, 方案设计, POC, complex task, refactor, architecture.</description>
+<location>local</location>
+</skill>
+
+<skill>
 <name>config-manager</name>
 <description>应用配置管理工具集。当需要查看或修改应用配置（coobee.json5）时使用。提供 config-get、config-patch 两个脚本，支持查看完整配置、指定章节、以及深度合并修改。Use when user asks to view or modify app configuration, change settings, adjust security policies, or update model defaults.</description>
 <location>local</location>
