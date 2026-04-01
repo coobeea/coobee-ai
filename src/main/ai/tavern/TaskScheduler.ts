@@ -349,20 +349,40 @@ ${task.files.length > 0 ? '\n## Related Files\n\n' + task.files.map((f) => `- ${
     this.executions.delete(sessionId);
 
     const store = await TavernStore.getInstance();
+    const task = await store.readMeta(taskId);
     const duration = Math.round((Date.now() - execution.startedAt) / 1000);
 
-    await store.updateTask(taskId, {
-      status: 'completed',
-      result: {
-        textResult: `任务在 ${duration}s 内完成，详见会话 ${sessionId}`,
-        fileResults: []
+    // ✅ 检查任务是否使用 lifecycle 模式
+    const useLifecycle = task?.config?.useLifecycle ?? false;
+
+    if (useLifecycle) {
+      // 🔄 Lifecycle 模式：会话结束不代表任务完成
+      // 任务状态由 LifecycleMonitor 或 Agent 自己控制
+      log.info(
+        `[TaskScheduler] Lifecycle task ${taskId} session ended (${duration}s), status will be managed by LifecycleMonitor`
+      );
+
+      // 检查当前状态，如果是 awaiting-input，保持不变
+      if (task?.status === 'awaiting-input') {
+        log.info(`[TaskScheduler] Task ${taskId} is awaiting user input, keeping current status`);
       }
-    });
+      // 否则，任务可能已经由 Agent 通过 Tavern Skill 标记为 completed
+      // 这里不做额外处理，保持现有状态
+    } else {
+      // 🟢 Legacy 模式：会话结束 = 任务完成
+      await store.updateTask(taskId, {
+        status: 'completed',
+        result: {
+          textResult: `任务在 ${duration}s 内完成，详见会话 ${sessionId}`,
+          fileResults: []
+        }
+      });
 
-    log.info(`[TaskScheduler] Task ${taskId} completed (${duration}s)`);
+      log.info(`[TaskScheduler] Legacy task ${taskId} completed (${duration}s)`);
 
-    if (this.enableNotification) {
-      this.sendNotification(`任务完成: ${taskId}`, `耗时 ${duration}s`);
+      if (this.enableNotification) {
+        this.sendNotification(`任务完成: ${taskId}`, `耗时 ${duration}s`);
+      }
     }
 
     eventBus.emit('task-scheduler:task-done', { taskId, sessionId, duration });
