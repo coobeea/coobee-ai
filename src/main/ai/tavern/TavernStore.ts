@@ -28,6 +28,10 @@ export interface Task {
   description: string;
   amount: number;
   files: string[];
+  /** 执行该任务的智能体 ID（默认 'default'） */
+  agentId?: string;
+  /** 执行模式（单智能体/编排/蜂群/讨论/质量循环，默认 'agent'） */
+  executionMode?: 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop';
   status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled' | 'failed' | 'awaiting-input';
   result?: TaskResult;
   /** 关联的 threadId（TaskScheduler 分配执行后写入） */
@@ -139,6 +143,8 @@ export class TavernStore {
         | 'threadId'
         | 'retryCount'
         | 'lastError'
+        | 'agentId'
+        | 'executionMode'
         | 'config'
         | 'lifecycleStage'
         | 'awaitingInputSince'
@@ -155,6 +161,8 @@ export class TavernStore {
     if (updates.threadId) task.threadId = updates.threadId;
     if (updates.retryCount !== undefined) task.retryCount = updates.retryCount;
     if (updates.lastError !== undefined) task.lastError = updates.lastError;
+    if (updates.agentId) task.agentId = updates.agentId;
+    if (updates.executionMode) task.executionMode = updates.executionMode;
     if (updates.config) task.config = updates.config;
     if (updates.lifecycleStage) task.lifecycleStage = updates.lifecycleStage;
     if (updates.awaitingInputSince !== undefined) task.awaitingInputSince = updates.awaitingInputSince;

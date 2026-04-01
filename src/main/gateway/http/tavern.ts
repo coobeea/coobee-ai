@@ -89,6 +89,8 @@ export function registerTavernRoutes(router: Router): void {
       const now = new Date().toISOString();
       const filePaths = filePathsInput || [];
       const config = body.config as Task['config'] | undefined;
+      const agentId = body.agentId as string | undefined;
+      const executionMode = body.executionMode as Task['executionMode'] | undefined;
 
       const task: Task = {
         id: taskId,
@@ -96,6 +98,8 @@ export function registerTavernRoutes(router: Router): void {
         description,
         amount,
         files: filePaths,
+        agentId: agentId || 'default',
+        executionMode: executionMode || 'agent',
         status: 'pending',
         config,
         createdAt: now,

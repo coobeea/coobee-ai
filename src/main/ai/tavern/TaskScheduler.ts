@@ -177,18 +177,26 @@ export class TaskScheduler {
 
       // ✅ 检查是否使用五阶段生命周期流程
       const useLifecycle = task.config?.useLifecycle ?? false;
+      // ✅ 使用任务指定的智能体和执行模式
+      const agentId = task.agentId || 'default';
+      const executionMode = task.executionMode || 'agent';
 
       const { ThreadStore } = await import('@main/ai/threads/ThreadStore');
       const threadStore = await ThreadStore.getInstance();
+
+      // 🔹 多智能体模式：agentType = mode, agentMode = 'agent'
+      // 🔹 单智能体模式：agentType = 'agent', agentMode = 'agent'
+      const isMultiAgent = ['orchestrator', 'swarm', 'discussion', 'quality-loop'].includes(executionMode);
       const thread = await threadStore.create({
         title: `[Task] ${task.title}`,
-        agentId: 'default',
-        agentMode: 'agent',
-        agentType: 'agent',
+        agentId,
+        agentMode: isMultiAgent ? 'agent' : executionMode,
+        agentType: isMultiAgent ? executionMode : 'agent',
         metadata: {
           source: 'task-scheduler',
           taskId: task.id,
-          useLifecycle
+          useLifecycle,
+          executionMode
         }
       });
 

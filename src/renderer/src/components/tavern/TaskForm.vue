@@ -30,6 +30,8 @@ interface Task {
   description: string;
   amount: number;
   files: string[];
+  agentId?: string;
+  executionMode?: 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop';
   status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled' | 'awaiting-input';
   result?: TaskResult;
   config?: TaskConfig;
@@ -63,6 +65,8 @@ const title = ref('');
 const description = ref('');
 const amount = ref(100);
 const filePaths = ref<string[]>([]);
+const agentId = ref('default'); // 执行智能体 ID
+const executionMode = ref<Task['executionMode']>('agent'); // 执行模式
 const useLifecycle = ref(true); // 是否使用五阶段生命周期流程（默认启用）
 const taskStatus = ref<Task['status']>('pending');
 const taskResult = ref<TaskResult | undefined>(undefined);
@@ -77,13 +81,44 @@ const awaitingInputSince = ref<number | undefined>(undefined);
 // const generalInput = ref('');
 // const isContinuing = ref(false);
 
+// 智能体列表
+interface AgentOption {
+  id: string;
+  name: string;
+}
+const agents = ref<AgentOption[]>([{ id: 'default', name: '默认智能体' }]);
+
+// 执行模式选项
+const executionModes = [
+  { value: 'agent', label: '单智能体模式', description: '单个智能体独立完成任务' },
+  { value: 'orchestrator', label: '编排模式', description: '智能体协调器统筹多个子智能体' },
+  { value: 'swarm', label: '蜂群模式', description: '多智能体自组织协作' },
+  { value: 'discussion', label: '讨论模式', description: '多智能体圆桌讨论决策' },
+  { value: 'quality-loop', label: '质量循环模式', description: '执行→验证→修复闭环' }
+] as const;
+
 const loading = ref(false);
 const saving = ref(false);
 const cancelling = ref(false);
 const error = ref<string | null>(null);
 
-const canSubmit = computed(() => title.value.trim() && description.value.trim() && amount.value > 0);
+const canSubmit = computed(() => title.value.trim() && description.value.trim() && amount.value > 0 && agentId.value);
 const canCancel = computed(() => props.readonly && taskStatus.value === 'pending');
+
+// 加载智能体列表
+async function loadAgents(): Promise<void> {
+  try {
+    const res = await fetch(`${BASE_URL.replace('/tavern', '')}/agents`);
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const agentsList = (data.agents || []) as Array<{ id: string; name: string }>;
+
+    agents.value = [{ id: 'default', name: '默认智能体' }, ...agentsList.map((a) => ({ id: a.id, name: a.name }))];
+  } catch (err) {
+    console.error('加载智能体列表失败:', err);
+  }
+}
 
 // AI 优化描述
 const canOptimize = computed(() => description.value.trim().length > 0 && !props.readonly);
@@ -112,6 +147,9 @@ async function loadTask(): Promise<void> {
     description.value = task.description;
     amount.value = task.amount;
     filePaths.value = task.files || [];
+    agentId.value = task.agentId || 'default';
+    executionMode.value = task.executionMode || 'agent';
+    useLifecycle.value = task.config?.useLifecycle ?? true;
     taskStatus.value = task.status;
     taskResult.value = task.result;
     taskConfig.value = task.config;
@@ -217,6 +255,8 @@ async function handleSubmit(): Promise<void> {
         description: description.value.trim(),
         amount: amount.value,
         filePaths: filePaths.value,
+        agentId: agentId.value,
+        executionMode: executionMode.value,
         config: {
           useLifecycle: useLifecycle.value,
           autoSelectSolution: true,
@@ -239,6 +279,7 @@ async function handleSubmit(): Promise<void> {
 }
 
 onMounted(() => {
+  loadAgents();
   if (props.taskId) {
     loadTask();
   }
@@ -319,7 +360,31 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 执行模式（创建模式下显示） -->
+      <!-- 智能体选择 -->
+      <div class="form-field">
+        <label class="form-label">执行智能体</label>
+        <select v-model="agentId" class="form-select" :disabled="readonly">
+          <option v-for="agent in agents" :key="agent.id" :value="agent.id">
+            {{ agent.name }}
+          </option>
+        </select>
+        <p class="form-hint">选择负责执行此任务的智能体</p>
+      </div>
+
+      <!-- 执行模式选择 -->
+      <div class="form-field">
+        <label class="form-label">执行模式</label>
+        <select v-model="executionMode" class="form-select" :disabled="readonly">
+          <option v-for="mode in executionModes" :key="mode.value" :value="mode.value">
+            {{ mode.label }}
+          </option>
+        </select>
+        <p class="form-hint">
+          {{ executionModes.find((m) => m.value === executionMode)?.description }}
+        </p>
+      </div>
+
+      <!-- 生命周期模式（创建模式下显示） -->
       <div v-if="!readonly" class="form-field">
         <label class="form-label">执行模式</label>
         <div class="execution-mode-options">
@@ -669,7 +734,8 @@ onMounted(() => {
 }
 
 .form-input,
-.form-textarea {
+.form-textarea,
+.form-select {
   width: 100%;
   padding: 10px 14px;
   border-radius: 8px;
@@ -682,7 +748,8 @@ onMounted(() => {
 }
 
 .form-input:focus,
-.form-textarea:focus {
+.form-textarea:focus,
+.form-select:focus {
   outline: none;
   border-color: hsl(var(--primary) / 0.5);
   background: hsl(var(--surface));
@@ -690,7 +757,8 @@ onMounted(() => {
 }
 
 .form-input:read-only,
-.form-textarea:read-only {
+.form-textarea:read-only,
+.form-select:disabled {
   background: hsl(var(--muted) / 0.3);
   cursor: default;
 }
@@ -698,6 +766,13 @@ onMounted(() => {
 .form-textarea {
   resize: vertical;
   min-height: 120px;
+}
+
+.form-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
 }
 
 .amount-input-wrapper {
