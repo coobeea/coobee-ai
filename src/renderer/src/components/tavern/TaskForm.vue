@@ -11,6 +11,8 @@ import { ref, computed, onMounted } from 'vue';
 import configManager from '@/config';
 import AIGenerate from '@/components/common/AIGenerate.vue';
 import LifecycleProgress from './LifecycleProgress.vue';
+import { TextInput, SelectInput, PrimaryButton, DangerButton, OutlineButton, RadioInput } from '@/components/Form';
+import type { SelectOption } from '@/components/Form/types';
 import { useConfirm } from '@/composables/useConfirm';
 
 interface TaskResult {
@@ -67,11 +69,14 @@ const amount = ref(100);
 const filePaths = ref<string[]>([]);
 const agentId = ref('default'); // 执行智能体 ID
 const executionMode = ref<Task['executionMode']>('agent'); // 执行模式
-const useLifecycle = ref(true); // 是否使用五阶段生命周期流程（默认启用）
+const useLifecycle = ref<string>('true'); // 是否使用五阶段生命周期流程（默认启用，字符串格式以兼容 RadioInput）
 const taskStatus = ref<Task['status']>('pending');
 const taskResult = ref<TaskResult | undefined>(undefined);
 const taskConfig = ref<TaskConfig | undefined>(undefined);
 const lifecycleStage = ref<string | undefined>(undefined);
+
+// 将 useLifecycle 字符串转换为 boolean
+const useLifecycleBoolean = computed(() => useLifecycle.value === 'true');
 
 // awaiting-input 相关状态
 const requiredInputs = ref<string[]>([]);
@@ -81,21 +86,42 @@ const awaitingInputSince = ref<number | undefined>(undefined);
 // const generalInput = ref('');
 // const isContinuing = ref(false);
 
-// 智能体列表
-interface AgentOption {
-  id: string;
-  name: string;
-}
-const agents = ref<AgentOption[]>([{ id: 'default', name: '默认智能体' }]);
+// 智能体列表（SelectOption 格式）
+const agents = ref<SelectOption[]>([{ value: 'default', label: '默认智能体' }]);
 
-// 执行模式选项
-const executionModes = [
-  { value: 'agent', label: '单智能体模式', description: '单个智能体独立完成任务' },
-  { value: 'orchestrator', label: '编排模式', description: '智能体协调器统筹多个子智能体' },
-  { value: 'swarm', label: '蜂群模式', description: '多智能体自组织协作' },
-  { value: 'discussion', label: '讨论模式', description: '多智能体圆桌讨论决策' },
-  { value: 'quality-loop', label: '质量循环模式', description: '执行→验证→修复闭环' }
-] as const;
+// 执行模式选项（SelectOption 格式，带图标）
+const executionModes: SelectOption[] = [
+  {
+    value: 'agent',
+    label: '单智能体模式',
+    description: '单个智能体独立完成任务',
+    icon: 'i-carbon-user'
+  },
+  {
+    value: 'orchestrator',
+    label: '编排模式',
+    description: '智能体协调器统筹多个子智能体',
+    icon: 'i-carbon-flow'
+  },
+  {
+    value: 'swarm',
+    label: '蜂群模式',
+    description: '多智能体自组织协作',
+    icon: 'i-carbon-apps'
+  },
+  {
+    value: 'discussion',
+    label: '讨论模式',
+    description: '多智能体圆桌讨论决策',
+    icon: 'i-carbon-chat'
+  },
+  {
+    value: 'quality-loop',
+    label: '质量循环模式',
+    description: '执行→验证→修复闭环',
+    icon: 'i-carbon-renew'
+  }
+];
 
 const loading = ref(false);
 const saving = ref(false);
@@ -114,7 +140,10 @@ async function loadAgents(): Promise<void> {
     const data = await res.json();
     const agentsList = (data.agents || []) as Array<{ id: string; name: string }>;
 
-    agents.value = [{ id: 'default', name: '默认智能体' }, ...agentsList.map((a) => ({ id: a.id, name: a.name }))];
+    agents.value = [
+      { value: 'default', label: '默认智能体', icon: 'i-carbon-bot' },
+      ...agentsList.map((a) => ({ value: a.id, label: a.name, icon: 'i-carbon-user-avatar' }))
+    ];
   } catch (err) {
     console.error('加载智能体列表失败:', err);
   }
@@ -149,7 +178,7 @@ async function loadTask(): Promise<void> {
     filePaths.value = task.files || [];
     agentId.value = task.agentId || 'default';
     executionMode.value = task.executionMode || 'agent';
-    useLifecycle.value = task.config?.useLifecycle ?? true;
+    useLifecycle.value = (task.config?.useLifecycle ?? true) ? 'true' : 'false';
     taskStatus.value = task.status;
     taskResult.value = task.result;
     taskConfig.value = task.config;
@@ -258,7 +287,7 @@ async function handleSubmit(): Promise<void> {
         agentId: agentId.value,
         executionMode: executionMode.value,
         config: {
-          useLifecycle: useLifecycle.value,
+          useLifecycle: useLifecycleBoolean.value,
           autoSelectSolution: true,
           requireDocumentation: true
         }
@@ -303,21 +332,18 @@ onMounted(() => {
     <!-- 表单 -->
     <div v-else class="form-container">
       <!-- 标题 -->
-      <div class="form-field">
-        <label class="form-label">任务标题</label>
-        <input
-          v-model="title"
-          type="text"
-          class="form-input"
-          placeholder="简要描述任务..."
-          :readonly="readonly"
-          maxlength="100" />
-      </div>
+      <TextInput
+        v-model="title"
+        label="任务标题"
+        placeholder="简要描述任务..."
+        :readonly="readonly"
+        :required="true"
+        :error="!title.trim() && saving ? '请输入任务标题' : undefined" />
 
       <!-- 描述 -->
       <div class="form-field">
         <div class="form-label-row">
-          <label class="form-label">任务描述</label>
+          <label class="form-label">任务描述 <span class="text-red-500 ml-1">*</span></label>
           <!-- AI 优化按钮 -->
           <AIGenerate
             v-if="!readonly"
@@ -329,91 +355,74 @@ onMounted(() => {
             dialog-title="AI 优化任务描述"
             confirm-text="应用优化"
             @success="handleOptimizeSuccess">
-            <button class="optimize-btn" :disabled="!canOptimize || isGenerating" @click="trigger">
-              <span v-if="isGenerating" class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin" />
-              <span v-else class="i-carbon-ai-status inline-block h-3.5 w-3.5" />
-              <span>{{ isGenerating ? 'AI 优化中...' : 'AI 优化' }}</span>
-            </button>
+            <OutlineButton
+              size="sm"
+              :disabled="!canOptimize || isGenerating"
+              :loading="isGenerating"
+              left-icon="i-carbon-ai-status"
+              @click="trigger">
+              {{ isGenerating ? 'AI 优化中...' : 'AI 优化' }}
+            </OutlineButton>
           </AIGenerate>
         </div>
-        <textarea
+        <TextInput
           v-model="description"
-          class="form-textarea"
+          type="textarea"
           placeholder="详细描述任务需求、目标、交付物等..."
           :readonly="readonly"
-          rows="8" />
+          :rows="8"
+          :required="true"
+          :error="!description.trim() && saving ? '请输入任务描述' : undefined" />
       </div>
 
       <!-- 金额 -->
-      <div class="form-field">
-        <label class="form-label">任务赏金（虚拟金币）</label>
-        <div class="amount-input-wrapper">
-          <span class="i-carbon-currency inline-block h-4 w-4 amount-icon" />
-          <input
-            v-model.number="amount"
-            type="number"
-            class="amount-input"
-            placeholder="100"
-            :readonly="readonly"
-            min="1" />
-          <span class="amount-suffix">金币</span>
-        </div>
-      </div>
+      <TextInput
+        v-model.number="amount"
+        type="number"
+        label="任务赏金（虚拟金币）"
+        placeholder="100"
+        :readonly="readonly"
+        :min="1"
+        :required="true"
+        help="赏金将在任务完成后发放给执行智能体" />
 
       <!-- 智能体选择 -->
-      <div class="form-field">
-        <label class="form-label">执行智能体</label>
-        <select v-model="agentId" class="form-select" :disabled="readonly">
-          <option v-for="agent in agents" :key="agent.id" :value="agent.id">
-            {{ agent.name }}
-          </option>
-        </select>
-        <p class="form-hint">选择负责执行此任务的智能体</p>
-      </div>
+      <SelectInput
+        v-model="agentId"
+        :options="agents"
+        label="执行智能体"
+        placeholder="选择智能体..."
+        :disabled="readonly"
+        :required="true"
+        help="选择负责执行此任务的智能体" />
 
       <!-- 执行模式选择 -->
-      <div class="form-field">
-        <label class="form-label">执行模式</label>
-        <select v-model="executionMode" class="form-select" :disabled="readonly">
-          <option v-for="mode in executionModes" :key="mode.value" :value="mode.value">
-            {{ mode.label }}
-          </option>
-        </select>
-        <p class="form-hint">
-          {{ executionModes.find((m) => m.value === executionMode)?.description }}
-        </p>
-      </div>
+      <SelectInput
+        v-model="executionMode"
+        :options="executionModes"
+        label="执行模式"
+        placeholder="选择执行模式..."
+        :disabled="readonly"
+        :required="true" />
 
       <!-- 生命周期模式（创建模式下显示） -->
-      <div v-if="!readonly" class="form-field">
-        <label class="form-label">执行模式</label>
-        <div class="execution-mode-options">
-          <label class="mode-option" :class="{ active: !useLifecycle }">
-            <input v-model="useLifecycle" type="radio" :value="false" class="mode-radio" />
-            <div class="mode-content">
-              <div class="mode-header">
-                <span class="i-carbon-flash inline-block h-4 w-4" />
-                <span class="mode-name">快速模式</span>
-                <span class="mode-badge recommended">默认</span>
-              </div>
-              <p class="mode-desc">直接执行任务，适合简单明确的任务（30秒-2分钟）</p>
-            </div>
-          </label>
-          <label class="mode-option" :class="{ active: useLifecycle }">
-            <input v-model="useLifecycle" type="radio" :value="true" class="mode-radio" />
-            <div class="mode-content">
-              <div class="mode-header">
-                <span class="i-carbon-flow-data inline-block h-4 w-4" />
-                <span class="mode-name">标准模式</span>
-                <span class="mode-badge">五阶段</span>
-              </div>
-              <p class="mode-desc">
-                标准化流程：需求分析→方案设计→反思优化→实施跟踪→验收报告，适合复杂任务（2-5分钟）
-              </p>
-            </div>
-          </label>
-        </div>
-      </div>
+      <RadioInput
+        v-if="!readonly"
+        v-model="useLifecycle"
+        label="生命周期管理"
+        help="标准模式包含完整的生命周期管理，适合复杂任务"
+        :options="[
+          {
+            value: 'false',
+            label: '快速模式',
+            description: '直接执行任务，适合简单明确的任务（30秒-2分钟）'
+          },
+          {
+            value: 'true',
+            label: '标准模式（推荐）',
+            description: '标准化流程：需求分析→方案设计→反思优化→实施跟踪→验收报告，适合复杂任务（2-5分钟）'
+          }
+        ]" />
 
       <!-- 相关资料文件 -->
       <div class="form-field">
@@ -434,10 +443,9 @@ onMounted(() => {
         </div>
 
         <!-- 选择文件按钮 -->
-        <button v-if="!readonly" class="select-file-btn" @click="handleSelectFiles">
-          <span class="i-carbon-add-alt inline-block h-4 w-4" />
-          <span>选择文件</span>
-        </button>
+        <OutlineButton v-if="!readonly" size="sm" left-icon="i-carbon-add-alt" @click="handleSelectFiles">
+          选择文件
+        </OutlineButton>
 
         <!-- 提示信息 -->
         <div v-if="!readonly && filePaths.length === 0" class="file-hint">
@@ -493,19 +501,27 @@ onMounted(() => {
 
       <!-- 按钮组 -->
       <div class="form-actions">
-        <button class="cancel-btn" @click="emit('cancel')">
+        <OutlineButton @click="emit('cancel')">
           {{ readonly ? '关闭' : '取消' }}
-        </button>
-        <button v-if="canCancel" class="cancel-task-btn" :disabled="cancelling" @click="handleCancelTask">
-          <span v-if="cancelling" class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
-          <span v-else class="i-carbon-close-filled inline-block h-4 w-4" />
-          <span>{{ cancelling ? '取消中...' : '取消任务' }}</span>
-        </button>
-        <button v-if="!readonly" class="submit-btn" :disabled="!canSubmit || saving" @click="handleSubmit">
-          <span v-if="saving" class="i-carbon-renew inline-block h-4 w-4 animate-spin" />
-          <span v-else class="i-carbon-send-filled inline-block h-4 w-4" />
-          <span>{{ saving ? '发布中...' : '发布任务' }}</span>
-        </button>
+        </OutlineButton>
+
+        <DangerButton
+          v-if="canCancel"
+          :disabled="cancelling"
+          :loading="cancelling"
+          left-icon="i-carbon-close-filled"
+          @click="handleCancelTask">
+          {{ cancelling ? '取消中...' : '取消任务' }}
+        </DangerButton>
+
+        <PrimaryButton
+          v-if="!readonly"
+          :disabled="!canSubmit || saving"
+          :loading="saving"
+          left-icon="i-carbon-send-filled"
+          @click="handleSubmit">
+          {{ saving ? '发布中...' : '发布任务' }}
+        </PrimaryButton>
       </div>
     </div>
   </div>
@@ -677,139 +693,7 @@ onMounted(() => {
   color: hsl(var(--foreground) / 0.85);
 }
 
-.optimize-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: 8px;
-  border: none;
-  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
-  color: hsl(var(--primary-foreground));
-  font-size: 13px;
-  font-weight: 600;
-  box-shadow:
-    0 2px 8px hsl(var(--primary) / 0.25),
-    0 4px 12px hsl(var(--primary) / 0.15);
-  transition: all 0.2s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-.optimize-btn::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border-radius: 50%;
-  background: hsl(var(--primary-foreground) / 0.15);
-  transform: translate(-50%, -50%);
-  transition:
-    width 0.3s ease,
-    height 0.3s ease;
-}
-
-.optimize-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow:
-    0 4px 12px hsl(var(--primary) / 0.35),
-    0 6px 20px hsl(var(--primary) / 0.25);
-}
-
-.optimize-btn:hover:not(:disabled)::before {
-  width: 300px;
-  height: 300px;
-}
-
-.optimize-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.optimize-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-.form-input,
-.form-textarea,
-.form-select {
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid hsl(var(--border) / 0.4);
-  background: hsl(var(--surface) / 0.6);
-  color: hsl(var(--foreground));
-  font-size: 13px;
-  line-height: 1.5;
-  transition: all 0.15s ease;
-}
-
-.form-input:focus,
-.form-textarea:focus,
-.form-select:focus {
-  outline: none;
-  border-color: hsl(var(--primary) / 0.5);
-  background: hsl(var(--surface));
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08);
-}
-
-.form-input:read-only,
-.form-textarea:read-only,
-.form-select:disabled {
-  background: hsl(var(--muted) / 0.3);
-  cursor: default;
-}
-
-.form-textarea {
-  resize: vertical;
-  min-height: 120px;
-}
-
-.form-hint {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: hsl(var(--muted-foreground));
-}
-
-.amount-input-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid hsl(var(--border) / 0.4);
-  background: hsl(var(--surface) / 0.6);
-  transition: all 0.15s ease;
-}
-
-.amount-input-wrapper:focus-within {
-  border-color: hsl(var(--primary) / 0.5);
-  background: hsl(var(--surface));
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08);
-}
-
-.amount-icon {
-  color: hsl(var(--primary));
-}
-
-.amount-input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  color: hsl(var(--foreground));
-  font-size: 15px;
-  font-weight: 600;
-  outline: none;
-}
-
-.amount-suffix {
-  font-size: 12px;
-  color: hsl(var(--muted-foreground) / 0.6);
-}
+/* Form 组件样式已由组件库提供，此处保留自定义样式 */
 
 .file-list {
   display: flex;
@@ -874,27 +758,7 @@ onMounted(() => {
   color: hsl(var(--error));
 }
 
-.select-file-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: 1px dashed hsl(var(--border) / 0.5);
-  background: hsl(var(--surface) / 0.3);
-  color: hsl(var(--muted-foreground));
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.15s ease;
-  align-self: flex-start;
-  margin-top: 8px;
-}
-
-.select-file-btn:hover {
-  border-color: hsl(var(--primary) / 0.4);
-  background: hsl(var(--primary) / 0.05);
-  color: hsl(var(--primary));
-}
+/* 文件选择按钮样式已由 Form 组件库提供 */
 
 .file-hint {
   display: flex;
@@ -970,120 +834,5 @@ onMounted(() => {
   transition: all 0.15s ease;
 }
 
-.cancel-btn {
-  color: hsl(var(--muted-foreground));
-  background: hsl(var(--surface));
-  border: 1px solid hsl(var(--border) / 0.4);
-}
-
-.cancel-btn:hover {
-  background: hsl(var(--muted) / 0.3);
-  border-color: hsl(var(--border) / 0.6);
-}
-
-.cancel-task-btn {
-  color: hsl(var(--error-foreground));
-  background: hsl(var(--error));
-}
-
-.cancel-task-btn:hover:not(:disabled) {
-  background: hsl(var(--error) / 0.9);
-  box-shadow: 0 2px 8px hsl(var(--error) / 0.25);
-}
-
-.cancel-task-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.submit-btn {
-  color: hsl(var(--primary-foreground));
-  background: hsl(var(--primary));
-}
-
-.submit-btn:hover:not(:disabled) {
-  background: hsl(var(--primary-hover));
-  box-shadow: 0 2px 8px hsl(var(--primary) / 0.25);
-}
-
-.submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* 执行模式选择 */
-.execution-mode-options {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.mode-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 10px;
-  border: 2px solid hsl(var(--border) / 0.3);
-  background: hsl(var(--surface));
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.mode-option:hover {
-  border-color: hsl(var(--border) / 0.6);
-  background: hsl(var(--muted) / 0.15);
-}
-
-.mode-option.active {
-  border-color: hsl(var(--primary) / 0.8);
-  background: hsl(var(--primary) / 0.05);
-}
-
-.mode-radio {
-  margin-top: 2px;
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-}
-
-.mode-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.mode-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.mode-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: hsl(var(--foreground));
-}
-
-.mode-badge {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
-  background: hsl(var(--muted) / 0.3);
-  color: hsl(var(--muted-foreground));
-}
-
-.mode-badge.recommended {
-  background: hsl(var(--primary) / 0.15);
-  color: hsl(var(--primary));
-}
-
-.mode-desc {
-  font-size: 12px;
-  line-height: 1.5;
-  color: hsl(var(--muted-foreground));
-  margin: 0;
-}
+/* 按钮样式已由 Form 组件库提供 */
 </style>
