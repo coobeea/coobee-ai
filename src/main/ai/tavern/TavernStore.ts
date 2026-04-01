@@ -13,6 +13,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createLogger } from '@main/common/logger';
+import type { TaskConfig } from './types';
 
 const log = createLogger('tavern-store');
 
@@ -27,7 +28,7 @@ export interface Task {
   description: string;
   amount: number;
   files: string[];
-  status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled' | 'failed';
+  status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled' | 'failed' | 'awaiting-input';
   result?: TaskResult;
   /** 关联的 threadId（TaskScheduler 分配执行后写入） */
   threadId?: string;
@@ -35,6 +36,16 @@ export interface Task {
   retryCount?: number;
   /** 最后一次失败的错误信息 */
   lastError?: string;
+  /** 任务配置（lifecycle 流程相关） */
+  config?: TaskConfig;
+  /** 当前生命周期阶段 */
+  lifecycleStage?: string;
+  /** 进入 awaiting-input 的时间戳 */
+  awaitingInputSince?: number;
+  /** 用户补充的资料 */
+  userInputs?: Record<string, unknown>;
+  /** 需要用户补充的资料列表 */
+  requiredInputs?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -120,7 +131,21 @@ export class TavernStore {
 
   async updateTask(
     taskId: string,
-    updates: Partial<Pick<Task, 'status' | 'result' | 'threadId' | 'retryCount' | 'lastError'>>
+    updates: Partial<
+      Pick<
+        Task,
+        | 'status'
+        | 'result'
+        | 'threadId'
+        | 'retryCount'
+        | 'lastError'
+        | 'config'
+        | 'lifecycleStage'
+        | 'awaitingInputSince'
+        | 'userInputs'
+        | 'requiredInputs'
+      >
+    >
   ): Promise<Task | null> {
     const task = await this.readMeta(taskId);
     if (!task) return null;
@@ -130,6 +155,11 @@ export class TavernStore {
     if (updates.threadId) task.threadId = updates.threadId;
     if (updates.retryCount !== undefined) task.retryCount = updates.retryCount;
     if (updates.lastError !== undefined) task.lastError = updates.lastError;
+    if (updates.config) task.config = updates.config;
+    if (updates.lifecycleStage) task.lifecycleStage = updates.lifecycleStage;
+    if (updates.awaitingInputSince !== undefined) task.awaitingInputSince = updates.awaitingInputSince;
+    if (updates.userInputs) task.userInputs = updates.userInputs;
+    if (updates.requiredInputs) task.requiredInputs = updates.requiredInputs;
     task.updatedAt = new Date().toISOString();
 
     await this.writeMeta(taskId, task);

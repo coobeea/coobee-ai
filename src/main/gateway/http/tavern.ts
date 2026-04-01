@@ -88,6 +88,7 @@ export function registerTavernRoutes(router: Router): void {
       const taskId = nanoid();
       const now = new Date().toISOString();
       const filePaths = filePathsInput || [];
+      const config = body.config as Task['config'] | undefined;
 
       const task: Task = {
         id: taskId,
@@ -96,6 +97,7 @@ export function registerTavernRoutes(router: Router): void {
         amount,
         files: filePaths,
         status: 'pending',
+        config,
         createdAt: now,
         updatedAt: now
       };
@@ -181,6 +183,89 @@ export function registerTavernRoutes(router: Router): void {
       log.error(`Failed to delete task ${taskId}:`, err);
       ctx.status = 500;
       ctx.body = { error: 'Failed to delete task' };
+    }
+  });
+
+  // 继续执行任务（用户补充资料后）
+  router.post('/tavern/tasks/:id/continue', async (ctx) => {
+    const taskId = ctx.params.id;
+    if (!taskId) {
+      ctx.status = 400;
+      ctx.body = { error: 'Task ID is required' };
+      return;
+    }
+
+    try {
+      const body = ctx.request.body as Record<string, unknown>;
+      const userInputs = body.userInputs as Record<string, unknown> | undefined;
+
+      const store = await TavernStore.getInstance();
+      const task = await store.readMeta(taskId);
+
+      if (!task) {
+        ctx.status = 404;
+        ctx.body = { error: 'Task not found' };
+        return;
+      }
+
+      if (task.status !== 'awaiting-input') {
+        ctx.status = 400;
+        ctx.body = { error: 'Task is not awaiting input' };
+        return;
+      }
+
+      if (!task.threadId) {
+        ctx.status = 400;
+        ctx.body = { error: 'Task has no associated session' };
+        return;
+      }
+
+      // 保存用户输入
+      await store.updateTask(taskId, {
+        status: 'in-progress',
+        userInputs,
+        awaitingInputSince: undefined
+      });
+
+      // 构造"继续执行"消息
+      const inputsText = userInputs
+        ? Object.entries(userInputs)
+            .map(([k, v]) => `- **${k}**: ${v}`)
+            .join('\n')
+        : '';
+
+      const message = `# 继续执行任务
+
+用户已补充以下资料：
+
+${inputsText || '（无补充资料）'}
+
+---
+
+请继续执行任务，从方案设计阶段开始（或从你中断的地方继续）。
+
+请先读取 \`lifecycle/\` 目录中已完成的文档，了解当前进度，然后继续未完成的阶段。
+`;
+
+      // 发送消息到 Agent
+      const { agentExecutor } = await import('@main/ai/AgentExecutor');
+      const builder = agentExecutor.createBuilderFromFactory('agent');
+      if (!builder) {
+        throw new Error('AgentExecutor builder not available');
+      }
+
+      agentExecutor.submit({
+        sessionId: task.threadId,
+        message,
+        builder
+      });
+
+      log.info(`Task ${taskId} resumed with user inputs`);
+      ctx.body = { success: true, task };
+    } catch (err) {
+      log.error(`Failed to continue task ${taskId}:`, err);
+      ctx.status = 500;
+      ctx.body = { error: 'Failed to continue task' };
     }
   });
 

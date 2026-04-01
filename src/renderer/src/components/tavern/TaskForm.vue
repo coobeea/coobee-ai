@@ -10,11 +10,18 @@
 import { ref, computed, onMounted } from 'vue';
 import configManager from '@/config';
 import AIGenerate from '@/components/common/AIGenerate.vue';
+import LifecycleProgress from './LifecycleProgress.vue';
 import { useConfirm } from '@/composables/useConfirm';
 
 interface TaskResult {
   textResult: string;
   fileResults: string[];
+}
+
+interface TaskConfig {
+  useLifecycle?: boolean;
+  autoSelectSolution?: boolean;
+  requireDocumentation?: boolean;
 }
 
 interface Task {
@@ -23,8 +30,13 @@ interface Task {
   description: string;
   amount: number;
   files: string[];
-  status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled' | 'awaiting-input';
   result?: TaskResult;
+  config?: TaskConfig;
+  lifecycleStage?: string;
+  awaitingInputSince?: number;
+  userInputs?: Record<string, unknown>;
+  requiredInputs?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -51,8 +63,19 @@ const title = ref('');
 const description = ref('');
 const amount = ref(100);
 const filePaths = ref<string[]>([]);
+const useLifecycle = ref(false); // 是否使用五阶段生命周期流程
 const taskStatus = ref<Task['status']>('pending');
 const taskResult = ref<TaskResult | undefined>(undefined);
+const taskConfig = ref<TaskConfig | undefined>(undefined);
+const lifecycleStage = ref<string | undefined>(undefined);
+
+// awaiting-input 相关状态
+const requiredInputs = ref<string[]>([]);
+const awaitingInputSince = ref<number | undefined>(undefined);
+// TODO: 补充资料相关变量待补充
+// const userInputValues = ref<Record<string, string>>({});
+// const generalInput = ref('');
+// const isContinuing = ref(false);
 
 const loading = ref(false);
 const saving = ref(false);
@@ -91,6 +114,10 @@ async function loadTask(): Promise<void> {
     filePaths.value = task.files || [];
     taskStatus.value = task.status;
     taskResult.value = task.result;
+    taskConfig.value = task.config;
+    lifecycleStage.value = task.lifecycleStage;
+    requiredInputs.value = task.requiredInputs || [];
+    awaitingInputSince.value = task.awaitingInputSince;
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -189,7 +216,12 @@ async function handleSubmit(): Promise<void> {
         title: title.value.trim(),
         description: description.value.trim(),
         amount: amount.value,
-        filePaths: filePaths.value
+        filePaths: filePaths.value,
+        config: {
+          useLifecycle: useLifecycle.value,
+          autoSelectSolution: true,
+          requireDocumentation: true
+        }
       })
     });
 
@@ -287,6 +319,37 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- 执行模式（创建模式下显示） -->
+      <div v-if="!readonly" class="form-field">
+        <label class="form-label">执行模式</label>
+        <div class="execution-mode-options">
+          <label class="mode-option" :class="{ active: !useLifecycle }">
+            <input v-model="useLifecycle" type="radio" :value="false" class="mode-radio" />
+            <div class="mode-content">
+              <div class="mode-header">
+                <span class="i-carbon-flash inline-block h-4 w-4" />
+                <span class="mode-name">快速模式</span>
+                <span class="mode-badge recommended">默认</span>
+              </div>
+              <p class="mode-desc">直接执行任务，适合简单明确的任务（30秒-2分钟）</p>
+            </div>
+          </label>
+          <label class="mode-option" :class="{ active: useLifecycle }">
+            <input v-model="useLifecycle" type="radio" :value="true" class="mode-radio" />
+            <div class="mode-content">
+              <div class="mode-header">
+                <span class="i-carbon-flow-data inline-block h-4 w-4" />
+                <span class="mode-name">标准模式</span>
+                <span class="mode-badge">五阶段</span>
+              </div>
+              <p class="mode-desc">
+                标准化流程：需求分析→方案设计→反思优化→实施跟踪→验收报告，适合复杂任务（2-5分钟）
+              </p>
+            </div>
+          </label>
+        </div>
+      </div>
+
       <!-- 相关资料文件 -->
       <div class="form-field">
         <label class="form-label">相关资料</label>
@@ -317,6 +380,14 @@ onMounted(() => {
           <span>支持选择多个文件，仅保存文件路径</span>
         </div>
       </div>
+
+      <!-- 执行进度（只在只读模式且使用 lifecycle 时显示） -->
+      <div v-if="readonly && taskConfig?.useLifecycle" class="form-field">
+        <label class="form-label">执行进度</label>
+        <LifecycleProgress :task-id="taskId!" :current-stage="lifecycleStage" />
+      </div>
+
+      <!-- TODO: 补充资料 UI 待完善 (handleContinueTask, formatDuration 函数需添加) -->
 
       <!-- 任务结果（只在只读模式且有结果时显示） -->
       <div v-if="readonly && taskResult" class="form-field">
@@ -376,6 +447,117 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.awaiting-input-section {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 8px;
+}
+
+.awaiting-input-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.status-icon {
+  font-size: 2rem;
+  color: #ff9800;
+  flex-shrink: 0;
+}
+
+.status-text h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  color: #ff9800;
+}
+
+.status-text p {
+  margin: 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.required-inputs,
+.no-required-inputs {
+  margin-bottom: 1.5rem;
+}
+
+.input-field {
+  margin-bottom: 1rem;
+}
+
+.input-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.input-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  transition: border-color 0.2s;
+}
+
+.input-textarea:focus {
+  outline: none;
+  border-color: #007bff;
+}
+
+.awaiting-input-actions {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: #007bff;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: #545b62;
+}
+
+.awaiting-since {
+  font-size: 0.85rem;
+  color: #666;
+  text-align: right;
+}
+
 .task-form {
   max-width: 800px;
   margin: 0 auto;
@@ -752,5 +934,81 @@ onMounted(() => {
 .submit-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 执行模式选择 */
+.execution-mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 10px;
+  border: 2px solid hsl(var(--border) / 0.3);
+  background: hsl(var(--surface));
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mode-option:hover {
+  border-color: hsl(var(--border) / 0.6);
+  background: hsl(var(--muted) / 0.15);
+}
+
+.mode-option.active {
+  border-color: hsl(var(--primary) / 0.8);
+  background: hsl(var(--primary) / 0.05);
+}
+
+.mode-radio {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.mode-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mode-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mode-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.mode-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  background: hsl(var(--muted) / 0.3);
+  color: hsl(var(--muted-foreground));
+}
+
+.mode-badge.recommended {
+  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--primary));
+}
+
+.mode-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+  margin: 0;
 }
 </style>

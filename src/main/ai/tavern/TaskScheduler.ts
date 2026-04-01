@@ -91,7 +91,10 @@ export class TaskScheduler {
       this.poll().catch((err) => log.error('[TaskScheduler] Poll error:', err));
     }, this.pollInterval);
 
-    // 立即执行一次
+    // 检测并恢复挂起的任务（启动时执行一次）
+    this.checkAndRecoverTasks().catch((err) => log.error('[TaskScheduler] Recovery check error:', err));
+
+    // 立即执行一次轮询
     this.poll().catch((err) => log.error('[TaskScheduler] Initial poll error:', err));
 
     log.info(`[TaskScheduler] Started (interval=${this.pollInterval}ms, maxConcurrent=${this.maxConcurrent})`);
@@ -172,6 +175,9 @@ export class TaskScheduler {
       const store = await TavernStore.getInstance();
       await store.updateTask(task.id, { status: 'in-progress' });
 
+      // ✅ 检查是否使用五阶段生命周期流程
+      const useLifecycle = task.config?.useLifecycle ?? false;
+
       const { ThreadStore } = await import('@main/ai/threads/ThreadStore');
       const threadStore = await ThreadStore.getInstance();
       const thread = await threadStore.create({
@@ -181,16 +187,13 @@ export class TaskScheduler {
         agentType: 'agent',
         metadata: {
           source: 'task-scheduler',
-          taskId: task.id
+          taskId: task.id,
+          useLifecycle
         }
       });
 
       const sessionId = thread.id;
-
       await store.updateTask(task.id, { threadId: sessionId });
-
-      // 预填 GOAL.md：酒馆任务的目标文件必须包含「完成后更新酒馆任务状态」的终极目标
-      await this.writeTaskGoalFile(sessionId, task);
 
       const execution: TaskExecution = {
         taskId: task.id,
@@ -200,17 +203,28 @@ export class TaskScheduler {
       };
       this.executions.set(sessionId, execution);
 
-      const message = this.buildTaskMessage(task);
-      const { agentExecutor } = await import('@main/ai/AgentExecutor');
-      const result = await agentExecutor.submitViaPipeline(sessionId, message, 'agent');
+      if (useLifecycle) {
+        // 🆕 五阶段生命周期流程
+        log.info(`[TaskScheduler] Task ${task.id} using lifecycle mode`);
+        const { LifecycleOrchestrator } = await import('./lifecycle/LifecycleOrchestrator');
+        const orchestrator = new LifecycleOrchestrator();
+        await orchestrator.execute(task, sessionId);
+      } else {
+        // 旧流程（保持不变）
+        log.info(`[TaskScheduler] Task ${task.id} using legacy mode`);
+        await this.writeTaskGoalFile(sessionId, task);
+        const message = this.buildTaskMessage(task);
+        const { agentExecutor } = await import('@main/ai/AgentExecutor');
+        const result = await agentExecutor.submitViaPipeline(sessionId, message, 'agent');
 
-      if (!result) {
-        log.warn(`[TaskScheduler] Pipeline not ready, using direct submit for task ${task.id}`);
-        const builder = agentExecutor.createBuilderFromFactory('agent');
-        if (!builder) {
-          throw new Error('Neither Pipeline nor BuilderFactory is available');
+        if (!result) {
+          log.warn(`[TaskScheduler] Pipeline not ready, using direct submit for task ${task.id}`);
+          const builder = agentExecutor.createBuilderFromFactory('agent');
+          if (!builder) {
+            throw new Error('Neither Pipeline nor BuilderFactory is available');
+          }
+          agentExecutor.submit({ sessionId, message, builder });
         }
-        agentExecutor.submit({ sessionId, message, builder });
       }
 
       log.info(`[TaskScheduler] Task ${task.id} dispatched to session ${sessionId}`);
@@ -568,5 +582,84 @@ ${task.files.length > 0 ? '\n## Related Files\n\n' + task.files.map((f) => `- ${
       eventBus.on(StreamEventType.END, handleEnd);
       eventBus.on(StreamEventType.ERROR, handleError);
     });
+  }
+
+  /**
+   * 检测并恢复挂起的任务（应用重启后）
+   *
+   * 检测逻辑：
+   * - 任务状态为 in-progress
+   * - 使用了 lifecycle 流程
+   * - 30 分钟以上无更新（可能崩溃或挂起）
+   */
+  private async checkAndRecoverTasks(): Promise<void> {
+    try {
+      log.info('[TaskScheduler] Checking for stuck tasks to recover');
+
+      const store = await TavernStore.getInstance();
+      const tasks = await store.readIndex();
+      const now = Date.now();
+
+      const stuckTasks = tasks.filter(
+        (t) =>
+          t.status === 'in-progress' &&
+          t.config?.useLifecycle &&
+          t.threadId &&
+          now - new Date(t.updatedAt).getTime() > 30 * 60 * 1000 // 30 分钟
+      );
+
+      if (stuckTasks.length === 0) {
+        log.info('[TaskScheduler] No stuck tasks found');
+        return;
+      }
+
+      log.warn(`[TaskScheduler] Found ${stuckTasks.length} stuck task(s), attempting recovery`);
+
+      for (const task of stuckTasks) {
+        await this.recoverTask(task);
+      }
+    } catch (err) {
+      log.error('[TaskScheduler] Failed to check and recover tasks:', err);
+    }
+  }
+
+  /**
+   * 恢复单个任务
+   */
+  private async recoverTask(task: Task): Promise<void> {
+    try {
+      log.info(`[TaskScheduler] Recovering task: ${task.id} - ${task.title}`);
+
+      if (!task.threadId) {
+        log.warn(`[TaskScheduler] Task ${task.id} has no threadId, cannot recover`);
+        return;
+      }
+
+      const { LifecycleOrchestrator } = await import('./lifecycle/LifecycleOrchestrator');
+      const orchestrator = new LifecycleOrchestrator();
+
+      // 调用恢复方法
+      await orchestrator.recover(task, task.threadId);
+
+      // 重新加入执行队列
+      const execution: TaskExecution = {
+        taskId: task.id,
+        threadId: task.threadId,
+        sessionId: task.threadId,
+        startedAt: Date.now()
+      };
+      this.executions.set(task.threadId, execution);
+
+      log.info(`[TaskScheduler] Task ${task.id} recovery initiated`);
+    } catch (err) {
+      log.error(`[TaskScheduler] Failed to recover task ${task.id}:`, err);
+
+      // 恢复失败，标记为 pending 重新调度
+      const store = await TavernStore.getInstance();
+      await store.updateTask(task.id, {
+        status: 'pending',
+        lastError: `恢复失败: ${err instanceof Error ? err.message : String(err)}`
+      });
+    }
   }
 }
