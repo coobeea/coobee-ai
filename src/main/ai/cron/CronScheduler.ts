@@ -9,9 +9,11 @@
  *   3. Extension Job — Extension 通过 api.registerCronJob() 注册（热插拔）
  * - 启动/停止/暂停作业
  * - 触发作业执行
+ * - **Catch-up 机制** — 启动时检查并补执行错过的任务
  */
 
 import * as cron from 'node-cron';
+import CronExpressionParser from 'cron-parser';
 import { log } from '@main/common/logger';
 import { scanCronJobs } from '@main/common/scan';
 
@@ -50,6 +52,10 @@ export class CronScheduler {
     const jobs = await this.store.list();
     for (const job of jobs) {
       if (job.status === 'active' && !this.tasks.has(job.id)) {
+        // ✅ 检查是否有错过的执行（Catch-up 机制）
+        await this.checkAndCatchUpMissedRuns(job);
+
+        // 调度未来的执行
         await this.scheduleJob(job);
       }
     }
@@ -242,6 +248,77 @@ export class CronScheduler {
       await this.unscheduleJob(jobId);
       return true;
     }
+  }
+
+  /**
+   * 检查并补执行错过的任务（Catch-up 机制）
+   *
+   * 启动时调用，检查自上次执行以来是否有错过的调度时间。
+   * 如果有，且在宽限期内，则立即执行一次。
+   */
+  private async checkAndCatchUpMissedRuns(job: CronJobDefinition): Promise<void> {
+    // 默认启用 catch-up
+    const catchUpEnabled = job.catchUpMissedRuns !== false;
+    if (!catchUpEnabled) {
+      log.debug(`[CronScheduler] 作业 ${job.id} 未启用 catch-up，跳过检查`);
+      return;
+    }
+
+    // 如果从未执行过，不需要 catch-up
+    if (!job.lastRunAt) {
+      log.debug(`[CronScheduler] 作业 ${job.id} 从未执行过，跳过 catch-up`);
+      return;
+    }
+
+    // 解析 cron 表达式
+    let interval: ReturnType<typeof CronExpressionParser.parse>;
+    try {
+      // cron-parser 默认使用 UTC，这里我们使用本地时区
+      interval = CronExpressionParser.parse(job.cronExpression, {
+        currentDate: new Date(job.lastRunAt),
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone
+      });
+    } catch (err) {
+      log.error(`[CronScheduler] 解析 cron 表达式失败: ${job.cronExpression}`, err);
+      return;
+    }
+
+    // 计算下一次应该执行的时间
+    const nextScheduledTime = interval.next().toDate();
+    const now = new Date();
+
+    // 如果下一次调度时间还没到，说明没有错过
+    if (nextScheduledTime > now) {
+      log.debug(`[CronScheduler] 作业 ${job.id} 未错过执行，下次执行: ${nextScheduledTime.toISOString()}`);
+      return;
+    }
+
+    // 计算错过的时间（小时）
+    const missedHours = (now.getTime() - nextScheduledTime.getTime()) / (1000 * 60 * 60);
+    const gracePeriodHours = job.catchUpGracePeriodHours ?? 24;
+
+    // 如果错过的时间超过宽限期，忽略
+    if (missedHours > gracePeriodHours) {
+      log.warn(
+        `[CronScheduler] 作业 ${job.id} 错过执行已超过宽限期 (${missedHours.toFixed(1)}h > ${gracePeriodHours}h)，跳过补执行`
+      );
+      return;
+    }
+
+    // ✅ 补执行错过的任务
+    log.info(
+      `[CronScheduler] 作业 ${job.id} 检测到错过的执行 (应于 ${nextScheduledTime.toISOString()} 执行)，立即补执行`
+    );
+
+    // 异步执行，不阻塞调度器启动
+    setImmediate(async () => {
+      try {
+        await this.executor.execute(job);
+        log.info(`[CronScheduler] 作业 ${job.id} 补执行成功`);
+      } catch (err) {
+        log.error(`[CronScheduler] 作业 ${job.id} 补执行失败:`, err);
+      }
+    });
   }
 
   /**

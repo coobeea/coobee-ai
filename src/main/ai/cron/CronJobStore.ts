@@ -50,7 +50,10 @@ export class CronJobStore {
       updatedAt: now,
       runCount: 0,
       failCount: 0,
-      metadata: params.metadata
+      metadata: params.metadata,
+      // ✅ Catch-up 机制默认启用
+      catchUpMissedRuns: params.catchUpMissedRuns ?? true,
+      catchUpGracePeriodHours: params.catchUpGracePeriodHours ?? 24
     };
 
     await this.save(job);
@@ -65,7 +68,17 @@ export class CronJobStore {
     try {
       const filePath = this.getJobPath(jobId);
       const content = await fs.readFile(filePath, 'utf-8');
-      return JSON.parse(content);
+      const job: CronJobDefinition = JSON.parse(content);
+
+      // ✅ 向后兼容：为旧 job 添加默认的 catch-up 配置
+      if (job.catchUpMissedRuns === undefined) {
+        job.catchUpMissedRuns = true;
+      }
+      if (job.catchUpGracePeriodHours === undefined) {
+        job.catchUpGracePeriodHours = 24;
+      }
+
+      return job;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         return null;
@@ -85,7 +98,17 @@ export class CronJobStore {
       for (const file of files) {
         if (file.endsWith('.json')) {
           const content = await fs.readFile(path.join(this.jobsDir, file), 'utf-8');
-          jobs.push(JSON.parse(content));
+          const job: CronJobDefinition = JSON.parse(content);
+
+          // ✅ 向后兼容：为旧 job 添加默认的 catch-up 配置
+          if (job.catchUpMissedRuns === undefined) {
+            job.catchUpMissedRuns = true;
+          }
+          if (job.catchUpGracePeriodHours === undefined) {
+            job.catchUpGracePeriodHours = 24;
+          }
+
+          jobs.push(job);
         }
       }
 

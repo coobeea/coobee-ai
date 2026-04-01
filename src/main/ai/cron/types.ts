@@ -62,6 +62,22 @@ export interface CronJobDefinition {
 
   /** 作业来源（默认 dynamic） */
   source?: CronJobSource;
+
+  /**
+   * 是否补执行错过的任务（默认 true）
+   *
+   * - true: 启动时检查是否有错过的执行，如果有则立即执行一次
+   * - false: 忽略错过的执行，等待下次调度时间
+   */
+  catchUpMissedRuns?: boolean;
+
+  /**
+   * 补执行的宽限期（单位：小时，默认 24）
+   *
+   * 只有在宽限期内错过的任务才会补执行。
+   * 例如：设置为 24，表示只补执行最近 24 小时内错过的任务。
+   */
+  catchUpGracePeriodHours?: number;
 }
 
 /** 创建 Cron 作业的参数 */
@@ -73,6 +89,8 @@ export interface CreateCronJobParams {
   agentId?: string;
   status?: CronJobStatus;
   metadata?: Record<string, unknown>;
+  catchUpMissedRuns?: boolean;
+  catchUpGracePeriodHours?: number;
 }
 
 /** 更新 Cron 作业的参数 */
@@ -85,6 +103,8 @@ export interface UpdateCronJobParams {
   status?: CronJobStatus;
   lastError?: string;
   metadata?: Record<string, unknown>;
+  catchUpMissedRuns?: boolean;
+  catchUpGracePeriodHours?: number;
 }
 
 /** Cron 作业执行记录 */
