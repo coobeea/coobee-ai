@@ -188,11 +188,12 @@
 
 - `.cursor/skills/poc-lifecycle/SKILL.md`（450 行）
 
-### Git 提交（3 个）
+### Git 提交（4 个）
 
 1. `05a977f`: feat(tavern): implement task lifecycle management system
 2. `9183c79`: docs(tavern): add comprehensive acceptance report and poc-lifecycle skill
-3. 准备中: docs(tavern): add detailed validation report
+3. `6d640fe`: docs(tavern): add detailed validation report
+4. `5d6c403`: docs(tavern): mark all 27 TODOs as completed
 
 ---
 
