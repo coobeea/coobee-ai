@@ -128,6 +128,7 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
     // 创建 Orchestrator（每次执行创建新实例）
     this.orchestrator = createOrchestrator({
       ...this._orchestratorConfig,
+      parentSessionId: this.sessionId, // 🆕 传递 sessionId 用于生命周期管理
       onEvent: (event) => {
         const chunks = this.mapEventToChunks(event);
         for (const chunk of chunks) {

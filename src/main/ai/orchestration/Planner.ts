@@ -51,8 +51,9 @@ export interface IPlanner {
   /**
    * 规划任务
    * @param task 任务定义
+   * @param lifecycleDir 生命周期文档目录（可选）
    */
-  plan(task: Task): Promise<ExecutionPlan>;
+  plan(task: Task, lifecycleDir?: string): Promise<ExecutionPlan>;
 
   /**
    * 重新规划（当任务失败时）
@@ -91,8 +92,8 @@ export class Planner implements IPlanner {
    *
    * 构建规划提示词 → 调用 LLM → 解析结构化输出 → 返回 ExecutionPlan
    */
-  async plan(task: Task): Promise<ExecutionPlan> {
-    const prompt = this.buildPlanningPrompt(task);
+  async plan(task: Task, lifecycleDir?: string): Promise<ExecutionPlan> {
+    const prompt = await this.buildPlanningPrompt(task, lifecycleDir);
     const output = await this.callPlannerAgent(prompt);
     const planData = this.convertPlanOutput(output, task.id);
 
@@ -271,7 +272,7 @@ Consider:
   /**
    * 构建规划提示词
    */
-  private buildPlanningPrompt(task: Task): string {
+  private async buildPlanningPrompt(task: Task, lifecycleDir?: string): Promise<string> {
     let prompt = `Please plan how to execute the following task:\n\n`;
     prompt += `**Objective**: ${task.objective}\n`;
 
@@ -289,6 +290,11 @@ Consider:
 
     if (task.context) {
       prompt += `**Context**:\n${JSON.stringify(task.context, null, 2)}\n`;
+    }
+
+    // 🆕 如果启用了生命周期，读取生命周期文档并注入
+    if (lifecycleDir) {
+      prompt += await this.injectLifecycleContext(lifecycleDir);
     }
 
     prompt += `\nPlease provide an execution plan as a JSON object with the following structure:\n`;
@@ -316,6 +322,46 @@ Consider:
     prompt += `\nIMPORTANT: Return ONLY the JSON object, no other text.`;
 
     return prompt;
+  }
+
+  /**
+   * 🆕 注入生命周期文档上下文
+   */
+  private async injectLifecycleContext(lifecycleDir: string): Promise<string> {
+    try {
+      const fs = await import('node:fs/promises');
+      const path = await import('node:path');
+
+      let context = `\n\n--- POC 生命周期文档（供参考） ---\n\n`;
+
+      // 读取已生成的文档
+      const docs = [
+        { name: '01-需求分析.md', title: '需求分析' },
+        { name: '02-方案设计.md', title: '方案设计' },
+        { name: '03-反思优化.md', title: '反思优化' }
+      ];
+
+      for (const doc of docs) {
+        const docPath = path.join(lifecycleDir, doc.name);
+        try {
+          const content = await fs.readFile(docPath, 'utf-8');
+          context += `**${doc.title}** (${doc.name}):\n\n`;
+          // 只提取前 500 字符，避免 Prompt 过长
+          const excerpt = content.length > 500 ? content.slice(0, 500) + '...\n\n[完整内容请参考文件]' : content;
+          context += excerpt + '\n\n';
+        } catch {
+          context += `**${doc.title}**: [尚未完成]\n\n`;
+        }
+      }
+
+      context += `\n请根据上述生命周期文档中的需求分析、方案设计和反思优化内容，制定详细的执行计划。\n`;
+      context += `特别关注方案设计中选定的技术方案、子任务分解策略和编排设计。\n\n`;
+
+      return context;
+    } catch (err) {
+      log.warn('[Planner] Failed to inject lifecycle context:', err);
+      return '';
+    }
   }
 
   /**

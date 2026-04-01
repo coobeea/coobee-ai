@@ -46,6 +46,8 @@ export interface OrchestratorConfig {
   maxWorkersPerType?: number;
   /** 总共最多 Worker 数量（默认 10） */
   maxTotalWorkers?: number;
+  /** 🆕 是否启用 POC 生命周期管理（默认 false） */
+  useLifecycle?: boolean;
   /** Worker 使用的模型 */
   model?: string;
   /** 工作区根目录 */
@@ -67,6 +69,7 @@ export interface OrchestratorConfig {
  */
 export interface OrchestratorEvent {
   type:
+    | 'lifecycle:initialized'
     | 'plan:start'
     | 'plan:done'
     | 'stage:start'
@@ -120,6 +123,11 @@ export class Orchestrator implements IOrchestrator {
   /** 🆕 重新规划计数器 */
   private replanCounts = new Map<string, number>();
 
+  /** 🆕 生命周期监控器（启用 lifecycle 时使用） */
+  private lifecycleMonitor?: InstanceType<
+    typeof import('./lifecycle/OrchestrationLifecycleMonitor').OrchestrationLifecycleMonitor
+  >;
+
   constructor(
     private readonly planner: IPlanner,
     private readonly workerCoordinator: IWorkerCoordinator,
@@ -135,6 +143,7 @@ export class Orchestrator implements IOrchestrator {
       totalTimeout: config?.totalTimeout ?? 30 * 60 * 1000,
       maxWorkersPerType: config?.maxWorkersPerType ?? 3,
       maxTotalWorkers: config?.maxTotalWorkers ?? 10,
+      useLifecycle: config?.useLifecycle ?? false,
       parentSessionId: config?.parentSessionId,
       signal: config?.signal,
       onEvent: config?.onEvent,
@@ -147,6 +156,7 @@ export class Orchestrator implements IOrchestrator {
    * 执行任务
    *
    * 流程（程序化控制）：
+   * 0. 【可选】POC 生命周期初始化（启用 lifecycle 时）
    * 1. 规划阶段：Planner（LLM）分解任务
    * 2. 执行阶段：按 Stage 顺序，调度 Worker（LLM）执行子任务
    * 3. 聚合阶段：收集所有子任务结果，生成最终输出
@@ -158,11 +168,31 @@ export class Orchestrator implements IOrchestrator {
     this.runningTasks.set(task.id, { task, startTime, aborted: false });
 
     try {
+      // ── 0. POC 生命周期初始化 ──
+      let lifecycleDir: string | undefined;
+      if (this.resolvedConfig.useLifecycle && this.resolvedConfig.parentSessionId) {
+        log.info('[Orchestrator] Phase 0: Initializing POC lifecycle...');
+        const { OrchestrationLifecycleManager } = await import('./lifecycle/OrchestrationLifecycleManager');
+        const { OrchestrationLifecycleMonitor } = await import('./lifecycle/OrchestrationLifecycleMonitor');
+
+        const lifecycleManager = new OrchestrationLifecycleManager();
+        lifecycleDir = await lifecycleManager.initialize(task, this.resolvedConfig.parentSessionId);
+
+        // 🆕 创建监控器
+        this.lifecycleMonitor = new OrchestrationLifecycleMonitor(lifecycleDir);
+
+        this.emit({
+          type: 'lifecycle:initialized',
+          data: { taskId: task.id, lifecycleDir }
+        });
+        log.info(`[Orchestrator] Lifecycle initialized at: ${lifecycleDir}`);
+      }
+
       // ── 1. 规划阶段 ──
       this.emit({ type: 'plan:start', data: { taskId: task.id, objective: task.objective } });
       log.info('[Orchestrator] Phase 1: Planning...');
 
-      const plan = await this.planner.plan(task);
+      const plan = await this.planner.plan(task, lifecycleDir);
 
       this.emit({
         type: 'plan:done',
@@ -236,6 +266,21 @@ export class Orchestrator implements IOrchestrator {
       const endTime = Date.now();
       const completedCount = subTaskResults.filter((r) => r.status === 'completed').length;
       const failedCount = subTaskResults.filter((r) => r.status === 'failed').length;
+
+      // 🆕 生成生命周期验收报告和综合报告
+      if (this.lifecycleMonitor) {
+        log.info('[Orchestrator] Generating lifecycle reports...');
+        await this.lifecycleMonitor.generateAcceptanceReport(subTaskResults, startTime, endTime);
+        await this.lifecycleMonitor.generateFinalReport(subTaskResults, {
+          startTime,
+          endTime,
+          duration: endTime - startTime,
+          totalSubTasks: plan.subTasks.length,
+          completedSubTasks: completedCount,
+          failedSubTasks: failedCount
+        });
+        log.info('[Orchestrator] Lifecycle reports generated');
+      }
 
       log.info(
         `[Orchestrator] Task completed: ${completedCount}/${plan.subTasks.length} succeeded, duration=${endTime - startTime}ms`
@@ -377,9 +422,13 @@ export class Orchestrator implements IOrchestrator {
   private async executeTasksInParallel(tasks: SubTask[], task: Task, results: SubTaskExecutionResult[]): Promise<void> {
     const stageResults = await Promise.allSettled(tasks.map((subTask) => this.executeSubTaskWithRetry(subTask, task)));
 
-    stageResults.forEach((result, index) => {
+    // 🆕 改为 for 循环以支持异步生命周期更新
+    for (let index = 0; index < stageResults.length; index++) {
+      const result = stageResults[index];
+      const subTask = tasks[index];
+
       const subTaskResult: SubTaskExecutionResult = {
-        subTaskId: tasks[index].id,
+        subTaskId: subTask.id,
         status: result.status === 'fulfilled' ? 'completed' : 'failed',
         result: result.status === 'fulfilled' ? result.value.output : undefined,
         error: result.status === 'rejected' ? result.reason?.message || 'Unknown error' : undefined,
@@ -388,8 +437,29 @@ export class Orchestrator implements IOrchestrator {
       };
 
       results.push(subTaskResult);
-      this.completedSubTaskResults.push(subTaskResult); // 记录到完成列表
-    });
+      this.completedSubTaskResults.push(subTaskResult);
+
+      // 🆕 更新生命周期文档
+      if (this.lifecycleMonitor) {
+        await this.lifecycleMonitor.updateTodoStatus(subTask.id, subTaskResult.status);
+        await this.lifecycleMonitor.appendProgress(subTaskResult);
+
+        // 如果失败，记录到 BUGS.md
+        if (subTaskResult.status === 'failed' && subTaskResult.error) {
+          await this.lifecycleMonitor.recordBug(
+            subTask.id,
+            subTask.name,
+            subTaskResult.error,
+            result.status === 'rejected' && result.reason instanceof Error ? result.reason.stack : undefined
+          );
+        }
+
+        await this.lifecycleMonitor.updateProgressStats(
+          results.filter((r) => r.status === 'completed').length,
+          tasks.length
+        );
+      }
+    }
   }
 
   /**
@@ -414,6 +484,16 @@ export class Orchestrator implements IOrchestrator {
         };
         results.push(subTaskResult);
         this.completedSubTaskResults.push(subTaskResult);
+
+        // 🆕 更新生命周期文档（成功情况）
+        if (this.lifecycleMonitor) {
+          await this.lifecycleMonitor.updateTodoStatus(subTask.id, 'completed');
+          await this.lifecycleMonitor.appendProgress(subTaskResult);
+          await this.lifecycleMonitor.updateProgressStats(
+            results.filter((r) => r.status === 'completed').length,
+            tasks.length
+          );
+        }
       } catch (error: unknown) {
         const subTaskResult: SubTaskExecutionResult = {
           subTaskId: subTask.id,
@@ -426,6 +506,18 @@ export class Orchestrator implements IOrchestrator {
 
         // 🆕 记录失败到智库
         await this.recordFailureToBrain(subTask, error, task);
+
+        // 🆕 更新生命周期文档（失败情况）
+        if (this.lifecycleMonitor) {
+          await this.lifecycleMonitor.updateTodoStatus(subTask.id, 'failed');
+          await this.lifecycleMonitor.appendProgress(subTaskResult);
+          await this.lifecycleMonitor.recordBug(
+            subTask.id,
+            subTask.name,
+            error instanceof Error ? error.message : String(error),
+            error instanceof Error ? error.stack : undefined
+          );
+        }
 
         // 🆕 检查是否为关键任务
         if (subTask.critical) {
