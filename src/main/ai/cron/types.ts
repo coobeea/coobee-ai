@@ -78,6 +78,18 @@ export interface CronJobDefinition {
    * 例如：设置为 24，表示只补执行最近 24 小时内错过的任务。
    */
   catchUpGracePeriodHours?: number;
+
+  /**
+   * 是否发送执行通知（默认 true）
+   *
+   * - true: 执行成功/失败时发送 UI 通知
+   * - false: 静默执行，不发送通知
+   *
+   * 建议：
+   * - 高频任务（每分钟、每 10 秒）→ 设置为 false
+   * - 低频任务（每天、每周）→ 设置为 true
+   */
+  sendNotification?: boolean;
 }
 
 /** 创建 Cron 作业的参数 */
@@ -91,6 +103,7 @@ export interface CreateCronJobParams {
   metadata?: Record<string, unknown>;
   catchUpMissedRuns?: boolean;
   catchUpGracePeriodHours?: number;
+  sendNotification?: boolean;
 }
 
 /** 更新 Cron 作业的参数 */
@@ -105,6 +118,7 @@ export interface UpdateCronJobParams {
   metadata?: Record<string, unknown>;
   catchUpMissedRuns?: boolean;
   catchUpGracePeriodHours?: number;
+  sendNotification?: boolean;
 }
 
 /** Cron 作业执行记录 */

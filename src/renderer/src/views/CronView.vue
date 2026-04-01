@@ -30,6 +30,7 @@ interface CronJobDefinition {
   runCount: number;
   failCount: number;
   lastError?: string;
+  sendNotification?: boolean;
 }
 
 interface AttachmentRef {
@@ -60,6 +61,7 @@ const userInput = ref('');
 const inputRef = ref<HTMLTextAreaElement | null>(null);
 const selectedAgentId = ref('');
 const taskAttachments = ref<AttachmentRef[]>([]);
+const sendNotification = ref(true);
 const parsing = ref(false);
 const parsedResult = ref<ParsedCronResult | null>(null);
 const parseError = ref('');
@@ -71,7 +73,8 @@ const editForm = ref({
   description: '',
   cronExpression: '',
   task: '',
-  agentId: ''
+  agentId: '',
+  sendNotification: true
 });
 const updating = ref(false);
 
@@ -123,7 +126,8 @@ function openEditDialog(job: CronJobDefinition): void {
     description: job.description,
     cronExpression: job.cronExpression,
     task: job.task,
-    agentId: job.agentId || ''
+    agentId: job.agentId || '',
+    sendNotification: job.sendNotification !== false // 默认为 true
   };
   parseError.value = '';
   showEditDialog.value = true;
@@ -200,7 +204,8 @@ async function createCronJob(): Promise<void> {
         description: parsedResult.value.description,
         cronExpression: parsedResult.value.cronExpression,
         task,
-        agentId: selectedAgentId.value
+        agentId: selectedAgentId.value,
+        sendNotification: sendNotification.value
       })
     });
 
@@ -268,7 +273,8 @@ async function updateCronJob(): Promise<void> {
         description: editForm.value.description,
         cronExpression: editForm.value.cronExpression,
         task: editForm.value.task,
-        agentId: editForm.value.agentId
+        agentId: editForm.value.agentId,
+        sendNotification: editForm.value.sendNotification
       })
     });
 
@@ -537,6 +543,19 @@ function getAgentName(agentId?: string): string {
                 </div>
               </div>
 
+              <!-- 通知设置 -->
+              <div class="cv-section">
+                <h4 class="cv-section-title">
+                  <span class="i-carbon-notification inline-block h-3 w-3" />
+                  通知设置
+                </h4>
+                <label class="cv-checkbox-label">
+                  <input v-model="editForm.sendNotification" type="checkbox" class="cv-checkbox" />
+                  <span>执行完成后发送通知</span>
+                </label>
+                <p class="cv-hint">建议：高频任务（每分钟、每10秒）关闭通知，低频任务（每天、每周）开启通知</p>
+              </div>
+
               <!-- 错误提示 -->
               <div v-if="parseError" class="cv-parse-error">
                 <span class="i-carbon-warning-alt inline-block h-3 w-3 shrink-0" />
@@ -665,6 +684,19 @@ function getAgentName(agentId?: string): string {
                     <span>{{ agent.name }}</span>
                   </label>
                 </div>
+              </div>
+
+              <!-- 通知设置 -->
+              <div v-if="parsedResult" class="cv-section">
+                <h4 class="cv-section-title">
+                  <span class="i-carbon-notification inline-block h-3 w-3" />
+                  通知设置
+                </h4>
+                <label class="cv-checkbox-label">
+                  <input v-model="sendNotification" type="checkbox" class="cv-checkbox" />
+                  <span>执行完成后发送通知</span>
+                </label>
+                <p class="cv-hint">建议：高频任务（每分钟、每10秒）关闭通知，低频任务（每天、每周）开启通知</p>
               </div>
 
               <!-- 相关资料 -->
@@ -1413,6 +1445,50 @@ function getAgentName(agentId?: string): string {
   background: hsl(var(--foreground) / 0.03);
   border-color: hsl(var(--primary) / 0.3);
   color: hsl(var(--primary));
+}
+
+/* ====== Checkbox ====== */
+.cv-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: hsl(var(--foreground) / 0.8);
+  cursor: pointer;
+  user-select: none;
+}
+
+.cv-checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid hsl(var(--border));
+  cursor: pointer;
+  transition: all 0.15s ease;
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.cv-checkbox:checked {
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+}
+
+.cv-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.cv-checkbox:hover {
+  border-color: hsl(var(--primary) / 0.5);
 }
 
 /* ====== Buttons ====== */
