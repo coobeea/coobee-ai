@@ -251,6 +251,32 @@ export class CronScheduler {
   }
 
   /**
+   * 规范化 Cron 表达式（5 位 → 6 位）
+   *
+   * node-cron 使用 5 位格式（分 时 日 月 周）
+   * cron-parser 需要 6 位格式（秒 分 时 日 月 周）
+   *
+   * @example
+   * normalizeCronExpression("30 5 * * *") → "0 30 5 * * *"
+   * normalizeCronExpression("0 30 5 * * *") → "0 30 5 * * *" (已经是 6 位)
+   */
+  private normalizeCronExpression(expr: string): string {
+    const parts = expr.trim().split(/\s+/);
+
+    if (parts.length === 5) {
+      // 5 位格式（node-cron 标准）→ 在秒位补 0
+      return `0 ${expr}`;
+    }
+
+    if (parts.length >= 6) {
+      // 已经是 6 位或 7 位（含年份）
+      return expr;
+    }
+
+    throw new Error(`无效的 cron 表达式格式: ${expr}（期望 5 位或 6 位）`);
+  }
+
+  /**
    * 检查并补执行错过的任务（Catch-up 机制）
    *
    * 启动时调用，检查自上次执行以来是否有错过的调度时间。
@@ -273,8 +299,11 @@ export class CronScheduler {
     // 解析 cron 表达式
     let interval: ReturnType<typeof CronExpressionParser.parse>;
     try {
-      // cron-parser 默认使用 UTC，这里我们使用本地时区
-      interval = CronExpressionParser.parse(job.cronExpression, {
+      // ✅ 规范化为 6 位格式（cron-parser 要求）
+      const normalizedExpression = this.normalizeCronExpression(job.cronExpression);
+
+      // cron-parser 使用本地时区
+      interval = CronExpressionParser.parse(normalizedExpression, {
         currentDate: new Date(job.lastRunAt),
         tz: Intl.DateTimeFormat().resolvedOptions().timeZone
       });
