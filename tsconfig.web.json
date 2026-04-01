@@ -11,6 +11,7 @@
     "composite": true,
     "types": ["unplugin-icons/types/vue"],
     "paths": {
+      "*": ["./*"],
       "@/*": ["./src/renderer/src/*"],
       "@renderer/*": ["./src/renderer/src/*"],
       "@shared/*": ["./src/shared/*"]
