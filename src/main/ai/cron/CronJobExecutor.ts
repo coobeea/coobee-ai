@@ -11,6 +11,7 @@
 import { nanoid } from 'nanoid';
 import { log } from '@main/common/logger';
 import { getAgentExecutor } from '@main/ai/AgentExecutor';
+import { eventBus } from '@main/common/eventbus';
 
 import { CronJobStore } from './CronJobStore';
 import type { CronJobDefinition, CronJobExecution } from './types';
@@ -79,6 +80,14 @@ export class CronJobExecutor {
       });
 
       addLog('info', `执行成功，耗时 ${Date.now() - new Date(execution.startedAt).getTime()}ms`);
+
+      // ✅ 发送成功通知到前端
+      eventBus.emit('agent:event', {
+        _event: 'notify',
+        message: `定时任务「${job.name}」执行成功`,
+        level: 'success',
+        _timestamp: Date.now()
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -95,12 +104,28 @@ export class CronJobExecutor {
 
       addLog('error', `执行失败: ${errorMessage}`);
 
+      // ❌ 发送失败通知到前端
+      eventBus.emit('agent:event', {
+        _event: 'notify',
+        message: `定时任务「${job.name}」执行失败：${errorMessage.slice(0, 100)}`,
+        level: 'error',
+        _timestamp: Date.now()
+      });
+
       if (job.failCount + 1 >= 3) {
         await this.store.update(job.id, {
           status: 'disabled',
           lastError: `连续失败 ${job.failCount + 1} 次，已自动禁用`
         });
         addLog('warn', `连续失败 ${job.failCount + 1} 次，已自动禁用`);
+
+        // ⚠️ 发送禁用警告通知
+        eventBus.emit('agent:event', {
+          _event: 'notify',
+          message: `定时任务「${job.name}」连续失败 ${job.failCount + 1} 次，已自动禁用`,
+          level: 'warning',
+          _timestamp: Date.now()
+        });
       }
     } finally {
       await this.store.saveExecution(execution);
