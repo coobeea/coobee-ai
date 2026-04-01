@@ -30,6 +30,10 @@ export interface SubTask {
   estimatedDuration?: number;
   context?: Record<string, unknown>;
   result?: unknown; // 执行结果
+  /** 是否为关键任务（失败则终止整个流程） */
+  critical?: boolean;
+  /** 是否为可选任务（失败可继续） */
+  optional?: boolean;
 }
 
 /**

@@ -32,14 +32,20 @@ export interface OrchestratorConfig {
   parentSessionId?: string;
   /** 是否允许并行执行同 Stage 内的子任务 */
   allowParallel?: boolean;
-  /** 最大重试次数 */
+  /** 最大重试次数（默认 2） */
   maxRetries?: number;
-  /** 是否在失败后自动重新规划 */
+  /** 是否在失败后自动重新规划（默认 false） */
   enableReplan?: boolean;
+  /** 最大重新规划次数（默认 3） */
+  maxReplanAttempts?: number;
   /** 子任务执行超时（ms，默认 5 分钟） */
   subTaskTimeout?: number;
   /** 总任务执行超时（ms，默认 30 分钟） */
   totalTimeout?: number;
+  /** 每种类型最多 Worker 数量（默认 3） */
+  maxWorkersPerType?: number;
+  /** 总共最多 Worker 数量（默认 10） */
+  maxTotalWorkers?: number;
   /** Worker 使用的模型 */
   model?: string;
   /** 工作区根目录 */
@@ -108,6 +114,12 @@ export class Orchestrator implements IOrchestrator {
   /** 子任务结果缓存（供依赖查询） */
   private subTaskResults = new Map<string, WorkerExecutionResult>();
 
+  /** 🆕 已完成的子任务结果列表（用于依赖校验） */
+  private completedSubTaskResults: SubTaskExecutionResult[] = [];
+
+  /** 🆕 重新规划计数器 */
+  private replanCounts = new Map<string, number>();
+
   constructor(
     private readonly planner: IPlanner,
     private readonly workerCoordinator: IWorkerCoordinator,
@@ -118,8 +130,11 @@ export class Orchestrator implements IOrchestrator {
       allowParallel: config?.allowParallel ?? true,
       maxRetries: config?.maxRetries ?? 2,
       enableReplan: config?.enableReplan ?? false,
+      maxReplanAttempts: config?.maxReplanAttempts ?? 3,
       subTaskTimeout: config?.subTaskTimeout ?? 5 * 60 * 1000,
       totalTimeout: config?.totalTimeout ?? 30 * 60 * 1000,
+      maxWorkersPerType: config?.maxWorkersPerType ?? 3,
+      maxTotalWorkers: config?.maxTotalWorkers ?? 10,
       parentSessionId: config?.parentSessionId,
       signal: config?.signal,
       onEvent: config?.onEvent,
@@ -165,7 +180,18 @@ export class Orchestrator implements IOrchestrator {
 
       // ── 2. 执行阶段 ──
       log.info('[Orchestrator] Phase 2: Executing...');
-      const subTaskResults = await this.executePlan(task, plan);
+
+      // 🆕 添加总任务超时控制
+      const totalTimeoutMs = this.resolvedConfig.totalTimeout;
+      const executionPromise = this.executePlan(task, plan);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`Task ${task.id} execution timeout after ${totalTimeoutMs}ms`)),
+          totalTimeoutMs
+        )
+      );
+
+      const subTaskResults = await Promise.race([executionPromise, timeoutPromise]);
 
       // 🆕 保存每个子任务的结果到 tasks/{taskId}/results/
       await this.saveSubTaskResults(task.id, subTaskResults);
@@ -291,6 +317,7 @@ export class Orchestrator implements IOrchestrator {
    */
   private async executePlan(task: Task, plan: ExecutionPlan): Promise<SubTaskExecutionResult[]> {
     const results: SubTaskExecutionResult[] = [];
+    this.completedSubTaskResults = []; // 重置
 
     for (const stage of plan.stages) {
       // 检查是否被取消
@@ -304,60 +331,113 @@ export class Orchestrator implements IOrchestrator {
 
       const stageTasks = stage.tasks;
 
+      // 🆕 并行执行前检查依赖
       if (this.resolvedConfig.allowParallel && stage.parallel) {
-        // ── 并行执行 ──
-        const stageResults = await Promise.allSettled(
-          stageTasks.map((subTask) => this.executeSubTaskWithRetry(subTask, task))
-        );
-
-        stageResults.forEach((result, index) => {
-          if (result.status === 'fulfilled') {
-            results.push({
-              subTaskId: stageTasks[index].id,
-              status: 'completed',
-              result: result.value.output,
-              duration: result.value.duration,
-              timestamp: Date.now()
-            });
-          } else {
-            results.push({
-              subTaskId: stageTasks[index].id,
-              status: 'failed',
-              error: result.reason?.message || 'Unknown error',
-              timestamp: Date.now()
-            });
-          }
-        });
+        // 检查 Stage 内子任务是否有相互依赖
+        const hasCrossDependency = this.checkCrossDependency(stageTasks);
+        if (hasCrossDependency) {
+          log.warn(`[Orchestrator] Stage ${stage.name} has cross-dependencies, forcing sequential execution`);
+          // 强制顺序执行
+          await this.executeTasksSequentially(stageTasks, task, results);
+        } else {
+          // 可以并行执行
+          await this.executeTasksInParallel(stageTasks, task, results);
+        }
       } else {
         // ── 顺序执行 ──
-        for (const subTask of stageTasks) {
-          if (this.isTaskAborted(task.id)) break;
-
-          try {
-            const workerResult = await this.executeSubTaskWithRetry(subTask, task);
-            results.push({
-              subTaskId: subTask.id,
-              status: 'completed',
-              result: workerResult.output,
-              duration: workerResult.duration,
-              timestamp: Date.now()
-            });
-          } catch (error: unknown) {
-            results.push({
-              subTaskId: subTask.id,
-              status: 'failed',
-              error: error instanceof Error ? error.message : String(error),
-              timestamp: Date.now()
-            });
-            log.warn(`[Orchestrator] SubTask ${subTask.id} failed, continuing...`);
-          }
-        }
+        await this.executeTasksSequentially(stageTasks, task, results);
       }
 
       this.emit({ type: 'stage:done', data: { stageId: stage.id, stageName: stage.name } });
     }
 
     return results;
+  }
+
+  /**
+   * 🆕 检查子任务之间是否有相互依赖
+   */
+  private checkCrossDependency(tasks: SubTask[]): boolean {
+    const taskIds = new Set(tasks.map((t) => t.id));
+    for (const task of tasks) {
+      if (task.dependencies) {
+        for (const depId of task.dependencies) {
+          if (taskIds.has(depId)) {
+            return true; // 发现同 Stage 内的依赖
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 🆕 并行执行子任务
+   */
+  private async executeTasksInParallel(tasks: SubTask[], task: Task, results: SubTaskExecutionResult[]): Promise<void> {
+    const stageResults = await Promise.allSettled(tasks.map((subTask) => this.executeSubTaskWithRetry(subTask, task)));
+
+    stageResults.forEach((result, index) => {
+      const subTaskResult: SubTaskExecutionResult = {
+        subTaskId: tasks[index].id,
+        status: result.status === 'fulfilled' ? 'completed' : 'failed',
+        result: result.status === 'fulfilled' ? result.value.output : undefined,
+        error: result.status === 'rejected' ? result.reason?.message || 'Unknown error' : undefined,
+        duration: result.status === 'fulfilled' ? result.value.duration : undefined,
+        timestamp: Date.now()
+      };
+
+      results.push(subTaskResult);
+      this.completedSubTaskResults.push(subTaskResult); // 记录到完成列表
+    });
+  }
+
+  /**
+   * 🆕 顺序执行子任务（支持关键任务检查）
+   */
+  private async executeTasksSequentially(
+    tasks: SubTask[],
+    task: Task,
+    results: SubTaskExecutionResult[]
+  ): Promise<void> {
+    for (const subTask of tasks) {
+      if (this.isTaskAborted(task.id)) break;
+
+      try {
+        const workerResult = await this.executeSubTaskWithRetry(subTask, task);
+        const subTaskResult: SubTaskExecutionResult = {
+          subTaskId: subTask.id,
+          status: 'completed',
+          result: workerResult.output,
+          duration: workerResult.duration,
+          timestamp: Date.now()
+        };
+        results.push(subTaskResult);
+        this.completedSubTaskResults.push(subTaskResult);
+      } catch (error: unknown) {
+        const subTaskResult: SubTaskExecutionResult = {
+          subTaskId: subTask.id,
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: Date.now()
+        };
+        results.push(subTaskResult);
+        this.completedSubTaskResults.push(subTaskResult);
+
+        // 🆕 记录失败到智库
+        await this.recordFailureToBrain(subTask, error, task);
+
+        // 🆕 检查是否为关键任务
+        if (subTask.critical) {
+          log.error(`[Orchestrator] Critical subtask ${subTask.id} failed, aborting execution`);
+          throw new Error(
+            `Critical subtask "${subTask.name}" failed: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+
+        log.warn(`[Orchestrator] SubTask ${subTask.id} failed, continuing...`);
+      }
+    }
   }
 
   /**
@@ -447,16 +527,40 @@ export class Orchestrator implements IOrchestrator {
    *
    * 如果子任务声明了 dependencies，将已完成的依赖结果
    * 注入到 subTask.context 中，供 Worker 参考。
+   *
+   * 🆕 增加依赖校验：检查依赖是否成功完成
    */
   private injectDependencyResults(subTask: SubTask): void {
     if (!subTask.dependencies?.length) return;
 
     const depResults: Record<string, string> = {};
+    const missingDeps: string[] = [];
+    const failedDeps: string[] = [];
+
     for (const depId of subTask.dependencies) {
       const depResult = this.subTaskResults.get(depId);
-      if (depResult) {
-        depResults[depId] = depResult.output;
+
+      if (!depResult) {
+        missingDeps.push(depId);
+        continue;
       }
+
+      // 🆕 检查依赖是否成功（从 subTaskResults 查找状态）
+      const depResultEntry = this.getSubTaskResultStatus(depId);
+      if (depResultEntry?.status === 'failed') {
+        failedDeps.push(depId);
+        continue;
+      }
+
+      depResults[depId] = depResult.output;
+    }
+
+    // 🆕 如果有依赖缺失或失败，抛出错误
+    if (missingDeps.length > 0) {
+      throw new Error(`SubTask ${subTask.id} has missing dependencies: ${missingDeps.join(', ')}`);
+    }
+    if (failedDeps.length > 0) {
+      throw new Error(`SubTask ${subTask.id} cannot execute because dependencies failed: ${failedDeps.join(', ')}`);
     }
 
     if (Object.keys(depResults).length > 0) {
@@ -468,12 +572,32 @@ export class Orchestrator implements IOrchestrator {
   }
 
   /**
+   * 🆕 获取子任务结果的状态（从已收集的 results 中查找）
+   */
+  private getSubTaskResultStatus(subTaskId: string): SubTaskExecutionResult | undefined {
+    return this.completedSubTaskResults.find((r) => r.subTaskId === subTaskId);
+  }
+
+  /**
    * 尝试重新规划
    */
   private async tryReplan(task: Task, failedSubTaskId: string, reason: string): Promise<WorkerExecutionResult | null> {
+    // 🆕 检查重新规划次数限制
+    const maxReplanAttempts = this.resolvedConfig.maxReplanAttempts ?? 3;
+    const currentCount = this.replanCounts.get(task.id) || 0;
+    if (currentCount >= maxReplanAttempts) {
+      log.warn(`[Orchestrator] Max replan attempts (${maxReplanAttempts}) reached for task ${task.id}, giving up`);
+      return null;
+    }
+
     try {
       this.emit({ type: 'replan:start', data: { failedSubTaskId, reason } });
-      log.info(`[Orchestrator] Attempting replan due to failure of ${failedSubTaskId}`);
+      log.info(
+        `[Orchestrator] Attempting replan (${currentCount + 1}/${maxReplanAttempts}) due to failure of ${failedSubTaskId}`
+      );
+
+      // 🆕 增加重新规划计数
+      this.replanCounts.set(task.id, currentCount + 1);
 
       const newPlan = await this.planner.replan(task, { failedSubTaskId, reason });
       this.emit({ type: 'replan:done', data: { newSubTaskCount: newPlan.subTasks.length } });
@@ -736,6 +860,84 @@ export class Orchestrator implements IOrchestrator {
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+
+  /**
+   * 🆕 记录失败到智库
+   */
+  private async recordFailureToBrain(subTask: SubTask, error: unknown, parentTask: Task): Promise<void> {
+    try {
+      const fs = await import('fs-extra');
+      const path = await import('node:path');
+      const { Env } = await import('@main/common/env');
+
+      const brainDir = path.join(Env.paths.userHome, 'brain', 'patterns');
+      await fs.ensureDir(brainDir);
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const patternId = `orchestrator-failure-${subTask.id}-${timestamp}`;
+      const patternPath = path.join(brainDir, `${patternId}.json`);
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
+      const failurePattern = {
+        id: patternId,
+        name: `编排模式子任务失败: ${subTask.name}`,
+        signal: `orchestrator failure: ${subTask.name}`,
+        context: {
+          problem: `执行子任务 "${subTask.name}" 失败`,
+          constraints: [
+            `父任务：${parentTask.objective}`,
+            `子任务ID：${subTask.id}`,
+            `Worker类型：${subTask.assignedWorker}`,
+            `依赖项：${subTask.dependencies?.join(', ') || '无'}`,
+            `关键任务：${subTask.critical ? '是' : '否'}`
+          ],
+          expected_outcome: subTask.description
+        },
+        practice: {
+          approach: '编排模式子任务执行',
+          steps: ['分配 Worker', '注入依赖结果', '执行子任务', '收集结果'],
+          actual_result: `失败: ${errorMessage}`,
+          confidence: 0.0,
+          success_streak: 0,
+          outcome: {
+            status: 'failure',
+            score: 0.0,
+            details: errorMessage,
+            error_stack: errorStack
+          }
+        },
+        evolution: {
+          attempts: [
+            {
+              approach: '尝试通过编排模式执行子任务',
+              result: 'failure',
+              reason: errorMessage,
+              error_message: errorStack || errorMessage,
+              time_wasted: `${subTask.estimatedDuration || 'unknown'}ms`
+            }
+          ],
+          outcome: {
+            status: 'failure',
+            lessons_learned: '编排模式子任务执行失败，需要检查 Worker 配置、依赖完整性、任务复杂度等因素'
+          }
+        },
+        metadata: {
+          created_at: new Date().toISOString(),
+          last_used: new Date().toISOString(),
+          tags: ['orchestrator', 'subtask-failure', 'worker-execution'],
+          priority: subTask.critical ? 'high' : 'medium',
+          source: 'orchestrator-auto-record'
+        }
+      };
+
+      await fs.writeJson(patternPath, failurePattern, { spaces: 2 });
+      log.info(`[Orchestrator] Failure recorded to brain: ${patternPath}`);
+    } catch (brainError) {
+      log.error('[Orchestrator] Failed to record failure to brain:', brainError);
+    }
+  }
 }
 
 /**
@@ -754,6 +956,9 @@ export function createOrchestrator(config?: OrchestratorConfig): Orchestrator {
     parentSessionId: config?.parentSessionId,
     model: config?.model,
     workspaceRoot: config?.workspaceRoot,
+    executionTimeout: config?.subTaskTimeout,
+    maxWorkersPerType: config?.maxWorkersPerType,
+    maxTotalWorkers: config?.maxTotalWorkers,
     signal: config?.signal
   });
 

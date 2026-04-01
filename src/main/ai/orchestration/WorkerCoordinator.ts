@@ -82,6 +82,10 @@ export interface WorkerCoordinatorConfig {
   executionTimeout?: number;
   /** 中止信号 */
   signal?: AbortSignal;
+  /** 每种类型最多 Worker 数量（默认 3） */
+  maxWorkersPerType?: number;
+  /** 总共最多 Worker 数量（默认 10） */
+  maxTotalWorkers?: number;
 }
 
 /**
@@ -110,6 +114,31 @@ export class WorkerCoordinator implements IWorkerCoordinator {
       }
     }
 
+    // 检查 Worker 数量限制
+    const maxTotalWorkers = this.config?.maxTotalWorkers ?? 10;
+    const maxWorkersPerType = this.config?.maxWorkersPerType ?? 3;
+
+    // 检查总数限制
+    if (this.workers.size >= maxTotalWorkers) {
+      log.warn(`[WorkerCoordinator] Max total workers (${maxTotalWorkers}) reached, waiting for idle worker...`);
+      // 等待任意空闲 Worker
+      const idleWorker = await this.waitForIdleWorker(30000); // 最多等待 30 秒
+      if (idleWorker) return idleWorker;
+      throw new Error(`Max total workers (${maxTotalWorkers}) reached and no worker became idle`);
+    }
+
+    // 检查同类型数量限制
+    const sameTypeCount = Array.from(this.workers.values()).filter((e) => e.info.type === workerType).length;
+    if (sameTypeCount >= maxWorkersPerType) {
+      log.warn(`[WorkerCoordinator] Max workers per type (${maxWorkersPerType}) reached for ${workerType}, waiting...`);
+      // 等待同类型空闲 Worker
+      const idleWorker = await this.waitForIdleWorker(30000, workerType);
+      if (idleWorker) return idleWorker;
+      throw new Error(
+        `Max workers per type (${maxWorkersPerType}) reached for ${workerType} and no worker became idle`
+      );
+    }
+
     // 创建新的 Worker
     const workerId = `worker-${workerType}-${++this.workerCounter}`;
 
@@ -122,8 +151,26 @@ export class WorkerCoordinator implements IWorkerCoordinator {
 
     this.workers.set(workerId, { info: workerInfo, runtime: null });
 
-    log.info(`[WorkerCoordinator] Created worker: ${workerId} (type=${workerType})`);
+    log.info(`[WorkerCoordinator] Created worker: ${workerId} (type=${workerType}), total=${this.workers.size}`);
     return workerInfo;
+  }
+
+  /**
+   * 等待空闲 Worker（带超时）
+   */
+  private async waitForIdleWorker(timeoutMs: number, workerType?: string): Promise<WorkerInfo | null> {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+      for (const [, entry] of this.workers) {
+        if (entry.info.status === 'idle') {
+          if (!workerType || entry.info.type === workerType) {
+            return entry.info;
+          }
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // 每秒检查一次
+    }
+    return null;
   }
 
   /**
@@ -157,8 +204,9 @@ export class WorkerCoordinator implements IWorkerCoordinator {
       // 构建子任务提示词
       const prompt = this.buildSubTaskPrompt(subTask);
 
-      // 执行（同步模式，消费所有流式事件）
-      const result = await runtime.run(prompt);
+      // 🆕 添加超时控制
+      const timeoutMs = this.config?.executionTimeout ?? 5 * 60 * 1000; // 默认 5 分钟
+      const result = await this.executeWithTimeout(runtime, prompt, timeoutMs, subTask.id);
 
       const duration = Date.now() - startTime;
 
@@ -188,6 +236,23 @@ export class WorkerCoordinator implements IWorkerCoordinator {
         }
       }
     }
+  }
+
+  /**
+   * 带超时的执行
+   */
+  private async executeWithTimeout(
+    runtime: AgentRuntime,
+    prompt: string,
+    timeoutMs: number,
+    subTaskId: string
+  ): Promise<ExecutionResult> {
+    return Promise.race([
+      runtime.run(prompt),
+      new Promise<ExecutionResult>((_, reject) =>
+        setTimeout(() => reject(new Error(`SubTask ${subTaskId} execution timeout after ${timeoutMs}ms`)), timeoutMs)
+      )
+    ]);
   }
 
   /**
