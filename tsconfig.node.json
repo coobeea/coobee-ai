@@ -6,11 +6,10 @@
     "composite": true,
     "experimentalDecorators": true,
     "types": ["electron-vite/node"],
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/main/*"],
-      "@main/*": ["src/main/*"],
-      "@shared/*": ["src/shared/*"]
+      "@/*": ["./src/main/*"],
+      "@main/*": ["./src/main/*"],
+      "@shared/*": ["./src/shared/*"]
     }
   }
 }
