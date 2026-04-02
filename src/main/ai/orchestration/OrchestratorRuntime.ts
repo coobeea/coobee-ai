@@ -150,7 +150,7 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
     // 异步执行 Orchestrator 任务
     // 使用 wrapper 来捕获结果，同时让中间事件通过 eventQueue 流出
     let taskDone = false;
-    let taskError: Error | null = null;
+    let taskError: (Error & { taskType?: string; reason?: string }) | null = null;
     let taskResult: TaskExecutionResult | null = null;
     let qualityLoopOutput: string | null = null;
 
@@ -191,6 +191,17 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
       },
       (error: unknown) => {
         taskDone = true;
+
+        // 🆕 捕获简单任务错误：不推送错误，标记为需要降级
+        if (error instanceof Error && error.message === 'SIMPLE_TASK_DETECTED') {
+          log.info('[OrchestratorRuntime] Simple task detected in Orchestrator, marking for fallback');
+          taskError = error;
+          // 不推送 run:error，而是静默结束，让 Gateway 层重新提交
+          pushChunk({ type: 'run:done', content: '' });
+          return;
+        }
+
+        // 其他错误：正常处理
         taskError = error instanceof Error ? error : new Error(String(error));
         pushChunk({
           type: 'run:error',
@@ -250,6 +261,12 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
         '所有文件已保存到工作空间的 `output/` 目录。'
       ].join('\n');
       finalOutput += artifactsSummary;
+    }
+
+    // 🆕 如果检测到简单任务，抛出特殊错误让 Gateway 捕获并降级
+    if (taskError && (taskError as Error).message === 'SIMPLE_TASK_DETECTED') {
+      log.info('[OrchestratorRuntime] Propagating SIMPLE_TASK_DETECTED error for fallback');
+      throw taskError; // 向上传递，让 AgentExecutor / Gateway 处理降级
     }
 
     // 🆕 保存 Assistant 响应到主会话

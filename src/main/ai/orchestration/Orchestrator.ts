@@ -197,25 +197,17 @@ export class Orchestrator implements IOrchestrator {
 
       // ── 1. 决策阶段 ──
       if (!analysisResult.needsOrchestration) {
-        log.info(`[Orchestrator] Task ${task.id} is a simple ${analysisResult.taskType}, skipping orchestration`);
+        log.info(`[Orchestrator] Task ${task.id} is a simple ${analysisResult.taskType}, should not use orchestration`);
 
-        const endTime = Date.now();
-        this.runningTasks.delete(task.id);
-
-        return {
-          taskId: task.id,
-          status: 'success',
-          finalOutput: analysisResult.reason,
-          subTaskResults: [],
-          stats: {
-            startTime,
-            endTime,
-            duration: endTime - startTime,
-            totalSubTasks: 0,
-            completedSubTasks: 0,
-            failedSubTasks: 0
-          }
+        // 🔥 抛出特殊错误，让上层（OrchestratorRuntime / Gateway）捕获并降级到 agent 模式
+        // 这样用户会得到自然的对话回复，而不是技术性的"不需要编排"消息
+        const error = new Error('SIMPLE_TASK_DETECTED') as Error & {
+          taskType?: string;
+          reason?: string;
         };
+        error.taskType = analysisResult.taskType;
+        error.reason = analysisResult.reason;
+        throw error;
       }
 
       // ── 2. POC 生命周期初始化（仅复杂任务） ──
