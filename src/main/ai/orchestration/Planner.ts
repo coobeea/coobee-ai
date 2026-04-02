@@ -273,93 +273,122 @@ Consider:
    * 构建规划提示词
    */
   private async buildPlanningPrompt(task: Task, lifecycleDir?: string): Promise<string> {
-    let prompt = `Please plan how to execute the following task:\n\n`;
-    prompt += `**Objective**: ${task.objective}\n`;
+    let prompt = `请为以下任务制定详细的执行计划：\n\n`;
+    prompt += `## 任务信息\n\n`;
+    prompt += `**任务目标**：${task.objective}\n\n`;
 
     if (task.description) {
-      prompt += `**Description**: ${task.description}\n`;
+      prompt += `**任务描述**：${task.description}\n\n`;
     }
 
     if (task.requirements?.length) {
-      prompt += `**Requirements**:\n${task.requirements.map((r) => `- ${r}`).join('\n')}\n`;
+      prompt += `**具体要求**：\n${task.requirements.map((r) => `- ${r}`).join('\n')}\n\n`;
     }
 
     if (task.constraints?.length) {
-      prompt += `**Constraints**:\n${task.constraints.map((c) => `- ${c}`).join('\n')}\n`;
+      prompt += `**约束条件**：\n${task.constraints.map((c) => `- ${c}`).join('\n')}\n\n`;
     }
 
-    if (task.context) {
-      prompt += `**Context**:\n${JSON.stringify(task.context, null, 2)}\n`;
-    }
-
-    // 🆕 如果启用了生命周期，读取生命周期文档并注入
+    // 🆕 如果启用了生命周期，读取需求分析文档
     if (lifecycleDir) {
       prompt += await this.injectLifecycleContext(lifecycleDir);
     }
 
-    prompt += `\nPlease provide an execution plan as a JSON object with the following structure:\n`;
-    prompt += '```json\n';
-    prompt += `{
-  "subTasks": [
-    {
-      "id": "subtask-1",
-      "objective": "What to accomplish",
-      "description": "Detailed description",
-      "dependencies": [],
-      "assignedWorker": "general"
-    }
-  ],
-  "stages": [
-    {
-      "stageId": "stage-1",
-      "name": "Stage name",
-      "subTaskIds": ["subtask-1"],
-      "parallelizable": false
-    }
-  ]
-}\n`;
-    prompt += '```\n';
-    prompt += `\nIMPORTANT: Return ONLY the JSON object, no other text.`;
+    prompt += `\n## 规划要求\n\n`;
+    prompt += `请基于上述信息，制定详细的执行计划：\n\n`;
+    prompt += `1. **拆解子任务**：将任务拆分为 5-15 个具体的子任务\n`;
+    prompt += `2. **每个子任务必须包含**：\n`;
+    prompt += `   - id：唯一标识（subtask-1, subtask-2, ...）\n`;
+    prompt += `   - objective：子任务目标（简洁明确，一句话）\n`;
+    prompt += `   - description：详细描述（至少2-3句话，说明：做什么？修改哪些文件？涉及哪些模块？如何验证？）\n`;
+    prompt += `   - dependencies：依赖的子任务 ID 列表（如 ["subtask-1"]）\n`;
+    prompt += `   - assignedWorker："general"（通用 Worker）\n\n`;
+    prompt += `3. **阶段划分**：将子任务分组为 3-5 个执行阶段\n`;
+    prompt += `   - 每个阶段包含：stageId、name、subTaskIds、parallelizable\n`;
+    prompt += `   - 同阶段内的任务如果无依赖关系，可设置 parallelizable=true\n\n`;
+    prompt += `## 输出格式\n\n`;
+    prompt += `请严格按照以下 JSON 格式输出（不要用 markdown 代码块包裹）：\n\n`;
+    prompt += `{\n`;
+    prompt += `  "subTasks": [\n`;
+    prompt += `    {\n`;
+    prompt += `      "id": "subtask-1",\n`;
+    prompt += `      "objective": "实现XX功能",\n`;
+    prompt += `      "description": "详细描述：做什么？修改哪些文件？如何验证？（至少2-3句话）",\n`;
+    prompt += `      "dependencies": [],\n`;
+    prompt += `      "assignedWorker": "general"\n`;
+    prompt += `    }\n`;
+    prompt += `  ],\n`;
+    prompt += `  "stages": [\n`;
+    prompt += `    {\n`;
+    prompt += `      "stageId": "stage-1",\n`;
+    prompt += `      "name": "核心功能开发",\n`;
+    prompt += `      "subTaskIds": ["subtask-1"],\n`;
+    prompt += `      "parallelizable": false\n`;
+    prompt += `    }\n`;
+    prompt += `  ]\n`;
+    prompt += `}\n\n`;
+    prompt += `**重要提示**：\n`;
+    prompt += `- 直接输出 JSON，不要包含任何额外说明或代码块标记\n`;
+    prompt += `- description 必须详细（至少2-3句话）\n`;
+    prompt += `- 子任务数量建议在 5-15 个之间\n`;
+    prompt += `- dependencies 必须准确（引用已定义的子任务 ID）\n`;
 
     return prompt;
   }
 
   /**
-   * 🆕 注入生命周期文档上下文
+   * 🆕 注入生命周期文档上下文（重点读取需求分析文档）
    */
   private async injectLifecycleContext(lifecycleDir: string): Promise<string> {
     try {
       const fs = await import('node:fs/promises');
       const path = await import('node:path');
 
-      let context = `\n\n--- POC 生命周期文档（供参考） ---\n\n`;
+      let context = `\n\n---\n\n## 需求分析文档\n\n`;
+      context += `以下是已完成的需求分析文档，请仔细阅读并基于此制定详细计划：\n\n`;
 
-      // 读取已生成的文档
-      const docs = [
-        { name: '01-需求分析.md', title: '需求分析' },
-        { name: '02-方案设计.md', title: '方案设计' },
-        { name: '03-反思优化.md', title: '反思优化' }
-      ];
+      // 🆕 优先读取需求分析文档（完整内容）
+      try {
+        const analysisPath = path.join(lifecycleDir, '01-需求分析.md');
+        const analysisContent = await fs.readFile(analysisPath, 'utf-8');
 
-      for (const doc of docs) {
-        const docPath = path.join(lifecycleDir, doc.name);
-        try {
-          const content = await fs.readFile(docPath, 'utf-8');
-          context += `**${doc.title}** (${doc.name}):\n\n`;
-          // 只提取前 500 字符，避免 Prompt 过长
-          const excerpt = content.length > 500 ? content.slice(0, 500) + '...\n\n[完整内容请参考文件]' : content;
-          context += excerpt + '\n\n';
-        } catch {
-          context += `**${doc.title}**: [尚未完成]\n\n`;
+        // 限制长度，避免超过 context 限制
+        const maxLength = 10000; // 10K 字符
+        if (analysisContent.length > maxLength) {
+          log.warn(
+            `[Planner] Requirement analysis too long (${analysisContent.length} chars), truncating to ${maxLength}`
+          );
+          context += analysisContent.slice(0, maxLength) + '\n\n[文档过长，已截断...]\n\n';
+        } else {
+          context += analysisContent + '\n\n';
         }
+
+        context += `---\n\n`;
+        context += `**规划要求**：\n`;
+        context += `- 基于上述需求分析，拆解为 5-15 个具体的子任务\n`;
+        context += `- 每个子任务包含详细描述（至少2-3句话）\n`;
+        context += `- 明确依赖关系和执行顺序\n`;
+        context += `- 按阶段分组（通常3-5个阶段）\n\n`;
+      } catch (_err) {
+        log.warn('[Planner] 01-需求分析.md not found, using basic context');
+        context += `[需求分析文档尚未完成]\n\n`;
       }
 
-      context += `\n请根据上述生命周期文档中的需求分析、方案设计和反思优化内容，制定详细的执行计划。\n`;
-      context += `特别关注方案设计中选定的技术方案、子任务分解策略和编排设计。\n\n`;
+      // 可选：读取方案设计（如果存在）
+      try {
+        const solutionPath = path.join(lifecycleDir, '02-方案设计.md');
+        const solutionContent = await fs.readFile(solutionPath, 'utf-8');
+        context += `\n## 方案设计（供参考）\n\n`;
+        // 只提取前 2000 字符
+        const excerpt = solutionContent.length > 2000 ? solutionContent.slice(0, 2000) + '...\n' : solutionContent;
+        context += excerpt + '\n\n';
+      } catch {
+        // 方案设计不存在也无妨
+      }
 
       return context;
-    } catch (err) {
-      log.warn('[Planner] Failed to inject lifecycle context:', err);
+    } catch (_err) {
+      log.warn('[Planner] Failed to inject lifecycle context:', _err);
       return '';
     }
   }
@@ -436,22 +465,63 @@ Consider:
 
 // ========== Planner Agent 指令 ==========
 
-const PLANNER_INSTRUCTIONS = `You are a task planning expert. Your job is to decompose high-level tasks into executable subtasks.
+const PLANNER_INSTRUCTIONS = `你是一个专业的任务规划专家。你的职责是将高层级的复杂任务分解为可执行的子任务列表（TODO）。
 
-Guidelines:
-- Break down the task into clear, actionable subtasks
-- Identify dependencies between subtasks (a subtask can only start after its dependencies are completed)
-- Assign each subtask to an appropriate worker type:
-  - "general": General-purpose agent for most tasks
-  - Or a specific agent ID if the task requires a specialized agent
-- Group subtasks into stages:
-  - Tasks in the same stage with parallelizable=true can run concurrently
-  - Stages execute sequentially (stage N completes before stage N+1 starts)
-- Keep subtasks focused and manageable (each should be completable independently)
+**核心原则**：
+1. **细致拆解**：将任务拆分为具体、可执行的步骤，每个子任务应该是独立、明确的
+2. **验收标准**：每个子任务必须包含可量化的验收标准（至少3个）
+3. **依赖关系**：明确子任务之间的依赖关系，合理安排执行顺序
+4. **合理分组**：将子任务按阶段分组，同阶段内可并行的任务标记为 parallelizable=true
+5. **工作量估算**：为每个子任务估算预计代码量或工作时间
 
-Output Format:
-- Return ONLY a valid JSON object (no markdown, no explanation)
-- The JSON must conform to the schema described in the prompt`;
+**规划流程**：
+1. 仔细阅读需求分析文档（如果有）
+2. 提取核心功能点和非功能需求
+3. 将每个功能点拆解为具体的实施任务
+4. 为每个任务设计验收标准
+5. 规划实施顺序和依赖关系
+
+**子任务拆分原则**：
+- ✅ **好的子任务**：具体、可验证、有明确产出
+  - 示例："实现 LifecycleOrchestrator 类（src/main/ai/tavern/lifecycle/LifecycleOrchestrator.ts）"
+  - 验收标准："execute() 方法能创建 lifecycle 目录"、"单元测试覆盖率 > 85%"
+- ❌ **不好的子任务**：模糊、无法验证、范围不清
+  - 示例："完成后端开发"、"优化性能"、"修复 Bug"
+
+**验收标准要求**：
+每个子任务至少包含3个可量化的验收标准：
+- 功能验收：功能是否正确实现（如"能创建目录"、"能解析JSON"）
+- 测试验收：是否有测试代码、测试是否通过（如"单元测试通过"、"覆盖率>85%"）
+- 质量验收：代码质量、性能指标（如"TypeScript无错误"、"响应时间<100ms"）
+
+**输出格式**：
+严格输出 JSON 格式（无 markdown 代码块）：
+{
+  "subTasks": [
+    {
+      "id": "subtask-1",
+      "objective": "实现XX功能",
+      "description": "详细描述：做什么？修改哪些文件？涉及哪些模块？",
+      "dependencies": [],
+      "assignedWorker": "general"
+    }
+  ],
+  "stages": [
+    {
+      "stageId": "stage-1",
+      "name": "核心功能开发",
+      "subTaskIds": ["subtask-1"],
+      "parallelizable": false
+    }
+  ]
+}
+
+**重要提示**：
+- 子任务数量通常在 5-15 个之间（太少=拆分不够细，太多=过度拆分）
+- 每个子任务的 description 必须详细（至少 2-3 句话）
+- dependencies 必须准确（错误的依赖关系会导致执行失败）
+- 阶段划分要合理（通常 3-5 个阶段）
+- 直接输出 JSON，不要用代码块包裹`;
 
 // 导出 Schema 供外部使用（如测试）
 export { PlanOutputSchema, type PlanOutput };

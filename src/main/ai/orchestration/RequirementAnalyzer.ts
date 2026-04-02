@@ -150,13 +150,71 @@ export class RequirementAnalyzer implements IRequirementAnalyzer {
   }
 
   /**
-   * 调用 Analyzer Agent（暂时使用启发式规则，未来可用 LLM 增强）
+   * 调用 Analyzer Agent
+   *
+   * 通过 AgentRuntime 创建临时的 requirement-analyst Agent，
+   * 让 LLM 深度分析用户需求，生成详细的需求分析文档。
    */
-  private async callAnalyzerAgent(_prompt: string): Promise<RequirementAnalysisResult | null> {
-    // TODO: 使用 LLM 进行更智能的分析
-    // 当前使用启发式规则快速实现，验证流程后再用 LLM 增强
-    log.info('[RequirementAnalyzer] Using heuristic analysis (LLM analysis coming soon)');
-    return null; // 降级到 getFallbackAnalysis
+  private async callAnalyzerAgent(prompt: string): Promise<RequirementAnalysisResult | null> {
+    try {
+      const { agentExecutor } = await import('../AgentExecutor');
+      const { generateSnowflakeId } = await import('@main/utils/SnowflakeIdGenerator');
+
+      const sessionId = generateSnowflakeId();
+
+      const builder = agentExecutor
+        .piMono()
+        .name('Requirement Analyst')
+        .mode('chat')
+        .sessionMode('memory')
+        .lightweight(true)
+        .instructions(REQUIREMENT_ANALYST_INSTRUCTIONS)
+        .sessionId(sessionId);
+
+      const runtime = await builder.build();
+
+      try {
+        const result = await runtime.run(prompt);
+        const output = this.parseStructuredOutput(result.output);
+        return output;
+      } finally {
+        await runtime.destroy?.();
+      }
+    } catch (error) {
+      log.error('[RequirementAnalyzer] LLM analysis failed:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 解析 LLM 输出为结构化结果
+   */
+  private parseStructuredOutput(rawOutput: string): RequirementAnalysisResult | null {
+    try {
+      // 尝试从代码块提取 JSON
+      const jsonMatch = rawOutput.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
+      const jsonStr = jsonMatch ? jsonMatch[1] : rawOutput;
+
+      // 解析 JSON
+      const parsed = JSON.parse(jsonStr);
+
+      // 验证必需字段
+      if (!parsed.taskType || typeof parsed.needsOrchestration !== 'boolean') {
+        return null;
+      }
+
+      return parsed as RequirementAnalysisResult;
+    } catch {
+      // 解析失败，尝试提取关键信息
+      if (rawOutput.includes('complex-task') || rawOutput.includes('needsOrchestration": true')) {
+        return {
+          taskType: 'complex-task',
+          needsOrchestration: true,
+          reason: '检测到复杂任务特征'
+        };
+      }
+      return null;
+    }
   }
 
   /**
@@ -186,4 +244,54 @@ export class RequirementAnalyzer implements IRequirementAnalyzer {
   }
 }
 
-// 未来可用 LLM 增强需求分析（Agent Instructions、结构化输出等）
+// ========== Requirement Analyst Agent 指令 ==========
+
+const REQUIREMENT_ANALYST_INSTRUCTIONS = `你是一个专业的需求分析专家，擅长从用户的模糊需求中提取核心目标、识别技术挑战、评估风险。
+
+你的任务是分析用户需求，判断任务类型，并为复杂任务生成详细的需求分析。
+
+**分析维度**：
+1. **任务类型判断**
+   - simple-chat: 打招呼、感谢、确认、闲聊（如"你好"、"谢谢"）
+   - simple-query: 单一问题、查询类（如"什么是 TypeScript"、"今天几点"）
+   - complex-task: 多步骤、项目开发、系统设计（如"开发音乐播放器"、"重构认证系统"）
+
+2. **复杂任务的深度分析**
+   - 核心目标（一句话概括）
+   - 关键需求列表（3-5个，SMART原则）
+   - 技术挑战点（技术难度、实现风险）
+   - 预期交付物（代码、文档、配置）
+   - 复杂度评估（low/medium/high）
+
+**输出格式**：
+严格输出 JSON 格式（无 markdown 代码块）：
+
+简单任务：
+{
+  "taskType": "simple-chat" | "simple-query",
+  "needsOrchestration": false,
+  "reason": "这是一个简单的XXX，不需要编排"
+}
+
+复杂任务：
+{
+  "taskType": "complex-task",
+  "needsOrchestration": true,
+  "reason": "这是一个复杂任务，需要多智能体协作",
+  "analysis": {
+    "coreObjective": "核心目标（一句话，明确、可量化）",
+    "keyRequirements": ["需求1（具体、可验证）", "需求2", "需求3"],
+    "technicalChallenges": ["挑战1（技术难点）", "挑战2"],
+    "expectedDeliverables": ["交付物1（代码、文档、配置）", "交付物2"],
+    "estimatedComplexity": "medium"
+  }
+}
+
+**判断原则**：
+- 涉及代码开发 → complex-task
+- 需要多步骤 → complex-task
+- 项目级任务 → complex-task
+- 单句对话 → simple-chat
+- 单个查询 → simple-query
+
+请深入理解需求本质，不要被表面描述迷惑。`;

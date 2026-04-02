@@ -785,6 +785,9 @@ export class Orchestrator implements IOrchestrator {
   /**
    * 🆕 保存需求分析结果到 01-需求分析.md
    */
+  /**
+   * 保存需求分析文档（调用 requirement-analyst Agent 生成详细文档）
+   */
   private async saveRequirementAnalysis(
     lifecycleDir: string,
     task: Task,
@@ -796,7 +799,29 @@ export class Orchestrator implements IOrchestrator {
 
       const analysisFile = path.join(lifecycleDir, '01-需求分析.md');
 
-      let content = `# 需求分析\n\n`;
+      // 🆕 如果是复杂任务，调用 requirement-analyst Agent 生成详细文档
+      if (analysisResult.needsOrchestration && analysisResult.analysis) {
+        log.info('[Orchestrator] Generating detailed requirement analysis document...');
+
+        const prompt = this.buildRequirementAnalysisPrompt(task, analysisResult);
+        const detailedAnalysis = await this.callRequirementAnalystAgent(prompt);
+
+        if (detailedAnalysis) {
+          await fs.writeFile(analysisFile, detailedAnalysis, 'utf-8');
+          log.info(`[Orchestrator] Detailed requirement analysis saved to: ${analysisFile}`);
+          return;
+        }
+
+        log.warn('[Orchestrator] Failed to generate detailed analysis, using simple template');
+      }
+
+      // 降级：简单模板（用于简单任务或 Agent 调用失败）
+      let content = `# ${task.objective} - 需求分析\n\n`;
+      content += `> 创建时间：${new Date().toLocaleDateString('zh-CN')}\n`;
+      content += `> 任务 ID：${task.id}\n`;
+      content += `> 执行模式：编排模式\n\n`;
+      content += `---\n\n`;
+
       content += `## 任务目标\n\n`;
       content += `${task.objective}\n\n`;
 
@@ -1215,6 +1240,84 @@ export class Orchestrator implements IOrchestrator {
       log.info(`[Orchestrator] Failure recorded to brain: ${patternPath}`);
     } catch (brainError) {
       log.error('[Orchestrator] Failed to record failure to brain:', brainError);
+    }
+  }
+
+  /**
+   * 构建需求分析 Prompt
+   */
+  private buildRequirementAnalysisPrompt(
+    task: Task,
+    analysisResult: import('./RequirementAnalyzer').RequirementAnalysisResult
+  ): string {
+    let prompt = `请为以下编排任务生成详细的需求分析文档：\n\n`;
+
+    prompt += `**任务信息**：\n`;
+    prompt += `- 任务目标：${task.objective}\n`;
+    if (task.description) {
+      prompt += `- 任务描述：${task.description}\n`;
+    }
+    if (task.requirements?.length) {
+      prompt += `- 具体要求：\n${task.requirements.map((r) => `  - ${r}`).join('\n')}\n`;
+    }
+    if (task.constraints?.length) {
+      prompt += `- 约束条件：\n${task.constraints.map((c) => `  - ${c}`).join('\n')}\n`;
+    }
+    if (task.context) {
+      prompt += `- 上下文信息：${JSON.stringify(task.context)}\n`;
+    }
+
+    prompt += `\n**需求分析初步判断**：\n`;
+    prompt += `- 任务类型：${analysisResult.taskType}\n`;
+    prompt += `- 复杂度：${analysisResult.analysis?.estimatedComplexity || 'medium'}\n`;
+    if (analysisResult.analysis) {
+      prompt += `- 核心目标：${analysisResult.analysis.coreObjective}\n`;
+      prompt += `- 关键需求：${analysisResult.analysis.keyRequirements.join(', ')}\n`;
+    }
+
+    prompt += `\n请按照你的指令中的结构，生成完整的需求分析文档（Markdown格式）。\n`;
+    prompt += `要求：\n`;
+    prompt += `1. 每个章节都要充实，避免空洞的占位符\n`;
+    prompt += `2. 使用具体数据和案例，不要泛泛而谈\n`;
+    prompt += `3. 风险评估要诚实面对，不要回避问题\n`;
+    prompt += `4. 验收标准要可量化、可验证\n`;
+    prompt += `5. 文档长度应在 500-1000 行\n`;
+    prompt += `6. 直接输出 Markdown，不要用代码块包裹\n`;
+
+    return prompt;
+  }
+
+  /**
+   * 调用 requirement-analyst Agent 生成详细需求分析
+   */
+  private async callRequirementAnalystAgent(prompt: string): Promise<string | null> {
+    try {
+      const { agentExecutor } = await import('../AgentExecutor');
+      const { generateSnowflakeId } = await import('@main/utils/SnowflakeIdGenerator');
+
+      const sessionId = generateSnowflakeId();
+
+      const builder = agentExecutor
+        .piMono()
+        .agentId('requirement-analyst') // 使用专门的 requirement-analyst Agent
+        .mode('chat')
+        .sessionMode('memory')
+        .lightweight(true)
+        .sessionId(sessionId);
+
+      const runtime = await builder.build();
+
+      try {
+        log.info('[Orchestrator] Calling requirement-analyst Agent...');
+        const result = await runtime.run(prompt);
+        log.info(`[Orchestrator] Requirement analyst generated ${result.output.length} chars`);
+        return result.output;
+      } finally {
+        await runtime.destroy?.();
+      }
+    } catch (error) {
+      log.error('[Orchestrator] Requirement analyst failed:', error);
+      return null;
     }
   }
 }
