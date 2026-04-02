@@ -68,7 +68,7 @@ const description = ref('');
 const amount = ref(100);
 const filePaths = ref<string[]>([]);
 const agentId = ref('default'); // 执行智能体 ID
-const executionMode = ref<Task['executionMode']>('agent'); // 执行模式
+const executionMode = ref<Task['executionMode']>('orchestrator'); // 执行模式（默认编排模式）
 const useLifecycle = ref<string>('true'); // 是否使用五阶段生命周期流程（默认启用，字符串格式以兼容 RadioInput）
 const taskStatus = ref<Task['status']>('pending');
 const taskResult = ref<TaskResult | undefined>(undefined);
@@ -89,36 +89,30 @@ const awaitingInputSince = ref<number | undefined>(undefined);
 // 智能体列表（SelectOption 格式）
 const agents = ref<SelectOption[]>([{ value: 'default', label: '默认智能体' }]);
 
-// 执行模式选项（SelectOption 格式，带图标）
+/** 执行模式选项（酒馆任务专用多智能体模式） */
 const executionModes: SelectOption[] = [
-  {
-    value: 'agent',
-    label: '单智能体模式',
-    description: '单个智能体独立完成任务',
-    icon: 'i-carbon-user'
-  },
   {
     value: 'orchestrator',
     label: '编排模式',
-    description: '智能体协调器统筹多个子智能体',
+    description: '智能体协调器统筹多个子智能体，适合复杂任务',
     icon: 'i-carbon-flow'
   },
   {
     value: 'swarm',
     label: '蜂群模式',
-    description: '多智能体自组织协作',
+    description: '多智能体自组织协作，动态分配任务',
     icon: 'i-carbon-apps'
   },
   {
     value: 'discussion',
     label: '讨论模式',
-    description: '多智能体圆桌讨论决策',
+    description: '多智能体圆桌讨论，集体决策',
     icon: 'i-carbon-chat'
   },
   {
     value: 'quality-loop',
     label: '质量循环模式',
-    description: '执行→验证→修复闭环',
+    description: '执行→验证→修复闭环，保证质量',
     icon: 'i-carbon-renew'
   }
 ];
