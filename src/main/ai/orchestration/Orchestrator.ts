@@ -46,8 +46,6 @@ export interface OrchestratorConfig {
   maxWorkersPerType?: number;
   /** 总共最多 Worker 数量（默认 10） */
   maxTotalWorkers?: number;
-  /** 🆕 是否启用 POC 生命周期管理（默认 false） */
-  useLifecycle?: boolean;
   /** Worker 使用的模型 */
   model?: string;
   /** 工作区根目录 */
@@ -71,7 +69,6 @@ export interface OrchestratorEvent {
   type:
     | 'analysis:start'
     | 'analysis:done'
-    | 'lifecycle:initialized'
     | 'plan:start'
     | 'plan:done'
     | 'stage:start'
@@ -125,11 +122,6 @@ export class Orchestrator implements IOrchestrator {
   /** 🆕 重新规划计数器 */
   private replanCounts = new Map<string, number>();
 
-  /** 🆕 生命周期监控器（启用 lifecycle 时使用） */
-  private lifecycleMonitor?: InstanceType<
-    typeof import('./lifecycle/OrchestrationLifecycleMonitor').OrchestrationLifecycleMonitor
-  >;
-
   /** 🆕 项目空间路径（所有 Worker 共享的代码开发目录） */
   // @ts-expect-error - Used for state tracking, may be read in future features
   private _projectDir?: string;
@@ -149,7 +141,6 @@ export class Orchestrator implements IOrchestrator {
       totalTimeout: config?.totalTimeout ?? 30 * 60 * 1000,
       maxWorkersPerType: config?.maxWorkersPerType ?? 3,
       maxTotalWorkers: config?.maxTotalWorkers ?? 10,
-      useLifecycle: config?.useLifecycle ?? false,
       parentSessionId: config?.parentSessionId,
       signal: config?.signal,
       onEvent: config?.onEvent,
@@ -214,44 +205,38 @@ export class Orchestrator implements IOrchestrator {
         throw error;
       }
 
-      // ── 2. POC 生命周期初始化（仅复杂任务） ──
-      log.info('[Orchestrator] Phase 1: Initializing POC lifecycle...');
+      // ── 2. 需求分析阶段（仅复杂任务） ──
+      log.info('[Orchestrator] Phase 1: Analyzing requirements...');
 
       if (!this.resolvedConfig.parentSessionId) {
         throw new Error('parentSessionId is required for complex tasks');
       }
 
-      const { OrchestrationLifecycleManager } = await import('./lifecycle/OrchestrationLifecycleManager');
-      const { OrchestrationLifecycleMonitor } = await import('./lifecycle/OrchestrationLifecycleMonitor');
-
-      // 🆕 确保项目空间存在
+      // 确保项目空间存在
       const projectDir = await this.ensureProjectDir();
       log.info(`[Orchestrator] Project directory: ${projectDir}`);
 
-      // 🆕 将项目空间传递给 WorkerCoordinator
+      // 将项目空间传递给 WorkerCoordinator
       (this.workerCoordinator as { setProjectDir?: (dir: string) => void }).setProjectDir?.(projectDir);
 
-      const lifecycleManager = new OrchestrationLifecycleManager();
-      const lifecycleDir = await lifecycleManager.initialize(task, this.resolvedConfig.parentSessionId);
+      // 准备任务工作区
+      const { Env: TaskEnv } = await import('@main/common/env');
+      const taskPath = await import('node:path');
+      const taskFs = await import('node:fs/promises');
+      const taskWorkspaceDir = await TaskEnv.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId);
+      const taskDirPath = taskPath.join(taskWorkspaceDir, 'tasks', task.id);
+      await taskFs.mkdir(taskDirPath, { recursive: true });
 
-      // 🆕 保存需求分析结果到 01-需求分析.md
-      await this.saveRequirementAnalysis(lifecycleDir, task, analysisResult);
+      // 生成并保存需求分析结果
+      const requirementAnalysisContent = await this.generateRequirementAnalysis(taskDirPath, task, analysisResult);
 
-      // 创建监控器
-      this.lifecycleMonitor = new OrchestrationLifecycleMonitor(lifecycleDir);
-
-      this.emit({
-        type: 'lifecycle:initialized',
-        data: { taskId: task.id, lifecycleDir }
-      });
-
-      log.info(`[Orchestrator] Lifecycle initialized at: ${lifecycleDir}`);
+      log.info(`[Orchestrator] Task directory initialized at: ${taskDirPath}`);
 
       // ── 3. 规划阶段 ──
       this.emit({ type: 'plan:start', data: { taskId: task.id, objective: task.objective } });
       log.info('[Orchestrator] Phase 2: Planning...');
 
-      const plan = await this.planner.plan(task, lifecycleDir);
+      const plan = await this.planner.plan(task, requirementAnalysisContent);
 
       this.emit({
         type: 'plan:done',
@@ -290,12 +275,12 @@ export class Orchestrator implements IOrchestrator {
       log.info('[Orchestrator] Phase 4: Aggregating results...');
 
       // 🔄 修改：委托给 Aggregator Agent，而非直接调用 LLM
-      const { Env } = await import('@main/common/env');
-      const path = await import('node:path');
-      const workspaceDir = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId || task.id);
-      const taskDirPath = path.join(workspaceDir, 'tasks', task.id);
+      const { Env: AggEnv } = await import('@main/common/env');
+      const aggPath = await import('node:path');
+      const aggWorkspaceDir = await AggEnv.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId || task.id);
+      const aggTaskDirPath = aggPath.join(aggWorkspaceDir, 'tasks', task.id);
 
-      const aggregationResult = await this.aggregator.aggregate(task, plan, subTaskResults, taskDirPath);
+      const aggregationResult = await this.aggregator.aggregate(task, plan, subTaskResults, aggTaskDirPath);
 
       this.emit({
         type: 'aggregate:done',
@@ -325,21 +310,6 @@ export class Orchestrator implements IOrchestrator {
       const endTime = Date.now();
       const completedCount = subTaskResults.filter((r) => r.status === 'completed').length;
       const failedCount = subTaskResults.filter((r) => r.status === 'failed').length;
-
-      // 🆕 生成生命周期验收报告和综合报告
-      if (this.lifecycleMonitor) {
-        log.info('[Orchestrator] Generating lifecycle reports...');
-        await this.lifecycleMonitor.generateAcceptanceReport(subTaskResults, startTime, endTime);
-        await this.lifecycleMonitor.generateFinalReport(subTaskResults, {
-          startTime,
-          endTime,
-          duration: endTime - startTime,
-          totalSubTasks: plan.subTasks.length,
-          completedSubTasks: completedCount,
-          failedSubTasks: failedCount
-        });
-        log.info('[Orchestrator] Lifecycle reports generated');
-      }
 
       log.info(
         `[Orchestrator] Task completed: ${completedCount}/${plan.subTasks.length} succeeded, duration=${endTime - startTime}ms`
@@ -497,27 +467,6 @@ export class Orchestrator implements IOrchestrator {
 
       results.push(subTaskResult);
       this.completedSubTaskResults.push(subTaskResult);
-
-      // 🆕 更新生命周期文档
-      if (this.lifecycleMonitor) {
-        await this.lifecycleMonitor.updateTodoStatus(subTask.id, subTaskResult.status);
-        await this.lifecycleMonitor.appendProgress(subTaskResult);
-
-        // 如果失败，记录到 BUGS.md
-        if (subTaskResult.status === 'failed' && subTaskResult.error) {
-          await this.lifecycleMonitor.recordBug(
-            subTask.id,
-            subTask.name,
-            subTaskResult.error,
-            result.status === 'rejected' && result.reason instanceof Error ? result.reason.stack : undefined
-          );
-        }
-
-        await this.lifecycleMonitor.updateProgressStats(
-          results.filter((r) => r.status === 'completed').length,
-          tasks.length
-        );
-      }
     }
   }
 
@@ -543,16 +492,6 @@ export class Orchestrator implements IOrchestrator {
         };
         results.push(subTaskResult);
         this.completedSubTaskResults.push(subTaskResult);
-
-        // 🆕 更新生命周期文档（成功情况）
-        if (this.lifecycleMonitor) {
-          await this.lifecycleMonitor.updateTodoStatus(subTask.id, 'completed');
-          await this.lifecycleMonitor.appendProgress(subTaskResult);
-          await this.lifecycleMonitor.updateProgressStats(
-            results.filter((r) => r.status === 'completed').length,
-            tasks.length
-          );
-        }
       } catch (error: unknown) {
         const subTaskResult: SubTaskExecutionResult = {
           subTaskId: subTask.id,
@@ -565,18 +504,6 @@ export class Orchestrator implements IOrchestrator {
 
         // 🆕 记录失败到智库
         await this.recordFailureToBrain(subTask, error, task);
-
-        // 🆕 更新生命周期文档（失败情况）
-        if (this.lifecycleMonitor) {
-          await this.lifecycleMonitor.updateTodoStatus(subTask.id, 'failed');
-          await this.lifecycleMonitor.appendProgress(subTaskResult);
-          await this.lifecycleMonitor.recordBug(
-            subTask.id,
-            subTask.name,
-            error instanceof Error ? error.message : String(error),
-            error instanceof Error ? error.stack : undefined
-          );
-        }
 
         // 🆕 检查是否为关键任务
         if (subTask.critical) {
@@ -786,18 +713,18 @@ export class Orchestrator implements IOrchestrator {
    * 🆕 保存需求分析结果到 01-需求分析.md
    */
   /**
-   * 保存需求分析文档（调用 requirement-analyst Agent 生成详细文档）
+   * 生成需求分析文档（调用 requirement-analyst Agent 生成详细文档）
    */
-  private async saveRequirementAnalysis(
-    lifecycleDir: string,
+  private async generateRequirementAnalysis(
+    taskDirPath: string,
     task: Task,
     analysisResult: import('./RequirementAnalyzer').RequirementAnalysisResult
-  ): Promise<void> {
+  ): Promise<string> {
     try {
       const fs = await import('node:fs/promises');
       const path = await import('node:path');
 
-      const analysisFile = path.join(lifecycleDir, '01-需求分析.md');
+      const analysisFile = path.join(taskDirPath, 'REQUIREMENTS.md');
 
       // 🆕 如果是复杂任务，调用 requirement-analyst Agent 生成详细文档
       if (analysisResult.needsOrchestration && analysisResult.analysis) {
@@ -809,7 +736,7 @@ export class Orchestrator implements IOrchestrator {
         if (detailedAnalysis) {
           await fs.writeFile(analysisFile, detailedAnalysis, 'utf-8');
           log.info(`[Orchestrator] Detailed requirement analysis saved to: ${analysisFile}`);
-          return;
+          return detailedAnalysis;
         }
 
         log.warn('[Orchestrator] Failed to generate detailed analysis, using simple template');
@@ -873,8 +800,10 @@ export class Orchestrator implements IOrchestrator {
 
       await fs.writeFile(analysisFile, content, 'utf-8');
       log.info(`[Orchestrator] Requirement analysis saved to: ${analysisFile}`);
+      return content;
     } catch (error) {
       log.error('[Orchestrator] Failed to save requirement analysis:', error);
+      return '';
     }
   }
 

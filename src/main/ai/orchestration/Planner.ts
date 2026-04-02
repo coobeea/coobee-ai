@@ -51,9 +51,9 @@ export interface IPlanner {
   /**
    * 规划任务
    * @param task 任务定义
-   * @param lifecycleDir 生命周期文档目录（可选）
+   * @param requirementAnalysis 需求分析文档内容（可选）
    */
-  plan(task: Task, lifecycleDir?: string): Promise<ExecutionPlan>;
+  plan(task: Task, requirementAnalysis?: string): Promise<ExecutionPlan>;
 
   /**
    * 重新规划（当任务失败时）
@@ -92,8 +92,8 @@ export class Planner implements IPlanner {
    *
    * 构建规划提示词 → 调用 LLM → 解析结构化输出 → 返回 ExecutionPlan
    */
-  async plan(task: Task, lifecycleDir?: string): Promise<ExecutionPlan> {
-    const prompt = await this.buildPlanningPrompt(task, lifecycleDir);
+  async plan(task: Task, requirementAnalysis?: string): Promise<ExecutionPlan> {
+    const prompt = await this.buildPlanningPrompt(task, requirementAnalysis);
     const output = await this.callPlannerAgent(prompt);
     const planData = this.convertPlanOutput(output, task.id);
 
@@ -272,7 +272,7 @@ Consider:
   /**
    * 构建规划提示词
    */
-  private async buildPlanningPrompt(task: Task, lifecycleDir?: string): Promise<string> {
+  private async buildPlanningPrompt(task: Task, requirementAnalysis?: string): Promise<string> {
     let prompt = `请为以下任务制定详细的执行计划：\n\n`;
     prompt += `## 任务信息\n\n`;
     prompt += `**任务目标**：${task.objective}\n\n`;
@@ -289,9 +289,22 @@ Consider:
       prompt += `**约束条件**：\n${task.constraints.map((c) => `- ${c}`).join('\n')}\n\n`;
     }
 
-    // 🆕 如果启用了生命周期，读取需求分析文档
-    if (lifecycleDir) {
-      prompt += await this.injectLifecycleContext(lifecycleDir);
+    // 🆕 注入需求分析文档上下文
+    if (requirementAnalysis) {
+      prompt += `\n---\n\n## 需求分析文档\n\n`;
+      prompt += `以下是已完成的需求分析文档，请仔细阅读并基于此制定详细计划：\n\n`;
+
+      // 限制长度，避免超过 context 限制
+      const maxLength = 10000; // 10K 字符
+      if (requirementAnalysis.length > maxLength) {
+        log.warn(
+          `[Planner] Requirement analysis too long (${requirementAnalysis.length} chars), truncating to ${maxLength}`
+        );
+        prompt += requirementAnalysis.slice(0, maxLength) + '\n\n[文档过长，已截断...]\n\n';
+      } else {
+        prompt += requirementAnalysis + '\n\n';
+      }
+      prompt += `---\n\n`;
     }
 
     prompt += `\n## 规划要求\n\n`;
@@ -334,63 +347,6 @@ Consider:
     prompt += `- dependencies 必须准确（引用已定义的子任务 ID）\n`;
 
     return prompt;
-  }
-
-  /**
-   * 🆕 注入生命周期文档上下文（重点读取需求分析文档）
-   */
-  private async injectLifecycleContext(lifecycleDir: string): Promise<string> {
-    try {
-      const fs = await import('node:fs/promises');
-      const path = await import('node:path');
-
-      let context = `\n\n---\n\n## 需求分析文档\n\n`;
-      context += `以下是已完成的需求分析文档，请仔细阅读并基于此制定详细计划：\n\n`;
-
-      // 🆕 优先读取需求分析文档（完整内容）
-      try {
-        const analysisPath = path.join(lifecycleDir, '01-需求分析.md');
-        const analysisContent = await fs.readFile(analysisPath, 'utf-8');
-
-        // 限制长度，避免超过 context 限制
-        const maxLength = 10000; // 10K 字符
-        if (analysisContent.length > maxLength) {
-          log.warn(
-            `[Planner] Requirement analysis too long (${analysisContent.length} chars), truncating to ${maxLength}`
-          );
-          context += analysisContent.slice(0, maxLength) + '\n\n[文档过长，已截断...]\n\n';
-        } else {
-          context += analysisContent + '\n\n';
-        }
-
-        context += `---\n\n`;
-        context += `**规划要求**：\n`;
-        context += `- 基于上述需求分析，拆解为 5-15 个具体的子任务\n`;
-        context += `- 每个子任务包含详细描述（至少2-3句话）\n`;
-        context += `- 明确依赖关系和执行顺序\n`;
-        context += `- 按阶段分组（通常3-5个阶段）\n\n`;
-      } catch (_err) {
-        log.warn('[Planner] 01-需求分析.md not found, using basic context');
-        context += `[需求分析文档尚未完成]\n\n`;
-      }
-
-      // 可选：读取方案设计（如果存在）
-      try {
-        const solutionPath = path.join(lifecycleDir, '02-方案设计.md');
-        const solutionContent = await fs.readFile(solutionPath, 'utf-8');
-        context += `\n## 方案设计（供参考）\n\n`;
-        // 只提取前 2000 字符
-        const excerpt = solutionContent.length > 2000 ? solutionContent.slice(0, 2000) + '...\n' : solutionContent;
-        context += excerpt + '\n\n';
-      } catch {
-        // 方案设计不存在也无妨
-      }
-
-      return context;
-    } catch (_err) {
-      log.warn('[Planner] Failed to inject lifecycle context:', _err);
-      return '';
-    }
   }
 
   /**
@@ -483,8 +439,8 @@ const PLANNER_INSTRUCTIONS = `你是一个专业的任务规划专家。你的�
 
 **子任务拆分原则**：
 - ✅ **好的子任务**：具体、可验证、有明确产出
-  - 示例："实现 LifecycleOrchestrator 类（src/main/ai/tavern/lifecycle/LifecycleOrchestrator.ts）"
-  - 验收标准："execute() 方法能创建 lifecycle 目录"、"单元测试覆盖率 > 85%"
+  - 示例："实现 RequirementAnalyzer 类（src/main/ai/orchestration/RequirementAnalyzer.ts）"
+  - 验收标准："analyze() 方法能生成需求文档"、"单元测试覆盖率 > 85%"
 - ❌ **不好的子任务**：模糊、无法验证、范围不清
   - 示例："完成后端开发"、"优化性能"、"修复 Bug"
 
