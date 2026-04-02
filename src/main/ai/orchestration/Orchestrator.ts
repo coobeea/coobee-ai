@@ -188,11 +188,43 @@ export class Orchestrator implements IOrchestrator {
         log.info(`[Orchestrator] Lifecycle initialized at: ${lifecycleDir}`);
       }
 
-      // ── 1. 规划阶段 ──
+      // ── 1. 规划阶段（含意图识别） ──
       this.emit({ type: 'plan:start', data: { taskId: task.id, objective: task.objective } });
       log.info('[Orchestrator] Phase 1: Planning...');
 
       const plan = await this.planner.plan(task, lifecycleDir);
+
+      // 🆕 如果 LLM 判断不需要编排，直接返回简单响应
+      if (plan.needsOrchestration === false) {
+        log.info(`[Orchestrator] Task ${task.id} does not need orchestration: ${plan.reason || '任务过于简单'}`);
+
+        this.emit({
+          type: 'plan:done',
+          data: {
+            taskId: task.id,
+            needsOrchestration: false,
+            reason: plan.reason
+          }
+        });
+
+        const endTime = Date.now();
+        this.runningTasks.delete(task.id);
+
+        return {
+          taskId: task.id,
+          status: 'success',
+          finalOutput: plan.reason || '这是一个简单的对话，不需要复杂的任务编排。请使用普通对话模式。',
+          subTaskResults: [],
+          stats: {
+            startTime,
+            endTime,
+            duration: endTime - startTime,
+            totalSubTasks: 0,
+            completedSubTasks: 0,
+            failedSubTasks: 0
+          }
+        };
+      }
 
       this.emit({
         type: 'plan:done',

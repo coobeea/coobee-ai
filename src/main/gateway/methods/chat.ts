@@ -263,40 +263,9 @@ export const chatMethods: MethodGroup = {
       try {
         // ========== 多智能体模式（Orchestrator / Swarm / Quality-Loop） ==========
         if (mode === 'orchestrator' || mode === 'swarm' || mode === 'quality-loop') {
-          // 🆕 意图识别：判断是否真的需要多智能体编排
-          const { IntentClassifier } = await import('@main/ai/orchestration/IntentClassifier');
-          const classifier = new IntentClassifier(agentExecutor);
-
-          const threadStore = await ThreadStore.getInstance();
-          const thread = await threadStore.get(sid);
-          const hasHistory = (thread?.messageCount ?? 0) > 0;
-
-          const intent = await classifier.classify(message, { hasHistory });
-
-          log.info(
-            `[chat.send] Intent classification: type=${intent.type}, ` +
-              `confidence=${intent.confidence.toFixed(2)}, reason=${intent.reason}`
-          );
-
-          // 如果不需要编排，自动降级为普通 agent 模式
-          if (!intent.needsOrchestration) {
-            log.info(`[chat.send] Downgrade to single-agent mode (reason: ${intent.reason})`);
-
-            // 使用 Pipeline 提交（推荐）
-            const pipelineResult = await agentExecutor.submitViaPipeline(sid, message, 'agent');
-            if (pipelineResult) {
-              return {
-                sessionId: sid,
-                status: pipelineResult.status,
-                mode: 'agent', // 降级为 agent 模式
-                queuePosition: pipelineResult.queuePosition
-              };
-            }
-
-            return {};
-          }
-
-          // 继续使用多智能体模式
+          // 🆕 编排模式现在由 LLM（Planner）判断是否需要编排
+          // 如果任务太简单（如"你好"），Planner 会返回 needsOrchestration=false
+          // Orchestrator 会自动降级，返回简单响应
           const runtime = await createMultiAgentRuntime(mode, sid);
           const result = agentExecutor.submit({ sessionId: sid, message, runtime });
 

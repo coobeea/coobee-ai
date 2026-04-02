@@ -37,6 +37,8 @@ const StageSchema = z.object({
  * 规划输出 Schema
  */
 const PlanOutputSchema = z.object({
+  needsOrchestration: z.boolean().default(true).describe('是否需要多智能体编排（简单对话/查询返回 false）'),
+  reason: z.string().optional().describe('判断依据（当 needsOrchestration=false 时说明原因）'),
   subTasks: z.array(SubTaskSchema).describe('子任务列表'),
   stages: z.array(StageSchema).describe('执行阶段列表')
 });
@@ -97,10 +99,15 @@ export class Planner implements IPlanner {
     const output = await this.callPlannerAgent(prompt);
     const planData = this.convertPlanOutput(output, task.id);
 
-    log.info(`[Planner] Plan created: ${planData.subTasks.length} subtasks, ${planData.stages.length} stages`);
+    log.info(
+      `[Planner] Plan created: needsOrchestration=${planData.needsOrchestration}, ` +
+        `${planData.subTasks.length} subtasks, ${planData.stages.length} stages`
+    );
 
     return {
       taskId: task.id,
+      needsOrchestration: planData.needsOrchestration,
+      reason: planData.reason,
       subTasks: planData.subTasks,
       stages: planData.stages,
       createdAt: Date.now()
@@ -297,9 +304,17 @@ Consider:
       prompt += await this.injectLifecycleContext(lifecycleDir);
     }
 
-    prompt += `\nPlease provide an execution plan as a JSON object with the following structure:\n`;
+    prompt += `\n**IMPORTANT: First determine if this task needs multi-agent orchestration:**
+
+- Simple greetings/chat (你好, hi, thanks) → Set needsOrchestration=false, no subtasks
+- Simple queries (time, weather, single question) → Set needsOrchestration=false, no subtasks  
+- Complex tasks (multi-step, development, projects) → Set needsOrchestration=true, create plan
+
+Please provide an execution plan as a JSON object with the following structure:\n`;
     prompt += '```json\n';
     prompt += `{
+  "needsOrchestration": true,
+  "reason": "Multi-step development task requiring coordination",
   "subTasks": [
     {
       "id": "subtask-1",
@@ -371,12 +386,28 @@ Consider:
     output: PlanOutput | null,
     taskId: string
   ): {
+    needsOrchestration?: boolean;
+    reason?: string;
     subTasks: SubTask[];
     stages: ExecutionStage[];
   } {
     if (!output) {
       log.warn('[Planner] No structured output, using default plan');
-      return this.getDefaultPlan(taskId);
+      return {
+        needsOrchestration: true,
+        ...this.getDefaultPlan(taskId)
+      };
+    }
+
+    // 🆕 如果 LLM 判断不需要编排，提前返回
+    if (output.needsOrchestration === false) {
+      log.info(`[Planner] Task does not need orchestration: ${output.reason || '任务过于简单'}`);
+      return {
+        needsOrchestration: false,
+        reason: output.reason,
+        subTasks: [],
+        stages: []
+      };
     }
 
     const subTasks: SubTask[] = output.subTasks.map(
