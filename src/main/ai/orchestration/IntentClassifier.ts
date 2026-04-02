@@ -112,17 +112,7 @@ export class IntentClassifier {
       };
     }
 
-    // ========== 短消息（< 10 字且无关键词） ==========
-    if (length < 10 && !this.hasComplexKeywords(trimmed)) {
-      return {
-        type: 'simple-chat',
-        confidence: 0.95,
-        reason: '消息过短（< 10 字）且无复杂任务关键词',
-        needsOrchestration: false
-      };
-    }
-
-    // ========== 单步查询（时间、天气、简单问题） ==========
+    // ========== 单步查询（时间、天气、简单问题）- 优先级高 ==========
     const simpleQueryPatterns = [
       /^(现在|今天|明天)?(几点|时间|日期)/,
       /^(今天|明天|后天)?(天气|温度)/,
@@ -139,10 +129,21 @@ export class IntentClassifier {
       };
     }
 
+    // ========== 短消息（< 10 字且无关键词） ==========
+    if (length < 10 && !this.hasComplexKeywords(trimmed)) {
+      return {
+        type: 'simple-chat',
+        confidence: 0.95,
+        reason: '消息过短（< 10 字）且无复杂任务关键词',
+        needsOrchestration: false
+      };
+    }
+
     // ========== 复杂任务特征 ==========
     const complexIndicators = this.getComplexityScore(trimmed);
 
-    if (complexIndicators.score >= 3) {
+    if (complexIndicators.score >= 2) {
+      // 降低阈值从 3 到 2
       return {
         type: 'complex-task',
         confidence: 0.7 + complexIndicators.score * 0.05, // 最高 0.95
@@ -215,32 +216,53 @@ export class IntentClassifier {
     }
 
     // 3. 并发关键词
-    const parallelKeywords = ['同时', '并且', '以及', '还要', '也要'];
+    const parallelKeywords = ['同时', '并且', '以及', '还要', '也要', '包括'];
     if (parallelKeywords.some((kw) => message.includes(kw))) {
       score += 1;
       indicators.push('并发需求');
     }
 
-    // 4. 代码/技术关键词
-    const techKeywords = ['代码', '函数', '接口', 'API', '数据库', '服务器', '部署', '测试'];
+    // 4. 代码/技术关键词（降低阈值）
+    const techKeywords = [
+      '代码',
+      '函数',
+      '接口',
+      'API',
+      '数据库',
+      '服务器',
+      '部署',
+      '测试',
+      'Node.js',
+      'MongoDB',
+      'REST'
+    ];
     const techCount = techKeywords.filter((kw) => message.includes(kw)).length;
-    if (techCount >= 2) {
-      score += 2;
+    if (techCount >= 1) {
+      // 降低阈值从 2 到 1
+      score += 1;
       indicators.push('技术任务');
     }
 
     // 5. 创建/开发关键词
-    const devKeywords = ['创建', '开发', '实现', '设计', '搭建', '构建'];
+    const devKeywords = ['创建', '开发', '实现', '设计', '搭建', '构建', '需要实现'];
     if (devKeywords.some((kw) => message.includes(kw))) {
       score += 1;
       indicators.push('开发任务');
     }
 
     // 6. 文件/项目关键词
-    const projectKeywords = ['项目', '应用', '网站', '系统', '平台'];
+    const projectKeywords = ['项目', '应用', '网站', '系统', '平台', '播放器', '管理', '博客'];
     if (projectKeywords.some((kw) => message.includes(kw))) {
       score += 1;
       indicators.push('项目级任务');
+    }
+
+    // 7. 功能列举（需要实现多个功能）
+    const featureKeywords = ['播放', '暂停', '切换', '发布', '评论', '点赞', '审核', '注册', '登录', '验证'];
+    const featureCount = featureKeywords.filter((kw) => message.includes(kw)).length;
+    if (featureCount >= 2) {
+      score += 1;
+      indicators.push('多功能需求');
     }
 
     return { score, indicators };
