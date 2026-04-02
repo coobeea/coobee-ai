@@ -23,8 +23,8 @@
 
     /* 文本颜色 */
     --text-primary: 240 10% 3.9%;
-    --text-secondary: 217 19% 47%;
-    --text-muted: 217 19% 47%;
+    --text-secondary: 217 19% 35%;
+    --text-muted: 217 19% 35%;
 
     /* 边框和分割线 */
     --border: 214 32% 91%;
@@ -42,7 +42,7 @@
 
     /* 次要色调 */
     --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 214 20% 65%;
+    --secondary-foreground: 214 20% 28%;
     --secondary-hover: 240 4.8% 90%;
 
     /* 强调色 */
@@ -66,7 +66,7 @@
 
     /* 其他语义色 */
     --muted: 210 40% 93%;
-    --muted-foreground: 217 19% 47%;
+    --muted-foreground: 217 19% 35%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
