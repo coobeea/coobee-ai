@@ -6,6 +6,7 @@
 
 import { log } from '@main/common/logger';
 import { ChannelRuntime } from '@main/channels/ChannelRuntime';
+import { generateSnowflakeId } from '@main/utils/SnowflakeIdGenerator';
 import type { AnalysisTemplate, AnalysisResult, DimensionChange, DimensionValue } from '@shared/types/insight';
 
 export interface AnalyzeParams {
@@ -33,9 +34,10 @@ export class InsightAnalyzer {
 
     const prompt = this.buildPrompt(template, fullTranscript, newText, previousResult, snapshotSequence);
 
+    // 🔧 使用标准 Snowflake ID
     const result = await this.runtime.executeAgent({
       agentId: 'insight-analyst',
-      sessionId: `insight-analysis-${Date.now()}`,
+      sessionId: generateSnowflakeId(),
       message: prompt,
       context: {
         channel: 'insight',

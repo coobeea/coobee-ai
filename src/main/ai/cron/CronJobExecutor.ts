@@ -12,6 +12,7 @@ import { nanoid } from 'nanoid';
 import { log } from '@main/common/logger';
 import { getAgentExecutor } from '@main/ai/AgentExecutor';
 import { eventBus } from '@main/common/eventbus';
+import { generateSnowflakeId } from '@main/utils/SnowflakeIdGenerator';
 
 import { CronJobStore } from './CronJobStore';
 import type { CronJobDefinition, CronJobExecution } from './types';
@@ -183,7 +184,8 @@ export class CronJobExecutor {
     addLog: (level: 'info' | 'error' | 'warn', message: string) => void
   ): Promise<string> {
     const agentExecutor = getAgentExecutor();
-    const sessionId = `cron-${job.id}-${Date.now()}`;
+    // 🔧 使用标准 Snowflake ID，避免过长的拼接 ID
+    const sessionId = generateSnowflakeId();
     const agentName = job.agentId || 'app-copilot';
     const builder = agentExecutor.piMono().name(agentName);
 

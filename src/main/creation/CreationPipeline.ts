@@ -1,6 +1,7 @@
 import { ChannelRuntime } from '@main/channels/ChannelRuntime';
 import { log } from '@main/common/logger';
 import { eventBus } from '@main/common/eventbus';
+import { generateSnowflakeId } from '@main/utils/SnowflakeIdGenerator';
 import { CreationStore } from './CreationStore';
 import { KnowledgeStore } from '@main/knowledge/KnowledgeStore';
 import type { CreationSessionMeta, PhaseId, CreationTargetType } from '@shared/types/creation';
@@ -58,9 +59,10 @@ export class CreationPipeline {
 
     const runtime = ChannelRuntime.getInstance();
     const agentId = this.resolveAgentId(meta.targetType, 'requirements');
+    // 🔧 使用独立的 Snowflake ID，而不是拼接 sessionId
     const result = await runtime.executeAgent({
       agentId,
-      sessionId: `creation-${sessionId}-req`,
+      sessionId: generateSnowflakeId(),
       message: agentMessage,
       context: { channel: 'creation', sessionId, phase: 'requirements' }
     });
@@ -218,9 +220,10 @@ export class CreationPipeline {
         const agentId = this.resolveAgentId(meta.targetType, phaseId);
 
         const context = this.buildPhaseContext(sessionId, phaseId);
+        // 🔧 使用独立的 Snowflake ID，而不是拼接 sessionId
         const result = await runtime.executeAgent({
           agentId,
-          sessionId: `creation-${sessionId}-${phaseId}`,
+          sessionId: generateSnowflakeId(),
           message: context,
           context: { channel: 'creation', sessionId, phase: phaseId }
         });

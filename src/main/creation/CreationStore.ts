@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Env } from '@main/common/env';
 import { log } from '@main/common/logger';
+import { generateSnowflakeId } from '@main/utils/SnowflakeIdGenerator';
 import type {
   CreationSessionMeta,
   CreationStatus,
@@ -22,11 +23,9 @@ function defaultPhases(): Record<PhaseId, PhaseState> {
   return phases;
 }
 
+/** 生成标准 Snowflake ID 作为 sessionId */
 function generateSessionId(): string {
-  const now = new Date();
-  const date = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `creation-${date}-${rand}`;
+  return generateSnowflakeId();
 }
 
 /**
