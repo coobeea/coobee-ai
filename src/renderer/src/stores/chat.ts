@@ -60,6 +60,10 @@ export const useChatStore = defineStore('chat', () => {
   const messageQueue = ref<QueuedMessage[]>([]);
   let queueCounter = 0;
 
+  // ---- 模式切换 ----
+  // 保存最后一条用户消息，用于智能模式切换时重新发送
+  const lastUserMessage = ref<{ text: string; files?: { path: string; name: string }[] } | null>(null);
+
   // ---- 对外 Actions ----
 
   async function sendMessage(
@@ -87,8 +91,12 @@ export const useChatStore = defineStore('chat', () => {
   async function sendMessageInternal(
     text: string,
     files?: { path: string; name: string }[],
-    skillRef?: string
+    skillRef?: string,
+    forcedMode?: 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop' | 'delegate'
   ): Promise<void> {
+    // 保存最后一条用户消息（用于智能模式切换）
+    lastUserMessage.value = { text, files };
+
     // 构建完整消息（包含文件路径）
     let finalMessage = text;
     if (files && files.length > 0) {
@@ -109,11 +117,11 @@ export const useChatStore = defineStore('chat', () => {
         // agents store 未初始化时忽略
       }
 
-      // 从 Thread 获取 mode（agentMode/agentType）
-      let mode: 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop' | 'delegate' = 'agent';
+      // 从 Thread 获取 mode（agentMode/agentType），或使用强制指定的模式
+      let mode: 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop' | 'delegate' = forcedMode || 'agent';
       const oldSessionId = sessionId.value;
 
-      if (oldSessionId) {
+      if (!forcedMode && oldSessionId) {
         try {
           const { useThreadsStore } = await import('./threads');
           const threadsStore = useThreadsStore();
@@ -434,6 +442,37 @@ export const useChatStore = defineStore('chat', () => {
       console.warn('[chatStore] loadHistory failed:', err);
     }
   }
+
+  // ---- 智能模式切换监听器 ----
+  // 当 Agent 检测到复杂任务时，自动切换到 orchestrator 模式
+  gateway.on('mode.switch-requested', async (data: unknown) => {
+    const payload = data as Record<string, unknown>;
+    const { targetMode, reason } = payload;
+    console.log(`[chatStore] Mode switch requested:`, { targetMode, reason });
+
+    // 显示切换提示
+    addUserMessage(
+      `\n---\n\n🔄 **正在切换到${targetMode === 'orchestrator' ? '编排' : targetMode}模式**\n\n${reason || '检测到复杂任务'}\n\n---\n`
+    );
+
+    // 如果有保存的最后一条用户消息，重新发送
+    if (lastUserMessage.value && targetMode === 'orchestrator') {
+      // 等待当前 stream 完成
+      if (isStreaming.value) {
+        await new Promise<void>((resolve) => {
+          const unwatch = watch(isStreaming, (streaming) => {
+            if (!streaming) {
+              unwatch();
+              resolve();
+            }
+          });
+        });
+      }
+
+      // 自动重新发送，使用 orchestrator 模式
+      await sendMessageInternal(lastUserMessage.value.text, lastUserMessage.value.files, undefined, 'orchestrator');
+    }
+  });
 
   return {
     sessionId,
