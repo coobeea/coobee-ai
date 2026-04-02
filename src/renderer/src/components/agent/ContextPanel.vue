@@ -48,21 +48,33 @@ const agentType = computed<AgentType>(() => currentThread.value?.agentType ?? 'a
 
 const agentTypeLabel = computed(() => {
   switch (agentType.value) {
+    case 'agent':
+      return '自由模式';
     case 'orchestrator':
-      return '编排';
+      return '编排模式';
     case 'swarm':
-      return 'Swarm';
+      return '群体模式';
+    case 'quality-loop':
+      return '质量闭环';
+    case 'discussion':
+      return '讨论模式';
     default:
-      return '单 Agent';
+      return '自由模式';
   }
 });
 
 const agentTypeIcon = computed(() => {
   switch (agentType.value) {
+    case 'agent':
+      return 'i-carbon-bot';
     case 'orchestrator':
       return 'i-carbon-flow';
     case 'swarm':
       return 'i-carbon-network-3';
+    case 'quality-loop':
+      return 'i-carbon-renew';
+    case 'discussion':
+      return 'i-carbon-chat';
     default:
       return 'i-carbon-bot';
   }
