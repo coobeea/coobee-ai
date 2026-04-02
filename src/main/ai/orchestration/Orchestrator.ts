@@ -69,6 +69,8 @@ export interface OrchestratorConfig {
  */
 export interface OrchestratorEvent {
   type:
+    | 'analysis:start'
+    | 'analysis:done'
     | 'lifecycle:initialized'
     | 'plan:start'
     | 'plan:done'
@@ -155,11 +157,13 @@ export class Orchestrator implements IOrchestrator {
   /**
    * 执行任务
    *
-   * 流程（程序化控制）：
-   * 0. 【可选】POC 生命周期初始化（启用 lifecycle 时）
-   * 1. 规划阶段：Planner（LLM）分解任务
-   * 2. 执行阶段：按 Stage 顺序，调度 Worker（LLM）执行子任务
-   * 3. 聚合阶段：收集所有子任务结果，生成最终输出
+   * 新流程（更自然）：
+   * 0. 需求分析：RequirementAnalyzer（LLM）分析需求，判断任务类型
+   * 1. 决策：如果是简单任务，直接返回；如果是复杂任务，继续
+   * 2. POC 生命周期初始化：生成需求分析文档和其他生命周期文件
+   * 3. 规划阶段：Planner（LLM）基于需求分析分解任务
+   * 4. 执行阶段：WorkerCoordinator 按 Stage 调度 Worker 执行
+   * 5. 聚合阶段：Aggregator 汇总结果，生成验收报告
    */
   async executeTask(task: Task): Promise<TaskExecutionResult> {
     const startTime = Date.now();
@@ -168,44 +172,32 @@ export class Orchestrator implements IOrchestrator {
     this.runningTasks.set(task.id, { task, startTime, aborted: false });
 
     try {
-      // ── 0. POC 生命周期初始化 ──
-      let lifecycleDir: string | undefined;
-      if (this.resolvedConfig.useLifecycle && this.resolvedConfig.parentSessionId) {
-        log.info('[Orchestrator] Phase 0: Initializing POC lifecycle...');
-        const { OrchestrationLifecycleManager } = await import('./lifecycle/OrchestrationLifecycleManager');
-        const { OrchestrationLifecycleMonitor } = await import('./lifecycle/OrchestrationLifecycleMonitor');
+      // ── 0. 需求分析阶段 ──
+      log.info('[Orchestrator] Phase 0: Requirement Analysis...');
+      this.emit({ type: 'analysis:start', data: { taskId: task.id } });
 
-        const lifecycleManager = new OrchestrationLifecycleManager();
-        lifecycleDir = await lifecycleManager.initialize(task, this.resolvedConfig.parentSessionId);
+      const { RequirementAnalyzer } = await import('./RequirementAnalyzer');
+      const analyzer = new RequirementAnalyzer();
 
-        // 🆕 创建监控器
-        this.lifecycleMonitor = new OrchestrationLifecycleMonitor(lifecycleDir);
+      const analysisResult = await analyzer.analyze(task);
 
-        this.emit({
-          type: 'lifecycle:initialized',
-          data: { taskId: task.id, lifecycleDir }
-        });
-        log.info(`[Orchestrator] Lifecycle initialized at: ${lifecycleDir}`);
-      }
+      this.emit({
+        type: 'analysis:done',
+        data: {
+          taskId: task.id,
+          taskType: analysisResult.taskType,
+          needsOrchestration: analysisResult.needsOrchestration
+        }
+      });
 
-      // ── 1. 规划阶段（含意图识别） ──
-      this.emit({ type: 'plan:start', data: { taskId: task.id, objective: task.objective } });
-      log.info('[Orchestrator] Phase 1: Planning...');
+      log.info(
+        `[Orchestrator] Analysis complete: taskType=${analysisResult.taskType}, ` +
+          `needsOrchestration=${analysisResult.needsOrchestration}`
+      );
 
-      const plan = await this.planner.plan(task, lifecycleDir);
-
-      // 🆕 如果 LLM 判断不需要编排，直接返回简单响应
-      if (plan.needsOrchestration === false) {
-        log.info(`[Orchestrator] Task ${task.id} does not need orchestration: ${plan.reason || '任务过于简单'}`);
-
-        this.emit({
-          type: 'plan:done',
-          data: {
-            taskId: task.id,
-            needsOrchestration: false,
-            reason: plan.reason
-          }
-        });
+      // ── 1. 决策阶段 ──
+      if (!analysisResult.needsOrchestration) {
+        log.info(`[Orchestrator] Task ${task.id} is a simple ${analysisResult.taskType}, skipping orchestration`);
 
         const endTime = Date.now();
         this.runningTasks.delete(task.id);
@@ -213,7 +205,7 @@ export class Orchestrator implements IOrchestrator {
         return {
           taskId: task.id,
           status: 'success',
-          finalOutput: plan.reason || '这是一个简单的对话，不需要复杂的任务编排。请使用普通对话模式。',
+          finalOutput: analysisResult.reason,
           subTaskResults: [],
           stats: {
             startTime,
@@ -226,6 +218,38 @@ export class Orchestrator implements IOrchestrator {
         };
       }
 
+      // ── 2. POC 生命周期初始化（仅复杂任务） ──
+      log.info('[Orchestrator] Phase 1: Initializing POC lifecycle...');
+
+      if (!this.resolvedConfig.parentSessionId) {
+        throw new Error('parentSessionId is required for complex tasks');
+      }
+
+      const { OrchestrationLifecycleManager } = await import('./lifecycle/OrchestrationLifecycleManager');
+      const { OrchestrationLifecycleMonitor } = await import('./lifecycle/OrchestrationLifecycleMonitor');
+
+      const lifecycleManager = new OrchestrationLifecycleManager();
+      const lifecycleDir = await lifecycleManager.initialize(task, this.resolvedConfig.parentSessionId);
+
+      // 🆕 保存需求分析结果到 01-需求分析.md
+      await this.saveRequirementAnalysis(lifecycleDir, task, analysisResult);
+
+      // 创建监控器
+      this.lifecycleMonitor = new OrchestrationLifecycleMonitor(lifecycleDir);
+
+      this.emit({
+        type: 'lifecycle:initialized',
+        data: { taskId: task.id, lifecycleDir }
+      });
+
+      log.info(`[Orchestrator] Lifecycle initialized at: ${lifecycleDir}`);
+
+      // ── 3. 规划阶段 ──
+      this.emit({ type: 'plan:start', data: { taskId: task.id, objective: task.objective } });
+      log.info('[Orchestrator] Phase 2: Planning...');
+
+      const plan = await this.planner.plan(task, lifecycleDir);
+
       this.emit({
         type: 'plan:done',
         data: {
@@ -237,11 +261,11 @@ export class Orchestrator implements IOrchestrator {
 
       log.info(`[Orchestrator] Plan created: ${plan.subTasks.length} subtasks, ${plan.stages.length} stages`);
 
-      // 🆕 保存任务定义和计划到文件
+      // 保存任务定义和计划到文件
       await this.saveTaskDefinitionAndPlan(task, plan);
 
-      // ── 2. 执行阶段 ──
-      log.info('[Orchestrator] Phase 2: Executing...');
+      // ── 4. 执行阶段 ──
+      log.info('[Orchestrator] Phase 3: Executing...');
 
       // 🆕 添加总任务超时控制
       const totalTimeoutMs = this.resolvedConfig.totalTimeout;
@@ -258,9 +282,9 @@ export class Orchestrator implements IOrchestrator {
       // 🆕 保存每个子任务的结果到 tasks/{taskId}/results/
       await this.saveSubTaskResults(task.id, subTaskResults);
 
-      // ── 3. 聚合阶段 ──
+      // ── 5. 聚合阶段 ──
       this.emit({ type: 'aggregate:start' });
-      log.info('[Orchestrator] Phase 3: Aggregating results...');
+      log.info('[Orchestrator] Phase 4: Aggregating results...');
 
       // 🔄 修改：委托给 Aggregator Agent，而非直接调用 LLM
       const { Env } = await import('@main/common/env');
@@ -753,6 +777,77 @@ export class Orchestrator implements IOrchestrator {
     if (entry?.aborted) return true;
     if (this.resolvedConfig.signal?.aborted) return true;
     return false;
+  }
+
+  /**
+   * 🆕 保存需求分析结果到 01-需求分析.md
+   */
+  private async saveRequirementAnalysis(
+    lifecycleDir: string,
+    task: Task,
+    analysisResult: import('./RequirementAnalyzer').RequirementAnalysisResult
+  ): Promise<void> {
+    try {
+      const fs = await import('node:fs/promises');
+      const path = await import('node:path');
+
+      const analysisFile = path.join(lifecycleDir, '01-需求分析.md');
+
+      let content = `# 需求分析\n\n`;
+      content += `## 任务目标\n\n`;
+      content += `${task.objective}\n\n`;
+
+      if (task.description) {
+        content += `## 任务描述\n\n`;
+        content += `${task.description}\n\n`;
+      }
+
+      content += `## 任务分类\n\n`;
+      content += `- **类型**: ${analysisResult.taskType}\n`;
+      content += `- **需要编排**: ${analysisResult.needsOrchestration ? '是' : '否'}\n`;
+      content += `- **判断依据**: ${analysisResult.reason}\n\n`;
+
+      if (analysisResult.analysis) {
+        const analysis = analysisResult.analysis;
+
+        content += `## 核心目标\n\n`;
+        content += `${analysis.coreObjective}\n\n`;
+
+        content += `## 关键需求\n\n`;
+        analysis.keyRequirements.forEach((req, idx) => {
+          content += `${idx + 1}. ${req}\n`;
+        });
+        content += `\n`;
+
+        if (analysis.technicalChallenges.length > 0) {
+          content += `## 技术挑战\n\n`;
+          analysis.technicalChallenges.forEach((challenge, idx) => {
+            content += `${idx + 1}. ${challenge}\n`;
+          });
+          content += `\n`;
+        }
+
+        if (analysis.expectedDeliverables.length > 0) {
+          content += `## 预期交付物\n\n`;
+          analysis.expectedDeliverables.forEach((deliverable, idx) => {
+            content += `${idx + 1}. ${deliverable}\n`;
+          });
+          content += `\n`;
+        }
+
+        content += `## 复杂度评估\n\n`;
+        const complexityMap = { low: '低', medium: '中', high: '高' };
+        content += `**${complexityMap[analysis.estimatedComplexity]}**\n\n`;
+      }
+
+      content += `---\n\n`;
+      content += `*此文档由需求分析器自动生成于 ${new Date().toLocaleString('zh-CN')}*\n`;
+
+      await fs.writeFile(analysisFile, content, 'utf-8');
+      log.info(`[Orchestrator] Requirement analysis saved to: ${analysisFile}`);
+    } catch (error) {
+      log.error('[Orchestrator] Failed to save requirement analysis:', error);
+    }
   }
 
   /**

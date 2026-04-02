@@ -46,10 +46,6 @@ export type SubTaskStatus = 'pending' | 'running' | 'completed' | 'failed';
  */
 export interface ExecutionPlan {
   taskId: string;
-  /** 是否需要编排（LLM 判断，如果为 false 表示任务太简单，应降级为单 Agent） */
-  needsOrchestration?: boolean;
-  /** 不需要编排的原因 */
-  reason?: string;
   subTasks: SubTask[];
   stages: Stage[]; // 执行阶段
   estimatedDuration?: number;
