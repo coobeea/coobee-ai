@@ -273,6 +273,27 @@ function createExtensionServices(): ExtensionServices {
           builder.instructions(agentDef.instructions);
         }
 
+        // 🔥 性能优化：使用 Agent 定义中的模型配置
+        if (agentDef.model) {
+          builder.model(agentDef.model);
+        }
+
+        // 🔥 通过 modelMeta 传递 temperature 和 maxTokens
+        // （PiMonoBuilder 会将其传递给 Runtime）
+        const builderAny = builder as Parameters<typeof agentExecutor.stream>[0]['builder'] & {
+          _modelMeta?: Record<string, unknown>;
+        };
+
+        if (typeof agentDef.temperature === 'number' || typeof agentDef.maxTokens === 'number') {
+          builderAny._modelMeta = builderAny._modelMeta || {};
+          if (typeof agentDef.temperature === 'number') {
+            builderAny._modelMeta.temperature = agentDef.temperature;
+          }
+          if (typeof agentDef.maxTokens === 'number') {
+            builderAny._modelMeta.max_tokens = agentDef.maxTokens;
+          }
+        }
+
         let output = '';
         const gen = agentExecutor.stream({ sessionId, message, builder });
         for await (const chunk of gen) {

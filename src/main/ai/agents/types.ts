@@ -66,6 +66,12 @@ export interface AgentDefinition {
   /** 思维链级别（可选，默认用全局配置） */
   thinkingLevel?: ThinkingLevel;
 
+  /** 温度参数（可选，0-2，控制输出随机性） */
+  temperature?: number;
+
+  /** 最大 Token 数（可选，限制输出长度） */
+  maxTokens?: number;
+
   /** 创建时间（ISO 8601） */
   createdAt: string;
 
@@ -110,6 +116,8 @@ export interface CreateAgentParams {
   skills?: string[];
   model?: string;
   thinkingLevel?: ThinkingLevel;
+  temperature?: number;
+  maxTokens?: number;
   createdBy?: 'user' | 'agent' | 'system';
   metadata?: Record<string, unknown>;
 }
@@ -123,5 +131,7 @@ export interface UpdateAgentParams {
   skills?: string[];
   model?: string;
   thinkingLevel?: ThinkingLevel;
+  temperature?: number;
+  maxTokens?: number;
   metadata?: Record<string, unknown>;
 }
