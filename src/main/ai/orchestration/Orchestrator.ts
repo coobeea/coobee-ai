@@ -130,6 +130,10 @@ export class Orchestrator implements IOrchestrator {
     typeof import('./lifecycle/OrchestrationLifecycleMonitor').OrchestrationLifecycleMonitor
   >;
 
+  /** 🆕 项目空间路径（所有 Worker 共享的代码开发目录） */
+  // @ts-expect-error - Used for state tracking, may be read in future features
+  private _projectDir?: string;
+
   constructor(
     private readonly planner: IPlanner,
     private readonly workerCoordinator: IWorkerCoordinator,
@@ -219,6 +223,13 @@ export class Orchestrator implements IOrchestrator {
 
       const { OrchestrationLifecycleManager } = await import('./lifecycle/OrchestrationLifecycleManager');
       const { OrchestrationLifecycleMonitor } = await import('./lifecycle/OrchestrationLifecycleMonitor');
+
+      // 🆕 确保项目空间存在
+      const projectDir = await this.ensureProjectDir();
+      log.info(`[Orchestrator] Project directory: ${projectDir}`);
+
+      // 🆕 将项目空间传递给 WorkerCoordinator
+      (this.workerCoordinator as { setProjectDir?: (dir: string) => void }).setProjectDir?.(projectDir);
 
       const lifecycleManager = new OrchestrationLifecycleManager();
       const lifecycleDir = await lifecycleManager.initialize(task, this.resolvedConfig.parentSessionId);
@@ -1066,6 +1077,63 @@ export class Orchestrator implements IOrchestrator {
     }
 
     return artifacts;
+  }
+
+  /**
+   * 🆕 确保项目空间存在
+   *
+   * 编排模式下，所有 Worker 应该在同一个项目空间中协作开发代码，
+   * 而不是各自创建独立的项目副本。
+   *
+   * 策略：
+   * 1. 如果 Thread 已指定 projectDir，使用它
+   * 2. 否则，在 {threadWorkspace}/project/ 创建统一项目空间
+   * 3. 更新 Thread 的 projectDir 记录
+   */
+  private async ensureProjectDir(): Promise<string> {
+    if (!this.resolvedConfig.parentSessionId) {
+      throw new Error('parentSessionId is required');
+    }
+
+    const fs = await import('fs-extra');
+    const path = await import('node:path');
+    const { Env } = await import('@main/common/env');
+    const { ThreadStore } = await import('../threads/ThreadStore');
+
+    // 1. 检查 Thread 是否已有 projectDir
+    try {
+      const threadStore = await ThreadStore.getInstance();
+      const thread = await threadStore.get(this.resolvedConfig.parentSessionId);
+
+      if (thread?.projectDir) {
+        log.info(`[Orchestrator] Using existing project directory: ${thread.projectDir}`);
+        this._projectDir = thread.projectDir;
+        return thread.projectDir;
+      }
+    } catch (error) {
+      log.warn('[Orchestrator] Failed to read thread projectDir:', error);
+    }
+
+    // 2. 创建默认项目空间：{threadWorkspace}/project/
+    const threadWorkspace = await Env.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId);
+    const defaultProjectDir = path.join(threadWorkspace, 'project');
+
+    await fs.ensureDir(defaultProjectDir);
+    log.info(`[Orchestrator] Created default project directory: ${defaultProjectDir}`);
+
+    // 3. 更新 Thread 记录
+    try {
+      const threadStore = await ThreadStore.getInstance();
+      await threadStore.update(this.resolvedConfig.parentSessionId, {
+        projectDir: defaultProjectDir
+      });
+      log.info(`[Orchestrator] Updated thread projectDir: ${defaultProjectDir}`);
+    } catch (error) {
+      log.warn('[Orchestrator] Failed to update thread projectDir:', error);
+    }
+
+    this._projectDir = defaultProjectDir;
+    return defaultProjectDir;
   }
 
   private delay(ms: number): Promise<void> {

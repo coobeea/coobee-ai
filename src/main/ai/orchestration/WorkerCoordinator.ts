@@ -76,6 +76,8 @@ export interface WorkerCoordinatorConfig {
   model?: string;
   /** 默认工作区根目录 */
   workspaceRoot?: string;
+  /** 🆕 项目空间路径（所有 Worker 共享的代码开发目录） */
+  projectDir?: string;
   /** 是否为 Worker 注入工具 */
   injectTools?: boolean;
   /** 执行超时（ms，默认 5 分钟） */
@@ -263,6 +265,21 @@ export class WorkerCoordinator implements IWorkerCoordinator {
   }
 
   /**
+   * 🆕 设置项目空间路径
+   *
+   * 允许 Orchestrator 动态设置所有 Worker 共享的项目空间。
+   */
+  setProjectDir(projectDir: string): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mutableThis = this as any;
+    if (!mutableThis.config) {
+      mutableThis.config = {};
+    }
+    mutableThis.config.projectDir = projectDir;
+    log.info(`[WorkerCoordinator] ProjectDir set to: ${projectDir}`);
+  }
+
+  /**
    * 清理所有 Workers
    */
   async clear(): Promise<void> {
@@ -341,6 +358,12 @@ export class WorkerCoordinator implements IWorkerCoordinator {
           .contextDir(path.join(subAgentWorkspace, '.runtime', 'contexts'));
       }
 
+      // 🆕 设置项目空间（所有 Worker 共享的代码开发目录）
+      if (this.config?.projectDir) {
+        builder.projectDir(this.config.projectDir);
+        log.info(`[WorkerCoordinator] Set projectDir for worker: ${this.config.projectDir}`);
+      }
+
       await injectEnv(sessionId, builder);
       return await builder.build();
     }
@@ -366,6 +389,12 @@ export class WorkerCoordinator implements IWorkerCoordinator {
         .sessionDir(path.join(subAgentWorkspace, '.runtime', 'sessions'))
         .workspaceRoot(subAgentWorkspace)
         .contextDir(path.join(subAgentWorkspace, '.runtime', 'contexts'));
+    }
+
+    // 🆕 设置项目空间（所有 Worker 共享的代码开发目录）
+    if (this.config?.projectDir) {
+      builder.projectDir(this.config.projectDir);
+      log.info(`[WorkerCoordinator] Set projectDir for default worker: ${this.config.projectDir}`);
     }
 
     await injectEnv(sessionId, builder);
