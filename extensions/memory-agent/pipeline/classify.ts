@@ -10,9 +10,12 @@ import type { ExtensionApi } from '../../../src/main/common/extension';
 
 const AGENT_ID = 'memory-analyzer';
 const CLASSIFY_INPUT_MAX_CHARS = 4000;
+const CLASSIFY_TIMEOUT_MS = 15000; // 15秒超时，防止阻塞
 
 /**
  * 使用 memory-analyzer Agent 对 Agent 输出进行分类
+ *
+ * 🔥 性能优化：15秒超时保护，避免长时间等待
  */
 export async function classifyMemory(api: ExtensionApi, agentOutput: string): Promise<ClassificationResult> {
   let trimmed = agentOutput;
@@ -28,7 +31,13 @@ export async function classifyMemory(api: ExtensionApi, agentOutput: string): Pr
       inputLength: input.length
     });
 
-    const response = await api.services.llm.runAgent(AGENT_ID, input);
+    // 🔥 添加超时保护
+    const response = await Promise.race([
+      api.services.llm.runAgent(AGENT_ID, input),
+      new Promise<string>((_, reject) =>
+        setTimeout(() => reject(new Error('LLM classification timeout')), CLASSIFY_TIMEOUT_MS)
+      )
+    ]);
 
     api.logger.info('[memory-agent classify] Agent 返回', { preview: response.substring(0, 200) });
 
