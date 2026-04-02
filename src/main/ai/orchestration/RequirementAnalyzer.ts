@@ -161,51 +161,27 @@ export class RequirementAnalyzer implements IRequirementAnalyzer {
 
   /**
    * 降级分析（当 LLM 调用失败时）
+   *
+   * ⚠️ 不使用关键词匹配！
+   * 如果 LLM 调用失败，默认认为是复杂任务，进入完整编排流程。
+   * 这样虽然可能会有些"大材小用"，但总比误判简单任务为复杂任务要好。
    */
   private getFallbackAnalysis(task: Task): RequirementAnalysisResult {
-    const objective = task.objective.trim().toLowerCase();
+    log.warn('[RequirementAnalyzer] LLM analysis failed, defaulting to complex-task for safety');
 
-    // 简单启发式判断
-    const greetings = ['你好', 'hi', 'hello', '嗨', '您好', '谢谢', '再见', 'bye', '在吗'];
-    if (greetings.some((g) => objective === g || objective === g + '！' || objective === g + '!')) {
-      return {
-        taskType: 'simple-chat',
-        needsOrchestration: false,
-        reason: '这是一个简单的问候或闲聊，不需要编排'
-      };
-    }
-
-    // 简单查询特征
-    if (objective.length < 20 && /^(今天|现在|什么是|怎么)/.test(objective)) {
-      return {
-        taskType: 'simple-query',
-        needsOrchestration: false,
-        reason: '这是一个简单的查询问题，不需要编排'
-      };
-    }
-
-    // 复杂任务特征
-    const complexKeywords = ['开发', '创建', '实现', '设计', '构建', '搭建', '系统', '项目', '架构'];
-    if (complexKeywords.some((kw) => objective.includes(kw))) {
-      return {
-        taskType: 'complex-task',
-        needsOrchestration: true,
-        reason: '这是一个复杂的开发任务，需要多智能体协作',
-        analysis: {
-          coreObjective: task.objective,
-          keyRequirements: task.requirements || [],
-          technicalChallenges: [],
-          expectedDeliverables: [],
-          estimatedComplexity: 'medium'
-        }
-      };
-    }
-
-    // 默认：简单查询
+    // 默认：复杂任务，启动完整编排流程
+    // 理由：宁可"大材小用"，也不要漏掉真正的复杂任务
     return {
-      taskType: 'simple-query',
-      needsOrchestration: false,
-      reason: '未能明确判断任务类型，默认为简单查询'
+      taskType: 'complex-task',
+      needsOrchestration: true,
+      reason: 'LLM 分析失败，为安全起见默认为复杂任务',
+      analysis: {
+        coreObjective: task.objective,
+        keyRequirements: task.requirements || [],
+        technicalChallenges: ['需要 LLM 进一步分析'],
+        expectedDeliverables: ['待 LLM 分析确定'],
+        estimatedComplexity: 'medium'
+      }
     };
   }
 }

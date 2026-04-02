@@ -196,121 +196,6 @@ async function createMultiAgentRuntime(
 // 注册 Builder 工厂，供 Pipeline executor 使用
 agentExecutor.setBuilderFactory((mode) => createBuilder(mode));
 
-// ==================== 轻量级意图识别 ====================
-
-/**
- * 判断消息是否过于简单，不需要多智能体编排
- *
- * 简单规则：
- * - 打招呼、感谢、确认等社交对话
- * - 非常短的消息（< 10 字符）
- * - 简单查询（时间、天气等单一问题）
- */
-function isSimpleMessage(message: string): boolean {
-  const trimmed = message.trim().toLowerCase();
-  const length = trimmed.length;
-
-  // 1. 打招呼、感谢、确认等社交对话
-  const greetings = [
-    '你好',
-    'hi',
-    'hello',
-    '嗨',
-    '您好',
-    '早',
-    '早上好',
-    '下午好',
-    '晚上好',
-    '晚安',
-    '谢谢',
-    '感谢',
-    '多谢',
-    'thanks',
-    'thank you',
-    '好的',
-    '好',
-    '行',
-    '可以',
-    'ok',
-    'okay',
-    '再见',
-    'bye',
-    'goodbye',
-    '拜拜',
-    '在吗',
-    '在不在',
-    '有人吗'
-  ];
-
-  for (const greeting of greetings) {
-    if (
-      trimmed === greeting ||
-      trimmed === greeting + '！' ||
-      trimmed === greeting + '!' ||
-      trimmed === greeting + '？' ||
-      trimmed === greeting + '?'
-    ) {
-      return true;
-    }
-  }
-
-  // 2. 非常短的消息（可能是简单对话）
-  if (length <= 8 && !hasComplexIndicators(trimmed)) {
-    return true;
-  }
-
-  // 3. 简单查询模式（单一问题）
-  const simpleQueryPatterns = [
-    /^(现在|今天|明天)?(几点|时间|日期)/,
-    /^(今天|明天|后天)?(天气|温度)/,
-    /^什么是.{1,15}$/,
-    /^(怎么|如何).{1,15}$/
-  ];
-
-  if (simpleQueryPatterns.some((pattern) => pattern.test(trimmed))) {
-    return true;
-  }
-
-  // 默认：不简单，需要编排
-  return false;
-}
-
-/**
- * 检查消息是否包含复杂任务指标
- */
-function hasComplexIndicators(message: string): boolean {
-  const complexKeywords = [
-    '开发',
-    '创建',
-    '实现',
-    '设计',
-    '构建',
-    '搭建',
-    '编写',
-    '制作',
-    '系统',
-    '项目',
-    '平台',
-    '应用',
-    '网站',
-    '程序',
-    '架构',
-    '框架',
-    '模块',
-    '组件',
-    '前端',
-    '后端',
-    '全栈',
-    '数据库',
-    '并且',
-    '同时',
-    '以及',
-    '还有'
-  ];
-
-  return complexKeywords.some((keyword) => message.includes(keyword));
-}
-
 export const chatMethods: MethodGroup = {
   namespace: 'chat',
   methods: {
@@ -378,26 +263,8 @@ export const chatMethods: MethodGroup = {
       try {
         // ========== 多智能体模式（Orchestrator / Swarm / Quality-Loop） ==========
         if (mode === 'orchestrator' || mode === 'swarm' || mode === 'quality-loop') {
-          // 🆕 提前进行轻量级意图识别，避免简单对话进入复杂的编排流程
-          const shouldDowngrade = isSimpleMessage(message);
-
-          if (shouldDowngrade) {
-            log.info(`[chat.send] Message is too simple for ${mode} mode, downgrading to agent mode`);
-
-            // 降级到普通 agent 模式，自然对话
-            const pipelineResult = await agentExecutor.submitViaPipeline(sid, message, 'agent');
-            if (pipelineResult) {
-              return {
-                sessionId: sid,
-                status: pipelineResult.status,
-                mode: 'agent', // 降级后的模式
-                queuePosition: pipelineResult.queuePosition
-              };
-            }
-            return {};
-          }
-
-          // 复杂任务：继续使用多智能体模式
+          // 用户明确选择了编排模式 → 直接执行，不做任何过滤
+          // 内部的 RequirementAnalyzer（LLM）会智能判断是否需要完整编排
           const runtime = await createMultiAgentRuntime(mode, sid);
           const result = agentExecutor.submit({ sessionId: sid, message, runtime });
 
