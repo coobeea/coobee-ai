@@ -250,6 +250,13 @@ export class QualityLoopRuntime extends AbstractAgentRuntime {
       }
     }
 
+    // 🆕 附加交接提示
+    const handoverMessage =
+      '\n\n---\n\n🔄 **质量闭环任务已执行完毕，控制权已交还给自由模式管家**。您可以继续向我提问。';
+    currentOutput += handoverMessage;
+    yield { type: 'text:delta', content: handoverMessage, data: { delta: handoverMessage } };
+    yield { type: 'text:done', content: currentOutput, data: { text: currentOutput } };
+
     // ── 完成 ──
     const duration = Date.now() - startTime;
     yield {

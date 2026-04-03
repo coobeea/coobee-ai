@@ -174,20 +174,13 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
         }
 
         // ✅ 汇总已由 Orchestrator 内部的 Aggregator Agent 完成
-        // 不再需要在 Runtime 层做二次汇总
         qualityLoopOutput = resultOutput;
-        pushChunk({ type: 'text:start', content: '' });
-        pushChunk({
-          type: 'text:delta',
-          content: resultOutput,
-          data: { delta: resultOutput }
-        });
-        pushChunk({
-          type: 'text:done',
-          content: resultOutput,
-          data: { text: resultOutput }
-        });
-        pushChunk({ type: 'run:done', content: '' });
+
+        // 唤醒 while 循环
+        if (resolveWaiting) {
+          resolveWaiting();
+          resolveWaiting = null;
+        }
       },
       (error: unknown) => {
         taskDone = true;
@@ -196,8 +189,12 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
         if (error instanceof Error && error.message === 'SIMPLE_TASK_DETECTED') {
           log.info('[OrchestratorRuntime] Simple task detected in Orchestrator, marking for fallback');
           taskError = error;
-          // 不推送 run:error，而是静默结束，让 Gateway 层重新提交
-          pushChunk({ type: 'run:done', content: '' });
+
+          // 唤醒 while 循环
+          if (resolveWaiting) {
+            resolveWaiting();
+            resolveWaiting = null;
+          }
           return;
         }
 
@@ -266,8 +263,21 @@ export class OrchestratorRuntime extends AbstractAgentRuntime {
     // 🆕 如果检测到简单任务，抛出特殊错误让 Gateway 捕获并降级
     if (taskError && (taskError as Error).message === 'SIMPLE_TASK_DETECTED') {
       log.info('[OrchestratorRuntime] Propagating SIMPLE_TASK_DETECTED error for fallback');
+      yield { type: 'run:done', content: '' };
       throw taskError; // 向上传递，让 AgentExecutor / Gateway 处理降级
     }
+
+    if (!taskError) {
+      // 🆕 附加交接提示
+      finalOutput += '\n\n---\n\n🔄 **编排任务已执行完毕，控制权已交还给自由模式管家**。您可以继续向我提问。';
+
+      // 🆕 推送最终结果到前端
+      yield { type: 'text:start', content: '' };
+      yield { type: 'text:delta', content: finalOutput, data: { delta: finalOutput } };
+      yield { type: 'text:done', content: finalOutput, data: { text: finalOutput } };
+    }
+
+    yield { type: 'run:done', content: '' };
 
     // 🆕 保存 Assistant 响应到主会话
     await this.saveAssistantMessage(finalOutput);

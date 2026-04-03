@@ -159,6 +159,9 @@ export class SwarmRuntime extends AbstractAgentRuntime {
         finalOutput += `\n\n---\n## 📦 产出文件\n\n${artifactsSummary}\n\n所有文件已保存到工作空间的 \`output/\` 目录。`;
       }
 
+      // 🆕 附加交接提示
+      finalOutput += '\n\n---\n\n🔄 **群体任务已执行完毕，控制权已交还给自由模式管家**。您可以继续向我提问。';
+
       return {
         output: finalOutput,
         toolCalls: [],
@@ -343,6 +346,11 @@ export class SwarmRuntime extends AbstractAgentRuntime {
         finalOutput += artifactsInfo;
         yield { type: 'text:delta', content: artifactsInfo, data: { delta: artifactsInfo } };
       }
+
+      // 🆕 附加交接提示
+      const handoverMessage = '\n\n---\n\n🔄 **群体任务已执行完毕，控制权已交还给自由模式管家**。您可以继续向我提问。';
+      finalOutput += handoverMessage;
+      yield { type: 'text:delta', content: handoverMessage, data: { delta: handoverMessage } };
 
       yield { type: 'text:done', content: finalOutput, data: { text: finalOutput } };
       yield { type: 'llm:done', content: '' };
