@@ -131,6 +131,12 @@ Usage notes:
 <location>local</location>
 </skill>
 
+<skill>
+<name>agency-experts</name>
+<description>专业领域专家 Agent 提示词库。包含 180+ 个细分领域的专家角色定义（工程、设计、产品、市场等）。当系统在自由模式或编排模式下需要特定领域的专家视角（如前端优化、数据库调优、安全审计）时，可以读取本技能目录下的对应 markdown 文件，直接采纳其专家身份和最佳实践。Use when: (1) user asks for specialized advice, (2) you need to act as a specific expert, (3) you want to adopt a specialized persona for a complex task.</description>
+<location>local</location>
+</skill>
+
 </available_skills>
 
 <!-- SKILLS_TABLE_END -->
