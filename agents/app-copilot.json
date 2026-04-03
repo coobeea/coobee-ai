@@ -18,6 +18,6 @@
     "todo_write",
     "write"
   ],
-  "skills": ["skill-creator", "agent-creator", "model-config", "system-config"],
+  "skills": ["skill-creator", "agent-creator", "model-config", "system-config", "agency-experts"],
   "createdBy": "system"
 }
