@@ -444,19 +444,25 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   // ---- 智能模式切换监听器 ----
-  // 当 Agent 检测到复杂任务时，自动切换到 orchestrator 模式
+  // 当 Agent 检测到任务需要其他模式时，自动切换
   gateway.on('mode.switch-requested', async (data: unknown) => {
     const payload = data as Record<string, unknown>;
     const { targetMode, reason } = payload;
     console.log(`[chatStore] Mode switch requested:`, { targetMode, reason });
 
+    const modeNames: Record<string, string> = {
+      orchestrator: '编排模式',
+      swarm: '群体模式',
+      discussion: '讨论模式',
+      'quality-loop': '质量闭环模式'
+    };
+    const modeName = modeNames[targetMode as string] || targetMode;
+
     // 显示切换提示
-    addUserMessage(
-      `\n---\n\n🔄 **正在切换到${targetMode === 'orchestrator' ? '编排' : targetMode}模式**\n\n${reason || '检测到复杂任务'}\n\n---\n`
-    );
+    addUserMessage(`\n---\n\n🔄 **正在切换到${modeName}**\n\n${reason || '检测到任务特征'}\n\n---\n`);
 
     // 如果有保存的最后一条用户消息，重新发送
-    if (lastUserMessage.value && targetMode === 'orchestrator') {
+    if (lastUserMessage.value && targetMode) {
       // 等待当前 stream 完成
       if (isStreaming.value) {
         await new Promise<void>((resolve) => {
@@ -469,8 +475,13 @@ export const useChatStore = defineStore('chat', () => {
         });
       }
 
-      // 自动重新发送，使用 orchestrator 模式
-      await sendMessageInternal(lastUserMessage.value.text, lastUserMessage.value.files, undefined, 'orchestrator');
+      // 自动重新发送，使用新的模式
+      await sendMessageInternal(
+        lastUserMessage.value.text,
+        lastUserMessage.value.files,
+        undefined,
+        targetMode as 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop' | 'delegate'
+      );
     }
   });
 

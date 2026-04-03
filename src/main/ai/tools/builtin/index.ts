@@ -24,7 +24,7 @@ import { delegateToAgentTool } from './delegate-to-agent';
 import { taskPlanTool } from './task-plan';
 import { todoWriteTool } from './todo-write';
 import { emitEventTool } from './emit-event';
-import { switchToOrchestrationTool } from './switch-to-orchestration';
+import { switchExecutionModeTool } from './switch-execution-mode';
 
 // 单独导出
 export { readTool } from './read';
@@ -40,7 +40,7 @@ export { delegateToAgentTool } from './delegate-to-agent';
 export { taskPlanTool } from './task-plan';
 export { todoWriteTool } from './todo-write';
 export { emitEventTool } from './emit-event';
-export { switchToOrchestrationTool } from './switch-to-orchestration';
+export { switchExecutionModeTool } from './switch-execution-mode';
 
 /**
  * 所有内置工具
@@ -67,7 +67,7 @@ export { switchToOrchestrationTool } from './switch-to-orchestration';
  *   --- 事件 ---
  *   emit_event          — 向 UI 发送事件（打开预览、通知等），低风险
  *   --- 模式切换 ---
- *   switch_to_orchestration — 切换到编排模式（Agent 自主判断复杂任务），低风险
+ *   switch_execution_mode — 切换执行模式（Agent 自主判断任务类型），低风险
  *
  * 已迁移到 Skills：
  *   - session_status, session_history, context_inspect → observability Skill
@@ -87,5 +87,5 @@ export const builtinTools: ToolDefinition[] = [
   taskPlanTool,
   todoWriteTool,
   emitEventTool,
-  switchToOrchestrationTool
+  switchExecutionModeTool
 ];
