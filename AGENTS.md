@@ -133,7 +133,7 @@ Usage notes:
 
 <skill>
 <name>agency-experts</name>
-<description>专业领域专家 Agent 提示词库。包含 220+ 个细分领域的专家角色定义。当需要特定领域的专家视角时，请务必先读取该技能目录下的 SKILL.md 文件获取分类导航，然后按照渐进式加载的指引找到并读取具体的专家文件。Use when: (1) user asks for specialized advice, (2) you need to act as a specific expert, (3) you want to adopt a specialized persona for a complex task.</description>
+<description>访问并应用 220+ 个专业领域专家（工程、设计、产品、营销等）的提示词库。在处理复杂任务时，扮演特定领域的专家角色，采纳其身份、性格和最佳实践来提供深度的解决方案。Use when: (1) user asks for specialized advice, (2) you need to act as a specific expert, (3) you want to adopt a specialized persona for a complex task.</description>
 <location>local</location>
 </skill>
 
