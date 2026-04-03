@@ -20,7 +20,7 @@ import { createLogger } from '@main/common/logger';
 import { Planner, type IPlanner } from './Planner';
 import { WorkerCoordinator, type IWorkerCoordinator, type WorkerExecutionResult } from './WorkerCoordinator';
 import { AggregatorAgent, type IAggregator } from './AggregatorAgent';
-import type { Task, SubTask, ExecutionPlan, TaskExecutionResult, SubTaskExecutionResult } from './types';
+import type { Task, SubTask, ExecutionPlan, TaskExecutionResult, SubTaskExecutionResult, Stage } from './types';
 
 const log = createLogger('orchestration');
 
@@ -232,32 +232,29 @@ export class Orchestrator implements IOrchestrator {
 
       log.info(`[Orchestrator] Task directory initialized at: ${taskDirPath}`);
 
-      // ── 3. 规划阶段 ──
+      // ── 3. 宏观规划阶段 ──
       this.emit({ type: 'plan:start', data: { taskId: task.id, objective: task.objective } });
-      log.info('[Orchestrator] Phase 2: Planning...');
+      log.info('[Orchestrator] Phase 2: Macro Planning...');
 
-      const plan = await this.planner.plan(task, requirementAnalysisContent);
+      const macroStages = await this.planner.planMacroStages(task, requirementAnalysisContent);
 
       this.emit({
         type: 'plan:done',
         data: {
           taskId: task.id,
-          subTaskCount: plan.subTasks.length,
-          stageCount: plan.stages.length
+          subTaskCount: 0, // 此时还没有子任务
+          stageCount: macroStages.length
         }
       });
 
-      log.info(`[Orchestrator] Plan created: ${plan.subTasks.length} subtasks, ${plan.stages.length} stages`);
+      log.info(`[Orchestrator] Macro plan created: ${macroStages.length} stages`);
 
-      // 保存任务定义和计划到文件
-      await this.saveTaskDefinitionAndPlan(task, plan);
-
-      // ── 4. 执行阶段 ──
-      log.info('[Orchestrator] Phase 3: Executing...');
+      // ── 4. 动态执行阶段 ──
+      log.info('[Orchestrator] Phase 3: Executing (Dynamic Planning)...');
 
       // 🆕 添加总任务超时控制
       const totalTimeoutMs = this.resolvedConfig.totalTimeout;
-      const executionPromise = this.executePlan(task, plan);
+      const executionPromise = this.executeDynamicPlan(task, macroStages, projectDir);
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(
           () => reject(new Error(`Task ${task.id} execution timeout after ${totalTimeoutMs}ms`)),
@@ -265,7 +262,10 @@ export class Orchestrator implements IOrchestrator {
         )
       );
 
-      const subTaskResults = await Promise.race([executionPromise, timeoutPromise]);
+      const { subTaskResults, finalPlan } = await Promise.race([executionPromise, timeoutPromise]);
+
+      // 保存任务定义和完整的最终计划到文件
+      await this.saveTaskDefinitionAndPlan(task, finalPlan);
 
       // 🆕 保存每个子任务的结果到 tasks/{taskId}/results/
       await this.saveSubTaskResults(task.id, subTaskResults);
@@ -280,7 +280,7 @@ export class Orchestrator implements IOrchestrator {
       const aggWorkspaceDir = await AggEnv.getAgentWorkspaceDir(this.resolvedConfig.parentSessionId || task.id);
       const aggTaskDirPath = aggPath.join(aggWorkspaceDir, 'tasks', task.id);
 
-      const aggregationResult = await this.aggregator.aggregate(task, plan, subTaskResults, aggTaskDirPath);
+      const aggregationResult = await this.aggregator.aggregate(task, finalPlan, subTaskResults, aggTaskDirPath);
 
       this.emit({
         type: 'aggregate:done',
@@ -297,13 +297,13 @@ export class Orchestrator implements IOrchestrator {
       await this.saveFinalSummary(task.id, finalOutput, subTaskResults);
 
       // 🆕 导出所有 Worker 产出文件
-      const artifacts = await this.exportWorkerArtifacts(plan.subTasks);
+      const artifacts = await this.exportWorkerArtifacts(finalPlan.subTasks);
 
       // 完成
       this.runningTasks.delete(task.id);
 
       // 清理当前任务的子任务缓存，避免误删并行运行的其他任务结果
-      for (const subTask of plan.subTasks) {
+      for (const subTask of finalPlan.subTasks) {
         this.subTaskResults.delete(subTask.id);
       }
 
@@ -312,12 +312,12 @@ export class Orchestrator implements IOrchestrator {
       const failedCount = subTaskResults.filter((r) => r.status === 'failed').length;
 
       log.info(
-        `[Orchestrator] Task completed: ${completedCount}/${plan.subTasks.length} succeeded, duration=${endTime - startTime}ms`
+        `[Orchestrator] Task completed: ${completedCount}/${finalPlan.subTasks.length} succeeded, duration=${endTime - startTime}ms`
       );
 
       return {
         taskId: task.id,
-        status: failedCount === 0 ? 'success' : failedCount < plan.subTasks.length ? 'partial' : 'failed',
+        status: failedCount === 0 ? 'success' : failedCount < finalPlan.subTasks.length ? 'partial' : 'failed',
         finalOutput,
         subTaskResults,
         artifacts,
@@ -325,7 +325,7 @@ export class Orchestrator implements IOrchestrator {
           startTime,
           endTime,
           duration: endTime - startTime,
-          totalSubTasks: plan.subTasks.length,
+          totalSubTasks: finalPlan.subTasks.length,
           completedSubTasks: completedCount,
           failedSubTasks: failedCount
         }
@@ -378,54 +378,77 @@ export class Orchestrator implements IOrchestrator {
   // ========== 执行引擎（程序化控制） ==========
 
   /**
-   * 按计划执行所有子任务
-   *
-   * 核心控制逻辑：
-   *   for each stage (sequential) {
-   *     if (stage.parallel && config.allowParallel) {
-   *       await Promise.allSettled(stage.tasks)  // 并行
-   *     } else {
-   *       for each task in stage { await task }   // 顺序
-   *     }
-   *   }
+   * 动态执行计划（按 Stage 动态生成子任务并执行）
    */
-  private async executePlan(task: Task, plan: ExecutionPlan): Promise<SubTaskExecutionResult[]> {
+  private async executeDynamicPlan(
+    task: Task,
+    macroStages: Stage[],
+    projectDir: string
+  ): Promise<{ subTaskResults: SubTaskExecutionResult[]; finalPlan: ExecutionPlan }> {
     const results: SubTaskExecutionResult[] = [];
+    const finalSubTasks: SubTask[] = [];
     this.completedSubTaskResults = []; // 重置
 
-    for (const stage of plan.stages) {
-      // 检查是否被取消
+    for (const stage of macroStages) {
       if (this.isTaskAborted(task.id)) {
-        log.warn(`[Orchestrator] Task ${task.id} aborted, skipping remaining stages`);
+        log.warn(`[Orchestrator] Task ${task.id} aborted before stage ${stage.id}`);
         break;
       }
 
       this.emit({ type: 'stage:start', data: { stageId: stage.id, stageName: stage.name } });
-      log.info(`[Orchestrator] Executing stage: ${stage.name} (${stage.tasks.length} tasks)`);
+      log.info(`[Orchestrator] Executing stage: ${stage.name}`);
 
-      const stageTasks = stage.tasks;
+      // 1. 针对当前 Stage 进行微观规划（获取当前代码库上下文）
+      const currentContext = await this.getProjectContext(projectDir);
+      const microPlan = await this.planner.planMicroTasks(task, stage, currentContext);
 
-      // 🆕 并行执行前检查依赖
+      stage.tasks = microPlan.tasks;
+      stage.parallel = microPlan.parallel;
+      finalSubTasks.push(...microPlan.tasks);
+
+      log.info(`[Orchestrator] Micro plan created for stage ${stage.name}: ${stage.tasks.length} tasks`);
+
+      // 2. 执行该阶段的子任务
       if (this.resolvedConfig.allowParallel && stage.parallel) {
-        // 检查 Stage 内子任务是否有相互依赖
-        const hasCrossDependency = this.checkCrossDependency(stageTasks);
+        const hasCrossDependency = this.checkCrossDependency(stage.tasks);
         if (hasCrossDependency) {
           log.warn(`[Orchestrator] Stage ${stage.name} has cross-dependencies, forcing sequential execution`);
-          // 强制顺序执行
-          await this.executeTasksSequentially(stageTasks, task, results);
+          await this.executeTasksSequentially(stage.tasks, task, results);
         } else {
-          // 可以并行执行
-          await this.executeTasksInParallel(stageTasks, task, results);
+          await this.executeTasksInParallel(stage.tasks, task, results);
         }
       } else {
-        // ── 顺序执行 ──
-        await this.executeTasksSequentially(stageTasks, task, results);
+        await this.executeTasksSequentially(stage.tasks, task, results);
       }
 
       this.emit({ type: 'stage:done', data: { stageId: stage.id, stageName: stage.name } });
     }
 
-    return results;
+    const finalPlan: ExecutionPlan = {
+      taskId: task.id,
+      subTasks: finalSubTasks,
+      stages: macroStages,
+      createdAt: Date.now()
+    };
+
+    return { subTaskResults: results, finalPlan };
+  }
+
+  /**
+   * 获取项目当前上下文（用于微观规划）
+   */
+  private async getProjectContext(projectDir: string): Promise<string> {
+    try {
+      const fs = await import('node:fs/promises');
+
+      // 简单地读取目录结构，未来可以扩展为读取关键文件或 package.json
+      const files = await fs.readdir(projectDir);
+      if (files.length === 0) return '项目目录为空。';
+
+      return `项目根目录包含以下文件/文件夹：\n${files.join('\n')}`;
+    } catch (_err) {
+      return '无法读取项目目录状态。';
+    }
   }
 
   /**

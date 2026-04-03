@@ -58,6 +58,8 @@ export interface ExecutionPlan {
 export interface Stage {
   id: string;
   name: string;
+  objective?: string; // 阶段目标
+  description?: string; // 阶段描述
   tasks: SubTask[]; // 这个阶段包含的子任务（统一字段）
   order: number; // 阶段顺序
   parallel: boolean; // 是否并行执行（统一字段）

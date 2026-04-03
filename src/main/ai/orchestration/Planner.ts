@@ -9,56 +9,62 @@
 
 import { z } from 'zod';
 import { createLogger } from '@main/common/logger';
-import type { Task, SubTask, ExecutionPlan, ExecutionStage, SubTaskStatus } from './types';
+import type { Task, SubTask, ExecutionPlan, SubTaskStatus, Stage } from './types';
 
 const log = createLogger('orchestration:planner');
 
 // ========== 结构化输出 Schema ==========
 
 /**
- * 子任务输出 Schema
+ * 宏观阶段输出 Schema
  */
-const SubTaskSchema = z.object({
-  id: z.string().describe('子任务唯一标识，如 "subtask-1"'),
+const MacroStageSchema = z.object({
+  id: z.string().describe('阶段唯一标识，如 "stage-1"'),
+  name: z.string().describe('阶段名称'),
+  objective: z.string().describe('阶段目标'),
+  description: z.string().optional().describe('阶段详细描述')
+});
+
+const MacroPlanOutputSchema = z.object({
+  stages: z.array(MacroStageSchema).describe('执行阶段列表')
+});
+
+type MacroPlanOutput = z.infer<typeof MacroPlanOutputSchema>;
+
+/**
+ * 微观任务输出 Schema
+ */
+const MicroTaskSchema = z.object({
+  id: z.string().describe('子任务唯一标识，如 "subtask-1.1"'),
   objective: z.string().describe('子任务目标'),
-  description: z.string().optional().describe('子任务详细描述'),
-  dependencies: z.array(z.string()).default([]).describe('依赖的子任务 ID 列表'),
+  description: z.string().optional().describe('子任务详细描述（包含验收标准）'),
+  dependencies: z.array(z.string()).default([]).describe('依赖的子任务 ID 列表（仅限同阶段内）'),
   assignedWorker: z.string().default('general').describe('分配的 Worker 类型或 Agent ID')
 });
 
-const StageSchema = z.object({
-  stageId: z.string().describe('阶段唯一标识'),
-  name: z.string().describe('阶段名称'),
-  subTaskIds: z.array(z.string()).default([]).describe('包含的子任务 ID 列表'),
-  parallelizable: z.boolean().default(false).describe('是否可并行执行')
+const MicroPlanOutputSchema = z.object({
+  subTasks: z.array(MicroTaskSchema).describe('子任务列表'),
+  parallelizable: z.boolean().default(false).describe('本阶段内的任务是否可并行执行')
 });
 
-/**
- * 规划输出 Schema
- */
-const PlanOutputSchema = z.object({
-  subTasks: z.array(SubTaskSchema).describe('子任务列表'),
-  stages: z.array(StageSchema).describe('执行阶段列表')
-});
-
-/** 规划输出类型 */
-type PlanOutput = z.infer<typeof PlanOutputSchema>;
+type MicroPlanOutput = z.infer<typeof MicroPlanOutputSchema>;
 
 /**
  * 规划者接口
  */
 export interface IPlanner {
   /**
-   * 规划任务
-   * @param task 任务定义
-   * @param requirementAnalysis 需求分析文档内容（可选）
+   * 宏观规划：将任务拆分为几个大阶段
    */
-  plan(task: Task, requirementAnalysis?: string): Promise<ExecutionPlan>;
+  planMacroStages(task: Task, requirementAnalysis?: string): Promise<Stage[]>;
+
+  /**
+   * 微观规划：为特定阶段拆解具体的子任务
+   */
+  planMicroTasks(task: Task, stage: Stage, currentContext: string): Promise<{ tasks: SubTask[]; parallel: boolean }>;
 
   /**
    * 重新规划（当任务失败时）
-   * @param task 原始任务
-   * @param failureInfo 失败信息
    */
   replan(task: Task, failureInfo: { failedSubTaskId: string; reason: string }): Promise<ExecutionPlan>;
 }
@@ -88,52 +94,74 @@ export class Planner implements IPlanner {
   ) {}
 
   /**
-   * 规划任务
-   *
-   * 构建规划提示词 → 调用 LLM → 解析结构化输出 → 返回 ExecutionPlan
+   * 宏观规划：将任务拆分为几个大阶段
    */
-  async plan(task: Task, requirementAnalysis?: string): Promise<ExecutionPlan> {
-    const prompt = await this.buildPlanningPrompt(task, requirementAnalysis);
-    const output = await this.callPlannerAgent(prompt);
-    const planData = this.convertPlanOutput(output, task.id);
+  async planMacroStages(task: Task, requirementAnalysis?: string): Promise<Stage[]> {
+    const prompt = await this.buildMacroPlanningPrompt(task, requirementAnalysis);
+    const output = await this.callPlannerAgent(prompt, MACRO_PLANNER_INSTRUCTIONS);
 
-    log.info(`[Planner] Plan created: ${planData.subTasks.length} subtasks, ${planData.stages.length} stages`);
+    if (!output) {
+      log.warn('[Planner] Macro planning failed, using default stage');
+      return this.getDefaultStages(task.id);
+    }
 
-    return {
+    const parsed = this.parseMacroOutput(output);
+    if (!parsed || parsed.stages.length === 0) {
+      return this.getDefaultStages(task.id);
+    }
+
+    return parsed.stages.map((s, index) => ({
+      id: s.id,
+      name: s.name,
+      tasks: [], // 此时还没有子任务
+      order: index,
+      parallel: false // 阶段之间默认串行
+    }));
+  }
+
+  /**
+   * 微观规划：为特定阶段拆解具体的子任务
+   */
+  async planMicroTasks(
+    task: Task,
+    stage: Stage,
+    currentContext: string
+  ): Promise<{ tasks: SubTask[]; parallel: boolean }> {
+    const prompt = this.buildMicroPlanningPrompt(task, stage, currentContext);
+    const output = await this.callPlannerAgent(prompt, MICRO_PLANNER_INSTRUCTIONS);
+
+    if (!output) {
+      log.warn(`[Planner] Micro planning failed for stage ${stage.id}, using default subtask`);
+      return { tasks: [this.getDefaultSubTask(task.id, stage.id)], parallel: false };
+    }
+
+    const parsed = this.parseMicroOutput(output);
+    if (!parsed || parsed.subTasks.length === 0) {
+      return { tasks: [this.getDefaultSubTask(task.id, stage.id)], parallel: false };
+    }
+
+    const tasks = parsed.subTasks.map((st) => ({
+      id: st.id,
       taskId: task.id,
-      subTasks: planData.subTasks,
-      stages: planData.stages,
-      createdAt: Date.now()
-    };
+      name: st.objective,
+      description: st.description || st.objective,
+      dependencies: st.dependencies || [],
+      assignedWorker: st.assignedWorker || 'general',
+      status: 'pending' as SubTaskStatus
+    }));
+
+    return { tasks, parallel: parsed.parallelizable };
   }
 
   /**
    * 重新规划
    */
-  async replan(task: Task, failureInfo: { failedSubTaskId: string; reason: string }): Promise<ExecutionPlan> {
-    const replanPrompt = `
-Original Task: ${task.objective}
-
-Failed Subtask: ${failureInfo.failedSubTaskId}
-Failure Reason: ${failureInfo.reason}
-
-Please create a new execution plan that addresses this failure.
-Consider:
-- Why did this subtask fail?
-- What alternative approach can we use?
-- Should we split this subtask further?
-- Are there missing prerequisites?
-`;
-
-    const output = await this.callPlannerAgent(replanPrompt);
-    const planData = this.convertPlanOutput(output, task.id);
-
-    log.info(`[Planner] Replan created: ${planData.subTasks.length} subtasks, ${planData.stages.length} stages`);
-
+  async replan(task: Task, _failureInfo: { failedSubTaskId: string; reason: string }): Promise<ExecutionPlan> {
+    // 暂时保留，后续可以根据动态规划重构
     return {
       taskId: task.id,
-      subTasks: planData.subTasks,
-      stages: planData.stages,
+      subTasks: [],
+      stages: [],
       createdAt: Date.now()
     };
   }
@@ -142,11 +170,8 @@ Consider:
 
   /**
    * 调用 Planner Agent
-   *
-   * 通过 AgentExecutor 创建临时的 PiMono Runtime 执行规划请求。
-   * Runtime 用完即销毁（无状态）。
    */
-  private async callPlannerAgent(prompt: string): Promise<PlanOutput | null> {
+  private async callPlannerAgent(prompt: string, instructions: string): Promise<string | null> {
     const { agentExecutor } = await import('../AgentExecutor');
     const { WorkspaceManager } = await import('../storage/WorkspaceManager');
     const path = await import('node:path');
@@ -174,7 +199,7 @@ Consider:
       .name('Orchestration Planner')
       .mode('chat')
       .sessionMode('file')
-      .instructions(PLANNER_INSTRUCTIONS)
+      .instructions(instructions)
       .sessionId(sessionId);
 
     if (this.options?.model) {
@@ -197,8 +222,7 @@ Consider:
       // 同步执行（Planner 不需要流式）
       const result = await runtime.run(prompt);
 
-      // 尝试从 LLM 输出中提取结构化计划
-      return this.parseOutput(result.output);
+      return result.output;
     } catch (error) {
       log.error('[Planner] Agent execution failed:', error);
       return null;
@@ -214,66 +238,66 @@ Consider:
   }
 
   /**
-   * 解析 LLM 输出为结构化 PlanOutput
-   *
-   * 尝试多种解析策略：
-   * 1. 直接 JSON 解析
-   * 2. 从 markdown 代码块中提取 JSON
-   * 3. 使用 Zod schema 验证
+   * 解析宏观规划输出
    */
-  private parseOutput(rawOutput: string): PlanOutput | null {
+  private parseMacroOutput(rawOutput: string): MacroPlanOutput | null {
     if (!rawOutput) return null;
 
-    // 策略 1：直接 JSON 解析
     try {
-      const parsed = JSON.parse(rawOutput);
-      const validated = PlanOutputSchema.safeParse(parsed);
-      if (validated.success) {
-        return validated.data;
+      const jsonMatch = rawOutput.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
+      const jsonStr = jsonMatch ? jsonMatch[1] : rawOutput;
+
+      const firstBrace = jsonStr.indexOf('{');
+      const lastBrace = jsonStr.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        const cleanJson = jsonStr.slice(firstBrace, lastBrace + 1);
+        const parsed = JSON.parse(cleanJson);
+        const validated = MacroPlanOutputSchema.safeParse(parsed);
+        if (validated.success) {
+          return validated.data;
+        }
       }
     } catch {
-      // 不是纯 JSON，继续尝试
+      // 解析失败
     }
 
-    // 策略 2：从 markdown 代码块提取
-    const jsonMatch = rawOutput.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[1]);
-        const validated = PlanOutputSchema.safeParse(parsed);
-        if (validated.success) {
-          return validated.data;
-        }
-      } catch {
-        // 解析失败，继续
-      }
-    }
-
-    // 策略 3：尝试查找 JSON 对象（从第一个 { 到最后一个 }）
-    const firstBrace = rawOutput.indexOf('{');
-    const lastBrace = rawOutput.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      try {
-        const jsonStr = rawOutput.slice(firstBrace, lastBrace + 1);
-        const parsed = JSON.parse(jsonStr);
-        const validated = PlanOutputSchema.safeParse(parsed);
-        if (validated.success) {
-          return validated.data;
-        }
-      } catch {
-        // 解析失败
-      }
-    }
-
-    log.warn('[Planner] Failed to parse structured output, using default plan');
+    log.warn('[Planner] Failed to parse macro structured output');
     return null;
   }
 
   /**
-   * 构建规划提示词
+   * 解析微观规划输出
    */
-  private async buildPlanningPrompt(task: Task, requirementAnalysis?: string): Promise<string> {
-    let prompt = `请为以下任务制定详细的执行计划：\n\n`;
+  private parseMicroOutput(rawOutput: string): MicroPlanOutput | null {
+    if (!rawOutput) return null;
+
+    try {
+      const jsonMatch = rawOutput.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
+      const jsonStr = jsonMatch ? jsonMatch[1] : rawOutput;
+
+      const firstBrace = jsonStr.indexOf('{');
+      const lastBrace = jsonStr.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        const cleanJson = jsonStr.slice(firstBrace, lastBrace + 1);
+        const parsed = JSON.parse(cleanJson);
+        const validated = MicroPlanOutputSchema.safeParse(parsed);
+        if (validated.success) {
+          return validated.data;
+        }
+      }
+    } catch {
+      // 解析失败
+    }
+
+    log.warn('[Planner] Failed to parse micro structured output');
+    return null;
+  }
+
+  /**
+   * 构建宏观规划提示词
+   */
+  private async buildMacroPlanningPrompt(task: Task, requirementAnalysis?: string): Promise<string> {
+    let prompt = `请为以下任务制定高层级的阶段执行计划（Macro Plan）：\n\n`;
     prompt += `## 任务信息\n\n`;
     prompt += `**任务目标**：${task.objective}\n\n`;
 
@@ -289,17 +313,11 @@ Consider:
       prompt += `**约束条件**：\n${task.constraints.map((c) => `- ${c}`).join('\n')}\n\n`;
     }
 
-    // 🆕 注入需求分析文档上下文
     if (requirementAnalysis) {
       prompt += `\n---\n\n## 需求分析文档\n\n`;
-      prompt += `以下是已完成的需求分析文档，请仔细阅读并基于此制定详细计划：\n\n`;
-
-      // 限制长度，避免超过 context 限制
-      const maxLength = 10000; // 10K 字符
+      prompt += `以下是已完成的需求分析文档，请仔细阅读并基于此划分执行阶段：\n\n`;
+      const maxLength = 10000;
       if (requirementAnalysis.length > maxLength) {
-        log.warn(
-          `[Planner] Requirement analysis too long (${requirementAnalysis.length} chars), truncating to ${maxLength}`
-        );
         prompt += requirementAnalysis.slice(0, maxLength) + '\n\n[文档过长，已截断...]\n\n';
       } else {
         prompt += requirementAnalysis + '\n\n';
@@ -308,94 +326,95 @@ Consider:
     }
 
     prompt += `\n## 规划要求\n\n`;
-    prompt += `请基于上述信息，制定详细的执行计划：\n\n`;
-    prompt += `1. **拆解子任务**：将任务拆分为 5-15 个具体的子任务\n`;
-    prompt += `2. **每个子任务必须包含**：\n`;
-    prompt += `   - id：唯一标识（subtask-1, subtask-2, ...）\n`;
-    prompt += `   - objective：子任务目标（简洁明确，一句话）\n`;
-    prompt += `   - description：详细描述（至少2-3句话，说明：做什么？修改哪些文件？涉及哪些模块？如何验证？）\n`;
-    prompt += `   - dependencies：依赖的子任务 ID 列表（如 ["subtask-1"]）\n`;
-    prompt += `   - assignedWorker："general"（通用 Worker）\n\n`;
-    prompt += `3. **阶段划分**：将子任务分组为 3-5 个执行阶段\n`;
-    prompt += `   - 每个阶段包含：stageId、name、subTaskIds、parallelizable\n`;
-    prompt += `   - 同阶段内的任务如果无依赖关系，可设置 parallelizable=true\n\n`;
+    prompt += `请基于上述信息，将整个任务划分为 3-5 个高层级的执行阶段（Stages/Epics）。\n`;
+    prompt += `每个阶段应该是一个相对独立的里程碑，例如：数据库设计、核心API开发、前端UI搭建、集成测试等。\n\n`;
     prompt += `## 输出格式\n\n`;
     prompt += `请严格按照以下 JSON 格式输出（不要用 markdown 代码块包裹）：\n\n`;
     prompt += `{\n`;
-    prompt += `  "subTasks": [\n`;
-    prompt += `    {\n`;
-    prompt += `      "id": "subtask-1",\n`;
-    prompt += `      "objective": "实现XX功能",\n`;
-    prompt += `      "description": "详细描述：做什么？修改哪些文件？如何验证？（至少2-3句话）",\n`;
-    prompt += `      "dependencies": [],\n`;
-    prompt += `      "assignedWorker": "general"\n`;
-    prompt += `    }\n`;
-    prompt += `  ],\n`;
     prompt += `  "stages": [\n`;
     prompt += `    {\n`;
-    prompt += `      "stageId": "stage-1",\n`;
-    prompt += `      "name": "核心功能开发",\n`;
-    prompt += `      "subTaskIds": ["subtask-1"],\n`;
-    prompt += `      "parallelizable": false\n`;
+    prompt += `      "id": "stage-1",\n`;
+    prompt += `      "name": "数据库与数据模型设计",\n`;
+    prompt += `      "objective": "完成所有核心数据表的设计与迁移脚本编写",\n`;
+    prompt += `      "description": "详细描述该阶段需要完成的里程碑内容..."\n`;
     prompt += `    }\n`;
     prompt += `  ]\n`;
     prompt += `}\n\n`;
-    prompt += `**重要提示**：\n`;
-    prompt += `- 直接输出 JSON，不要包含任何额外说明或代码块标记\n`;
-    prompt += `- description 必须详细（至少2-3句话）\n`;
-    prompt += `- 子任务数量建议在 5-15 个之间\n`;
-    prompt += `- dependencies 必须准确（引用已定义的子任务 ID）\n`;
+    prompt += `**重要提示**：直接输出 JSON，不要包含任何额外说明或代码块标记。\n`;
 
     return prompt;
   }
 
   /**
-   * 将 PlanOutput 转换为内部类型
+   * 构建微观规划提示词
    */
-  private convertPlanOutput(
-    output: PlanOutput | null,
-    taskId: string
-  ): {
-    subTasks: SubTask[];
-    stages: ExecutionStage[];
-  } {
-    if (!output) {
-      log.warn('[Planner] No structured output, using default plan');
-      return this.getDefaultPlan(taskId);
+  private buildMicroPlanningPrompt(task: Task, stage: Stage, currentContext: string): string {
+    let prompt = `请为当前执行阶段制定详细的底层子任务计划（Micro Plan）：\n\n`;
+    prompt += `## 整体任务目标\n${task.objective}\n\n`;
+    prompt += `## 当前阶段：${stage.name}\n`;
+    prompt += `**阶段目标**：${stage.objective || '无'}\n`;
+    if (stage.description) {
+      prompt += `**阶段描述**：${stage.description}\n`;
     }
+    prompt += `\n---\n\n`;
 
-    const subTasks: SubTask[] = output.subTasks.map(
-      (st): SubTask => ({
-        id: st.id,
-        taskId,
-        name: st.objective,
-        description: st.description || st.objective,
-        dependencies: st.dependencies,
-        assignedWorker: st.assignedWorker,
-        status: 'pending' as SubTaskStatus
-      })
-    );
+    prompt += `## 当前代码库状态与上下文\n`;
+    prompt += `在执行此阶段之前，代码库的当前状态如下（供你参考，以避免闭门造车）：\n\n`;
+    prompt += `${currentContext || '（暂无前置上下文）'}\n\n`;
+    prompt += `---\n\n`;
 
-    const stages: ExecutionStage[] = output.stages.map((stage, index) => {
-      const stageTasks = subTasks.filter((st) => stage.subTaskIds.includes(st.id));
-      return {
-        id: stage.stageId,
-        name: stage.name,
-        tasks: stageTasks,
-        order: index,
-        parallel: stage.parallelizable
-      };
-    });
+    prompt += `## 规划要求\n\n`;
+    prompt += `请结合当前代码库状态，将【${stage.name}】阶段拆解为 3-8 个具体的底层子任务（Tasks）。\n`;
+    prompt += `1. **每个子任务必须包含**：\n`;
+    prompt += `   - id：唯一标识（如 "${stage.id}-task-1"）\n`;
+    prompt += `   - objective：子任务目标（简洁明确，一句话）\n`;
+    prompt += `   - description：详细描述（至少2-3句话，说明：修改哪些具体文件？涉及哪些函数/组件？如何验证？）\n`;
+    prompt += `   - dependencies：依赖的子任务 ID 列表（仅限本阶段内的依赖）\n`;
+    prompt += `   - assignedWorker："general"（通用 Worker）\n\n`;
+    prompt += `2. **验收标准**：description 中必须体现验收标准（如何验证完成？测试文件路径？）\n\n`;
+    prompt += `## 输出格式\n\n`;
+    prompt += `请严格按照以下 JSON 格式输出（不要用 markdown 代码块包裹）：\n\n`;
+    prompt += `{\n`;
+    prompt += `  "subTasks": [\n`;
+    prompt += `    {\n`;
+    prompt += `      "id": "${stage.id}-task-1",\n`;
+    prompt += `      "objective": "实现XX具体接口",\n`;
+    prompt += `      "description": "在 src/api/xxx.ts 中新增 yyy 方法，并编写对应的单元测试。验收标准：...",\n`;
+    prompt += `      "dependencies": [],\n`;
+    prompt += `      "assignedWorker": "general"\n`;
+    prompt += `    }\n`;
+    prompt += `  ],\n`;
+    prompt += `  "parallelizable": false\n`;
+    prompt += `}\n\n`;
+    prompt += `**重要提示**：\n`;
+    prompt += `- 直接输出 JSON，不要包含任何额外说明或代码块标记\n`;
+    prompt += `- description 必须详细（至少2-3句话），必须包含具体的文件路径或模块名\n`;
 
-    return { subTasks, stages };
+    return prompt;
   }
 
   /**
-   * 默认计划（降级方案）
+   * 默认宏观阶段（降级方案）
    */
-  private getDefaultPlan(taskId: string): { subTasks: SubTask[]; stages: ExecutionStage[] } {
-    const defaultSubTask: SubTask = {
-      id: 'subtask-1',
+  private getDefaultStages(_taskId: string): Stage[] {
+    return [
+      {
+        id: 'stage-1',
+        name: 'Main Stage',
+        objective: 'Complete the task',
+        tasks: [],
+        order: 0,
+        parallel: false
+      }
+    ];
+  }
+
+  /**
+   * 默认微观子任务（降级方案）
+   */
+  private getDefaultSubTask(taskId: string, stageId: string): SubTask {
+    return {
+      id: `${stageId}-subtask-1`,
       taskId,
       name: 'Complete the task',
       description: 'Execute the task as a single unit',
@@ -403,81 +422,57 @@ Consider:
       assignedWorker: 'general',
       status: 'pending' as SubTaskStatus
     };
-
-    return {
-      subTasks: [defaultSubTask],
-      stages: [
-        {
-          id: 'stage-1',
-          name: 'Main Stage',
-          tasks: [defaultSubTask],
-          order: 0,
-          parallel: false
-        }
-      ]
-    };
   }
 }
 
 // ========== Planner Agent 指令 ==========
 
-const PLANNER_INSTRUCTIONS = `你是一个专业的任务规划专家。你的职责是将高层级的复杂任务分解为可执行的子任务列表（TODO）。
+const MACRO_PLANNER_INSTRUCTIONS = `你是一个高级架构师和任务规划专家。你的职责是将高层级的复杂任务分解为几个大阶段（Stages/Epics）。
 
 **核心原则**：
-1. **细致拆解**：将任务拆分为具体、可执行的步骤，每个子任务应该是独立、明确的
-2. **验收标准**：每个子任务必须包含可量化的验收标准（至少3个）
-3. **依赖关系**：明确子任务之间的依赖关系，合理安排执行顺序
-4. **合理分组**：将子任务按阶段分组，同阶段内可并行的任务标记为 parallelizable=true
-5. **工作量估算**：为每个子任务估算预计代码量或工作时间
+1. **高层级划分**：不要陷入底层代码细节，关注系统架构和业务模块的划分。
+2. **逻辑顺序**：阶段之间应该有明确的先后顺序（例如：先设计数据库，再写API，最后写前端）。
+3. **里程碑意义**：每个阶段都应该是一个有意义的里程碑。
 
-**规划流程**：
-1. 仔细阅读需求分析文档（如果有）
-2. 提取核心功能点和非功能需求
-3. 将每个功能点拆解为具体的实施任务
-4. 为每个任务设计验收标准
-5. 规划实施顺序和依赖关系
+**输出格式**：
+严格输出 JSON 格式（无 markdown 代码块）：
+{
+  "stages": [
+    {
+      "id": "stage-1",
+      "name": "数据库与数据模型设计",
+      "objective": "完成所有核心数据表的设计与迁移脚本编写",
+      "description": "详细描述该阶段需要完成的里程碑内容..."
+    }
+  ]
+}
 
-**子任务拆分原则**：
-- ✅ **好的子任务**：具体、可验证、有明确产出
-  - 示例："实现 RequirementAnalyzer 类（src/main/ai/orchestration/RequirementAnalyzer.ts）"
-  - 验收标准："analyze() 方法能生成需求文档"、"单元测试覆盖率 > 85%"
-- ❌ **不好的子任务**：模糊、无法验证、范围不清
-  - 示例："完成后端开发"、"优化性能"、"修复 Bug"
+**重要提示**：直接输出 JSON，不要包含任何额外说明。`;
 
-**验收标准要求**：
-每个子任务至少包含3个可量化的验收标准：
-- 功能验收：功能是否正确实现（如"能创建目录"、"能解析JSON"）
-- 测试验收：是否有测试代码、测试是否通过（如"单元测试通过"、"覆盖率>85%"）
-- 质量验收：代码质量、性能指标（如"TypeScript无错误"、"响应时间<100ms"）
+const MICRO_PLANNER_INSTRUCTIONS = `你是一个高级研发工程师和任务规划专家。你的职责是将一个大阶段（Stage）拆解为具体的底层子任务（Tasks）。
+
+**核心原则**：
+1. **细致拆解**：将阶段拆分为具体、可执行的代码级步骤。
+2. **结合现状**：必须参考当前代码库的状态，不要闭门造车。如果数据库已经建好，就直接基于现有的表写 API 任务。
+3. **验收标准**：每个子任务必须在 description 中包含可量化的验收标准和测试方法。
+4. **依赖关系**：明确本阶段内子任务之间的依赖关系。
 
 **输出格式**：
 严格输出 JSON 格式（无 markdown 代码块）：
 {
   "subTasks": [
     {
-      "id": "subtask-1",
-      "objective": "实现XX功能",
-      "description": "详细描述：做什么？修改哪些文件？涉及哪些模块？",
+      "id": "stage-1-task-1",
+      "objective": "实现XX具体接口",
+      "description": "在 src/api/xxx.ts 中新增 yyy 方法，并编写对应的单元测试。验收标准：...",
       "dependencies": [],
       "assignedWorker": "general"
     }
   ],
-  "stages": [
-    {
-      "stageId": "stage-1",
-      "name": "核心功能开发",
-      "subTaskIds": ["subtask-1"],
-      "parallelizable": false
-    }
-  ]
+  "parallelizable": false
 }
 
-**重要提示**：
-- 子任务数量通常在 5-15 个之间（太少=拆分不够细，太多=过度拆分）
-- 每个子任务的 description 必须详细（至少 2-3 句话）
-- dependencies 必须准确（错误的依赖关系会导致执行失败）
-- 阶段划分要合理（通常 3-5 个阶段）
-- 直接输出 JSON，不要用代码块包裹`;
+**重要提示**：直接输出 JSON，不要包含任何额外说明。`;
 
 // 导出 Schema 供外部使用（如测试）
-export { PlanOutputSchema, type PlanOutput };
+export { MacroPlanOutputSchema, MicroPlanOutputSchema, type MacroPlanOutput, type MicroPlanOutput };
