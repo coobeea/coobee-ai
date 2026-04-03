@@ -1,6 +1,6 @@
 ---
 name: agency-experts
-description: '专业领域专家 Agent 提示词库。包含 180+ 个细分领域的专家角色定义。采用渐进式加载设计：先查看本文件的分类目录，再读取对应分类下的 INDEX.md，最后读取具体的专家 markdown 文件。Use when: (1) user asks for specialized advice, (2) you need to act as a specific expert, (3) you want to adopt a specialized persona for a complex task.'
+description: '专业领域专家 Agent 提示词库。包含 220+ 个细分领域的专家角色定义。当需要特定领域的专家视角时，请务必先读取该技能目录下的 SKILL.md 文件获取分类导航，然后按照渐进式加载的指引找到并读取具体的专家文件。Use when: (1) user asks for specialized advice, (2) you need to act as a specific expert, (3) you want to adopt a specialized persona for a complex task.'
 ---
 
 # 专家智能体库 (Agency Experts)
