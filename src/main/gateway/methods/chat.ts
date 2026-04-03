@@ -108,19 +108,6 @@ function createBuilder(agentMode: AgentMode): ReturnType<typeof agentExecutor.pi
   const instructions = agentMode === 'agent' ? AGENT_INSTRUCTIONS : CHAT_INSTRUCTIONS;
   builder.instructions(instructions).tools(tools);
 
-  // 🆕 默认注入 agency-experts 技能
-  if (agentMode === 'agent') {
-    try {
-      const skillDefs = loadSkillDefinitions(['agency-experts']);
-      if (skillDefs.length > 0) {
-        builder.skills(skillDefs);
-        log.info(`[chat] Injected default skill: agency-experts`);
-      }
-    } catch (err) {
-      log.warn(`[chat] Failed to load default skill: agency-experts`, err);
-    }
-  }
-
   return builder;
 }
 
