@@ -173,19 +173,17 @@ function unsubscribe(): void {
   }
 }
 
-// Watch isStreaming: 管理状态检查定时器
+// Watch isStreaming: 管理状态检查定时器（不取消订阅！）
 watch(
   isStreaming,
-  (streaming, wasStreaming) => {
+  (streaming) => {
     if (streaming) {
       if (!statusCheckTimer) {
         statusCheckTimer = setInterval(verifyRunStatus, STATUS_CHECK_INTERVAL);
       }
     } else {
-      // 流式处理结束，取消订阅
-      if (wasStreaming) {
-        unsubscribe();
-      }
+      // 流式处理结束，只停止定时器
+      // ✅ 不取消订阅！订阅保持到 unmount 或 threadId 变化
       if (statusCheckTimer) {
         clearInterval(statusCheckTimer);
         statusCheckTimer = null;
