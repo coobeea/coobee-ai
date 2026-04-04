@@ -69,6 +69,9 @@ export interface ThreadDefinition {
   /** 工程目录（用户为此会话指定的输出目标路径） */
   projectDir?: string;
 
+  /** 任务级别的模型覆盖（优先于 Agent 默认模型） */
+  overrideModel?: string;
+
   /** 扩展元数据（保留字段） */
   metadata?: Record<string, unknown>;
 }
@@ -92,6 +95,8 @@ export interface ThreadIndexEntry {
   agentHomePath: string;
   /** 工程目录（用户指定的输出目标路径） */
   projectDir?: string;
+  /** 任务级别的模型覆盖（优先于 Agent 默认模型） */
+  overrideModel?: string;
 }
 
 // ==================== 创建 / 更新参数 ====================
@@ -117,6 +122,7 @@ export interface UpdateThreadParams {
   runStatus?: ThreadRunStatus;
   messageCount?: number;
   projectDir?: string | null;
+  overrideModel?: string;
   metadata?: Record<string, unknown>;
 }
 

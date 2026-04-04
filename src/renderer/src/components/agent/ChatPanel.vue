@@ -6,8 +6,9 @@
  * 重构：messages 由组件本地持有（useStreamHandler），unmounted 时自动释放。
  */
 
-import { ref, inject, provide, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, inject, provide, watch, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useChatStore } from '@/stores/chat';
+import { useThreadsStore } from '@/stores/threads';
 import { useStreamHandler } from '@/composables/useStreamHandler';
 import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs';
 import type { PendingApproval } from '@/composables/useStreamHandler';
@@ -26,7 +27,70 @@ const props = defineProps<{
 
 // ==================== Store & Composables ====================
 const chatStore = useChatStore();
+const threadsStore = useThreadsStore();
 const streamState = chatStore.getState(props.threadId); // 仅队列状态
+
+// ==================== 模型选择器 ====================
+interface ModelItem {
+  value: string;
+  label: string;
+  provider: string;
+}
+const flatModelList = ref<ModelItem[]>([]);
+const showModelSelector = ref(false);
+
+const currentThread = computed(() => {
+  return threadsStore.threads.find((t) => t.id === props.threadId);
+});
+
+const selectedModel = computed(() => {
+  return currentThread.value?.overrideModel ?? '';
+});
+
+const displayModelName = computed(() => {
+  if (!selectedModel.value) return '默认模型';
+  const found = flatModelList.value.find((m) => m.value === selectedModel.value);
+  return found?.label ?? selectedModel.value;
+});
+
+async function loadModelList(): Promise<void> {
+  try {
+    const data = await gateway.request<Record<string, unknown>>('config.getAll');
+    const modelsConfig = data?.models as Record<string, unknown> | undefined;
+    if (!modelsConfig) return;
+
+    const items: ModelItem[] = [];
+    for (const [key, val] of Object.entries(modelsConfig)) {
+      if (key === '__order') continue;
+      const group = val as Record<string, unknown>;
+      const groupLabel = (group?.label as string) ?? key;
+
+      for (const [modelKey, modelVal] of Object.entries(group)) {
+        if (modelKey === 'label' || modelKey === '__order') continue;
+        const model = modelVal as Record<string, unknown>;
+        items.push({
+          value: `${key}/${modelKey}`,
+          label: (model?.label as string) ?? modelKey,
+          provider: groupLabel
+        });
+      }
+    }
+    flatModelList.value = items;
+  } catch (err) {
+    console.warn('[ChatPanel] Failed to load models:', err);
+  }
+}
+
+async function selectModel(modelValue: string): Promise<void> {
+  try {
+    await threadsStore.updateThread(props.threadId, {
+      overrideModel: modelValue || undefined
+    });
+    showModelSelector.value = false;
+  } catch (err) {
+    console.error('[ChatPanel] Failed to update thread model:', err);
+  }
+}
 
 // 使用 useStreamHandler 管理本地消息（组件级状态）
 const { messages, isStreaming, execOutputs, handleStreamMessage, addUserMessage, resetAll } = useStreamHandler({
@@ -246,8 +310,8 @@ async function loadThreadHistory(): Promise<void> {
 // ==================== 生命周期 ====================
 onMounted(async () => {
   scrollToBottom();
-  // 加载历史消息
-  await loadThreadHistory();
+  // 加载历史消息和模型列表
+  await Promise.all([loadThreadHistory(), loadModelList()]);
   // 订阅流式更新
   if (!isStreaming.value) {
     ensureSubscription();
@@ -290,6 +354,42 @@ defineExpose({
 
 <template>
   <aside v-show="!isCollapsed" class="flex min-h-0 flex-1 flex-col border-l border-gray-200/80 bg-[#f7f7f8]">
+    <!-- 模型选择器 -->
+    <div class="border-b border-gray-200/80 bg-white px-3 py-2">
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-gray-500">模型:</span>
+        <button
+          class="model-selector-btn flex items-center gap-1.5 rounded px-2 py-1 text-xs hover:bg-gray-100"
+          @click="showModelSelector = !showModelSelector">
+          <span class="i-carbon-model inline-block h-3 w-3 text-gray-600"></span>
+          <span class="font-medium text-gray-700">{{ displayModelName }}</span>
+          <span class="i-carbon-chevron-down inline-block h-3 w-3 text-gray-400"></span>
+        </button>
+      </div>
+
+      <!-- 模型列表弹窗 -->
+      <div
+        v-if="showModelSelector"
+        class="model-selector-popup mt-2 max-h-60 overflow-y-auto rounded border border-gray-200 bg-white shadow-lg">
+        <div
+          class="model-option cursor-pointer border-b border-gray-100 px-3 py-2 hover:bg-gray-50"
+          :class="{ 'bg-primary/10': !selectedModel }"
+          @click="selectModel('')">
+          <div class="text-xs font-medium text-gray-700">默认模型</div>
+          <div class="text-[10px] text-gray-500">跟随 Agent 配置</div>
+        </div>
+        <div
+          v-for="model in flatModelList"
+          :key="model.value"
+          class="model-option cursor-pointer border-b border-gray-100 px-3 py-2 hover:bg-gray-50"
+          :class="{ 'bg-primary/10': selectedModel === model.value }"
+          @click="selectModel(model.value)">
+          <div class="text-xs font-medium text-gray-700">{{ model.label }}</div>
+          <div class="text-[10px] text-gray-500">{{ model.provider }}</div>
+        </div>
+      </div>
+    </div>
+
     <!-- 消息区域 -->
     <ChatMessages ref="chatMessagesRef" :messages="messages" :is-streaming="isStreaming" @decide="handleApproval">
       <template #empty>

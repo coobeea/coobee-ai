@@ -253,6 +253,7 @@ export const chatMethods: MethodGroup = {
       // 自动创建 Thread
       let sid = sessionId;
       let resolvedProjectDir = projectDir;
+      let threadModelOverride: string | undefined;
       if (!sid) {
         const threadStore = await ThreadStore.getInstance();
         const multiAgentModes: AgentMode[] = ['orchestrator', 'swarm', 'quality-loop'];
@@ -267,12 +268,17 @@ export const chatMethods: MethodGroup = {
         });
         sid = thread.id;
         log.info(`[chat.send] Auto-created thread: ${sid}`);
-      } else if (!resolvedProjectDir) {
+      } else {
         try {
           const threadStore = await ThreadStore.getInstance();
           const thread = await threadStore.get(sid);
           if (thread?.projectDir) {
             resolvedProjectDir = thread.projectDir;
+          }
+          // 获取任务级别的模型覆盖
+          if (thread?.overrideModel) {
+            threadModelOverride = thread.overrideModel;
+            log.info(`[chat.send] Using thread model override: ${threadModelOverride}`);
           }
         } catch {
           // 读取失败不影响主流程
@@ -321,6 +327,15 @@ export const chatMethods: MethodGroup = {
 
         if (resolvedProjectDir) {
           builder.projectDir(resolvedProjectDir);
+        }
+
+        // 任务级模型覆盖（优先于 Agent 默认模型）
+        if (threadModelOverride) {
+          agentExecutor.applyProviderConfig(builder, {
+            modelOverride: threadModelOverride,
+            agentId: agentDef?.id ?? 'default'
+          });
+          log.info(`[chat.send] Applied thread model override: ${threadModelOverride}`);
         }
 
         // skillRef: 显式 Skill 注入 — 将 Skill 全文作为强制指令追加到 system prompt

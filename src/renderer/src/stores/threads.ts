@@ -36,6 +36,8 @@ export interface ThreadEntry {
   agentHomePath: string;
   /** 工程目录（用户指定的输出目标路径） */
   projectDir?: string;
+  /** 任务级别的模型覆盖（优先于 Agent 默认模型） */
+  overrideModel?: string;
 }
 
 /** HTTP 基础路径 */
@@ -161,7 +163,13 @@ export const useThreadsStore = defineStore('threads', () => {
   /** 更新 Thread（部分更新，如标题、消息数、工程目录等） */
   async function updateThread(
     threadId: string,
-    params: { title?: string; messageCount?: number; status?: string; projectDir?: string | null }
+    params: {
+      title?: string;
+      messageCount?: number;
+      status?: string;
+      projectDir?: string | null;
+      overrideModel?: string;
+    }
   ): Promise<boolean> {
     try {
       const result = await apiRequest<{ thread: ThreadEntry }>(`/${threadId}`, {

@@ -217,6 +217,7 @@ export class ThreadStore {
       ...(params.runStatus !== undefined && { runStatus: params.runStatus }),
       ...(params.messageCount !== undefined && { messageCount: params.messageCount }),
       ...(params.projectDir !== undefined && { projectDir: params.projectDir ?? undefined }),
+      ...(params.overrideModel !== undefined && { overrideModel: params.overrideModel || undefined }),
       ...(params.metadata !== undefined && { metadata: params.metadata }),
       updatedAt: new Date().toISOString()
     };
@@ -386,6 +387,7 @@ function toIndexEntry(def: ThreadDefinition, workspacesDir: string): ThreadIndex
     updatedAt: def.updatedAt,
     workspacePath: path.join(workspacesDir, def.id),
     agentHomePath: def.agentHomePath,
-    projectDir: def.projectDir
+    projectDir: def.projectDir,
+    overrideModel: def.overrideModel
   };
 }
