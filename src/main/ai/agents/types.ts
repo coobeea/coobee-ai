@@ -102,6 +102,8 @@ export interface AgentIndexEntry {
   excludeTools?: string[];
   /** 关联的 Skill 名称列表（用于前端展示） */
   skills?: string[];
+  /** 使用的模型 ID 或模型组引用（@group:xxx） */
+  model?: string;
 }
 
 // ==================== 创建 / 更新参数 ====================

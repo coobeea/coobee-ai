@@ -492,6 +492,7 @@ function toIndexEntry(def: AgentDefinition): AgentIndexEntry {
     version: def.version,
     updatedAt: def.updatedAt,
     excludeTools: def.excludeTools,
-    skills: def.skills
+    skills: def.skills,
+    model: def.model
   };
 }
