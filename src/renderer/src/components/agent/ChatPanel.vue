@@ -256,6 +256,25 @@ onMounted(async () => {
   }
 });
 
+// 监听 threadId 变化（切换会话时重新加载）
+watch(
+  () => props.threadId,
+  async (newThreadId, oldThreadId) => {
+    if (newThreadId !== oldThreadId) {
+      // 1. 取消旧订阅
+      unsubscribe();
+      // 2. 清空旧消息
+      resetAll();
+      // 3. 重新加载历史
+      await loadThreadHistory();
+      // 4. 重新订阅
+      if (!isStreaming.value) {
+        ensureSubscription();
+      }
+    }
+  }
+);
+
 onUnmounted(() => {
   unsubscribe();
   if (statusCheckTimer) {
