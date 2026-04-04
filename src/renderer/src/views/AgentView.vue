@@ -358,16 +358,33 @@ function toggleSkill(skillName: string): void {
   }
 }
 
+const saving = ref(false);
+const saveSuccess = ref(false);
+
 async function saveAgentConfig(): Promise<void> {
-  if (!editAgentId.value) return;
-  const ok = await agentsStore.updateAgent(editAgentId.value, {
-    skills: editSkillsList.value,
-    model: editModel.value || undefined
-  });
-  if (ok) {
-    editAgentId.value = null;
-  } else {
-    alert(`保存失败：内置智能体不可直接修改，请先复制到用户目录`);
+  if (!editAgentId.value || saving.value) return;
+
+  saving.value = true;
+  saveSuccess.value = false;
+
+  try {
+    const ok = await agentsStore.updateAgent(editAgentId.value, {
+      skills: editSkillsList.value,
+      model: editModel.value || undefined
+    });
+
+    if (ok) {
+      // 显示保存成功状态
+      saveSuccess.value = true;
+      // 等待数据刷新完成并显示成功提示
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      editAgentId.value = null;
+      saveSuccess.value = false;
+    } else {
+      alert(`保存失败：内置智能体不可直接修改，请先复制到用户目录`);
+    }
+  } finally {
+    saving.value = false;
   }
 }
 
@@ -735,8 +752,16 @@ function formatTime(iso: string): string {
               </template>
             </div>
             <div class="skills-dialog-footer">
-              <button class="text-btn" @click="cancelAgentEdit">取消</button>
-              <button class="primary-btn" @click="saveAgentConfig">保存</button>
+              <button class="text-btn" :disabled="saving" @click="cancelAgentEdit">取消</button>
+              <button
+                class="primary-btn"
+                :class="{ 'save-success': saveSuccess }"
+                :disabled="saving || saveSuccess"
+                @click="saveAgentConfig">
+                <span v-if="saving" class="i-carbon-renew inline-block h-3.5 w-3.5 animate-spin" />
+                <span v-else-if="saveSuccess" class="i-carbon-checkmark-filled inline-block h-3.5 w-3.5" />
+                <span>{{ saving ? '保存中...' : saveSuccess ? '保存成功' : '保存' }}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1538,6 +1563,12 @@ function formatTime(iso: string): string {
 
 .primary-btn:hover:not(:disabled) {
   background: hsl(var(--primary-hover));
+}
+
+.primary-btn.save-success {
+  background: hsl(142 76% 36%);
+  color: white;
+}
 }
 
 .primary-btn:disabled {
