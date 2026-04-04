@@ -1,16 +1,15 @@
 /**
- * Chat Store (重构版)
+ * Chat Store (轻量化版本)
  *
- * 职责：按 threadId 隔离管理多个 Thread 的对话状态。
- * 每个 Thread 有独立的消息列表、流式状态、消息队列。
- * 组件通过 getState(threadId) 获取对应的状态（reactive）。
+ * 职责：仅管理发送消息、队列、abort 等操作
+ * 消息历史由组件本地持有（使用 useStreamHandler），unmounted 时自动释放
  */
 
 import { defineStore } from 'pinia';
 import { ref, computed, type ComputedRef } from 'vue';
 import configManager from '@/config';
 import { gateway } from '@/plugins/gatewaySetup';
-import type { StreamMessage, HitlApprovalDecision } from '@shared/stream-protocol';
+import type { HitlApprovalDecision } from '@shared/stream-protocol';
 
 // Re-export shared types
 export type {
@@ -22,8 +21,6 @@ export type {
   MessageStatus,
   ExecOutputEntry
 } from '@/composables/useStreamHandler';
-
-import type { StreamChatMessage, ExecOutputEntry, ToolCallInfo } from '@/composables/useStreamHandler';
 
 // ==================== 类型定义 ====================
 
@@ -42,42 +39,36 @@ export interface QueuedMessage {
   timestamp: number;
 }
 
-/** 单个 Thread 的对话状态 */
-export interface ThreadChatState {
-  messages: StreamChatMessage[];
-  isStreaming: boolean;
-  execOutputs: ExecOutputEntry[];
+/** 单个 Thread 的流式状态（轻量化：仅队列+流式标识） */
+export interface ThreadStreamState {
+  isStreaming: boolean; // 流式进行中标识（由组件更新）
   isQueued: boolean;
   queueStatus: QueueStatusInfo | null;
   messageQueue: QueuedMessage[];
   queueCounter: number;
-  messageCounter: number;
   lastUserMessage: { text: string; files?: { path: string; name: string }[] } | null;
 }
 
 // ==================== Store ====================
 
 export const useChatStore = defineStore('chat', () => {
-  // ---- 按 threadId 隔离的状态 ----
-  const threadStates = ref(new Map<string, ThreadChatState>());
+  // ---- 按 threadId 隔离的轻量状态 ----
+  const threadStates = ref(new Map<string, ThreadStreamState>());
 
-  /** 创建默认的 Thread 状态 */
-  function createDefaultState(): ThreadChatState {
+  /** 创建默认的 Thread 流式状态 */
+  function createDefaultState(): ThreadStreamState {
     return {
-      messages: [],
       isStreaming: false,
-      execOutputs: [],
       isQueued: false,
       queueStatus: null,
       messageQueue: [],
       queueCounter: 0,
-      messageCounter: 0,
       lastUserMessage: null
     };
   }
 
   /** 获取或创建 Thread 状态 */
-  function getThreadState(threadId: string): ThreadChatState {
+  function getThreadState(threadId: string): ThreadStreamState {
     if (!threadStates.value.has(threadId)) {
       threadStates.value.set(threadId, createDefaultState());
     }
@@ -85,7 +76,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /** 获取 Thread 状态（响应式计算属性版本，供组件使用） */
-  function getState(threadId: string): ComputedRef<ThreadChatState> {
+  function getState(threadId: string): ComputedRef<ThreadStreamState> {
     return computed(() => getThreadState(threadId));
   }
 
@@ -94,327 +85,17 @@ export const useChatStore = defineStore('chat', () => {
     threadStates.value.delete(threadId);
   }
 
-  // ==================== 消息处理辅助函数 ====================
-
-  function trimMessages(state: ThreadChatState, maxMessages = 500): void {
-    if (state.messages.length > maxMessages) {
-      state.messages = state.messages.slice(-maxMessages);
-    }
-  }
-
-  function getCurrentAssistantMessage(state: ThreadChatState): StreamChatMessage | undefined {
-    const last = state.messages[state.messages.length - 1];
-    return last?.role === 'assistant' && last.status === 'streaming' ? last : undefined;
-  }
-
-  function createAssistantMessage(state: ThreadChatState): StreamChatMessage {
-    const msg: StreamChatMessage = {
-      id: `chat-assistant-${++state.messageCounter}`,
-      role: 'assistant',
-      content: '',
-      blocks: [],
-      status: 'streaming',
-      timestamp: Date.now()
-    };
-    state.messages.push(msg);
-    trimMessages(state);
-    return msg;
-  }
-
-  function addUserMessage(state: ThreadChatState, text: string): StreamChatMessage {
-    const msg: StreamChatMessage = {
-      id: `chat-user-${++state.messageCounter}`,
-      role: 'user',
-      content: text,
-      blocks: [],
-      status: 'done',
-      timestamp: Date.now()
-    };
-    state.messages.push(msg);
-    trimMessages(state);
-    return msg;
-  }
-
-  function addErrorMessage(state: ThreadChatState, error: string): StreamChatMessage {
-    const msg: StreamChatMessage = {
-      id: `chat-error-${++state.messageCounter}`,
-      role: 'assistant',
-      content: '',
-      blocks: [],
-      status: 'error',
-      error,
-      timestamp: Date.now()
-    };
-    state.messages.push(msg);
-    return msg;
-  }
-
-  const EXEC_TOOL_NAMES = new Set(['exec_command', 'exec']);
-
-  function isExecTool(name: string): boolean {
-    return EXEC_TOOL_NAMES.has(name);
-  }
-
-  function findLastCallingTool(assistantMsg: StreamChatMessage): ToolCallInfo | undefined {
-    for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
-      const block = assistantMsg.blocks[i];
-      if (block.type === 'tool' && block.tool.status === 'calling') {
-        return block.tool;
-      }
-    }
-    return undefined;
-  }
-
-  // ==================== 流式消息处理 ====================
+  // ==================== 流式状态更新（由组件调用） ====================
 
   /**
-   * 处理流式消息（根据 sessionId 找到对应的 threadId）
+   * 设置流式状态（由组件在 run:start / run:done 时调用）
    */
-  function handleStreamMessage(msg: StreamMessage): void {
-    const threadId = msg.sessionId; // sessionId === threadId
-    if (!threadId) return;
-
+  function setStreaming(threadId: string, streaming: boolean): void {
     const state = getThreadState(threadId);
-    let assistantMsg = getCurrentAssistantMessage(state);
-
-    switch (msg.type) {
-      case 'run:start':
-        state.isStreaming = true;
-        if (!assistantMsg) createAssistantMessage(state);
-        break;
-
-      case 'text:delta': {
-        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
-        assistantMsg.content += msg.content;
-        const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1];
-        if (lastBlock && lastBlock.type === 'text') {
-          lastBlock.text += msg.content;
-        } else {
-          assistantMsg.blocks.push({ type: 'text', text: msg.content });
-        }
-        break;
-      }
-
-      case 'reasoning:delta': {
-        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
-        const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1];
-        if (lastBlock && lastBlock.type === 'thinking') {
-          lastBlock.text += msg.content;
-        } else {
-          assistantMsg.blocks.push({ type: 'thinking', text: msg.content });
-        }
-        break;
-      }
-
-      case 'tool:start': {
-        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
-        assistantMsg.blocks.push({
-          type: 'tool',
-          tool: {
-            name: (msg.data?.toolName as string) || msg.content,
-            arguments: (msg.data?.arguments as string) || '',
-            status: 'calling'
-          }
-        });
-        break;
-      }
-
-      case 'tool:delta': {
-        if (assistantMsg) {
-          const currentTool = findLastCallingTool(assistantMsg);
-          if (currentTool && isExecTool(currentTool.name)) {
-            state.execOutputs.push({
-              timestamp: Date.now(),
-              type: 'progress',
-              toolName: currentTool.name,
-              content: msg.content
-            });
-          }
-        }
-        break;
-      }
-
-      case 'tool:done': {
-        if (assistantMsg) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const suspended = (msg.data as any)?.suspended === true;
-
-          for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
-            const block = assistantMsg.blocks[i];
-            if (block.type === 'tool' && block.tool.status === 'calling') {
-              if (isExecTool(block.tool.name)) {
-                state.execOutputs.push({
-                  timestamp: Date.now(),
-                  type: 'result',
-                  toolName: block.tool.name,
-                  content: msg.content
-                });
-              }
-              block.tool.result = msg.content;
-
-              if (suspended) {
-                block.tool.status = 'approval-pending';
-              } else {
-                block.tool.status = 'done';
-              }
-
-              // 检测 write 工具写入的音频文件
-              if (block.tool.name === 'write') {
-                const audioMatch = msg.content.match(/["']?([^"'\s]+\.(mp3|wav|m4a|aac|flac|webm))["']?/i);
-                if (audioMatch) {
-                  const absPath = audioMatch[1];
-                  const baseUrl = configManager.getBaseUrl();
-                  const audioUrl = `${baseUrl}/gateway/files/serve?path=${encodeURIComponent(absPath)}`;
-                  const fileName =
-                    absPath
-                      .split('/')
-                      .pop()
-                      ?.replace(/\.(mp3|wav|m4a|aac|flac|webm)$/i, '') || '语音';
-                  assistantMsg!.blocks.push({
-                    type: 'audio',
-                    src: audioUrl,
-                    title: fileName
-                  });
-                }
-              }
-
-              break;
-            }
-          }
-        }
-        break;
-      }
-
-      case 'run:done':
-        if (assistantMsg) {
-          assistantMsg.status = 'done';
-          if (assistantMsg.pendingApprovals) {
-            for (const approval of assistantMsg.pendingApprovals) {
-              if (!approval.decision) {
-                approval.canShow = true;
-              }
-            }
-          }
-        }
-        state.isStreaming = false;
-        state.isQueued = false;
-        state.queueStatus = null;
-        break;
-
-      case 'run:error':
-        if (assistantMsg) {
-          assistantMsg.status = 'error';
-          assistantMsg.error = msg.content;
-        } else {
-          addErrorMessage(state, msg.content);
-        }
-        state.isStreaming = false;
-        state.isQueued = false;
-        state.queueStatus = null;
-        break;
-
-      case 'hitl:required': {
-        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
-
-        const toolName = (msg.data?.toolName as string) || 'unknown';
-        const approvalIndex = (msg.data?.index as number) ?? 0;
-        const approvalSessionId = (msg.data?.subSessionId as string) || msg.sessionId;
-
-        if (!assistantMsg.pendingApprovals) {
-          assistantMsg.pendingApprovals = [];
-        }
-        assistantMsg.pendingApprovals.push({
-          index: approvalIndex,
-          toolName,
-          arguments: msg.data?.arguments as string | undefined,
-          sessionId: approvalSessionId,
-          canShow: false
-        });
-        break;
-      }
-
-      case 'hitl:approved':
-      case 'hitl:rejected': {
-        if (assistantMsg && assistantMsg.pendingApprovals) {
-          const targetIndex = msg.data?.index as number | undefined;
-          const decision: HitlApprovalDecision = msg.type === 'hitl:approved' ? 'approve-once' : 'reject';
-
-          if (targetIndex != null) {
-            const approval = assistantMsg.pendingApprovals.find((a) => a.index === targetIndex);
-            if (approval) {
-              approval.decision = decision;
-            }
-          }
-        }
-        break;
-      }
-
-      case 'run:interrupted':
-        if (assistantMsg) assistantMsg.status = 'interrupted';
-        state.isStreaming = false;
-        break;
-
-      case 'run:resumed':
-        if (assistantMsg) assistantMsg.status = 'streaming';
-        state.isStreaming = true;
-        break;
-
-      case 'delegate:start': {
-        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
-        assistantMsg.blocks.push({
-          type: 'delegate',
-          delegate: {
-            agentId: (msg.data?.agentId as string) || 'unknown',
-            agentName: msg.data?.agentName as string | undefined,
-            task: msg.data?.task as string | undefined,
-            status: 'running'
-          }
-        });
-        break;
-      }
-
-      case 'delegate:done': {
-        if (assistantMsg) {
-          const agentId = msg.data?.agentId as string | undefined;
-          for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
-            const block = assistantMsg.blocks[i];
-            if (
-              block.type === 'delegate' &&
-              block.delegate.status === 'running' &&
-              (!agentId || block.delegate.agentId === agentId)
-            ) {
-              block.delegate.status = 'done';
-              block.delegate.output = msg.content || undefined;
-              block.delegate.duration = msg.data?.duration as number | undefined;
-              break;
-            }
-          }
-        }
-        break;
-      }
-
-      case 'quality:round_start':
-      case 'quality:validating':
-      case 'quality:score':
-      case 'quality:repairing':
-      case 'quality:done': {
-        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
-        const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1];
-        if (lastBlock && lastBlock.type === 'quality') {
-          lastBlock.status = msg.content;
-          lastBlock.detail = msg.data ? JSON.stringify(msg.data) : undefined;
-        } else {
-          assistantMsg.blocks.push({
-            type: 'quality',
-            status: msg.content,
-            detail: msg.data ? JSON.stringify(msg.data) : undefined
-          });
-        }
-        break;
-      }
-
-      default:
-        break;
+    state.isStreaming = streaming;
+    if (!streaming) {
+      state.isQueued = false;
+      state.queueStatus = null;
     }
   }
 
@@ -467,8 +148,6 @@ export const useChatStore = defineStore('chat', () => {
       finalMessage = `${text} ${filePaths}`;
     }
 
-    addUserMessage(state, finalMessage);
-
     try {
       let agentId: string | undefined;
       try {
@@ -509,10 +188,10 @@ export const useChatStore = defineStore('chat', () => {
       });
 
       if (result) {
-        const { status, error } = result;
+        const { status } = result;
 
         if (status === 'error') {
-          addErrorMessage(state, error || '启动 Agent 失败');
+          // 组件会在 useStreamHandler 中处理错误消息
           return;
         }
 
@@ -528,25 +207,23 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      addErrorMessage(state, errMsg);
+      // 组件会在 useStreamHandler 中处理错误
+      console.error('[chatStore] sendMessage error:', err);
     }
   }
 
   /**
    * 提交 HITL 审批决策
+   * Note: 由于 messages 在组件本地，approval 信息需要由组件传入
    */
-  async function submitDecision(threadId: string, index: number, decision: HitlApprovalDecision): Promise<void> {
+  async function submitDecision(
+    threadId: string,
+    index: number,
+    decision: HitlApprovalDecision,
+    sessionId?: string // 可选的子 sessionId
+  ): Promise<void> {
     try {
-      const state = getThreadState(threadId);
-      let targetSessionId = threadId;
-      const lastMsg = state.messages[state.messages.length - 1];
-      if (lastMsg?.pendingApprovals) {
-        const approval = lastMsg.pendingApprovals.find((a) => a.index === index);
-        if (approval?.sessionId) {
-          targetSessionId = approval.sessionId;
-        }
-      }
+      const targetSessionId = sessionId || threadId;
 
       const result = await gateway.request<{ ok: boolean; error?: string }>('hitl.decide', {
         sessionId: targetSessionId,
@@ -554,14 +231,7 @@ export const useChatStore = defineStore('chat', () => {
         decision
       });
 
-      if (result?.ok) {
-        if (lastMsg?.pendingApprovals) {
-          const approval = lastMsg.pendingApprovals.find((a) => a.index === index);
-          if (approval) {
-            approval.decision = decision;
-          }
-        }
-      } else {
+      if (!result?.ok) {
         console.error('[chatStore] submitDecision failed:', result);
       }
     } catch (err: unknown) {
@@ -578,10 +248,6 @@ export const useChatStore = defineStore('chat', () => {
         sessionId: threadId
       });
       const state = getThreadState(threadId);
-      const lastMsg = state.messages[state.messages.length - 1];
-      if (lastMsg?.role === 'assistant' && lastMsg.status === 'streaming') {
-        lastMsg.status = 'interrupted';
-      }
       state.isStreaming = false;
       state.isQueued = false;
       state.queueStatus = null;
@@ -591,17 +257,14 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * 清空某个 Thread 的消息
+   * 清空某个 Thread 的状态（仅队列等）
    */
   function clearMessages(threadId: string): void {
     const state = getThreadState(threadId);
-    state.messages = [];
-    state.execOutputs = [];
     state.isStreaming = false;
     state.isQueued = false;
     state.queueStatus = null;
     state.messageQueue = [];
-    state.messageCounter = 0;
   }
 
   /**
@@ -613,178 +276,30 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * 加载 Thread 的历史对话
+   * 加载 Thread 的历史对话（返回消息数组，由组件持有）
    */
-  async function loadHistory(threadId: string): Promise<void> {
+  async function loadHistory(threadId: string): Promise<{
+    messages: { ts: string; seq: number; type: string; content: string; data?: Record<string, unknown> }[];
+    userMessages: { content: string; timestamp: number }[];
+  }> {
     const BASE = `${configManager.getBaseUrl()}/gateway/threads`;
 
     try {
       const res = await fetch(`${BASE}/${threadId}/history`);
-      if (!res.ok) return;
+      if (!res.ok) return { messages: [], userMessages: [] };
 
       const data = (await res.json()) as {
         events: { ts: string; seq: number; type: string; content: string; data?: Record<string, unknown> }[];
         userMessages: { content: string; timestamp: number }[];
       };
 
-      const state = getThreadState(threadId);
-      state.messages = [];
-      state.execOutputs = [];
-      state.isStreaming = false;
-      state.messageCounter = 0;
-
-      const { events, userMessages } = data;
-      if (events.length === 0 && userMessages.length === 0) return;
-
-      let currentMsg: StreamChatMessage | undefined;
-      let userIdx = 0;
-
-      for (const evt of events) {
-        switch (evt.type) {
-          case 'run:start':
-            if (userIdx < userMessages.length) {
-              addUserMessage(state, userMessages[userIdx].content);
-              userIdx++;
-            }
-            currentMsg = {
-              id: `hist-assistant-${++state.messageCounter}`,
-              role: 'assistant',
-              content: '',
-              blocks: [],
-              status: 'streaming',
-              timestamp: new Date(evt.ts).getTime()
-            };
-            state.messages.push(currentMsg);
-            break;
-
-          case 'reasoning:done':
-            if (currentMsg) {
-              const text = (evt.data?.rawContent as string) || '';
-              if (text) currentMsg.blocks.push({ type: 'thinking', text });
-            }
-            break;
-
-          case 'text:done':
-            if (currentMsg) {
-              const text = (evt.data?.text as string) || evt.content || '';
-              if (text) {
-                currentMsg.blocks.push({ type: 'text', text });
-                currentMsg.content = text;
-              }
-            }
-            break;
-
-          case 'tool:start':
-            if (currentMsg) {
-              currentMsg.blocks.push({
-                type: 'tool',
-                tool: {
-                  name: (evt.data?.toolName as string) || evt.content,
-                  arguments: (evt.data?.arguments as string) || '',
-                  status: 'calling'
-                }
-              });
-            }
-            break;
-
-          case 'tool:done':
-            if (currentMsg) {
-              for (let i = currentMsg.blocks.length - 1; i >= 0; i--) {
-                const b = currentMsg.blocks[i];
-                if (b.type === 'tool' && b.tool.status === 'calling') {
-                  b.tool.result = evt.content || (evt.data?.output as string) || '';
-                  b.tool.status = 'done';
-                  break;
-                }
-              }
-            }
-            break;
-
-          case 'hitl:required':
-            if (currentMsg) {
-              if (!currentMsg.pendingApprovals) currentMsg.pendingApprovals = [];
-              currentMsg.pendingApprovals.push({
-                index: (evt.data?.index as number) ?? currentMsg.pendingApprovals.length,
-                toolName: (evt.data?.toolName as string) || 'unknown',
-                arguments: evt.data?.arguments as string | undefined
-              });
-            }
-            break;
-
-          case 'hitl:approved':
-          case 'hitl:rejected': {
-            if (currentMsg && currentMsg.pendingApprovals) {
-              const targetIndex = evt.data?.index as number | undefined;
-              const decision: HitlApprovalDecision = evt.type === 'hitl:approved' ? 'approve-once' : 'reject';
-              if (targetIndex != null) {
-                const approval = currentMsg.pendingApprovals.find((a) => a.index === targetIndex);
-                if (approval) {
-                  approval.decision = decision;
-                }
-              }
-            }
-            break;
-          }
-
-          case 'delegate:start':
-            if (currentMsg) {
-              currentMsg.blocks.push({
-                type: 'delegate',
-                delegate: {
-                  agentId: (evt.data?.agentId as string) || 'unknown',
-                  agentName: evt.data?.agentName as string | undefined,
-                  task: evt.data?.task as string | undefined,
-                  status: 'running'
-                }
-              });
-            }
-            break;
-
-          case 'delegate:done':
-            if (currentMsg) {
-              const agentId = evt.data?.agentId as string | undefined;
-              for (let i = currentMsg.blocks.length - 1; i >= 0; i--) {
-                const b = currentMsg.blocks[i];
-                if (
-                  b.type === 'delegate' &&
-                  b.delegate.status === 'running' &&
-                  (!agentId || b.delegate.agentId === agentId)
-                ) {
-                  b.delegate.status = 'done';
-                  b.delegate.output = evt.content || undefined;
-                  b.delegate.duration = evt.data?.duration as number | undefined;
-                  break;
-                }
-              }
-            }
-            break;
-
-          case 'run:done':
-            if (currentMsg) {
-              currentMsg.status = 'done';
-              if (currentMsg.pendingApprovals) {
-                for (const approval of currentMsg.pendingApprovals) {
-                  if (!approval.decision) {
-                    approval.canShow = true;
-                  }
-                }
-              }
-            }
-            break;
-
-          case 'run:error':
-            if (currentMsg) {
-              currentMsg.status = 'error';
-              currentMsg.error = evt.content;
-            }
-            break;
-
-          default:
-            break;
-        }
-      }
+      return {
+        messages: data.events || [],
+        userMessages: data.userMessages || []
+      };
     } catch (err: unknown) {
       console.error('[chatStore] loadHistory error:', err);
+      return { messages: [], userMessages: [] };
     }
   }
 
@@ -793,7 +308,7 @@ export const useChatStore = defineStore('chat', () => {
     getState,
     getThreadState,
     clearThreadState,
-    handleStreamMessage,
+    setStreaming,
     sendMessage,
     abortSession,
     submitDecision,

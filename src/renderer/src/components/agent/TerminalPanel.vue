@@ -8,8 +8,8 @@
  *   3. 进程 — 后台进程列表及状态
  */
 
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
-import { useChatStore, type ExecOutputEntry } from '@/stores/chat';
+import { ref, computed, watch, nextTick, inject, onMounted, onUnmounted, type Ref } from 'vue';
+import { type ExecOutputEntry } from '@/composables/useStreamHandler';
 import {
   useProcessState,
   initProcessWs,
@@ -20,13 +20,14 @@ import {
 import { useTerminal, initTerminalWs } from '@/composables/useTerminal';
 
 // ==================== Props ====================
-const props = defineProps<{
+defineProps<{
   threadId: string;
 }>();
 
-// ==================== Store & Refs ====================
-const chatStore = useChatStore();
-const state = chatStore.getState(props.threadId);
+// ==================== Inject & Refs ====================
+// 从 ChatPanel inject execOutputs
+const execOutputs = inject<Ref<ExecOutputEntry[]>>('execOutputs', ref([]));
+
 const { processes, outputBuffer } = useProcessState();
 const {
   terminals,
@@ -47,8 +48,6 @@ const selectedProcessId = ref<string | null>(null);
 // ResizeObserver 和定时器变量
 let resizeObserver: ResizeObserver | null = null;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
-
-const execOutputs = computed<ExecOutputEntry[]>(() => state.value.execOutputs);
 
 const filteredProcessOutput = computed<ProcessOutputLine[]>(() => {
   if (!selectedProcessId.value) return outputBuffer.value;

@@ -167,19 +167,7 @@ function goBackToAgents(): void {
   router.push('/agent');
 }
 
-// 有 exec 输出时自动展开终端面板
-watch(
-  () => {
-    if (!threadId.value) return 0;
-    const state = chatStore.getThreadState(threadId.value);
-    return state.execOutputs.length;
-  },
-  (newLen, oldLen) => {
-    if (newLen > (oldLen ?? 0) && terminalCollapsed.value) {
-      terminalCollapsed.value = false;
-    }
-  }
-);
+// TODO: 有 exec 输出时自动展开终端面板（暂时移除，execOutputs 现在在组件本地）
 
 onMounted(() => {
   copilotStore.hideBubble();

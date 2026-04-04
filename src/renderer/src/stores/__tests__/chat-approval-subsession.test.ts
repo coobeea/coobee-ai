@@ -23,7 +23,6 @@ vi.mock('@/config', () => ({
 }));
 
 import { useChatStore } from '../chat';
-import type { StreamChatMessage } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
 
 describe('chatStore submitDecision with subSessionId', () => {
@@ -32,36 +31,18 @@ describe('chatStore submitDecision with subSessionId', () => {
     vi.clearAllMocks();
   });
 
-  it('routes approval to sub-session when present on pending approval', async () => {
+  it('routes approval to sub-session when present', async () => {
     const store = useChatStore();
     const decision: HitlApprovalDecision = 'approve-once';
     const threadId = 'thread-1';
+    const subSessionId = 'thread-1:delegate:child';
 
-    // 准备测试数据：创建 thread state 并添加消息
-    const state = store.getThreadState(threadId);
-    const msg: StreamChatMessage = {
-      id: 'm1',
-      role: 'assistant',
-      content: '',
-      blocks: [],
-      status: 'done',
-      timestamp: Date.now(),
-      pendingApprovals: [
-        {
-          index: 0,
-          toolName: 'exec',
-          sessionId: 'thread-1:delegate:child',
-          canShow: true
-        }
-      ]
-    };
-    state.messages.push(msg);
-
-    await store.submitDecision(threadId, 0, decision);
+    // 新架构：submitDecision 接收 sessionId 参数
+    await store.submitDecision(threadId, 0, decision, subSessionId);
 
     const { gateway } = await import('@/plugins/gatewaySetup');
     expect(gateway.request).toHaveBeenCalledWith('hitl.decide', {
-      sessionId: 'thread-1:delegate:child',
+      sessionId: subSessionId,
       index: 0,
       decision
     });
