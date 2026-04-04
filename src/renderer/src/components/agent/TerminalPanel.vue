@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * TerminalPanel — 终端面板
+ * TerminalPanel — 终端面板（重构版）
  *
  * 三个 Tab：
  *   1. 终端 — 真正的 xterm.js PTY 终端，支持交互式命令
@@ -19,7 +19,14 @@ import {
 } from '@/composables/useProcessWs';
 import { useTerminal, initTerminalWs } from '@/composables/useTerminal';
 
+// ==================== Props ====================
+const props = defineProps<{
+  threadId: string;
+}>();
+
+// ==================== Store & Refs ====================
 const chatStore = useChatStore();
+const state = chatStore.getState(props.threadId);
 const { processes, outputBuffer } = useProcessState();
 const {
   terminals,
@@ -41,7 +48,7 @@ const selectedProcessId = ref<string | null>(null);
 let resizeObserver: ResizeObserver | null = null;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
-const execOutputs = computed<ExecOutputEntry[]>(() => chatStore.execOutputs);
+const execOutputs = computed<ExecOutputEntry[]>(() => state.value.execOutputs);
 
 const filteredProcessOutput = computed<ProcessOutputLine[]>(() => {
   if (!selectedProcessId.value) return outputBuffer.value;

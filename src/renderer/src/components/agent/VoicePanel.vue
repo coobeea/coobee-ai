@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * VoicePanel — 实时语音交互面板
+ * VoicePanel — 实时语音交互面板（重构版）
  *
  * 功能：
  *   1. 展示 Worker 状态（asr / tts）
@@ -18,10 +18,26 @@
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
 import { useWorkerStore } from '@/stores/worker';
 import { useChatStore } from '@/stores/chat';
+import { useThreadsStore } from '@/stores/threads';
 import configManager from '@/config';
 
+// ==================== Props ====================
+const props = withDefaults(
+  defineProps<{
+    threadId?: string;
+  }>(),
+  {
+    threadId: undefined
+  }
+);
+
+// ==================== Store ====================
 const workerStore = useWorkerStore();
 const chatStore = useChatStore();
+const threadsStore = useThreadsStore();
+
+// 获取当前 threadId（优先使用 props，否则从 threadsStore 获取）
+const currentThreadId = computed(() => props.threadId || threadsStore.activeThreadId);
 
 // ---- 初始化 ----
 
@@ -184,7 +200,9 @@ function connectASRWebSocket(port: number): void {
       if (data.partial) partialText.value = data.partial;
       if (data.final) {
         partialText.value = '';
-        if (data.final.trim()) chatStore.sendMessage(data.final.trim());
+        if (data.final.trim() && currentThreadId.value) {
+          chatStore.sendMessage(currentThreadId.value, data.final.trim());
+        }
       }
     } catch {
       /* ignore */

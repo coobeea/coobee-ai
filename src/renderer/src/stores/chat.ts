@@ -1,21 +1,18 @@
 /**
- * Chat Store
+ * Chat Store (重构版)
  *
- * 职责：纯聊天数据管理（消息列表、流式消息映射、HITL 审批状态）。
- * 通过 GatewayClient RPC 与后端通信，事件流由 useStreamWs 桥接。
- *
- * 消息处理逻辑通过 useStreamHandler composable 与 CopilotStore 共享。
+ * 职责：按 threadId 隔离管理多个 Thread 的对话状态。
+ * 每个 Thread 有独立的消息列表、流式状态、消息队列。
+ * 组件通过 getState(threadId) 获取对应的状态（reactive）。
  */
 
 import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
+import { ref, computed, type ComputedRef } from 'vue';
 import configManager from '@/config';
 import { gateway } from '@/plugins/gatewaySetup';
-import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs';
-import { useStreamHandler, type StreamChatMessage } from '@/composables/useStreamHandler';
-import type { HitlApprovalDecision } from '@shared/stream-protocol';
+import type { StreamMessage, HitlApprovalDecision } from '@shared/stream-protocol';
 
-// Re-export shared types for existing consumers
+// Re-export shared types
 export type {
   StreamChatMessage as ChatMessage,
   ContentBlock,
@@ -26,7 +23,9 @@ export type {
   ExecOutputEntry
 } from '@/composables/useStreamHandler';
 
-// ==================== Store ====================
+import type { StreamChatMessage, ExecOutputEntry, ToolCallInfo } from '@/composables/useStreamHandler';
+
+// ==================== 类型定义 ====================
 
 /** 队列状态 */
 export interface QueueStatusInfo {
@@ -43,40 +42,401 @@ export interface QueuedMessage {
   timestamp: number;
 }
 
+/** 单个 Thread 的对话状态 */
+export interface ThreadChatState {
+  messages: StreamChatMessage[];
+  isStreaming: boolean;
+  execOutputs: ExecOutputEntry[];
+  isQueued: boolean;
+  queueStatus: QueueStatusInfo | null;
+  messageQueue: QueuedMessage[];
+  queueCounter: number;
+  messageCounter: number;
+  lastUserMessage: { text: string; files?: { path: string; name: string }[] } | null;
+}
+
+// ==================== Store ====================
+
 export const useChatStore = defineStore('chat', () => {
-  // ---- 共享消息处理 ----
-  const { messages, isStreaming, execOutputs, handleStreamMessage, addUserMessage, addErrorMessage, resetAll } =
-    useStreamHandler({
-      idPrefix: 'chat',
-      maxMessages: 500
-    });
+  // ---- 按 threadId 隔离的状态 ----
+  const threadStates = ref(new Map<string, ThreadChatState>());
 
-  // ---- 独立状态 ----
-  const sessionId = ref<string | null>(null);
-  const isQueued = ref(false);
-  const queueStatus = ref<QueueStatusInfo | null>(null);
+  /** 创建默认的 Thread 状态 */
+  function createDefaultState(): ThreadChatState {
+    return {
+      messages: [],
+      isStreaming: false,
+      execOutputs: [],
+      isQueued: false,
+      queueStatus: null,
+      messageQueue: [],
+      queueCounter: 0,
+      messageCounter: 0,
+      lastUserMessage: null
+    };
+  }
 
-  // ---- 消息队列 ----
-  const messageQueue = ref<QueuedMessage[]>([]);
-  let queueCounter = 0;
+  /** 获取或创建 Thread 状态 */
+  function getThreadState(threadId: string): ThreadChatState {
+    if (!threadStates.value.has(threadId)) {
+      threadStates.value.set(threadId, createDefaultState());
+    }
+    return threadStates.value.get(threadId)!;
+  }
 
-  // ---- 模式切换 ----
-  // 保存最后一条用户消息，用于智能模式切换时重新发送
-  const lastUserMessage = ref<{ text: string; files?: { path: string; name: string }[] } | null>(null);
+  /** 获取 Thread 状态（响应式计算属性版本，供组件使用） */
+  function getState(threadId: string): ComputedRef<ThreadChatState> {
+    return computed(() => getThreadState(threadId));
+  }
 
-  // ---- 对外 Actions ----
+  /** 清理 Thread 状态 */
+  function clearThreadState(threadId: string): void {
+    threadStates.value.delete(threadId);
+  }
 
+  // ==================== 消息处理辅助函数 ====================
+
+  function trimMessages(state: ThreadChatState, maxMessages = 500): void {
+    if (state.messages.length > maxMessages) {
+      state.messages = state.messages.slice(-maxMessages);
+    }
+  }
+
+  function getCurrentAssistantMessage(state: ThreadChatState): StreamChatMessage | undefined {
+    const last = state.messages[state.messages.length - 1];
+    return last?.role === 'assistant' && last.status === 'streaming' ? last : undefined;
+  }
+
+  function createAssistantMessage(state: ThreadChatState): StreamChatMessage {
+    const msg: StreamChatMessage = {
+      id: `chat-assistant-${++state.messageCounter}`,
+      role: 'assistant',
+      content: '',
+      blocks: [],
+      status: 'streaming',
+      timestamp: Date.now()
+    };
+    state.messages.push(msg);
+    trimMessages(state);
+    return msg;
+  }
+
+  function addUserMessage(state: ThreadChatState, text: string): StreamChatMessage {
+    const msg: StreamChatMessage = {
+      id: `chat-user-${++state.messageCounter}`,
+      role: 'user',
+      content: text,
+      blocks: [],
+      status: 'done',
+      timestamp: Date.now()
+    };
+    state.messages.push(msg);
+    trimMessages(state);
+    return msg;
+  }
+
+  function addErrorMessage(state: ThreadChatState, error: string): StreamChatMessage {
+    const msg: StreamChatMessage = {
+      id: `chat-error-${++state.messageCounter}`,
+      role: 'assistant',
+      content: '',
+      blocks: [],
+      status: 'error',
+      error,
+      timestamp: Date.now()
+    };
+    state.messages.push(msg);
+    return msg;
+  }
+
+  const EXEC_TOOL_NAMES = new Set(['exec_command', 'exec']);
+
+  function isExecTool(name: string): boolean {
+    return EXEC_TOOL_NAMES.has(name);
+  }
+
+  function findLastCallingTool(assistantMsg: StreamChatMessage): ToolCallInfo | undefined {
+    for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
+      const block = assistantMsg.blocks[i];
+      if (block.type === 'tool' && block.tool.status === 'calling') {
+        return block.tool;
+      }
+    }
+    return undefined;
+  }
+
+  // ==================== 流式消息处理 ====================
+
+  /**
+   * 处理流式消息（根据 sessionId 找到对应的 threadId）
+   */
+  function handleStreamMessage(msg: StreamMessage): void {
+    const threadId = msg.sessionId; // sessionId === threadId
+    if (!threadId) return;
+
+    const state = getThreadState(threadId);
+    let assistantMsg = getCurrentAssistantMessage(state);
+
+    switch (msg.type) {
+      case 'run:start':
+        state.isStreaming = true;
+        if (!assistantMsg) createAssistantMessage(state);
+        break;
+
+      case 'text:delta': {
+        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
+        assistantMsg.content += msg.content;
+        const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1];
+        if (lastBlock && lastBlock.type === 'text') {
+          lastBlock.text += msg.content;
+        } else {
+          assistantMsg.blocks.push({ type: 'text', text: msg.content });
+        }
+        break;
+      }
+
+      case 'reasoning:delta': {
+        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
+        const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1];
+        if (lastBlock && lastBlock.type === 'thinking') {
+          lastBlock.text += msg.content;
+        } else {
+          assistantMsg.blocks.push({ type: 'thinking', text: msg.content });
+        }
+        break;
+      }
+
+      case 'tool:start': {
+        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
+        assistantMsg.blocks.push({
+          type: 'tool',
+          tool: {
+            name: (msg.data?.toolName as string) || msg.content,
+            arguments: (msg.data?.arguments as string) || '',
+            status: 'calling'
+          }
+        });
+        break;
+      }
+
+      case 'tool:delta': {
+        if (assistantMsg) {
+          const currentTool = findLastCallingTool(assistantMsg);
+          if (currentTool && isExecTool(currentTool.name)) {
+            state.execOutputs.push({
+              timestamp: Date.now(),
+              type: 'progress',
+              toolName: currentTool.name,
+              content: msg.content
+            });
+          }
+        }
+        break;
+      }
+
+      case 'tool:done': {
+        if (assistantMsg) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const suspended = (msg.data as any)?.suspended === true;
+
+          for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
+            const block = assistantMsg.blocks[i];
+            if (block.type === 'tool' && block.tool.status === 'calling') {
+              if (isExecTool(block.tool.name)) {
+                state.execOutputs.push({
+                  timestamp: Date.now(),
+                  type: 'result',
+                  toolName: block.tool.name,
+                  content: msg.content
+                });
+              }
+              block.tool.result = msg.content;
+
+              if (suspended) {
+                block.tool.status = 'approval-pending';
+              } else {
+                block.tool.status = 'done';
+              }
+
+              // 检测 write 工具写入的音频文件
+              if (block.tool.name === 'write') {
+                const audioMatch = msg.content.match(/["']?([^"'\s]+\.(mp3|wav|m4a|aac|flac|webm))["']?/i);
+                if (audioMatch) {
+                  const absPath = audioMatch[1];
+                  const baseUrl = configManager.getBaseUrl();
+                  const audioUrl = `${baseUrl}/gateway/files/serve?path=${encodeURIComponent(absPath)}`;
+                  const fileName =
+                    absPath
+                      .split('/')
+                      .pop()
+                      ?.replace(/\.(mp3|wav|m4a|aac|flac|webm)$/i, '') || '语音';
+                  assistantMsg!.blocks.push({
+                    type: 'audio',
+                    src: audioUrl,
+                    title: fileName
+                  });
+                }
+              }
+
+              break;
+            }
+          }
+        }
+        break;
+      }
+
+      case 'run:done':
+        if (assistantMsg) {
+          assistantMsg.status = 'done';
+          if (assistantMsg.pendingApprovals) {
+            for (const approval of assistantMsg.pendingApprovals) {
+              if (!approval.decision) {
+                approval.canShow = true;
+              }
+            }
+          }
+        }
+        state.isStreaming = false;
+        state.isQueued = false;
+        state.queueStatus = null;
+        break;
+
+      case 'run:error':
+        if (assistantMsg) {
+          assistantMsg.status = 'error';
+          assistantMsg.error = msg.content;
+        } else {
+          addErrorMessage(state, msg.content);
+        }
+        state.isStreaming = false;
+        state.isQueued = false;
+        state.queueStatus = null;
+        break;
+
+      case 'hitl:required': {
+        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
+
+        const toolName = (msg.data?.toolName as string) || 'unknown';
+        const approvalIndex = (msg.data?.index as number) ?? 0;
+        const approvalSessionId = (msg.data?.subSessionId as string) || msg.sessionId;
+
+        if (!assistantMsg.pendingApprovals) {
+          assistantMsg.pendingApprovals = [];
+        }
+        assistantMsg.pendingApprovals.push({
+          index: approvalIndex,
+          toolName,
+          arguments: msg.data?.arguments as string | undefined,
+          sessionId: approvalSessionId,
+          canShow: false
+        });
+        break;
+      }
+
+      case 'hitl:approved':
+      case 'hitl:rejected': {
+        if (assistantMsg && assistantMsg.pendingApprovals) {
+          const targetIndex = msg.data?.index as number | undefined;
+          const decision: HitlApprovalDecision = msg.type === 'hitl:approved' ? 'approve-once' : 'reject';
+
+          if (targetIndex != null) {
+            const approval = assistantMsg.pendingApprovals.find((a) => a.index === targetIndex);
+            if (approval) {
+              approval.decision = decision;
+            }
+          }
+        }
+        break;
+      }
+
+      case 'run:interrupted':
+        if (assistantMsg) assistantMsg.status = 'interrupted';
+        state.isStreaming = false;
+        break;
+
+      case 'run:resumed':
+        if (assistantMsg) assistantMsg.status = 'streaming';
+        state.isStreaming = true;
+        break;
+
+      case 'delegate:start': {
+        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
+        assistantMsg.blocks.push({
+          type: 'delegate',
+          delegate: {
+            agentId: (msg.data?.agentId as string) || 'unknown',
+            agentName: msg.data?.agentName as string | undefined,
+            task: msg.data?.task as string | undefined,
+            status: 'running'
+          }
+        });
+        break;
+      }
+
+      case 'delegate:done': {
+        if (assistantMsg) {
+          const agentId = msg.data?.agentId as string | undefined;
+          for (let i = assistantMsg.blocks.length - 1; i >= 0; i--) {
+            const block = assistantMsg.blocks[i];
+            if (
+              block.type === 'delegate' &&
+              block.delegate.status === 'running' &&
+              (!agentId || block.delegate.agentId === agentId)
+            ) {
+              block.delegate.status = 'done';
+              block.delegate.output = msg.content || undefined;
+              block.delegate.duration = msg.data?.duration as number | undefined;
+              break;
+            }
+          }
+        }
+        break;
+      }
+
+      case 'quality:round_start':
+      case 'quality:validating':
+      case 'quality:score':
+      case 'quality:repairing':
+      case 'quality:done': {
+        if (!assistantMsg) assistantMsg = createAssistantMessage(state);
+        const lastBlock = assistantMsg.blocks[assistantMsg.blocks.length - 1];
+        if (lastBlock && lastBlock.type === 'quality') {
+          lastBlock.status = msg.content;
+          lastBlock.detail = msg.data ? JSON.stringify(msg.data) : undefined;
+        } else {
+          assistantMsg.blocks.push({
+            type: 'quality',
+            status: msg.content,
+            detail: msg.data ? JSON.stringify(msg.data) : undefined
+          });
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
+
+  // ==================== 对外 Actions ====================
+
+  /**
+   * 发送消息
+   */
   async function sendMessage(
+    threadId: string,
     text: string,
     files?: { path: string; name: string }[],
     options?: { skillRef?: string }
   ): Promise<void> {
     if (!text.trim()) return;
 
+    const state = getThreadState(threadId);
+
     // 如果正在处理，加入队列
-    if (isStreaming.value) {
-      messageQueue.value.push({
-        id: `queue-${++queueCounter}`,
+    if (state.isStreaming) {
+      state.messageQueue.push({
+        id: `queue-${++state.queueCounter}`,
         text,
         files,
         timestamp: Date.now()
@@ -85,27 +445,29 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // 否则直接发送
-    await sendMessageInternal(text, files, options?.skillRef);
+    await sendMessageInternal(threadId, text, files, options?.skillRef);
   }
 
   async function sendMessageInternal(
+    threadId: string,
     text: string,
     files?: { path: string; name: string }[],
     skillRef?: string,
     forcedMode?: 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop' | 'delegate'
   ): Promise<void> {
-    // 保存最后一条用户消息（用于智能模式切换）
-    lastUserMessage.value = { text, files };
+    const state = getThreadState(threadId);
 
-    // 构建完整消息（包含文件路径）
+    // 保存最后一条用户消息
+    state.lastUserMessage = { text, files };
+
+    // 构建完整消息
     let finalMessage = text;
     if (files && files.length > 0) {
       const filePaths = files.map((f) => `@${f.path}`).join(' ');
       finalMessage = `${text} ${filePaths}`;
     }
 
-    // 显示和发送的消息保持一致
-    addUserMessage(finalMessage);
+    addUserMessage(state, finalMessage);
 
     try {
       let agentId: string | undefined;
@@ -117,15 +479,14 @@ export const useChatStore = defineStore('chat', () => {
         // agents store 未初始化时忽略
       }
 
-      // 从 Thread 获取 mode（agentMode/agentType），或使用强制指定的模式
+      // 从 Thread 获取 mode
       let mode: 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop' | 'delegate' = forcedMode || 'agent';
-      const oldSessionId = sessionId.value;
 
-      if (!forcedMode && oldSessionId) {
+      if (!forcedMode) {
         try {
           const { useThreadsStore } = await import('./threads');
           const threadsStore = useThreadsStore();
-          const thread = threadsStore.threads.find((t) => t.id === oldSessionId);
+          const thread = threadsStore.threads.find((t) => t.id === threadId);
           if (thread?.agentType) {
             mode = thread.agentType;
           }
@@ -141,52 +502,45 @@ export const useChatStore = defineStore('chat', () => {
         queuePosition?: number;
       }>('chat.send', {
         message: finalMessage,
-        sessionId: oldSessionId,
+        sessionId: threadId, // 使用 threadId 作为 sessionId
         mode,
         ...(agentId ? { agentId } : {}),
         ...(skillRef ? { skillRef } : {})
       });
 
       if (result) {
-        const { sessionId: sid, status, error } = result;
+        const { status, error } = result;
 
         if (status === 'error') {
-          addErrorMessage(error || '启动 Agent 失败');
+          addErrorMessage(state, error || '启动 Agent 失败');
           return;
         }
 
-        if (oldSessionId && oldSessionId !== sid) {
-          streamUnsubscribe(oldSessionId);
-        }
-        sessionId.value = sid;
-
         if (status === 'queued' || status === 'merged') {
-          isQueued.value = true;
-          queueStatus.value = {
+          state.isQueued = true;
+          state.queueStatus = {
             isRunning: true,
             queueLength: result.queuePosition ?? 1,
             mode: status
           };
         } else {
-          isQueued.value = false;
+          state.isQueued = false;
         }
-
-        streamSubscribe(sid, handleStreamMessage);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      addErrorMessage(errMsg);
+      addErrorMessage(state, errMsg);
     }
   }
 
   /**
    * 提交 HITL 审批决策
    */
-  async function submitDecision(sid: string, index: number, decision: HitlApprovalDecision): Promise<void> {
+  async function submitDecision(threadId: string, index: number, decision: HitlApprovalDecision): Promise<void> {
     try {
-      // 若 pendingApproval 标记了子 sessionId，则优先使用
-      let targetSessionId = sid;
-      const lastMsg = messages.value[messages.value.length - 1];
+      const state = getThreadState(threadId);
+      let targetSessionId = threadId;
+      const lastMsg = state.messages[state.messages.length - 1];
       if (lastMsg?.pendingApprovals) {
         const approval = lastMsg.pendingApprovals.find((a) => a.index === index);
         if (approval?.sessionId) {
@@ -215,60 +569,54 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function abortSession(): Promise<void> {
-    if (!sessionId.value) return;
+  /**
+   * 中止会话
+   */
+  async function abortSession(threadId: string): Promise<void> {
     try {
       await gateway.request<{ sessionId: string; aborted: boolean }>('chat.abort', {
-        sessionId: sessionId.value
+        sessionId: threadId
       });
-      const lastMsg = messages.value[messages.value.length - 1];
+      const state = getThreadState(threadId);
+      const lastMsg = state.messages[state.messages.length - 1];
       if (lastMsg?.role === 'assistant' && lastMsg.status === 'streaming') {
         lastMsg.status = 'interrupted';
       }
-      isStreaming.value = false;
-      isQueued.value = false;
-      queueStatus.value = null;
+      state.isStreaming = false;
+      state.isQueued = false;
+      state.queueStatus = null;
     } catch (err: unknown) {
       console.error('[chatStore] abortSession error:', err);
     }
   }
 
-  function clearMessages(): void {
-    resetAll();
-    if (sessionId.value) {
-      streamUnsubscribe(sessionId.value);
-    }
-    sessionId.value = null;
-    isQueued.value = false;
-    queueStatus.value = null;
-    messageQueue.value = [];
+  /**
+   * 清空某个 Thread 的消息
+   */
+  function clearMessages(threadId: string): void {
+    const state = getThreadState(threadId);
+    state.messages = [];
+    state.execOutputs = [];
+    state.isStreaming = false;
+    state.isQueued = false;
+    state.queueStatus = null;
+    state.messageQueue = [];
+    state.messageCounter = 0;
   }
 
-  function removeFromQueue(queueId: string): void {
-    messageQueue.value = messageQueue.value.filter((q) => q.id !== queueId);
+  /**
+   * 从队列中移除消息
+   */
+  function removeFromQueue(threadId: string, queueId: string): void {
+    const state = getThreadState(threadId);
+    state.messageQueue = state.messageQueue.filter((q) => q.id !== queueId);
   }
-
-  // ---- 自动处理队列 ----
-  watch(isStreaming, async (streaming) => {
-    if (!streaming && messageQueue.value.length > 0) {
-      // 处理完成，自动发送队列中的下一条
-      const next = messageQueue.value.shift();
-      if (next) {
-        await sendMessageInternal(next.text, next.files);
-      }
-    }
-  });
 
   /**
    * 加载 Thread 的历史对话
-   *
-   * 从后端读取 events.jsonl + session 文件，直接构建 UI 消息列表。
-   * 使用聚合事件（*:done）而非增量事件（*:delta）来重建完整的对话。
    */
   async function loadHistory(threadId: string): Promise<void> {
     const BASE = `${configManager.getBaseUrl()}/gateway/threads`;
-    // 使用当前请求的 ID，如果 fetch 返回时 active threadId 已经变了，则丢弃结果
-    const currentLoadThreadId = threadId;
 
     try {
       const res = await fetch(`${BASE}/${threadId}/history`);
@@ -279,36 +627,34 @@ export const useChatStore = defineStore('chat', () => {
         userMessages: { content: string; timestamp: number }[];
       };
 
-      // 快速切换会话导致过期的请求返回了数据，直接丢弃
-      if (sessionId.value !== currentLoadThreadId) {
-        return;
-      }
-
-      resetAll();
+      const state = getThreadState(threadId);
+      state.messages = [];
+      state.execOutputs = [];
+      state.isStreaming = false;
+      state.messageCounter = 0;
 
       const { events, userMessages } = data;
       if (events.length === 0 && userMessages.length === 0) return;
 
       let currentMsg: StreamChatMessage | undefined;
       let userIdx = 0;
-      let msgCounter = 0;
 
       for (const evt of events) {
         switch (evt.type) {
           case 'run:start':
             if (userIdx < userMessages.length) {
-              addUserMessage(userMessages[userIdx].content);
+              addUserMessage(state, userMessages[userIdx].content);
               userIdx++;
             }
             currentMsg = {
-              id: `hist-assistant-${++msgCounter}`,
+              id: `hist-assistant-${++state.messageCounter}`,
               role: 'assistant',
               content: '',
               blocks: [],
               status: 'streaming',
               timestamp: new Date(evt.ts).getTime()
             };
-            messages.value.push(currentMsg);
+            state.messages.push(currentMsg);
             break;
 
           case 'reasoning:done':
@@ -367,12 +713,14 @@ export const useChatStore = defineStore('chat', () => {
 
           case 'hitl:approved':
           case 'hitl:rejected': {
-            if (currentMsg?.pendingApprovals) {
+            if (currentMsg && currentMsg.pendingApprovals) {
               const targetIndex = evt.data?.index as number | undefined;
+              const decision: HitlApprovalDecision = evt.type === 'hitl:approved' ? 'approve-once' : 'reject';
               if (targetIndex != null) {
-                // 从 pendingApprovals 中移除已处理的审批
-                // 避免在重新加载历史时显示已过期的审批弹窗
-                currentMsg.pendingApprovals = currentMsg.pendingApprovals.filter((a) => a.index !== targetIndex);
+                const approval = currentMsg.pendingApprovals.find((a) => a.index === targetIndex);
+                if (approval) {
+                  approval.decision = decision;
+                }
               }
             }
             break;
@@ -394,9 +742,14 @@ export const useChatStore = defineStore('chat', () => {
 
           case 'delegate:done':
             if (currentMsg) {
+              const agentId = evt.data?.agentId as string | undefined;
               for (let i = currentMsg.blocks.length - 1; i >= 0; i--) {
                 const b = currentMsg.blocks[i];
-                if (b.type === 'delegate' && b.delegate.status === 'running') {
+                if (
+                  b.type === 'delegate' &&
+                  b.delegate.status === 'running' &&
+                  (!agentId || b.delegate.agentId === agentId)
+                ) {
                   b.delegate.status = 'done';
                   b.delegate.output = evt.content || undefined;
                   b.delegate.duration = evt.data?.duration as number | undefined;
@@ -409,12 +762,13 @@ export const useChatStore = defineStore('chat', () => {
           case 'run:done':
             if (currentMsg) {
               currentMsg.status = 'done';
-              // 清理未处理的审批（异步模式下 agent run 可能在审批前就结束）
-              // 避免显示已过期的审批弹窗
-              if (currentMsg.pendingApprovals && currentMsg.pendingApprovals.length > 0) {
-                currentMsg.pendingApprovals = [];
+              if (currentMsg.pendingApprovals) {
+                for (const approval of currentMsg.pendingApprovals) {
+                  if (!approval.decision) {
+                    approval.canShow = true;
+                  }
+                }
               }
-              currentMsg = undefined;
             }
             break;
 
@@ -422,7 +776,6 @@ export const useChatStore = defineStore('chat', () => {
             if (currentMsg) {
               currentMsg.status = 'error';
               currentMsg.error = evt.content;
-              currentMsg = undefined;
             }
             break;
 
@@ -430,69 +783,17 @@ export const useChatStore = defineStore('chat', () => {
             break;
         }
       }
-
-      // 确保最后一条 assistant 消息标记完成
-      if (currentMsg && currentMsg.status === 'streaming') {
-        currentMsg.status = 'done';
-      }
-
-      // 订阅该 session 的后续实时事件
-      streamSubscribe(threadId, handleStreamMessage);
-    } catch (err) {
-      console.warn('[chatStore] loadHistory failed:', err);
+    } catch (err: unknown) {
+      console.error('[chatStore] loadHistory error:', err);
     }
   }
 
-  // ---- 智能模式切换监听器 ----
-  // 当 Agent 检测到任务需要其他模式时，自动切换
-  gateway.on('mode.switch-requested', async (data: unknown) => {
-    const payload = data as Record<string, unknown>;
-    const { targetMode, reason } = payload;
-    console.log(`[chatStore] Mode switch requested:`, { targetMode, reason });
-
-    const modeNames: Record<string, string> = {
-      orchestrator: '编排模式',
-      swarm: '群体模式',
-      discussion: '讨论模式',
-      'quality-loop': '质量闭环模式'
-    };
-    const modeName = modeNames[targetMode as string] || targetMode;
-
-    // 显示切换提示
-    addUserMessage(`\n---\n\n🔄 **正在切换到${modeName}**\n\n${reason || '检测到任务特征'}\n\n---\n`);
-
-    // 如果有保存的最后一条用户消息，重新发送
-    if (lastUserMessage.value && targetMode) {
-      // 等待当前 stream 完成
-      if (isStreaming.value) {
-        await new Promise<void>((resolve) => {
-          const unwatch = watch(isStreaming, (streaming) => {
-            if (!streaming) {
-              unwatch();
-              resolve();
-            }
-          });
-        });
-      }
-
-      // 自动重新发送，使用新的模式
-      await sendMessageInternal(
-        lastUserMessage.value.text,
-        lastUserMessage.value.files,
-        undefined,
-        targetMode as 'agent' | 'orchestrator' | 'swarm' | 'discussion' | 'quality-loop' | 'delegate'
-      );
-    }
-  });
-
   return {
-    sessionId,
-    messages,
-    isStreaming,
-    execOutputs,
-    isQueued,
-    queueStatus,
-    messageQueue,
+    threadStates,
+    getState,
+    getThreadState,
+    clearThreadState,
+    handleStreamMessage,
     sendMessage,
     abortSession,
     submitDecision,

@@ -1,13 +1,14 @@
 <script setup lang="ts">
 /**
- * ChatPanel — 对话面板（右栏）
+ * ChatPanel — 对话面板（右栏）（重构版）
  *
  * Agent 的对话交互区域：消息流、工具调用、HITL 审批。
- * 从原 ChatView.vue 提取，适配窄面板布局。
+ * 重构：组件接收 threadId props，状态按 threadId 隔离，组件内管理订阅生命周期。
  */
 
 import { ref, inject, watch, onMounted, onUnmounted } from 'vue';
 import { useChatStore } from '@/stores/chat';
+import { streamSubscribe, streamUnsubscribe } from '@/composables/useStreamWs';
 import type { PendingApproval } from '@/composables/useStreamHandler';
 import type { HitlApprovalDecision } from '@shared/stream-protocol';
 import { gateway } from '@/plugins/gatewaySetup';
@@ -17,13 +18,21 @@ import ChatInput from '@/components/chat/ChatInput.vue';
 import MessageQueue from '@/components/chat/MessageQueue.vue';
 import type { Ref } from 'vue';
 
+// ==================== Props ====================
+const props = defineProps<{
+  threadId: string;
+}>();
+
+// ==================== Store & Refs ====================
 const chatStore = useChatStore();
+const state = chatStore.getState(props.threadId);
 const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null);
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 const isCollapsed = defineModel<boolean>('collapsed', { default: false });
 
 const pendingSkillRef = inject<Ref<string | null>>('pendingSkillRef', ref(null));
 
+// ==================== Methods ====================
 function scrollToBottom(force = false): void {
   chatMessagesRef.value?.scrollToBottom(force);
 }
@@ -36,16 +45,16 @@ function insertSkillPrompt(prompt: string): void {
   chatInputRef.value?.setInputText(prompt);
 }
 
-// 新消息到达 → 自动滚动（除非用户在看上面的内容）
+// 新消息到达 → 自动滚动
 watch(
-  () => chatStore.messages.length,
+  () => state.value.messages.length,
   () => scrollToBottom()
 );
 
-// 流式内容增量更新 → 自动滚动（除非用户在看上面的内容）
+// 流式内容增量更新 → 自动滚动
 watch(
   () => {
-    const msgs = chatStore.messages;
+    const msgs = state.value.messages;
     if (msgs.length === 0) return 0;
     const last = msgs[msgs.length - 1];
     const blockCount = last.blocks?.length ?? 0;
@@ -66,21 +75,21 @@ async function handleSend(data: { text: string; files: { path: string; name: str
     pendingSkillRef.value = null;
   }
 
-  await chatStore.sendMessage(data.text, data.files, skillRef ? { skillRef } : undefined);
+  await chatStore.sendMessage(props.threadId, data.text, data.files, skillRef ? { skillRef } : undefined);
 }
 
 async function handleStop(): Promise<void> {
-  await chatStore.abortSession();
+  await chatStore.abortSession(props.threadId);
 }
 
 function handleApproval(approval: PendingApproval, decision: HitlApprovalDecision): void {
-  if (!chatStore.sessionId || approval.decision) return;
+  if (approval.decision) return;
 
-  chatStore.submitDecision(chatStore.sessionId, approval.index, decision);
+  chatStore.submitDecision(props.threadId, approval.index, decision);
 
   const decisionText = decision === 'approve-once' ? '已允许' : decision === 'approve-always' ? '始终允许' : '已拒绝';
 
-  chatStore.messages.push({
+  state.value.messages.push({
     id: `user-decision-${Date.now()}`,
     role: 'user',
     content: `[${decisionText}执行 ${approval.toolName} 工具]`,
@@ -90,26 +99,22 @@ function handleApproval(approval: PendingApproval, decision: HitlApprovalDecisio
   });
 }
 
-/**
- * 运行状态验证：当前端认为在 streaming 时，定期向后端确认实际状态。
- * 如果后端 thread 的 runStatus 不是 running/tool-pending/approval-pending，
- * 则强制结束前端的 streaming 状态，避免旋转图标永远不消失。
- */
+// ==================== 运行状态验证 ====================
 let statusCheckTimer: ReturnType<typeof setInterval> | null = null;
 const STATUS_CHECK_INTERVAL = 15_000;
 
 async function verifyRunStatus(): Promise<void> {
-  if (!chatStore.isStreaming || !chatStore.sessionId) return;
+  if (!state.value.isStreaming) return;
 
   try {
     const baseUrl = configManager.getBaseUrl();
-    const res = await fetch(`${baseUrl}/gateway/threads/${chatStore.sessionId}`);
+    const res = await fetch(`${baseUrl}/gateway/threads/${props.threadId}`);
     if (res.ok) {
       const data = (await res.json()) as { thread?: { runStatus?: string } };
       const backendStatus = data?.thread?.runStatus;
       if (backendStatus && !['running', 'tool-pending', 'approval-pending'].includes(backendStatus)) {
         console.warn(`[ChatPanel] Backend runStatus="${backendStatus}" but frontend is streaming. Force ending.`);
-        chatStore.isStreaming = false;
+        state.value.isStreaming = false;
       }
     }
   } catch {
@@ -117,14 +122,44 @@ async function verifyRunStatus(): Promise<void> {
   }
 }
 
+// ==================== 订阅管理 ====================
+/**
+ * 订阅生命周期优化：
+ * - 在组件挂载时订阅
+ * - 当流式处理开始时，确保订阅
+ * - 当流式处理结束时（run:done/run:error），自动取消订阅
+ * - 在组件卸载时，确保取消订阅
+ */
+let subscribed = false;
+
+function ensureSubscription(): void {
+  if (!subscribed) {
+    streamSubscribe(props.threadId, chatStore.handleStreamMessage);
+    subscribed = true;
+  }
+}
+
+function unsubscribe(): void {
+  if (subscribed) {
+    streamUnsubscribe(props.threadId);
+    subscribed = false;
+  }
+}
+
+// Watch isStreaming: 开始时订阅，结束时取消订阅
 watch(
-  () => chatStore.isStreaming,
-  (streaming) => {
+  () => state.value.isStreaming,
+  (streaming, wasStreaming) => {
     if (streaming) {
+      ensureSubscription();
       if (!statusCheckTimer) {
         statusCheckTimer = setInterval(verifyRunStatus, STATUS_CHECK_INTERVAL);
       }
     } else {
+      // 流式处理结束，取消订阅
+      if (wasStreaming) {
+        unsubscribe();
+      }
       if (statusCheckTimer) {
         clearInterval(statusCheckTimer);
         statusCheckTimer = null;
@@ -134,11 +169,17 @@ watch(
   { immediate: true }
 );
 
+// ==================== 生命周期 ====================
 onMounted(() => {
   scrollToBottom();
+  // 初始订阅（如果当前正在 streaming，会被 watch 处理）
+  if (!state.value.isStreaming) {
+    ensureSubscription();
+  }
 });
 
 onUnmounted(() => {
+  unsubscribe();
   if (statusCheckTimer) {
     clearInterval(statusCheckTimer);
     statusCheckTimer = null;
@@ -156,8 +197,8 @@ defineExpose({
     <!-- 消息区域 -->
     <ChatMessages
       ref="chatMessagesRef"
-      :messages="chatStore.messages"
-      :is-streaming="chatStore.isStreaming"
+      :messages="state.messages"
+      :is-streaming="state.isStreaming"
       @decide="handleApproval">
       <template #empty>
         <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
@@ -170,26 +211,24 @@ defineExpose({
 
     <!-- 队列状态提示 -->
     <div
-      v-if="chatStore.isQueued && chatStore.queueStatus"
+      v-if="state.isQueued && state.queueStatus"
       class="flex items-center gap-1.5 border-t border-amber-200/80 bg-amber-50/60 px-3 py-1.5">
       <span class="i-carbon-queue inline-block h-3 w-3 text-amber-500"></span>
       <span class="text-[10px] text-amber-600">
         消息已排队 (位置:
-        {{ chatStore.queueStatus.queueLength }})
+        {{ state.queueStatus.queueLength }})
       </span>
     </div>
 
     <!-- 待发送消息队列 -->
-    <MessageQueue :queue="chatStore.messageQueue" @remove="chatStore.removeFromQueue" />
+    <MessageQueue :queue="state.messageQueue" @remove="(queueId) => chatStore.removeFromQueue(threadId, queueId)" />
 
     <!-- 输入区域 -->
     <ChatInput
       ref="chatInputRef"
-      :placeholder="
-        chatStore.isStreaming ? '可继续输入（消息将排队处理）' : '输入消息... (Enter 发送，Shift+Enter 换行)'
-      "
+      :placeholder="state.isStreaming ? '可继续输入（消息将排队处理）' : '输入消息... (Enter 发送，Shift+Enter 换行)'"
       :disabled="false"
-      :show-stop-button="chatStore.isStreaming"
+      :show-stop-button="state.isStreaming"
       @send="handleSend"
       @stop="handleStop" />
 

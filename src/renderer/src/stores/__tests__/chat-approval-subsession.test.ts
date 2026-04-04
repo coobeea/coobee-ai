@@ -35,7 +35,10 @@ describe('chatStore submitDecision with subSessionId', () => {
   it('routes approval to sub-session when present on pending approval', async () => {
     const store = useChatStore();
     const decision: HitlApprovalDecision = 'approve-once';
+    const threadId = 'thread-1';
 
+    // 准备测试数据：创建 thread state 并添加消息
+    const state = store.getThreadState(threadId);
     const msg: StreamChatMessage = {
       id: 'm1',
       role: 'assistant',
@@ -52,9 +55,9 @@ describe('chatStore submitDecision with subSessionId', () => {
         }
       ]
     };
-    store.messages.push(msg);
+    state.messages.push(msg);
 
-    await store.submitDecision('thread-1', 0, decision);
+    await store.submitDecision(threadId, 0, decision);
 
     const { gateway } = await import('@/plugins/gatewaySetup');
     expect(gateway.request).toHaveBeenCalledWith('hitl.decide', {

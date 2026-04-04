@@ -321,7 +321,7 @@ async function handleStartTask(
     setTimeout(
       () => {
         const chatStore = useChatStore();
-        chatStore.sendMessage(initialMessage);
+        chatStore.sendMessage(thread.id, initialMessage);
       },
       background ? 100 : 300
     );

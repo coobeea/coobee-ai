@@ -40,6 +40,7 @@ const projectPath = ref<string | null>(null);
 // workspaceReady: 非 null 即为 ready（包括空字符串）
 const workspaceReady = computed(() => projectPath.value !== null);
 
+// 任务会话ID
 const threadId = computed(() => route.params.id as string);
 
 // 目录切换：智能体目录 / 任务工作目录 / 工程目录
@@ -142,7 +143,7 @@ function enterWorkspaceForThread(id: string): void {
   threadsStore.selectThread(id);
   closeAllFiles();
 
-  chatStore.sessionId = id;
+  // 加载历史（state 由 ChatPanel 订阅）
   chatStore.loadHistory(id);
 }
 
@@ -158,7 +159,9 @@ async function openDirectoryDialog(): Promise<void> {
 }
 
 function goBackToAgents(): void {
-  chatStore.clearMessages();
+  if (threadId.value) {
+    chatStore.clearMessages(threadId.value);
+  }
   closeAllFiles();
   threadsStore.selectThread(null);
   router.push('/agent');
@@ -166,7 +169,11 @@ function goBackToAgents(): void {
 
 // 有 exec 输出时自动展开终端面板
 watch(
-  () => chatStore.execOutputs.length,
+  () => {
+    if (!threadId.value) return 0;
+    const state = chatStore.getThreadState(threadId.value);
+    return state.execOutputs.length;
+  },
   (newLen, oldLen) => {
     if (newLen > (oldLen ?? 0) && terminalCollapsed.value) {
       terminalCollapsed.value = false;
@@ -237,12 +244,12 @@ onUnmounted(() => {
             </span>
             <span class="text-[11px]">终端</span>
           </button>
-          <TerminalPanel v-if="!terminalCollapsed" />
+          <TerminalPanel v-if="!terminalCollapsed" :thread-id="threadId" />
         </div>
       </div>
       <div class="right-area">
         <ContextPanel :thread-id="threadId" @use-skill="handleUseSkill" />
-        <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" />
+        <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" :thread-id="threadId" />
       </div>
       <AgentsPanel v-model:collapsed="agentsPanelCollapsed" />
     </div>
