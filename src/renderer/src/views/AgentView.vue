@@ -178,8 +178,8 @@ async function loadAvailableSkills(): Promise<void> {
   }
 }
 
-async function loadModelList(): Promise<void> {
-  if (flatModelList.value.length > 0) return;
+async function loadModelList(force = false): Promise<void> {
+  if (flatModelList.value.length > 0 && !force) return;
   try {
     const data = await gateway.request<Record<string, unknown>>('config.getAll');
     const modelsConfig = data?.models as Record<string, unknown> | undefined;
@@ -346,7 +346,7 @@ async function openAgentEditor(agentId: string): Promise<void> {
   editActiveTab.value = 'skills';
 
   modelSearchQuery.value = '';
-  await Promise.all([loadAvailableSkills(), loadModelList()]);
+  await Promise.all([loadAvailableSkills(), loadModelList(true)]);
 }
 
 function toggleSkill(skillName: string): void {
