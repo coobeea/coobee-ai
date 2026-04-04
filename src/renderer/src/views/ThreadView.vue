@@ -63,16 +63,6 @@ provide('toggleDirectoryMode', toggleDirectoryMode);
 provide('customProjectDir', customProjectDir);
 provide('setProjectDir', setProjectDir);
 
-const pendingSkillRef = ref<string | null>(null);
-
-function handleUseSkill(skillName: string): void {
-  pendingSkillRef.value = skillName;
-  const prompt = `请按照 [${skillName}] 技能执行`;
-  chatPanelRef.value?.insertSkillPrompt(prompt);
-}
-
-provide('pendingSkillRef', pendingSkillRef);
-
 // 根据当前模式更新显示的目录路径
 function updateProjectPathForMode(thread: { agentHomePath?: string; workspacePath?: string }): void {
   if (directoryMode.value === 'project' && customProjectDir.value) {
@@ -236,7 +226,7 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="right-area">
-        <ContextPanel :thread-id="threadId" @use-skill="handleUseSkill" />
+        <ContextPanel :thread-id="threadId" />
         <ChatPanel ref="chatPanelRef" v-model:collapsed="rightCollapsed" :thread-id="threadId" />
       </div>
       <AgentsPanel v-model:collapsed="agentsPanelCollapsed" />
