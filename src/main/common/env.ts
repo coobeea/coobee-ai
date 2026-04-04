@@ -498,22 +498,35 @@ class EnvClass {
    * 获取 Skill 搜索路径列表（按优先级从低到高）
    *
    * 合并策略：同名 Skill 后者覆盖前者
-   *   1. builtinSkillsDir  — 内置（最低优先级）
-   *   2. userSkillsDir     — 用户级
-   *   3. {workspace}/skills — Agent 自生成（最高优先级，仅当前 Agent 可见）
+   *   1. builtinSkillsDir     — 内置（最低优先级）
+   *   2. userSkillsDir        — 用户级
+   *   3. {agentHome}/skills   — Agent 级（Agent 专属技能）
+   *   4. {workspace}/skills   — 工作空间级（最高优先级，仅当前会话可见）
    *
+   * Agent 级 Skill 用于 Agent 专属技能（如"增值税助手"的税务 Skill）。
    * 同时确保所有 Skill 目录存在（含核心目录 userHome、dbDir、workspacesDir）。
    *
    * @param workspace 当前工作空间路径（可选，由 getWorkspaceDir 返回）
+   * @param agentHome Agent Home 路径（可选，如果指定则加载 Agent 级 Skill）
    */
-  async getSkillSearchPaths(workspace?: string): Promise<string[]> {
+  async getSkillSearchPaths(workspace?: string, agentHome?: string): Promise<string[]> {
     const coreDirs = [this.paths.userHome, this.paths.configDir, this.paths.workspacesDir, this.paths.userSkillsDir];
     const skillPaths = [this.paths.builtinSkillsDir, this.paths.userSkillsDir];
+
+    // Agent 级 Skills（如果有 agentHome）
+    if (agentHome) {
+      const agentSkills = path.join(agentHome, 'skills');
+      coreDirs.push(agentSkills);
+      skillPaths.push(agentSkills);
+    }
+
+    // 工作空间级 Skills（优先级最高）
     if (workspace) {
       const wsSkills = path.join(workspace, 'skills');
       coreDirs.push(wsSkills);
       skillPaths.push(wsSkills);
     }
+
     for (const dir of coreDirs) {
       if (!fs.existsSync(dir)) {
         await mkdirp(dir);

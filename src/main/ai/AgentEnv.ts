@@ -110,12 +110,13 @@ export interface AgentEnv {
  *
  * @param sessionId 会话 ID
  * @param workspace Agent 工作空间路径（由 Env.getAgentWorkspaceDir 返回）
+ * @param agentHome Agent Home 路径（可选，用于加载 Agent 级 Skill）
  */
-export async function buildAgentEnv(sessionId: string, workspace: string): Promise<AgentEnv> {
+export async function buildAgentEnv(sessionId: string, workspace: string, agentHome?: string): Promise<AgentEnv> {
   // 延迟导入 Env，避免测试环境循环依赖
   const { Env } = await import('@main/common/env');
 
-  const skillPaths = await Env.getSkillSearchPaths(workspace);
+  const skillPaths = await Env.getSkillSearchPaths(workspace, agentHome);
   const extensionPaths = await Env.getExtensionSearchPaths(workspace);
 
   // Extension 系统信息

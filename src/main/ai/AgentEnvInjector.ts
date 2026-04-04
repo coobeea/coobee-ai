@@ -47,35 +47,40 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
     ).getWorkspaceRoot?.();
     const workspace = existingWorkspace || (await Env.getAgentWorkspaceDir(sessionId));
 
-    // 2. 构建 AgentEnv + Agent Home
-    const agentEnv = await buildAgentEnv(sessionId, workspace);
+    // 2. 初始化 Agent Home（如果有 agentId）
     const agentId = (builder as unknown as { getAgentId?: () => string | undefined }).getAgentId?.();
-
-    // 2b. 注入工程目录
-    const builderProjectDir = (builder as unknown as { getProjectDir?: () => string | undefined }).getProjectDir?.();
-    if (builderProjectDir) {
-      agentEnv.projectDir = builderProjectDir;
-    }
-
     let agentHome: string | undefined;
     let homeManager: AgentHomeManager | undefined;
     if (agentId) {
       homeManager = new AgentHomeManager(Env.paths.homesDir);
       agentHome = homeManager.initHome(agentId);
+    }
+
+    // 3. 构建 AgentEnv（传入 agentHome 用于加载 Agent 级 Skill）
+    const agentEnv = await buildAgentEnv(sessionId, workspace, agentHome);
+
+    // 4. 设置 AgentEnv 的 agentId 和 agentHome
+    if (agentId && agentHome) {
       agentEnv.agentId = agentId;
       agentEnv.agentHome = agentHome;
     }
 
+    // 5. 注入工程目录
+    const builderProjectDir = (builder as unknown as { getProjectDir?: () => string | undefined }).getProjectDir?.();
+    if (builderProjectDir) {
+      agentEnv.projectDir = builderProjectDir;
+    }
+
     // ====== Agent 模式独有：Skill + 执行协议 + 运行时路径 ======
     if (mode === 'agent') {
-      // 3. 扫描 Skill 并存储到 SkillManager（供 skill_list 工具按需查询）
-      //    使用 agentEnv.skillPaths（已包含 Extension 贡献的 Skill 目录）
+      // 6. 扫描 Skill 并存储到 SkillManager（供 skill_list 工具按需查询）
+      //    使用 agentEnv.skillPaths（已包含 Agent Home skills + Extension 贡献的 Skill 目录）
       //    传入 configDir 以加载 skills.json5 中的 Skill 配置
       const skillManager = new SkillManager();
       skillManager.scanSkills(agentEnv.skillPaths, Env.paths.secretsDir);
       SkillManager.setCurrent(skillManager, sessionId);
 
-      // 4. 注入核心执行协议 + 运行时环境 + Skill 发现提示 + Agent 发现提示到 appendInstructions
+      // 7. 注入核心执行协议 + 运行时环境 + Skill 发现提示 + Agent 发现提示到 appendInstructions
       //    执行协议可通过同名 Skill 覆盖（用户在 skills/execution-protocol/ 创建即可）
       const executionProtocol = buildExecutionProtocol(skillManager);
       const runtimePathsBlock = formatRuntimePaths(agentEnv);
@@ -131,7 +136,7 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
         ...extensionInstructions
       );
 
-      // 4b. 注入核心技能到 builder（确保子 Agent 也拥有核心技能）
+      // 7b. 注入核心技能到 builder（确保子 Agent 也拥有核心技能）
       //     builder.skills() 是累加模式，不会覆盖已有 skills
       const coreSkillDefs = CORE_SKILLS.map((name) => skillManager.getByName(name)).filter(
         (s): s is NonNullable<typeof s> => s !== null
@@ -143,7 +148,7 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
         );
       }
 
-      // 5. 构建工具执行上下文（由 Runtime 的 convertTools 注入到每个工具）
+      // 8. 构建工具执行上下文（由 Runtime 的 convertTools 注入到每个工具）
       //    包含沙箱信息 + Agent/Session 上下文
       //    有工程目录时，工具操作的根目录指向工程目录
       const effectiveCwd = builderProjectDir || workspace;
@@ -158,14 +163,14 @@ export async function injectEnv(sessionId: string, builder: AgentBuilder): Promi
 
     // ====== Chat & Agent 共享：基础环境设置 ======
 
-    // 6. 设置会话存储目录（指向 .runtime/ 系统空间，始终在 workspace 内）
+    // 9. 设置会话存储目录（指向 .runtime/ 系统空间，始终在 workspace 内）
     builder.sessionDir(path.join(workspace, '.runtime', 'sessions'));
 
-    // 7. 工作目录：有工程目录时优先使用工程目录，否则用 workspace
+    // 10. 工作目录：有工程目录时优先使用工程目录，否则用 workspace
     const effectiveCwdShared = builderProjectDir || workspace;
     builder.workspaceRoot(effectiveCwdShared);
 
-    // 8. 设置上下文快照目录（.runtime/ 系统空间，始终在 workspace 内）
+    // 11. 设置上下文快照目录（.runtime/ 系统空间，始终在 workspace 内）
     builder.contextDir(path.join(workspace, '.runtime', 'contexts'));
 
     if (builderProjectDir) {

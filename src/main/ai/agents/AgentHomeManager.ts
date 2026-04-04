@@ -17,7 +17,8 @@
  *   ├── HEARTBEAT.md     心跳任务清单
  *   ├── BOOTSTRAP.md     首次引导脚本（完成后自删除）
  *   ├── sessions.jsonl   会话索引（追加式，每行一个 session）
- *   └── memory/          Agent 级结构化记忆（由 memory-agent 扩展自动管理）
+ *   ├── memory/          Agent 级结构化记忆（由 memory-agent 扩展自动管理）
+ *   └── skills/          Agent 级专属技能（该 Agent 独享的 Skill）
  */
 
 import fs from 'node:fs';
@@ -143,9 +144,11 @@ export class AgentHomeManager {
   initHome(agentId: string): string {
     const homeDir = path.join(this.homesDir, agentId);
     const memoryDir = path.join(homeDir, 'memory');
+    const skillsDir = path.join(homeDir, 'skills');
 
     fs.mkdirSync(homeDir, { recursive: true });
     fs.mkdirSync(memoryDir, { recursive: true });
+    fs.mkdirSync(skillsDir, { recursive: true });
 
     // BOOTSTRAP.md（仅首次创建时写入——如果任何标准文件已存在，说明不是首次）
     const bootstrapPath = path.join(homeDir, 'BOOTSTRAP.md');
