@@ -120,18 +120,29 @@ export function registerThreadRoutes(router: Router): void {
 
     try {
       const store = await ThreadStore.getInstance();
-      const thread = await store.update(threadId, {
+      const threadDef = await store.update(threadId, {
         title: body.title as string | undefined,
         status: body.status as 'active' | 'archived' | 'deleted' | undefined,
         messageCount: body.messageCount as number | undefined,
         projectDir: body.projectDir as string | null | undefined,
+        overrideModel: body.overrideModel as string | undefined,
         metadata: body.metadata as Record<string, unknown> | undefined
       });
-      if (!thread) {
+      if (!threadDef) {
         ctx.status = 404;
         ctx.body = { error: `Thread "${threadId}" not found` };
         return;
       }
+
+      // 返回 ThreadIndexEntry（与 list 接口保持一致）
+      const threads = await store.list();
+      const thread = threads.find((t) => t.id === threadId);
+      if (!thread) {
+        ctx.status = 500;
+        ctx.body = { error: `Thread "${threadId}" updated but not found in index` };
+        return;
+      }
+
       ctx.body = { thread };
     } catch (err) {
       log.error(`[threads.update] Error (${threadId}):`, err);

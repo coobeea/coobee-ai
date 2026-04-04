@@ -120,19 +120,17 @@ async function loadModelList(): Promise<void> {
 
 async function selectModel(modelValue: string): Promise<void> {
   try {
-    console.log('[ContextPanel] Selecting model:', modelValue || 'default');
+    console.log('[ContextPanel] Selecting model:', modelValue || 'default', 'for thread:', props.threadId);
+
     const success = await threadsStore.updateThread(props.threadId, {
       overrideModel: modelValue || undefined
     });
 
     if (success) {
-      console.log('[ContextPanel] Model updated successfully');
+      console.log('[ContextPanel] Model updated successfully, new model:', currentThread.value?.overrideModel);
       showModelSelector.value = false;
-
-      // 强制刷新当前线程数据以确保 UI 更新
-      await threadsStore.fetchThreads();
     } else {
-      console.error('[ContextPanel] Failed to update model');
+      console.error('[ContextPanel] Failed to update model - API returned false');
     }
   } catch (err) {
     console.error('[ContextPanel] Failed to update thread model:', err);
