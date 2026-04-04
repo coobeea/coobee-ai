@@ -1569,7 +1569,6 @@ function formatTime(iso: string): string {
   background: hsl(142 76% 36%);
   color: white;
 }
-}
 
 .primary-btn:disabled {
   opacity: 0.35;
