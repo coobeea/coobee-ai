@@ -5,7 +5,7 @@
  * 一行高度展示：Agent 名称 + 运行模式 + 模型选择器。
  */
 
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useAgentsStore, type AgentEntry } from '@/stores/agents';
 import { useThreadsStore, type AgentType } from '@/stores/threads';
 import { gateway } from '@/plugins/gatewaySetup';
@@ -25,6 +25,7 @@ interface ModelItem {
 }
 const flatModelList = ref<ModelItem[]>([]);
 const showModelSelector = ref(false);
+const modelSelectorRef = ref<HTMLElement | null>(null);
 
 const currentThread = computed(() => threadsStore.threads.find((t) => t.id === props.threadId));
 
@@ -119,20 +120,51 @@ async function loadModelList(): Promise<void> {
 
 async function selectModel(modelValue: string): Promise<void> {
   try {
-    await threadsStore.updateThread(props.threadId, {
+    console.log('[ContextPanel] Selecting model:', modelValue || 'default');
+    const success = await threadsStore.updateThread(props.threadId, {
       overrideModel: modelValue || undefined
     });
-    showModelSelector.value = false;
+
+    if (success) {
+      console.log('[ContextPanel] Model updated successfully');
+      showModelSelector.value = false;
+
+      // 强制刷新当前线程数据以确保 UI 更新
+      await threadsStore.fetchThreads();
+    } else {
+      console.error('[ContextPanel] Failed to update model');
+    }
   } catch (err) {
     console.error('[ContextPanel] Failed to update thread model:', err);
   }
 }
+
+// 点击外部关闭弹窗
+function handleClickOutside(e: MouseEvent): void {
+  const target = e.target as Node;
+  if (modelSelectorRef.value && !modelSelectorRef.value.contains(target)) {
+    showModelSelector.value = false;
+  }
+}
+
+// 监听弹窗状态，添加/移除外部点击监听
+watch(showModelSelector, (open) => {
+  if (open) {
+    setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
+  } else {
+    document.removeEventListener('mousedown', handleClickOutside);
+  }
+});
 
 onMounted(() => {
   if (agentsStore.agents.length === 0) {
     agentsStore.fetchAgents();
   }
   loadModelList();
+});
+
+onUnmounted(() => {
+  document.removeEventListener('mousedown', handleClickOutside);
 });
 </script>
 
@@ -147,7 +179,7 @@ onMounted(() => {
     </div>
 
     <!-- 右：模型选择器 -->
-    <div class="model-selector-area">
+    <div ref="modelSelectorRef" class="model-selector-area">
       <button class="model-selector-btn" @click="showModelSelector = !showModelSelector">
         <span class="i-carbon-model inline-block h-3 w-3"></span>
         <span class="model-name">{{ displayModelName }}</span>
