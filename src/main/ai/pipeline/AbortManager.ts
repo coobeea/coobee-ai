@@ -33,11 +33,16 @@ export class AbortManager {
    */
   abort(sessionId: string): boolean {
     const controller = this.controllers.get(sessionId);
-    if (!controller) return false;
+    if (!controller) {
+      console.log(`[AbortManager] abort() called for ${sessionId}, but no controller found`);
+      return false;
+    }
 
+    console.log(`[AbortManager] Aborting controller for sessionId=${sessionId}`);
     controller.abort();
     this.abortedSessions.add(sessionId);
     this.controllers.delete(sessionId);
+    console.log(`[AbortManager] Successfully aborted sessionId=${sessionId}`);
     return true;
   }
 

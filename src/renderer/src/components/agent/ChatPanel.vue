@@ -94,7 +94,9 @@ async function handleSend(data: { text: string; files: { path: string; name: str
 }
 
 async function handleStop(): Promise<void> {
+  console.log('[ChatPanel] handleStop called for thread:', props.threadId);
   await chatStore.abortSession(props.threadId);
+  console.log('[ChatPanel] abortSession completed');
 }
 
 function handleApproval(approval: PendingApproval, decision: HitlApprovalDecision): void {

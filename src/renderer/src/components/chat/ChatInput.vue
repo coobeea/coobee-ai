@@ -193,7 +193,15 @@ onUnmounted(() => {
     <!-- 工具栏（右下角） -->
     <div v-if="showStopButton" class="chat-input-toolbar">
       <!-- 停止按钮 -->
-      <button class="toolbar-btn-stop" title="中断" @click="emit('stop')">
+      <button
+        class="toolbar-btn-stop"
+        title="中断"
+        @click="
+          () => {
+            console.log('[ChatInput] Stop button clicked');
+            emit('stop');
+          }
+        ">
         <span class="i-carbon-stop-filled inline-block h-3.5 w-3.5" />
       </button>
     </div>

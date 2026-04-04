@@ -76,10 +76,15 @@ export class MessagePipeline {
    * 中断当前 run
    */
   abort(sessionId: string): boolean {
+    log.info(`[MessagePipeline] abort() called for sessionId=${sessionId}`);
     const aborted = this.abortManager.abort(sessionId);
+    log.info(`[MessagePipeline] abortManager.abort() returned: ${aborted}`);
     const queue = this.queues.get(sessionId);
     if (queue) {
       queue.isRunning = false;
+      log.info(`[MessagePipeline] Set queue.isRunning = false for sessionId=${sessionId}`);
+    } else {
+      log.warn(`[MessagePipeline] No queue found for sessionId=${sessionId}`);
     }
     return aborted;
   }

@@ -244,9 +244,11 @@ export const useChatStore = defineStore('chat', () => {
    */
   async function abortSession(threadId: string): Promise<void> {
     try {
-      await gateway.request<{ sessionId: string; aborted: boolean }>('chat.abort', {
+      console.log('[chatStore] abortSession: requesting abort for sessionId:', threadId);
+      const result = await gateway.request<{ sessionId: string; aborted: boolean }>('chat.abort', {
         sessionId: threadId
       });
+      console.log('[chatStore] abortSession: result:', result);
       const state = getThreadState(threadId);
       state.isStreaming = false;
       state.isQueued = false;
