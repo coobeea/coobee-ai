@@ -14,6 +14,7 @@
  *   chat.abort — 中止当前会话（预留）
  */
 
+import * as path from 'path';
 import { log } from '@main/common/logger';
 import { Env } from '@main/common/env';
 import { agentExecutor } from '@main/ai/AgentExecutor';
@@ -133,7 +134,8 @@ function createBuilderFromDefinition(
 
   if (def.skills?.length) {
     try {
-      const skillDefs = loadSkillDefinitions(def.skills);
+      // 传入 agentId 以支持加载 Agent Home 下的技能
+      const skillDefs = loadSkillDefinitions(def.skills, def.id);
       if (skillDefs.length > 0) {
         builder.skills(skillDefs);
         log.info(`[chat] Loaded ${skillDefs.length} skills for agent ${def.id}`);
@@ -157,13 +159,28 @@ function createBuilderFromDefinition(
 
 /**
  * 按名称加载 Skill 定义（同步扫描）
+ *
+ * @param skillNames 技能名称列表
+ * @param agentId 可选的 Agent ID，用于加载 Agent Home 下的专属技能
  */
-function loadSkillDefinitions(skillNames: string[]): SkillDefinition[] {
+function loadSkillDefinitions(skillNames: string[], agentId?: string): SkillDefinition[] {
   try {
+    // 构建搜索路径：内置 → 用户 → Agent Home
     const searchPaths = [Env.paths.builtinSkillsDir, Env.paths.userSkillsDir];
+
+    // 如果指定了 agentId，加载 Agent Home 下的技能
+    if (agentId) {
+      const agentHome = Env.getAgentHomeDir(agentId);
+      const agentSkillsDir = path.join(agentHome, 'skills');
+      searchPaths.push(agentSkillsDir);
+      log.info(`[chat] Loading skills for agent ${agentId}, search paths: ${searchPaths.length}`);
+    }
+
     const manager = new SkillManager();
     const allSkills = manager.scanSkills(searchPaths, Env.paths.secretsDir);
     const skillMap = new Map(allSkills.map((s) => [s.name, s]));
+
+    log.info(`[chat] Total ${allSkills.length} skills found in search paths`);
 
     return skillNames
       .map((name) => {
@@ -341,7 +358,8 @@ export const chatMethods: MethodGroup = {
         // skillRef: 显式 Skill 注入 — 将 Skill 全文作为强制指令追加到 system prompt
         if (skillRef) {
           try {
-            const skillDefs = loadSkillDefinitions([skillRef]);
+            // 传入 agentId 以支持加载 Agent Home 下的技能
+            const skillDefs = loadSkillDefinitions([skillRef], agentDef?.id);
             if (skillDefs.length > 0) {
               const skill = skillDefs[0];
               const skillInstruction =
